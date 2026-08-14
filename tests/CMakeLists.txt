@@ -7,6 +7,7 @@ add_executable(gitman_tests
     dependency_versions_tests.cpp
     domain_model_tests.cpp
     embedded_assets_tests.cpp
+    project_path_tests.cpp
     project_schema_tests.cpp
     renderer_policy_tests.cpp
     ui_theme_tests.cpp

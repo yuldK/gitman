@@ -1,5 +1,25 @@
 # 변경 이력
 
+## 2026-08-15 - 단계 2 project path test 작성
+
+### 사용자 지시
+
+- `S2-D3-CODE`를 승인하고 test 작성을 진행한다.
+
+### 반영 내용
+
+- runtime 임시 디렉터리 fixture와 project path test 7개를 추가했다.
+- document 기준 상대 path, drive, extended drive, UNC 및 extended UNC 정규화를 검증했다.
+- 한글, emoji, 공백, long path와 directory, file, missing 및 invalid 상태를 검증했다.
+- 부분 성공 문서에서 대소문자 중복 path를 제외하고 원래 JSON project index와 diagnostic 위치를 보존하는지 검증했다.
+- VS2022와 VS2026 Debug build 및 전체 CTest 41/41을 통과했다.
+- production source를 변경하지 않았고 path production 결함도 발견되지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D3-TEST`는 사용자 test 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D3-FIX`를 생략하거나 `S2-D4-CODE`를 시작하지 않는다.
+
 ## 2026-08-15 - 단계 2 project path production code 구현
 
 ### 사용자 지시

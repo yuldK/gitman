@@ -4,11 +4,11 @@
 
 - 작성일: 2026-08-14
 - 대상: 구현 단계 2
-- 현재 상태: 구현 계획 작성 완료, 사용자 검수 대기
-- 현재 검수 게이트: `S2-P0`
-- 관련 요구사항: REQ-001, REQ-002, REQ-004, REQ-009~REQ-013, NFR-005~NFR-006, NFR-009
+- 현재 상태: `S2-D1-CODE` 구현 및 기존 회귀 검증 완료, 사용자 코드 검수 대기
+- 현재 검수 게이트: `S2-D1-CODE`
+- 관련 요구사항: REQ-001, REQ-002, REQ-004, REQ-009~REQ-013, REQ-016, NFR-005~NFR-006, NFR-009
 
-이 문서는 단계 2의 계획만 확정한다. 사용자가 `S2-P0`을 승인하기 전에는 production source, test source와 fixture를 추가하거나 변경하지 않는다.
+사용자는 `S2-P0` 계획을 승인하면서 설정 파일을 solution 및 `.code-workspace`와 같은 작업공간 문서로 변경했다. 확장자는 사용자 지시의 철자를 그대로 적용한 `.verison-list`다. 이후 작업은 7장의 체크포인트 순서를 따른다.
 
 ## 2. 목표
 
@@ -35,12 +35,16 @@ Git/SVN provider는 단계 4, 탐색과 등록은 단계 5, 메시지 구조와 
 
 ## 4. 사용자 검수 시 확정할 설계 제안
 
-### 4.1 설정 파일 위치와 개수
+### 4.1 작업공간 문서와 연결 프로그램
 
-- 기본 파일은 `%LOCALAPPDATA%\Gitman\projects.json`으로 한다. 프로젝트 경로는 PC별 정보이므로 roaming 위치를 사용하지 않는다.
-- backup은 같은 디렉터리의 `projects.json.bak`으로 한다.
-- 최초 버전은 한 번에 하나의 활성 설정 파일만 지원한다.
-- 저장소 API는 명시적 파일 경로를 받게 하여 test와 향후 `--config` override를 막지 않는다. 단계 2에서는 command-line option을 연결하지 않는다.
+- 고정된 전역 `projects.json`은 사용하지 않는다.
+- 프로젝트 목록은 JSON 내용 형식을 사용하는 `.verison-list` 작업공간 문서다.
+- 사용자는 서로 다른 위치에 여러 문서를 둘 수 있으며, 한 프로세스 및 창은 한 번에 하나의 활성 문서를 연다.
+- 연결 프로그램으로 실행하면 Windows shell이 넘긴 문서 경로를 첫 positional argument로 받아 연다.
+- 문서 경로가 없는 시작 흐름과 열기 및 새 문서 UI는 단계 6에서 연결한다.
+- `.verison-list` file association의 등록 및 제거는 단계 8의 배포 검증에서 구현한다.
+- backup은 원본과 같은 디렉터리의 `<document-name>.verison-list.bak`으로 한다.
+- 저장소 API는 항상 명시적 문서 경로를 받는다.
 
 ### 4.2 schema version 1
 
@@ -133,7 +137,7 @@ src
 │   ├── json_project_document.h/.cpp
 │   └── json_project_store.h/.cpp
 └── platform/win32
-    ├── config_location.h/.cpp
+    ├── workspace_document_path.h/.cpp
     └── project_file_system.h/.cpp
 
 tests
@@ -189,7 +193,10 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 | 11 | `S2-D4-CODE` | revision token, 원자적 save, backup과 recovery production code만 구현 | build/style 결과와 diff 제시 후 중지 |
 | 12 | `S2-D4-TEST` | 동시 수정과 write/flush/replace 실패 주입 test만 추가 | test 결과와 발견 결함 제시 후 중지 |
 | 13 | `S2-D4-FIX` | 승인된 저장 및 복구 결함만 수정 | 회귀 결과 제시 후 중지 |
-| 14 | `S2-V1` | 전체 build/test/analyze/install 검증과 단계 2 검증 문서 작성 | 최종 결과 제시 후 단계 2 승인 대기 |
+| 14 | `S2-D5-CODE` | `.verison-list` positional launch path parsing과 store 진입 계약 production code만 구현 | build/style 결과와 diff 제시 후 중지 |
+| 15 | `S2-D5-TEST` | launch path 없음, 정상, 중복 및 잘못된 확장자 test만 추가 | test 결과와 발견 결함 제시 후 중지 |
+| 16 | `S2-D5-FIX` | 승인된 launch contract 결함만 수정 | 회귀 결과 제시 후 중지 |
+| 17 | `S2-V1` | 전체 build/test/analyze/install 검증과 단계 2 검증 문서 작성 | 최종 결과 제시 후 단계 2 승인 대기 |
 
 각 체크포인트가 끝나면 반드시 `docs/handoff.md`에 다음을 갱신한다.
 
@@ -200,6 +207,12 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - 승인 후 허용되는 다음 작업 하나
 
 사용자가 명시적으로 승인하기 전에는 다음 행으로 진행하지 않는다. test 구간에서 결함이 발견되어도 같은 구간에서 production code를 수정하지 않는다.
+
+### 7.1 현재 진행 상태
+
+- `S2-P0`: `.verison-list` 작업공간 문서 수정 후 승인 완료
+- `S2-D1-CODE`: 구현 완료, `docs/verification/2026-08-14-stage-2-d1-code.md` 기준 사용자 검수 대기
+- `S2-D1-TEST`: 시작 전이며 새 test source와 fixture 없음
 
 ## 8. 테스트 계획
 
@@ -250,6 +263,7 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - 원문 path를 보존하면서 Windows 비교용 정규화와 중복 판정이 동작한다.
 - 동시 수정과 저장 실패에서 원본 byte가 보존된다.
 - backup을 자동 적용하지 않고 명시적 복구 후보로 제공한다.
+- 실행 파일이 하나의 `.verison-list` positional path를 작업공간 문서 진입 값으로 인식한다.
 - VS2022 Debug/Release, VS2026 Debug, source style과 관련 test가 통과한다.
 - `docs/verification/2026-08-14-stage-2.md`, `docs/change_log.md`와 `docs/handoff.md`가 최종 상태를 기록한다.
 
@@ -257,7 +271,7 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 
 사용자는 `S2-P0`에서 특히 다음 제안을 승인하거나 수정한다.
 
-1. 기본 위치 `%LOCALAPPDATA%\Gitman\projects.json`과 단일 활성 설정 파일
+1. `.verison-list` 작업공간 문서, 한 창당 하나의 활성 문서와 단계 8 file association
 2. schema v1의 optional 기본값 및 `preferred_remote` 필드
 3. unknown field warning 및 round-trip 보존
 4. 상대 path의 설정 파일 디렉터리 기준 해석과 lexical duplicate 정책

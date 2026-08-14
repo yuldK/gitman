@@ -24,6 +24,7 @@
 | 2026-08-14 | 이번 세션은 문서 인수인계만 수행하고 실제 구현은 후속 세션으로 이관 | `docs/handoff.md` | REQ-012 |
 | 2026-08-14 | ADR-001 작업을 개시하고 단계 1 범위까지만 구현 | 단계 1, `docs/verification/2026-08-14-stage-1.md` | REQ-003, REQ-005, REQ-009~REQ-013 |
 | 2026-08-14 | 단계 2를 계획·production code·test code·bug 수정 체크포인트로 분리하고 매 체크포인트마다 사용자 검수를 받음 | `docs/stage-2-plan.md`, `docs/handoff.md` | REQ-001, REQ-002, REQ-004, REQ-009~REQ-012 |
+| 2026-08-14 | 프로젝트 목록을 고정 config가 아닌 `.verison-list` 작업공간 문서 및 연결 프로그램 대상으로 변경 | `docs/stage-2-plan.md`, 단계 8 | REQ-001, REQ-016 |
 
 ### 1.2 단계 진행 상태
 
@@ -31,7 +32,7 @@
 | --- | --- | --- |
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
-| 단계 2: 도메인과 설정 저장소 | 구현 계획 작성 완료 - 사용자 검수 대기 | `docs/stage-2-plan.md` |
+| 단계 2: 도메인과 설정 저장소 | `S2-D1-CODE` 완료 - 사용자 코드 검수 대기 | `docs/verification/2026-08-14-stage-2-d1-code.md` |
 | 단계 3~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
@@ -40,7 +41,7 @@
 
 | 식별자 | 요구사항 | 완료 기준 |
 | --- | --- | --- |
-| REQ-001 | JSON 형식의 프로젝트 경로 목록을 읽는다. | 유효한 파일, 일부 잘못된 항목, 존재하지 않는 경로를 구분하여 표시한다. |
+| REQ-001 | JSON 형식의 `.verison-list` 프로젝트 경로 목록을 읽는다. | 유효한 파일, 일부 잘못된 항목, 존재하지 않는 경로를 구분하여 표시한다. |
 | REQ-002 | 각 경로의 Git 또는 SVN 상태를 표시한다. | 저장소 종류, 현재 브랜치 또는 SVN URL, 로컬 리비전, 원격 대비 상태, 변경 파일 유무를 표시한다. |
 | REQ-003 | Windows 11 Win32 네이티브 앱에서 Skia로 GUI와 custom caption을 렌더링한다. | Direct3D 기본 및 CPU fallback에서 창 상태, DPI, 카드와 로그 영역이 정상 렌더링된다. |
 | REQ-004 | 등록 경로의 바로 아래 자식 디렉터리를 조사한다. | 깊이 1만 검사하고 발견 결과를 미리 보여 준 뒤 선택 항목을 JSON에 중복 없이 추가한다. |
@@ -55,6 +56,7 @@
 | REQ-013 | CMake로 프로젝트를 구성하고 설치한다. | CMake 4.2.0으로 configure, build, test, install 후 `${workspaceRoot}/bin/gitman.exe`가 생성된다. |
 | REQ-014 | 명시적인 상태 새로 고침 기능을 제공한다. | 전체 및 카드별 refresh 버튼으로 최신 조회를 요청하고 진행 및 완료 상태를 확인할 수 있다. |
 | REQ-015 | 입력, UI, 로직 스레드를 분리한다. | 세 스레드의 소유권을 지키고 범용 메시지 구조는 별도 설계 승인 후 구현한다. |
+| REQ-016 | `.verison-list`를 solution과 같은 작업공간 문서 및 Windows 연결 프로그램 대상으로 제공한다. | shell에서 전달된 문서를 한 창의 활성 목록으로 열고 association 등록 및 제거를 검증한다. |
 
 ### 2.2 초기 버전에서 제외할 범위
 
@@ -430,7 +432,7 @@ gitman/
 
 ### 단계 2: 도메인과 설정 저장소
 
-상태: 구현 계획 작성 완료, 사용자 검수 대기. 세부 범위와 production code, test code 및 bug 수정 사이의 검수 게이트는 `docs/stage-2-plan.md`를 따른다. 사용자가 계획을 승인하기 전에는 단계 2 source와 test를 구현하지 않는다.
+상태: 구현 계획 승인 후 `S2-D1-CODE` production code 구현과 기존 회귀 검증 완료, 사용자 코드 검수 대기. 세부 범위와 production code, test code 및 bug 수정 사이의 검수 게이트는 `docs/stage-2-plan.md`를 따른다. 코드 검수 전에는 새 test source를 구현하지 않는다.
 
 - `std::u8string` 기반 프로젝트, 저장소 snapshot, 최신 상태, 작업, 오류 모델을 구현한다.
 - JSON 스키마 검증, 경로 정규화, 중복 검사, 원자적 저장을 구현한다.
@@ -484,6 +486,7 @@ gitman/
 ### 단계 8: 안정화와 배포
 
 - 장시간 실행, 종료 중 작업, 네트워크 단절, 대량 로그, 파일 변경 충돌을 시험한다.
+- `.verison-list` Windows file association의 등록, double-click 실행과 제거를 검증한다.
 - 단일 exe 의존성 라이선스, `${sourceDir}/bin` install, 설정 위치, 로그 위치를 문서화한다.
 - 설치 및 제거, 업그레이드, 설정 백업과 복구 절차를 검증한다.
 

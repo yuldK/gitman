@@ -11,7 +11,7 @@
 
 ## 2. 제품 범위
 
-Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케이션이다. JSON에 등록된 Git 및 SVN 작업 경로의 상태를 조회하고, 명시적인 refresh, 안전한 update 및 switch, 카드별 읽기 전용 로그를 Skia GUI로 제공한다.
+Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케이션이다. JSON 형식의 `.verison-list` 작업공간 문서에 등록된 Git 및 SVN 작업 경로의 상태를 조회하고, 명시적인 refresh, 안전한 update 및 switch, 카드별 읽기 전용 로그를 Skia GUI로 제공한다.
 
 초기 버전은 커밋, 푸시, 병합, 리베이스, 충돌 해결, 자동 stash, 강제 전환, 터미널 입력, 자격 증명 저장을 제공하지 않는다.
 
@@ -19,7 +19,7 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 
 | 식별자 | 요구사항 | 단계 0 결정 | 수용 기준 |
 | --- | --- | --- | --- |
-| REQ-001 | JSON 프로젝트 목록을 읽는다. | 스키마 버전과 항목별 오류를 사용한다. | 일부 항목이 잘못되어도 유효 항목을 표시한다. |
+| REQ-001 | JSON 형식의 `.verison-list` 프로젝트 목록을 읽는다. | 스키마 버전과 항목별 오류를 사용한다. | 일부 항목이 잘못되어도 유효 항목을 표시한다. |
 | REQ-002 | Git/SVN 상태를 공통 모델로 표시한다. | Git은 remote target을 우선하고 remote가 없을 때 local을 기준으로 한다. | 최신 판단 기준 ref와 remote/local source, 마지막 확인 시각을 표시한다. |
 | REQ-003 | Skia GUI를 제공한다. | Windows 11 x64 Win32, Direct3D 기본, CPU fallback, custom caption을 사용한다. | 두 renderer와 일체형 caption이 DPI 및 창 상태 변경에서 정상 동작한다. |
 | REQ-004 | 바로 아래 자식 저장소를 발견하고 등록한다. | 깊이 1만 검사한다. | 후보 미리보기와 선택 등록을 제공한다. |
@@ -34,6 +34,7 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 | REQ-013 | CMake로 빌드하고 설치한다. | CMake 4.2.0 이상과 공유 preset 및 install rule을 사용한다. | configure, build, test, install 후 `${workspaceRoot}/bin/gitman.exe`가 생성된다. |
 | REQ-014 | 명시적인 refresh를 제공한다. | 시작 시 로컬만, 전체 또는 카드 refresh에서 원격을 조회한다. | 중복 refresh가 병합되고 진행 및 오류 상태가 표시된다. |
 | REQ-015 | 입력, UI, 로직 스레드를 분리한다. | mutable app state는 logic thread만 소유한다. | UI와 input thread가 직접 업무 상태나 VCS를 변경하지 않는다. |
+| REQ-016 | `.verison-list`를 solution과 같은 작업공간 문서 및 Windows 연결 프로그램 대상으로 제공한다. | 한 프로세스 및 창은 하나의 활성 문서를 열고 shell에서 전달된 경로를 사용한다. | 문서 double-click으로 Gitman이 실행되어 해당 문서를 열고 association 등록 및 제거가 가능하다. |
 
 ## 4. 비기능 요구사항
 
@@ -65,7 +66,7 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 
 ## 6. 후속 단계로 이관한 항목
 
-- 프로젝트 JSON 기본 저장 위치와 다중 설정 파일 지원 여부는 단계 2에서 확정한다.
+- 프로젝트 목록은 고정 기본 위치 없이 여러 `.verison-list` 작업공간 문서로 둘 수 있으며, 한 프로세스 및 창은 하나의 문서를 활성화한다.
 - junction, 심볼릭 링크, Git worktree, bare repository 세부 범위는 단계 5에서 확정한다.
 - worker 동시 실행 상한과 로그 크기는 단계 6~7의 성능 측정 후 확정한다.
 - 범용 스레드 메시지 component의 API와 queue topology는 단계 6 직전 사용자 검수로 확정한다.

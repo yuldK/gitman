@@ -41,6 +41,18 @@ configure_file(
     @ONLY)
 set_source_files_properties("${GITMAN_GENERATED_RESOURCE}" PROPERTIES GENERATED TRUE)
 
+add_library(gitman_domain STATIC
+    domain/diagnostic.cpp
+    domain/diagnostic.h
+    domain/operation.cpp
+    domain/operation.h
+    domain/project.cpp
+    domain/project.h
+    domain/repository_snapshot.cpp
+    domain/repository_snapshot.h)
+target_include_directories(gitman_domain PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
+target_link_libraries(gitman_domain PUBLIC gitman_project_options)
+
 add_library(gitman_core STATIC
     application/application_options.cpp
     application/application_options.h
@@ -53,6 +65,7 @@ add_library(gitman_core STATIC
 target_include_directories(gitman_core PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_core
     PUBLIC
+        gitman_domain
         gitman_project_options
         nlohmann_json::nlohmann_json)
 

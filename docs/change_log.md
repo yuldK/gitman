@@ -1,5 +1,28 @@
 # 변경 이력
 
+## 2026-08-14 - `.verison-list` 작업공간 문서 결정 및 단계 2 계획 승인
+
+### 사용자 지시
+
+- 프로젝트 목록은 고정 `projects.json`이 아니라 solution 및 `.code-workspace`와 같은 문서로 취급한다.
+- 확장자는 사용자 지시의 철자 그대로 `.verison-list`를 사용한다.
+- Gitman을 해당 확장자의 Windows 연결 프로그램으로 동작하게 한다.
+- 나머지 단계 2 계획을 승인하고 추가 승인 요청 없이 첫 production code 구현을 진행한다.
+
+### 반영 내용
+
+- 고정 기본 config 위치를 제거하고 한 창당 하나의 `.verison-list` 활성 문서로 변경했다.
+- shell positional path로 문서를 여는 계약과 단계 8 file association 등록 및 제거 검증을 요구사항에 추가했다.
+- `S2-P0`을 승인 완료로, 현재 체크포인트를 `S2-D1-CODE`로 갱신했다.
+- UI, Win32와 JSON library에 의존하지 않는 `gitman_domain` target을 추가했다.
+- project, repository snapshot, operation과 diagnostic production type 및 안정적인 이름 변환을 구현했다.
+- VS2022와 VS2026 Debug build 및 기존 CTest 20/20, source style 80개를 통과했다.
+
+### 다음 작업 제한
+
+- `S2-D1-CODE`는 사용자 코드 검수 대기 상태다.
+- 새 test source와 fixture는 사용자가 코드 검수 후 `S2-D1-TEST` 진행을 승인하기 전까지 작성하지 않는다.
+
 ## 2026-08-14 - 단계 2 구현 계획 및 세부 검수 게이트 작성
 
 ### 사용자 지시

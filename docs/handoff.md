@@ -5,14 +5,16 @@
 - 기준일: 2026-08-14
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증
 - 현재 단계: 단계 2 도메인과 설정 저장소
-- 현재 체크포인트: `S2-P0` 구현 계획 작성 완료, 사용자 검수 대기
-- 다음 허용 작업: 사용자가 `S2-P0`을 승인한 뒤 `S2-D1-CODE`만 진행
+- 현재 체크포인트: `S2-D1-CODE` 구현 및 기존 회귀 검증 완료, 사용자 코드 검수 대기
+- 다음 허용 작업: 사용자가 코드를 승인한 뒤 `S2-D1-TEST`만 진행
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
-- 단계 2 production/test 구현: 시작하지 않음
+- 단계 2 production 구현: `S2-D1-CODE` 완료
+- 단계 2 test source 및 fixture: 시작하지 않음
 - 기준 문서: `docs/stage-2-plan.md`
+- 현재 검증 기록: `docs/verification/2026-08-14-stage-2-d1-code.md`
 - 최근 검증 기록: `docs/verification/2026-08-14-stage-1.md`
 
-다음 작업은 이 문서와 단계 2 구현 계획을 먼저 읽어야 한다. 사용자가 `S2-P0`을 승인하기 전에는 단계 2 source, test와 fixture를 추가하거나 변경하지 않는다.
+다음 작업은 이 문서, 단계 2 구현 계획과 현재 검증 기록을 먼저 읽어야 한다. 사용자가 `S2-D1-CODE`를 승인하기 전에는 새 production 및 test source와 fixture를 추가하거나 변경하지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -110,21 +112,21 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S2-P0` |
-| 제출 내용 | `docs/stage-2-plan.md` 작성 및 추적 문서 갱신 |
-| production code | 변경 없음 |
+| 계획 ID | `S2-D1-CODE` |
+| 제출 내용 | 도메인 값 type, diagnostic 및 `gitman_domain` target 구현 |
+| production code | 구현 완료, 사용자 검수 대기 |
 | test code 및 fixture | 변경 없음 |
 | bug 수정 | 수행하지 않음 |
-| 검증 | `git diff --check` 통과, source style 72개 파일 통과, docs-only 변경 범위 확인 |
-| 승인 대기 | 단계 2 설계 제안과 세부 검수 순서 |
-| 승인 뒤 다음 작업 | `S2-D1-CODE`: 도메인 값 type과 diagnostic production code만 구현 |
+| 검증 | VS2022/VS2026 Debug build 통과, 기존 CTest 각각 20/20, source style 80개 통과 |
+| 승인 대기 | domain model 범위, diagnostic와 독립 target 구조 |
+| 승인 뒤 다음 작업 | `S2-D1-TEST`: domain model test source만 작성 |
 
 ### 8.2 단계 2 진행 원장
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
-| `S2-P0` 계획 | 사용자 검수 대기 | production/test source 변경 금지 |
-| `S2-D1-CODE` 도메인 production code | 시작 전 | `S2-P0` 승인 필요 |
+| `S2-P0` 계획 | 승인 완료 | `.verison-list` 작업공간 문서 방식으로 수정 승인 |
+| `S2-D1-CODE` 도메인 production code | 사용자 검수 대기 | 구현 및 기존 회귀 검증 완료 |
 | `S2-D1-TEST` 도메인 test | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D1-FIX` 도메인 bug 수정 | 시작 전 | 발견 결함이 없으면 사용자 확인 후 생략 |
 | `S2-D2-CODE` schema/parser production code | 시작 전 | 앞 체크포인트 승인 필요 |
@@ -136,10 +138,14 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S2-D4-CODE` save/recovery production code | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D4-TEST` save/recovery test | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D4-FIX` save/recovery bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D5-CODE` launch path production code | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D5-TEST` launch path test | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D5-FIX` launch contract bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-V1` 단계 2 최종 검증 | 시작 전 | 전체 체크포인트 승인 필요 |
 
 ### 8.3 미해결 또는 보류 사항
 
-- `S2-P0`에서 기본 config 위치, 단일 활성 파일, unknown field 보존, 상대 path 기준, migration과 backup 정책을 사용자가 검수해야 한다.
+- `.verison-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
+- unknown field 보존, 상대 path 기준, migration과 backup 정책은 계획대로 승인됐다.
 - 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 단계 2 진행 승인과 별도로 보존한다.
 - ADR-004의 범용 메시지 구조 구현 차단 조건은 그대로 유효하다.

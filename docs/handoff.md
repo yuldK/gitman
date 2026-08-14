@@ -4,11 +4,12 @@
 
 - 기준일: 2026-08-14
 - 완료 단계: 단계 0 결정 사항 확정 및 사용자 검수 의견 반영
-- 다음 단계: 단계 1 빌드 및 품질 기준선
-- 실제 구현: 시작하지 않음
-- source, CMake, vcpkg manifest, asset, test: 아직 생성하지 않음
+- 현재 단계: 단계 1 구현 및 자동 검증 완료, 사용자 검수 대기
+- 다음 단계: 단계 2 도메인과 설정 저장소, 단계 1 승인 전 시작 금지
+- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
+- 검증 기록: `docs/verification/2026-08-14-stage-1.md`
 
-다음 세션은 이 문서와 `docs/requirements.md`, ADR-001~004, `docs/plan.md`를 먼저 읽어야 한다. 한 번에 여러 단계를 진행하지 않고 단계 1만 구현한 뒤 사용자에게 검수를 요청한다.
+다음 작업은 이 문서와 단계 1 검증 기록을 먼저 읽어야 한다. 사용자가 단계 1을 승인하기 전에는 단계 2 구현을 시작하지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -45,18 +46,18 @@ vcpkg baseline은 `b9a5010d499952121b0f1a40eb98963c37da32dc`, Codicons tag commi
 
 상세 계약은 `docs/decisions/ADR-003-vcs-runtime-policy.md`를 따른다.
 
-## 4. 단계 1에서만 수행할 작업
+## 4. 단계 1 구현 결과
 
-1. CMake 4.2.0 기준 `CMakeLists.txt`와 Visual Studio 2022/2026 preset을 만든다.
-2. `vcpkg.json`에 고정 baseline과 Skia, JSON, Catch2 dependency를 기록한다.
-3. `x64-windows-static`과 정적 MSVC runtime으로 단일 exe 배포 기준을 구성한다.
-4. 최소 Win32 GUI target과 Skia renderer abstraction의 smoke test 범위만 만든다.
-5. 기본 Direct3D 초기화, 명시적 CPU 선택과 실패 시 CPU fallback을 검증한다.
-6. custom caption의 최소 skeleton과 Win32 adapter 경계를 만든다. 전체 카드 UI는 단계 6 범위다.
-7. Codicons font, mapping과 제3자 license text를 checksum과 함께 준비하고 실행 파일 resource로 embed한다.
-8. UTF-8, CRLF, 공백 4칸, `snake_case` 검사와 CTest를 구성한다.
-9. CMake install rule로 `${sourceDir}/bin/gitman.exe`를 만들고 generated `bin/`과 build tree를 `.gitignore`에 추가한다.
-10. 단계 1 검증 기록을 작성하고 사용자 검수를 요청한 뒤 멈춘다.
+1. [x] CMake 4.2.0 기준 `CMakeLists.txt`와 Visual Studio 2022/2026 preset을 만들었다.
+2. [x] `vcpkg.json`에 고정 baseline과 Skia, JSON, Catch2 dependency를 기록했다.
+3. [x] `x64-windows-static`과 정적 MSVC runtime으로 단일 exe 배포 기준을 구성했다.
+4. [x] 최소 Win32 GUI target과 Skia renderer abstraction의 smoke test 범위를 만들었다.
+5. [x] 기본 Direct3D 초기화, 명시적 CPU 선택과 실패 시 CPU fallback을 검증했다.
+6. [x] system caption과 겹치지 않는 custom caption, Codicon caption button, 실제 창 명령과 hover feedback을 구현했다. 전체 카드 UI는 단계 6 범위다.
+7. [x] Codicons font, mapping과 제3자 license text를 checksum과 함께 준비하고 실행 파일 resource로 embed했다.
+8. [x] UTF-8, CRLF, 공백 4칸, `snake_case` 검사와 CTest를 구성했다.
+9. [x] CMake install로 `${sourceDir}/bin/gitman.exe`를 만들고 generated tree를 `.gitignore`에 추가했다.
+10. [x] 단계 1 검증 기록을 작성하고 사용자 검수를 요청한 뒤 멈춘다.
 
 단계 1에서 Git/SVN provider, JSON 저장소, 실제 카드, 작업 dialog와 범용 thread message component를 구현하지 않는다.
 
@@ -80,21 +81,20 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 사용자가 이 설계를 승인하기 전에는 message queue, dispatcher, thread bridge를 작성하지 않는다.
 
-## 6. 다음 세션 시작 체크리스트
+## 6. 단계 1 검수 체크리스트
 
-- [ ] `docs/handoff.md`와 ADR-001~004를 읽었다.
-- [ ] 현재 Git 상태와 사용자 변경을 확인했다.
-- [ ] 단계 1 이외의 작업을 하지 않기로 범위를 고정했다.
-- [ ] dependency 다운로드와 장시간 Skia build가 필요할 수 있음을 사용자에게 알렸다.
-- [ ] 단계 1 완료 후 검수 요청을 남기고 중단한다.
+- [x] Visual Studio 2022 Debug/Release와 Visual Studio 2026 Debug build 및 CTest가 통과했다.
+- [x] VS2022 `/analyze`와 clang-format 및 source style 검사가 통과했다.
+- [x] Direct3D, CPU, auto와 강제 CPU fallback smoke test가 통과했다.
+- [x] install tree가 `bin/gitman.exe` 단일 파일이며 VC runtime 및 프로젝트 DLL이 없음을 확인했다.
+- [ ] 사용자가 custom caption의 실제 표시, Snap Layout, `Alt+Space`, DPI와 고대비 수동 검수 결과를 확인한다.
+- [ ] 사용자가 단계 1을 승인한다.
 
-## 7. 이번 세션에서 하지 않은 작업
+## 7. 아직 하지 않은 작업
 
-- dependency 설치 또는 다운로드
-- CMake configure, build, test, install
-- Codicons asset 취득
-- Win32 또는 Skia 코드 작성
 - Git/SVN command 구현
+- 단계 2의 도메인 모델 및 JSON 설정 저장소
+- 단계 3 이후의 프로세스 실행, provider, 탐색 및 실제 카드 UI
 - thread message API 상세 설계와 구현
 
-따라서 후속 세션은 문서에 적힌 결정과 실제 toolchain 및 dependency의 호환성을 단계 1에서 처음 검증해야 한다.
+따라서 후속 작업은 단계 1 사용자 승인 뒤 단계 2만 진행하고 다시 검수를 요청해야 한다.

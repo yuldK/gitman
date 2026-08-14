@@ -1,0 +1,15 @@
+{
+  "name": "@vscode/codicons",
+  "version": "0.0.46-24",
+  "tag": "v0.0.46-24",
+  "tag_commit": "abd28d775fc5c40b437b8303807c17a6e63f6d6a",
+  "package_url": "https://registry.npmjs.org/@vscode/codicons/-/codicons-0.0.46-24.tgz",
+  "sha256": {
+    "package": "d77bf2ed152e82c4b81288c5271a3481c61559d1a5416593756e3b0fe8a02bf1",
+    "codicon.ttf": "3819e4ae4b87350e7c37a5d8f24e71ada2f1f2ee58f7ce5ebc1f88e3c8c38c80",
+    "mapping.json": "c9c9c568b3d166b22c9b21073cbad3928aefe8fbbef9262b336296985b520092",
+    "LICENSE": "af5e030844efddbc7ab00dcfea8b019703753d4d9f5172d727c533a492aec665",
+    "LICENSE-CODE": "9906940f61b1f0b533fa7d99baf55178b2808fbe113ea51dfbfad8572ccd5f2b"
+  }
+}
+

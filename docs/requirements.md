@@ -28,7 +28,7 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 | REQ-007 | Git/SVN switch를 제공한다. | Git은 remote branch를 먼저, local branch를 다음에 조사하며 SVN은 JSON 허용 URL만 지원한다. | dialog 검증 실패 시 오류를 표시하고 명령을 생성하지 않는다. |
 | REQ-008 | 선택 카드 전용 하단 로그를 표시한다. | 카드별 ring buffer와 sequence를 사용한다. | 병렬 작업 중에도 선택 카드의 로그만 순서대로 보인다. |
 | REQ-009 | C++과 Skia를 사용한다. | C++20과 Skia 148을 사용한다. | UI와 무관한 계층에 Skia 타입이 노출되지 않는다. |
-| REQ-010 | 코드 및 파일 규칙을 지킨다. | 공백 4칸, `snake_case`, UTF-8, CRLF를 적용한다. | 자동 검사에서 위반이 실패로 보고된다. |
+| REQ-010 | 코드 및 파일 규칙을 지킨다. | 상세 기준은 `docs/code_style.md`에 따른다. C++, CMake, PowerShell, JSON, XML 및 resource 코드에 공백 4칸을 적용하고, Allman 중괄호, namespace 내부 1단계 들여쓰기, `snake_case`, UTF-8, CRLF, 가능한 중괄호 초기화, 단일 문장 제어문의 중괄호 생략, 조건 연산자의 새 줄 시작, 생성자 초기화 목록의 줄바꿈 쉼표와 긴 표현식의 닫는 기호 줄 분리를 적용한다. | 자동 검사와 코드 리뷰에서 위반이 보고된다. |
 | REQ-011 | 설명과 주석을 한국어로 작성한다. | 외부 API와 명령 고유 명칭은 원문을 허용한다. | 이유와 제약을 설명하는 주석과 문서가 한국어다. |
 | REQ-012 | 지시와 검증을 문서화한다. | ADR, 단계별 검증 기록, 변경 이력을 사용한다. | 요구사항에서 결정과 검증 결과를 추적할 수 있다. |
 | REQ-013 | CMake로 빌드하고 설치한다. | CMake 4.2.0 이상과 공유 preset 및 install rule을 사용한다. | configure, build, test, install 후 `${workspaceRoot}/bin/gitman.exe`가 생성된다. |
@@ -44,7 +44,7 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 | NFR-003 | 빌드 | CMake 4.2.0 이상, Visual Studio 2022 17.10 이상 |
 | NFR-004 | Windows SDK | 10.0.22621 이상 |
 | NFR-005 | 문자 처리 | 로직 `std::u8string`, 내부 UTF-8, Win32 adapter 경계 UTF-16, 소스 UTF-8 무 BOM |
-| NFR-006 | 줄 끝과 스타일 | CRLF, 공백 4칸, `snake_case` |
+| NFR-006 | 줄 끝과 스타일 | `docs/code_style.md` 및 `.clang-format`에 정의한 Allman 중괄호, namespace 1단계 들여쓰기, CRLF, 공백 4칸, `snake_case`, template/signature 줄 분리, 중괄호 초기화, 단일 문장 제어문의 중괄호 생략, 조건 연산자의 새 줄 시작, 생성자 초기화 목록의 새 줄 쉼표, 긴 표현식의 닫는 기호 독립 줄 |
 | NFR-007 | 외부 명령 | shell 미사용, 인자 배열, timeout, 취소, 비대화형 |
 | NFR-008 | 보안 | 자격 증명 미저장, 민감 로그 마스킹, 강제 변경 명령 제외 |
 | NFR-009 | 반응성 | UI/input thread에서 파일, 네트워크, 프로세스 I/O 금지 |

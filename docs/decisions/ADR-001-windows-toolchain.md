@@ -33,14 +33,17 @@ Gitman은 Skia를 사용하는 C++ GUI 애플리케이션이며 지원 플랫폼
 
 | 항목 | 확인 결과 |
 | --- | --- |
-| 운영체제 대상 | Windows 11 전용으로 확정 |
-| Visual Studio | 18.8.0 Community |
-| MSVC 도구셋 | 14.44.35207, 14.51.36231 |
-| Windows SDK | 10.0.19041.0, 10.0.22621.0, 10.0.26100.0 |
+| 운영체제 대상 | Windows 11 x64, 검증 호스트 build 26200 |
+| Visual Studio | 2022 17.14.31 Community, 2026 18.8.0 Community |
+| MSVC | 19.44.35226, 19.51.36248 |
+| Windows SDK | target baseline 10.0.22621.0, 실제 선택 10.0.26100.0 |
 | CMake | 4.2.0 |
-| Ninja | PATH에서 발견되지 않음 |
+| vcpkg | baseline `b9a5010d499952121b0f1a40eb98963c37da32dc` |
+| configure와 build | VS2022 Debug/Release, VS2026 Debug 통과 |
+| renderer | Direct3D, CPU, auto fallback smoke test 통과 |
+| install | `bin/gitman.exe` 단일 파일 생성 |
 
-현재 환경이 최소 기준을 충족한다는 사실만 확인했다. 실제 configure, compile, GPU 초기화와 install은 후속 구현 세션의 단계 1에서 수행한다.
+단계 1에서 실제 configure, compile, GPU 초기화, CPU fallback과 install을 검증했다. 전체 명령과 결과는 `docs/verification/2026-08-14-stage-1.md`에 기록한다.
 
 ## 고려한 대안
 

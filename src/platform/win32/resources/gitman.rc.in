@@ -1,0 +1,41 @@
+#include <windows.h>
+
+#include "@GITMAN_RESOURCE_IDS_PATH@"
+
+1 24 "@GITMAN_MANIFEST_PATH@"
+IDR_CODICONS_FONT RCDATA "@GITMAN_CODICONS_FONT_PATH@"
+IDR_CODICONS_LICENSE RCDATA "@GITMAN_CODICONS_LICENSE_PATH@"
+IDR_CODICONS_LICENSE_CODE RCDATA "@GITMAN_CODICONS_LICENSE_CODE_PATH@"
+IDR_THIRD_PARTY_NOTICES RCDATA "@GITMAN_THIRD_PARTY_NOTICES_PATH@"
+
+1 VERSIONINFO
+FILEVERSION 0,1,0,0
+PRODUCTVERSION 0,1,0,0
+FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+FILEFLAGS 0x1L
+#else
+FILEFLAGS 0x0L
+#endif
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041204B0"
+        BEGIN
+            VALUE "CompanyName", "Gitman contributors\0"
+            VALUE "FileDescription", "Gitman\0"
+            VALUE "FileVersion", "0.1.0\0"
+            VALUE "InternalName", "gitman\0"
+            VALUE "OriginalFilename", "gitman.exe\0"
+            VALUE "ProductName", "Gitman\0"
+            VALUE "ProductVersion", "0.1.0\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0412, 1200
+    END
+END

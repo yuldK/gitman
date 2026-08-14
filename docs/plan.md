@@ -22,13 +22,15 @@
 | 2026-08-14 | Git 최신 상태와 switch의 remote-first 정책, optional submodule update | ADR-003, 단계 4·7 | REQ-002, REQ-006, REQ-007 |
 | 2026-08-14 | 범용 스레드 메시지 구조의 구현 전 별도 설계 검수 | ADR-004, 단계 6 | REQ-015 |
 | 2026-08-14 | 이번 세션은 문서 인수인계만 수행하고 실제 구현은 후속 세션으로 이관 | `docs/handoff.md` | REQ-012 |
+| 2026-08-14 | ADR-001 작업을 개시하고 단계 1 범위까지만 구현 | 단계 1, `docs/verification/2026-08-14-stage-1.md` | REQ-003, REQ-005, REQ-009~REQ-013 |
 
 ### 1.2 단계 진행 상태
 
 | 단계 | 상태 | 검수 문서 |
 | --- | --- | --- |
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
-| 단계 1~8 | 시작 전 - 후속 세션 인계 | `docs/handoff.md`에 따라 한 단계씩 진행 |
+| 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 사용자 검수 대기 | `docs/verification/2026-08-14-stage-1.md` |
+| 단계 2~8 | 시작 전 - 단계 1 승인 대기 | `docs/handoff.md`에 따라 한 단계씩 진행 |
 
 ## 2. 목표와 범위
 
@@ -45,7 +47,7 @@
 | REQ-007 | Git switch 및 SVN switch를 실행한다. | remote-first 후보를 switch dialog에서 검증하고, 실패 시 오류를 표시하며 명령을 실행하지 않는다. |
 | REQ-008 | 선택 카드 전용 하단 로그 뷰를 제공한다. | 선택한 카드의 로그만 입력 기능 없이 표시하며, 카드별 병렬 작업의 로그가 섞이지 않는다. |
 | REQ-009 | C++과 Skia를 중심으로 구현한다. | 로직은 C++20과 `std::u8string`, UI는 Skia를 사용하고 Win32 type은 platform adapter 밖으로 노출하지 않는다. |
-| REQ-010 | 코드 스타일과 파일 형식을 준수한다. | 들여쓰기 4칸, `snake_case`, UTF-8, CRLF를 자동 검사한다. |
+| REQ-010 | 코드 스타일과 파일 형식을 준수한다. | 들여쓰기 4칸, `snake_case`, UTF-8, CRLF와 template 및 중괄호 초기화 형식을 자동 검사한다. |
 | REQ-011 | 설명과 주석을 한국어로 작성한다. | 사용자 문서와 설명성 주석은 한국어이며, 식별자와 외부 API 고유 명칭은 원문을 허용한다. |
 | REQ-012 | 지시와 검증 결과를 문서화한다. | 요구사항 변경, 설계 결정, 검증 결과가 `docs/`의 추적 가능한 문서에 남는다. |
 | REQ-013 | CMake로 프로젝트를 구성하고 설치한다. | CMake 4.2.0으로 configure, build, test, install 후 `${workspaceRoot}/bin/gitman.exe`가 생성된다. |
@@ -415,8 +417,10 @@ gitman/
 
 ### 단계 1: 빌드 및 품질 기준선
 
+상태: 구현 및 자동 검증 완료, 사용자 검수 대기. 결과는 `docs/verification/2026-08-14-stage-1.md`에 기록한다.
+
 - CMake 4.2.0의 CMakeLists와 preset으로 Win32 GUI build, test, install, 정적 분석, 포맷 검사를 구성한다.
-- UTF-8, CRLF, 4칸 들여쓰기, `snake_case` 검사를 자동화한다.
+- UTF-8, CRLF, 4칸 들여쓰기, `snake_case`, `template<...>` 선언과 signature 줄 분리, 중괄호 초기화 여백 및 여러 줄 닫는 중괄호 형식을 자동화한다.
 - 가장 작은 Win32 Skia 창에서 Direct3D 기본 및 CPU 강제 renderer, embedded Codicon, custom caption과 DPI를 확인한다.
 - `cmake --install`로 `${sourceDir}/bin/gitman.exe` 단일 산출물을 만든다.
 

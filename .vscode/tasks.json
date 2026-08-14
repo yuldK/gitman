@@ -1,0 +1,108 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "cmake: configure vs2022",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "vs2022"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "cmake: configure vs2026",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "vs2026"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "cmake: build vs2022 debug",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "vs2022-debug"
+            ],
+            "dependsOn": "cmake: configure vs2022",
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "cmake: build vs2022 release",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "vs2022-release"
+            ],
+            "dependsOn": "cmake: configure vs2022",
+            "dependsOrder": "sequence",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "cmake: test vs2022 debug",
+            "type": "process",
+            "command": "ctest",
+            "args": [
+                "--preset",
+                "vs2022-debug"
+            ],
+            "dependsOn": "cmake: build vs2022 debug",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "cmake: format check",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build/vs2022",
+                "--target",
+                "gitman_format_check",
+                "--config",
+                "Debug"
+            ],
+            "dependsOn": "cmake: configure vs2022",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        },
+        {
+            "label": "cmake: build vs2026 debug",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "vs2026-debug"
+            ],
+            "dependsOn": "cmake: configure vs2026",
+            "dependsOrder": "sequence",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "cmake: test vs2026 debug",
+            "type": "process",
+            "command": "ctest",
+            "args": [
+                "--preset",
+                "vs2026-debug"
+            ],
+            "dependsOn": "cmake: build vs2026 debug",
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        }
+    ]
+}

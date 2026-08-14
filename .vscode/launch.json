@@ -1,0 +1,70 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Gitman (VS2022 Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/vs2022/src/Debug/gitman.exe",
+            "args": [
+                "--renderer=${input:renderer}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "preLaunchTask": "cmake: build vs2022 debug"
+        },
+        {
+            "name": "Gitman tests (VS2022 Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/vs2022/tests/Debug/gitman_tests.exe",
+            "args": [
+                "--success"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "preLaunchTask": "cmake: build vs2022 debug"
+        },
+        {
+            "name": "Gitman (VS2026 Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/vs2026/src/Debug/gitman.exe",
+            "args": [
+                "--renderer=${input:renderer}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "preLaunchTask": "cmake: build vs2026 debug"
+        },
+        {
+            "name": "Gitman tests (VS2026 Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/vs2026/tests/Debug/gitman_tests.exe",
+            "args": [
+                "--success"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+            "preLaunchTask": "cmake: build vs2026 debug"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "renderer",
+            "type": "pickString",
+            "description": "Renderer to use for the smoke run",
+            "options": [
+                "auto",
+                "direct3d",
+                "cpu"
+            ],
+            "default": "auto"
+        }
+    ]
+}

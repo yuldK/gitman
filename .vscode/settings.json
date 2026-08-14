@@ -1,0 +1,20 @@
+{
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnOpen": false,
+    "cmake.configurePreset": "vs2022",
+    "cmake.buildPreset": "vs2022-debug",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.cppStandard": "c++20",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-x64",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/src",
+        "${workspaceFolder}/build/vs2022/generated/include",
+        "${workspaceFolder}/build/vs2022/vcpkg_installed/x64-windows-static/include"
+    ],
+    "files.associations": {
+        "*.h": "cpp",
+        "*.hpp": "cpp",
+        "*.inl": "cpp"
+    }
+}

@@ -5,17 +5,17 @@
 - 기준일: 2026-08-14
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증
 - 현재 단계: 단계 2 도메인과 설정 저장소
-- 현재 체크포인트: `S2-D1-TEST` 작성 및 실행 완료, 사용자 test 검수 대기
-- 다음 허용 작업: 사용자 승인 뒤 `S2-D1-FIX`를 수정 없음으로 생략하고 `S2-D2-CODE` 진행
+- 현재 체크포인트: `S2-D2-CODE` 구현 및 회귀 검증 완료, 사용자 코드 검수 대기
+- 다음 허용 작업: 사용자 승인 전에는 상태 문서 보정과 read-only 검토만 허용
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
-- 단계 2 production 구현: `S2-D1-CODE` 완료
-- 단계 2 test source 및 fixture: 시작하지 않음
+- 단계 2 production 구현: `S2-D1-CODE`, `S2-D2-CODE` 완료
+- 단계 2 test source 및 fixture: `S2-D1-TEST`만 완료, schema parser test는 시작하지 않음
 - 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-14-stage-2-d1-test.md`
-- 직전 production 검증 기록: `docs/verification/2026-08-14-stage-2-d1-code.md`
+- 현재 검증 기록: `docs/verification/2026-08-14-stage-2-d2-code.md`
+- 직전 test 검증 기록: `docs/verification/2026-08-14-stage-2-d1-test.md`
 - 최근 검증 기록: `docs/verification/2026-08-14-stage-1.md`
 
-다음 작업은 이 문서, 단계 2 구현 계획과 `S2-D1-TEST` 검증 기록을 먼저 읽어야 한다. 사용자가 test를 승인하기 전에는 production 및 test source를 추가하거나 변경하지 않는다.
+다음 작업은 이 문서, 단계 2 구현 계획과 `S2-D2-CODE` 검증 기록을 먼저 읽어야 한다. 현재 production code는 사용자 검수 대기 상태이며, 승인 뒤에는 `S2-D2-TEST`의 새 test source와 fixture만 작성한다.
 
 ## 2. 확정된 기술 기준선
 
@@ -101,7 +101,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 ## 7. 아직 하지 않은 작업
 
 - Git/SVN command 구현
-- 단계 2의 도메인 모델 및 JSON 설정 저장소
+- 단계 2의 schema parser test, 경로 처리, 저장 및 launch path 계약
 - 단계 3 이후의 프로세스 실행, provider, 탐색 및 실제 카드 UI
 - thread message API 상세 설계와 구현
 
@@ -113,14 +113,14 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S2-D1-TEST` |
-| 제출 내용 | domain model 계약 test 6개 작성 및 실행 완료 |
-| production code | `S2-D1-CODE` 승인 뒤 변경 없음 |
-| test code 및 fixture | `tests/domain_model_tests.cpp` 추가, fixture 없음 |
-| bug 수정 | 수행하지 않음 |
-| 검증 | VS2022/VS2026 Debug build 및 CTest 각각 26/26, source style 82개 통과 |
-| 승인 대기 | domain model test 범위와 결과 |
-| 승인 뒤 다음 작업 | 결함 없음 확인 후 `S2-D1-FIX` 생략, `S2-D2-CODE` 진행 |
+| 계획 ID | `S2-D2-CODE` |
+| 제출 내용 | schema v1 parser와 부분 성공 계약 production code 구현 및 회귀 검증 완료 |
+| production code | `json_workspace_document` parser와 `gitman_workspace` target 구현 완료 |
+| test code 및 fixture | `S2-D1-TEST` 승인 뒤 변경 없음 |
+| bug 수정 | 별도 bug 수정 체크포인트 수행하지 않음 |
+| 검증 | VS2022/VS2026 Debug build 및 기존 CTest 각각 26/26, format/style/diff 검사 통과 |
+| 승인 대기 | `S2-D2-CODE` production code 검수 |
+| 승인 뒤 다음 작업 | `S2-D2-TEST`의 schema fixture와 test 작성만 허용 |
 
 ### 8.2 단계 2 진행 원장
 
@@ -128,9 +128,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | --- | --- | --- |
 | `S2-P0` 계획 | 승인 완료 | `.verison-list` 작업공간 문서 방식으로 수정 승인 |
 | `S2-D1-CODE` 도메인 production code | 승인 완료 | 사용자가 test 작성을 지시함 |
-| `S2-D1-TEST` 도메인 test | 사용자 검수 대기 | 6개 추가, CTest 26/26 통과 |
-| `S2-D1-FIX` 도메인 bug 수정 | 생략 제안 | 발견 production 결함 없음, 사용자 확인 필요 |
-| `S2-D2-CODE` schema/parser production code | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D1-TEST` 도메인 test | 승인 완료 | 사용자가 구현 진행을 지시함 |
+| `S2-D1-FIX` 도메인 bug 수정 | 생략 완료 | 발견 production 결함 없음 |
+| `S2-D2-CODE` schema/parser production code | 사용자 검수 대기 | 구현 및 회귀 검증 완료, 새 test source와 fixture 변경 없음 |
 | `S2-D2-TEST` schema/parser test | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D2-FIX` schema/parser bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D3-CODE` path production code | 시작 전 | 앞 체크포인트 승인 필요 |

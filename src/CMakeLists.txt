@@ -53,6 +53,16 @@ add_library(gitman_domain STATIC
 target_include_directories(gitman_domain PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_domain PUBLIC gitman_project_options)
 
+add_library(gitman_workspace STATIC
+    infrastructure/json_workspace_document.cpp
+    infrastructure/json_workspace_document.h)
+target_include_directories(gitman_workspace PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
+target_link_libraries(gitman_workspace
+    PUBLIC
+        gitman_domain
+    PRIVATE
+        nlohmann_json::nlohmann_json)
+
 add_library(gitman_core STATIC
     application/application_options.cpp
     application/application_options.h

@@ -1,5 +1,27 @@
 # 변경 이력
 
+## 2026-08-14 - 단계 2 schema parser production code 구현
+
+### 사용자 지시
+
+- `S2-D1-TEST`를 승인하고 다음 구현을 진행한다.
+
+### 반영 내용
+
+- production 결함이 없었던 `S2-D1-FIX`를 생략하고 `S2-D2-CODE`를 진행했다.
+- schema version 1의 `.verison-list` JSON parser와 구조화 parse result를 추가했다.
+- 문서 수준 실패, project별 부분 성공, optional 기본값, 중복 ID와 unknown field warning을 구현했다.
+- unknown field의 후속 round-trip을 위해 입력 JSON byte를 shadow에 그대로 보존했다.
+- public header에서 nlohmann/json, Win32와 Skia type을 노출하지 않았다.
+- VS2022와 VS2026 Debug build 및 기존 CTest 26/26을 통과했다.
+- 이번 체크포인트에서는 새 test source와 fixture를 작성하지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D2-CODE`는 사용자 코드 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D2-TEST`의 schema fixture와 test를 작성하지 않는다.
+- test에서 production 결함이 발견되어도 `S2-D2-FIX` 승인 전에는 수정하지 않는다.
+
 ## 2026-08-14 - 단계 2 도메인 model test 작성
 
 ### 사용자 지시

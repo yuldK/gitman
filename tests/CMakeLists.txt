@@ -7,6 +7,7 @@ add_executable(gitman_tests
     dependency_versions_tests.cpp
     embedded_assets_tests.cpp
     renderer_policy_tests.cpp
+    ui_theme_tests.cpp
     utf8_tests.cpp)
 add_dependencies(gitman_tests gitman_verify_assets)
 target_include_directories(gitman_tests PRIVATE "${GITMAN_SOURCE_DIRECTORY}")

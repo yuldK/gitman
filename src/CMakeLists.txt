@@ -47,7 +47,9 @@ add_library(gitman_core STATIC
     platform/win32/caption_layout.cpp
     platform/win32/caption_layout.h
     presentation/renderer_policy.cpp
-    presentation/renderer_policy.h)
+    presentation/renderer_policy.h
+    presentation/ui_theme.cpp
+    presentation/ui_theme.h)
 target_include_directories(gitman_core PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_core
     PUBLIC
@@ -66,6 +68,8 @@ add_library(gitman_win32 STATIC
     platform/win32/utf8.h
     platform/win32/win32_application.cpp
     platform/win32/win32_application.h
+    presentation/caption_ui.cpp
+    presentation/caption_ui.h
     presentation/skia_smoke_view.cpp
     presentation/skia_smoke_view.h)
 add_dependencies(gitman_win32 gitman_generate_codicons gitman_verify_assets)

@@ -1,5 +1,7 @@
 #include "platform/win32/caption_layout.h"
 
+#include "presentation/caption_ui.h"
+
 #include <algorithm>
 
 namespace gitman::win32 {
@@ -13,8 +15,8 @@ namespace gitman::win32 {
     caption_layout make_caption_layout(const int client_width, const std::uint32_t dpi) noexcept
     {
         caption_layout layout {};
-        layout.height = scale_for_dpi(48, dpi);
-        layout.button_width = scale_for_dpi(46, dpi);
+        layout.height = scale_for_dpi(default_caption_ui_metrics.height, dpi);
+        layout.button_width = scale_for_dpi(default_caption_ui_metrics.button_width, dpi);
         layout.right = std::max(0, client_width);
         layout.close_left = std::max(0, layout.right - layout.button_width);
         layout.maximize_left = std::max(0, layout.close_left - layout.button_width);

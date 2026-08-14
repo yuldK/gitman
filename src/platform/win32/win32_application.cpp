@@ -4,6 +4,7 @@
 #include "platform/win32/embedded_assets.h"
 #include "platform/win32/skia_renderer.h"
 #include "platform/win32/utf8.h"
+#include "presentation/caption_ui.h"
 
 #include <dwmapi.h>
 #include <windowsx.h>
@@ -160,7 +161,7 @@ namespace gitman::win32 {
                     {
                         RECT window_rectangle {};
                         GetWindowRect(window_, &window_rectangle);
-                        show_system_menu({ window_rectangle.left, window_rectangle.top + scale_for_dpi(48) });
+                        show_system_menu({ window_rectangle.left, window_rectangle.top + scale_for_dpi(default_caption_ui_metrics.height) });
                         return 0;
                     }
                     break;
@@ -266,7 +267,10 @@ namespace gitman::win32 {
                         return HTBOTTOM;
                 }
 
-                if (y >= 0 && y < scale_for_dpi(48) && x >= 0 && x < scale_for_dpi(46))
+                if (y >= 0
+                    && y < scale_for_dpi(default_caption_ui_metrics.height)
+                    && x >= 0
+                    && x < scale_for_dpi(default_caption_ui_metrics.application_icon_slot_width))
                     return HTSYSMENU;
                 const caption_layout layout { make_caption_layout(width, dpi_) };
                 switch (hit_test_caption(layout, x, y))
@@ -364,8 +368,9 @@ namespace gitman::win32 {
                 const HMENU menu { GetSystemMenu(window_, FALSE) };
                 if (menu == nullptr)
                     return;
+
                 const auto command {
-                    static_cast<UINT>(TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, position.x, position.y, 0, window_, nullptr))
+                    static_cast<WPARAM>(TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, position.x, position.y, 0, window_, nullptr))
                 };
 
                 if (command != 0)
@@ -391,6 +396,7 @@ namespace gitman::win32 {
                     error = u8"Failed to remove the Win32 system caption.";
                     return false;
                 }
+
                 if (SetWindowPos(window_, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER) == FALSE)
                 {
                     error = u8"Failed to recalculate the Win32 custom frame.";
@@ -410,15 +416,15 @@ namespace gitman::win32 {
 
                 HIGHCONTRASTW high_contrast {};
                 high_contrast.cbSize = sizeof(high_contrast);
-                const bool high_contrast_enabled {
-                    SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(high_contrast), &high_contrast, 0) != FALSE && (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0,
-                };
+                const bool high_contrast_enabled = FALSE != SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(high_contrast), &high_contrast, 0)
+                    && (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0
+                ;
 
                 smoke_view_state state {};
                 state.width = std::max(1L, client_rectangle.right - client_rectangle.left);
                 state.height = std::max(1L, client_rectangle.bottom - client_rectangle.top);
                 state.dpi_scale = static_cast<float>(dpi_) / 96.0F;
-                state.high_contrast = high_contrast_enabled;
+                state.theme = high_contrast_enabled ? color_theme::high_contrast : color_theme::dark;
                 state.maximized = IsZoomed(window_) != FALSE;
                 state.hovered_caption_button = hovered_caption_button_;
                 return renderer_->render(state, error);

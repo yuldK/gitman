@@ -4,8 +4,8 @@
 
 - 작성일: 2026-08-14
 - 대상: 구현 단계 2
-- 현재 상태: `S2-D1-CODE` 구현 및 기존 회귀 검증 완료, 사용자 코드 검수 대기
-- 현재 검수 게이트: `S2-D1-CODE`
+- 현재 상태: `S2-D1-TEST` 작성 및 실행 완료, 사용자 test 검수 대기
+- 현재 검수 게이트: `S2-D1-TEST`
 - 관련 요구사항: REQ-001, REQ-002, REQ-004, REQ-009~REQ-013, REQ-016, NFR-005~NFR-006, NFR-009
 
 사용자는 `S2-P0` 계획을 승인하면서 설정 파일을 solution 및 `.code-workspace`와 같은 작업공간 문서로 변경했다. 확장자는 사용자 지시의 철자를 그대로 적용한 `.verison-list`다. 이후 작업은 7장의 체크포인트 순서를 따른다.
@@ -211,8 +211,9 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 ### 7.1 현재 진행 상태
 
 - `S2-P0`: `.verison-list` 작업공간 문서 수정 후 승인 완료
-- `S2-D1-CODE`: 구현 완료, `docs/verification/2026-08-14-stage-2-d1-code.md` 기준 사용자 검수 대기
-- `S2-D1-TEST`: 시작 전이며 새 test source와 fixture 없음
+- `S2-D1-CODE`: 사용자 승인 완료
+- `S2-D1-TEST`: 6개 test 작성 및 두 toolchain CTest 26/26 완료, 사용자 검수 대기
+- `S2-D1-FIX`: 발견 결함 없음, 사용자 확인 후 생략 가능
 
 ## 8. 테스트 계획
 

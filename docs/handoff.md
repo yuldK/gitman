@@ -5,16 +5,17 @@
 - 기준일: 2026-08-14
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증
 - 현재 단계: 단계 2 도메인과 설정 저장소
-- 현재 체크포인트: `S2-D1-CODE` 구현 및 기존 회귀 검증 완료, 사용자 코드 검수 대기
-- 다음 허용 작업: 사용자가 코드를 승인한 뒤 `S2-D1-TEST`만 진행
+- 현재 체크포인트: `S2-D1-TEST` 작성 및 실행 완료, 사용자 test 검수 대기
+- 다음 허용 작업: 사용자 승인 뒤 `S2-D1-FIX`를 수정 없음으로 생략하고 `S2-D2-CODE` 진행
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
 - 단계 2 production 구현: `S2-D1-CODE` 완료
 - 단계 2 test source 및 fixture: 시작하지 않음
 - 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-14-stage-2-d1-code.md`
+- 현재 검증 기록: `docs/verification/2026-08-14-stage-2-d1-test.md`
+- 직전 production 검증 기록: `docs/verification/2026-08-14-stage-2-d1-code.md`
 - 최근 검증 기록: `docs/verification/2026-08-14-stage-1.md`
 
-다음 작업은 이 문서, 단계 2 구현 계획과 현재 검증 기록을 먼저 읽어야 한다. 사용자가 `S2-D1-CODE`를 승인하기 전에는 새 production 및 test source와 fixture를 추가하거나 변경하지 않는다.
+다음 작업은 이 문서, 단계 2 구현 계획과 `S2-D1-TEST` 검증 기록을 먼저 읽어야 한다. 사용자가 test를 승인하기 전에는 production 및 test source를 추가하거나 변경하지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -112,23 +113,23 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S2-D1-CODE` |
-| 제출 내용 | 도메인 값 type, diagnostic 및 `gitman_domain` target 구현 |
-| production code | 구현 완료, 사용자 검수 대기 |
-| test code 및 fixture | 변경 없음 |
+| 계획 ID | `S2-D1-TEST` |
+| 제출 내용 | domain model 계약 test 6개 작성 및 실행 완료 |
+| production code | `S2-D1-CODE` 승인 뒤 변경 없음 |
+| test code 및 fixture | `tests/domain_model_tests.cpp` 추가, fixture 없음 |
 | bug 수정 | 수행하지 않음 |
-| 검증 | VS2022/VS2026 Debug build 통과, 기존 CTest 각각 20/20, source style 80개 통과 |
-| 승인 대기 | domain model 범위, diagnostic와 독립 target 구조 |
-| 승인 뒤 다음 작업 | `S2-D1-TEST`: domain model test source만 작성 |
+| 검증 | VS2022/VS2026 Debug build 및 CTest 각각 26/26, source style 82개 통과 |
+| 승인 대기 | domain model test 범위와 결과 |
+| 승인 뒤 다음 작업 | 결함 없음 확인 후 `S2-D1-FIX` 생략, `S2-D2-CODE` 진행 |
 
 ### 8.2 단계 2 진행 원장
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
 | `S2-P0` 계획 | 승인 완료 | `.verison-list` 작업공간 문서 방식으로 수정 승인 |
-| `S2-D1-CODE` 도메인 production code | 사용자 검수 대기 | 구현 및 기존 회귀 검증 완료 |
-| `S2-D1-TEST` 도메인 test | 시작 전 | 앞 체크포인트 승인 필요 |
-| `S2-D1-FIX` 도메인 bug 수정 | 시작 전 | 발견 결함이 없으면 사용자 확인 후 생략 |
+| `S2-D1-CODE` 도메인 production code | 승인 완료 | 사용자가 test 작성을 지시함 |
+| `S2-D1-TEST` 도메인 test | 사용자 검수 대기 | 6개 추가, CTest 26/26 통과 |
+| `S2-D1-FIX` 도메인 bug 수정 | 생략 제안 | 발견 production 결함 없음, 사용자 확인 필요 |
 | `S2-D2-CODE` schema/parser production code | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D2-TEST` schema/parser test | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D2-FIX` schema/parser bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |

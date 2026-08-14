@@ -1,5 +1,23 @@
 # 변경 이력
 
+## 2026-08-14 - 단계 2 도메인 model test 작성
+
+### 사용자 지시
+
+- `S2-D1-CODE`를 승인하고 test 작성을 시작한다.
+
+### 반영 내용
+
+- workspace/project 기본값, VCS hint, path 상태, repository snapshot, operation과 diagnostic 계약 test 6개를 추가했다.
+- VS2022와 VS2026 Debug build 및 CTest 26/26을 통과했다.
+- test 작성 중 production source와 fixture를 변경하지 않았다.
+- production 결함은 발견되지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D1-TEST`는 사용자 test 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D2-CODE` schema/parser 구현을 시작하지 않는다.
+
 ## 2026-08-14 - `.verison-list` 작업공간 문서 결정 및 단계 2 계획 승인
 
 ### 사용자 지시

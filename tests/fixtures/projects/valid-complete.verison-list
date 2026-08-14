@@ -1,0 +1,21 @@
+{
+    "schema_version": 1,
+    "projects": [
+        {
+            "id": "alpha",
+            "path": "D:/작업/alpha",
+            "display_name": "알파 😀",
+            "vcs_hint": "git",
+            "enabled": false,
+            "preferred_remote": "upstream",
+            "svn_switch_targets": [
+                "https://svn.example.test/project/trunk",
+                "https://svn.example.test/project/branches/release"
+            ]
+        },
+        {
+            "id": "beta",
+            "path": "relative/beta/"
+        }
+    ]
+}

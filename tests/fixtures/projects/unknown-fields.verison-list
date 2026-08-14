@@ -1,0 +1,15 @@
+{
+    "schema_version": 1,
+    "projects": [
+        {
+            "id": "alpha",
+            "path": "C:/repositories/alpha",
+            "project/option~v2": {
+                "color": "blue"
+            }
+        }
+    ],
+    "future/settings~v2": {
+        "selected_project": "alpha"
+    }
+}

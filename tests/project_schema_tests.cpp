@@ -1,0 +1,278 @@
+#include "infrastructure/json_workspace_document.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <array>
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <string_view>
+
+#ifndef GITMAN_TEST_FIXTURE_DIRECTORY
+#error GITMAN_TEST_FIXTURE_DIRECTORY must identify the schema fixture directory.
+#endif
+
+namespace {
+    constexpr std::u8string_view test_document_path { u8"E:/work/example.verison-list" };
+
+    bool u8_equal(const std::u8string_view left, const std::u8string_view right) noexcept
+    {
+        return left == right;
+    }
+
+    std::u8string load_fixture(const std::string_view file_name)
+    {
+        const std::filesystem::path fixture_path { std::filesystem::path { GITMAN_TEST_FIXTURE_DIRECTORY } / std::string { file_name } };
+        std::ifstream stream { fixture_path, std::ios::binary };
+        REQUIRE(stream.is_open());
+        const std::string bytes { std::istreambuf_iterator<char> { stream }, std::istreambuf_iterator<char> {} };
+        REQUIRE_FALSE(stream.bad());
+        return {
+            reinterpret_cast<const char8_t*>(bytes.data()),
+            bytes.size(),
+        };
+    }
+
+    const gitman::diagnostic* find_diagnostic(const gitman::workspace_document_parse_result& result, const gitman::diagnostic_code code, const std::u8string_view json_pointer) noexcept
+    {
+        for (const auto& diagnostic : result.diagnostics)
+            if (diagnostic.code == code && diagnostic.source.json_pointer == json_pointer)
+                return &diagnostic;
+        return nullptr;
+    }
+
+    std::u8string document_with_project(const std::u8string_view project_json)
+    {
+        std::u8string source { u8"{\"schema_version\":1,\"projects\":[" };
+        source.append(project_json);
+        source.append(u8"]}");
+        return source;
+    }
+
+    struct document_error_case
+    {
+        std::u8string_view source {};
+        gitman::diagnostic_code code { gitman::diagnostic_code::unknown };
+        std::u8string_view json_pointer {};
+    };
+
+    struct project_error_case
+    {
+        std::u8string_view project_json {};
+        gitman::diagnostic_code code { gitman::diagnostic_code::unknown };
+        std::u8string_view json_pointer {};
+    };
+} // namespace
+
+TEST_CASE("Schema parser loads complete and defaulted projects", "[workspace][schema]")
+{
+    const std::u8string source { load_fixture("valid-complete.verison-list") };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+
+    REQUIRE(result.document.has_value());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE_FALSE(result.has_warnings());
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(u8_equal(result.shadow.source_json, source));
+
+    const gitman::workspace_document& document { *result.document };
+    REQUIRE(document.schema_version == 1);
+    REQUIRE(u8_equal(document.document_path, test_document_path));
+    REQUIRE(document.projects.size() == 2);
+
+    const gitman::project_definition& alpha { document.projects[0] };
+    REQUIRE(u8_equal(alpha.id.value, u8"alpha"));
+    REQUIRE(u8_equal(alpha.path.original, u8"D:/작업/alpha"));
+    REQUIRE(alpha.path.normalized.empty());
+    REQUIRE(alpha.path.state == gitman::configured_path_state::unchecked);
+    REQUIRE(u8_equal(alpha.display_name, u8"알파 😀"));
+    REQUIRE(alpha.hint == gitman::vcs_hint::git);
+    REQUIRE_FALSE(alpha.enabled);
+    REQUIRE(alpha.preferred_remote.has_value());
+    REQUIRE(u8_equal(*alpha.preferred_remote, u8"upstream"));
+    REQUIRE(alpha.svn_switch_targets.size() == 2);
+    REQUIRE(u8_equal(alpha.svn_switch_targets[0], u8"https://svn.example.test/project/trunk"));
+    REQUIRE(u8_equal(alpha.svn_switch_targets[1], u8"https://svn.example.test/project/branches/release"));
+
+    const gitman::project_definition& beta { document.projects[1] };
+    REQUIRE(u8_equal(beta.id.value, u8"beta"));
+    REQUIRE(u8_equal(beta.path.original, u8"relative/beta/"));
+    REQUIRE(u8_equal(beta.display_name, u8"beta"));
+    REQUIRE(beta.hint == gitman::vcs_hint::automatic);
+    REQUIRE(beta.enabled);
+    REQUIRE_FALSE(beta.preferred_remote.has_value());
+    REQUIRE(beta.svn_switch_targets.empty());
+}
+
+TEST_CASE("Schema parser accepts minimal and empty documents", "[workspace][schema]")
+{
+    constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+
+    REQUIRE(result.document.has_value());
+    REQUIRE(result.document->projects.empty());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE_FALSE(result.has_warnings());
+    REQUIRE(u8_equal(result.shadow.source_json, source));
+}
+
+TEST_CASE("Schema parser rejects malformed JSON and invalid roots", "[workspace][schema]")
+{
+    const std::u8string malformed_source { load_fixture("malformed.verison-list") };
+    const gitman::workspace_document_parse_result malformed { gitman::parse_workspace_document_json(malformed_source, test_document_path) };
+    REQUIRE_FALSE(malformed.document.has_value());
+    REQUIRE(malformed.has_errors());
+    REQUIRE(find_diagnostic(malformed, gitman::diagnostic_code::malformed_document, u8"") != nullptr);
+    REQUIRE(u8_equal(malformed.shadow.source_json, malformed_source));
+
+    constexpr std::u8string_view array_root_source { u8"[]" };
+    const gitman::workspace_document_parse_result array_root { gitman::parse_workspace_document_json(array_root_source, test_document_path) };
+    REQUIRE_FALSE(array_root.document.has_value());
+    REQUIRE(find_diagnostic(array_root, gitman::diagnostic_code::invalid_document_root, u8"") != nullptr);
+
+    std::u8string invalid_utf8_source { u8"{\"schema_version\":1,\"projects\":[{\"id\":\"" };
+    invalid_utf8_source.push_back(static_cast<char8_t>(0xff));
+    invalid_utf8_source.append(u8"\",\"path\":\"repo\"}]}");
+    const gitman::workspace_document_parse_result invalid_utf8 { gitman::parse_workspace_document_json(invalid_utf8_source, test_document_path) };
+    REQUIRE_FALSE(invalid_utf8.document.has_value());
+    REQUIRE(find_diagnostic(invalid_utf8, gitman::diagnostic_code::malformed_document, u8"") != nullptr);
+    REQUIRE(u8_equal(invalid_utf8.shadow.source_json, invalid_utf8_source));
+}
+
+TEST_CASE("Schema parser rejects invalid document contracts", "[workspace][schema]")
+{
+    constexpr std::array cases {
+        document_error_case { u8"{\"projects\":[]}", gitman::diagnostic_code::missing_schema_version, u8"/schema_version" },
+        document_error_case { u8"{\"schema_version\":\"1\",\"projects\":[]}", gitman::diagnostic_code::invalid_schema_version, u8"/schema_version" },
+        document_error_case { u8"{\"schema_version\":1.0,\"projects\":[]}", gitman::diagnostic_code::invalid_schema_version, u8"/schema_version" },
+        document_error_case { u8"{\"schema_version\":1}", gitman::diagnostic_code::missing_projects, u8"/projects" },
+        document_error_case { u8"{\"schema_version\":1,\"projects\":{}}", gitman::diagnostic_code::invalid_projects, u8"/projects" },
+    };
+
+    for (std::size_t index = 0; index < cases.size(); ++index)
+    {
+        CAPTURE(index);
+        const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(cases[index].source, test_document_path) };
+        REQUIRE_FALSE(result.document.has_value());
+        REQUIRE(result.has_errors());
+        const gitman::diagnostic* diagnostic { find_diagnostic(result, cases[index].code, cases[index].json_pointer) };
+        REQUIRE(diagnostic != nullptr);
+        REQUIRE(diagnostic->severity == gitman::diagnostic_severity::error);
+        REQUIRE(u8_equal(diagnostic->source.document_path, test_document_path));
+    }
+}
+
+TEST_CASE("Schema parser rejects unsupported versions without changing source", "[workspace][schema]")
+{
+    const std::u8string legacy_source { load_fixture("legacy-version.verison-list") };
+    const gitman::workspace_document_parse_result legacy { gitman::parse_workspace_document_json(legacy_source, test_document_path) };
+    REQUIRE_FALSE(legacy.document.has_value());
+    REQUIRE(find_diagnostic(legacy, gitman::diagnostic_code::unsupported_legacy_schema, u8"/schema_version") != nullptr);
+    REQUIRE(u8_equal(legacy.shadow.source_json, legacy_source));
+
+    constexpr std::u8string_view negative_source { u8"{\"schema_version\":-1,\"projects\":[]}" };
+    const gitman::workspace_document_parse_result negative { gitman::parse_workspace_document_json(negative_source, test_document_path) };
+    REQUIRE_FALSE(negative.document.has_value());
+    REQUIRE(find_diagnostic(negative, gitman::diagnostic_code::unsupported_legacy_schema, u8"/schema_version") != nullptr);
+    REQUIRE(u8_equal(negative.shadow.source_json, negative_source));
+
+    const std::u8string future_source { load_fixture("future-version.verison-list") };
+    const gitman::workspace_document_parse_result future { gitman::parse_workspace_document_json(future_source, test_document_path) };
+    REQUIRE_FALSE(future.document.has_value());
+    REQUIRE(find_diagnostic(future, gitman::diagnostic_code::unsupported_future_schema, u8"/schema_version") != nullptr);
+    REQUIRE(u8_equal(future.shadow.source_json, future_source));
+}
+
+TEST_CASE("Schema parser returns valid projects from partially invalid input", "[workspace][schema]")
+{
+    const std::u8string source { load_fixture("partial-invalid.verison-list") };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+
+    REQUIRE(result.document.has_value());
+    REQUIRE(result.has_errors());
+    REQUIRE_FALSE(result.has_warnings());
+    REQUIRE(result.document->projects.size() == 2);
+    REQUIRE(u8_equal(result.document->projects[0].id.value, u8"valid-a"));
+    REQUIRE(u8_equal(result.document->projects[1].id.value, u8"valid-b"));
+    REQUIRE(result.diagnostics.size() == 4);
+
+    const gitman::diagnostic* missing_id { find_diagnostic(result, gitman::diagnostic_code::missing_project_field, u8"/projects/1/id") };
+    REQUIRE(missing_id != nullptr);
+    REQUIRE(missing_id->source.project_index == 1);
+    REQUIRE_FALSE(missing_id->source.project_id.has_value());
+
+    const gitman::diagnostic* duplicate_id { find_diagnostic(result, gitman::diagnostic_code::duplicate_project_id, u8"/projects/3/id") };
+    REQUIRE(duplicate_id != nullptr);
+    REQUIRE(duplicate_id->source.project_index == 3);
+    REQUIRE(duplicate_id->source.project_id.has_value());
+    REQUIRE(u8_equal(*duplicate_id->source.project_id, u8"valid-a"));
+
+    const gitman::diagnostic* invalid_hint { find_diagnostic(result, gitman::diagnostic_code::invalid_vcs_hint, u8"/projects/4/vcs_hint") };
+    REQUIRE(invalid_hint != nullptr);
+    REQUIRE(invalid_hint->source.project_index == 4);
+    REQUIRE(invalid_hint->source.project_id.has_value());
+    REQUIRE(u8_equal(*invalid_hint->source.project_id, u8"invalid-hint"));
+
+    const gitman::diagnostic* invalid_item { find_diagnostic(result, gitman::diagnostic_code::invalid_project_field, u8"/projects/5") };
+    REQUIRE(invalid_item != nullptr);
+    REQUIRE(invalid_item->source.project_index == 5);
+}
+
+TEST_CASE("Schema parser validates every project field", "[workspace][schema]")
+{
+    constexpr std::array cases {
+        project_error_case { u8"{\"path\":\"repo\"}", gitman::diagnostic_code::missing_project_field, u8"/projects/0/id" },
+        project_error_case { u8"{\"id\":42,\"path\":\"repo\"}", gitman::diagnostic_code::invalid_project_field, u8"/projects/0/id" },
+        project_error_case { u8"{\"id\":\"\",\"path\":\"repo\"}", gitman::diagnostic_code::invalid_project_id, u8"/projects/0/id" },
+        project_error_case { u8"{\"id\":\"project\"}", gitman::diagnostic_code::missing_project_field, u8"/projects/0/path" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":42}", gitman::diagnostic_code::invalid_project_field, u8"/projects/0/path" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":\"\"}", gitman::diagnostic_code::invalid_project_path, u8"/projects/0/path" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":\"repo\",\"display_name\":null}", gitman::diagnostic_code::invalid_project_field, u8"/projects/0/display_name" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":\"repo\",\"vcs_hint\":\"hg\"}", gitman::diagnostic_code::invalid_vcs_hint, u8"/projects/0/vcs_hint" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":\"repo\",\"enabled\":\"true\"}", gitman::diagnostic_code::invalid_project_field, u8"/projects/0/enabled" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":\"repo\",\"preferred_remote\":42}", gitman::diagnostic_code::invalid_project_field, u8"/projects/0/preferred_remote" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":\"repo\",\"svn_switch_targets\":{}}", gitman::diagnostic_code::invalid_project_field, u8"/projects/0/svn_switch_targets" },
+        project_error_case { u8"{\"id\":\"project\",\"path\":\"repo\",\"svn_switch_targets\":[42]}", gitman::diagnostic_code::invalid_project_field, u8"/projects/0/svn_switch_targets/0" },
+    };
+
+    for (std::size_t index = 0; index < cases.size(); ++index)
+    {
+        CAPTURE(index);
+        const std::u8string source { document_with_project(cases[index].project_json) };
+        const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+        REQUIRE(result.document.has_value());
+        REQUIRE(result.document->projects.empty());
+        REQUIRE(result.has_errors());
+        const gitman::diagnostic* diagnostic { find_diagnostic(result, cases[index].code, cases[index].json_pointer) };
+        REQUIRE(diagnostic != nullptr);
+        REQUIRE(diagnostic->source.project_index == 0);
+    }
+}
+
+TEST_CASE("Schema parser warns about unknown fields and preserves source bytes", "[workspace][schema]")
+{
+    const std::u8string source { load_fixture("unknown-fields.verison-list") };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+
+    REQUIRE(result.document.has_value());
+    REQUIRE(result.document->projects.size() == 1);
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE(result.has_warnings());
+    REQUIRE(result.diagnostics.size() == 2);
+    REQUIRE(u8_equal(result.shadow.source_json, source));
+
+    const gitman::diagnostic* top_level { find_diagnostic(result, gitman::diagnostic_code::unknown_field, u8"/future~1settings~0v2") };
+    REQUIRE(top_level != nullptr);
+    REQUIRE(top_level->severity == gitman::diagnostic_severity::warning);
+    REQUIRE_FALSE(top_level->source.project_index.has_value());
+    REQUIRE_FALSE(top_level->source.project_id.has_value());
+
+    const gitman::diagnostic* project_field { find_diagnostic(result, gitman::diagnostic_code::unknown_field, u8"/projects/0/project~1option~0v2") };
+    REQUIRE(project_field != nullptr);
+    REQUIRE(project_field->severity == gitman::diagnostic_severity::warning);
+    REQUIRE(project_field->source.project_index == 0);
+    REQUIRE(project_field->source.project_id.has_value());
+    REQUIRE(u8_equal(*project_field->source.project_id, u8"alpha"));
+}

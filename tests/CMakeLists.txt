@@ -7,13 +7,18 @@ add_executable(gitman_tests
     dependency_versions_tests.cpp
     domain_model_tests.cpp
     embedded_assets_tests.cpp
+    project_schema_tests.cpp
     renderer_policy_tests.cpp
     ui_theme_tests.cpp
     utf8_tests.cpp)
 add_dependencies(gitman_tests gitman_verify_assets)
 target_include_directories(gitman_tests PRIVATE "${GITMAN_SOURCE_DIRECTORY}")
+target_compile_definitions(gitman_tests
+    PRIVATE
+        GITMAN_TEST_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/projects")
 target_link_libraries(gitman_tests
     PRIVATE
+        gitman_workspace
         gitman_win32
         Catch2::Catch2WithMain)
 gitman_disable_automatic_windows_manifest(gitman_tests)

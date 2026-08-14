@@ -1,5 +1,25 @@
 # 변경 이력
 
+## 2026-08-14 - 단계 2 schema parser test 작성
+
+### 사용자 지시
+
+- `S2-D2-CODE`를 승인하고 다음 작업을 진행한다.
+
+### 반영 내용
+
+- 정상, 손상, 부분 성공, 이전 및 미래 version과 unknown field fixture 6개를 추가했다.
+- schema parser 계약 test 8개와 project field 오류 matrix 12종을 추가했다.
+- unknown field의 JSON pointer escape와 입력 JSON byte의 정확한 shadow 보존을 검증했다.
+- `.verison-list` test asset도 UTF-8 무 BOM 및 CRLF 검사를 받도록 품질 도구 범위를 확장했다.
+- VS2022와 VS2026 Debug build 및 CTest 34/34를 통과했다.
+- production source를 변경하지 않았고 parser production 결함도 발견되지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D2-TEST`는 사용자 test 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D2-FIX`를 생략하거나 `S2-D3-CODE`를 시작하지 않는다.
+
 ## 2026-08-14 - 단계 2 schema parser production code 구현
 
 ### 사용자 지시

@@ -1,0 +1,27 @@
+{
+    "schema_version": 1,
+    "projects": [
+        {
+            "id": "valid-a",
+            "path": "C:/repositories/a"
+        },
+        {
+            "path": "C:/repositories/missing-id"
+        },
+        {
+            "id": "valid-b",
+            "path": "C:/repositories/b",
+            "vcs_hint": "svn"
+        },
+        {
+            "id": "valid-a",
+            "path": "C:/repositories/duplicate-id"
+        },
+        {
+            "id": "invalid-hint",
+            "path": "C:/repositories/invalid-hint",
+            "vcs_hint": "hg"
+        },
+        "not-an-object"
+    ]
+}

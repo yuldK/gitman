@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
-| 단계 2: 도메인과 설정 저장소 | `S2-D2-CODE` 완료 - 사용자 코드 검수 대기 | `docs/verification/2026-08-14-stage-2-d2-code.md` |
+| 단계 2: 도메인과 설정 저장소 | `S2-D2-TEST` 완료 - 사용자 test 검수 대기 | `docs/verification/2026-08-14-stage-2-d2-test.md` |
 | 단계 3~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위

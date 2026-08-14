@@ -3,6 +3,7 @@
 #include "domain/diagnostic.h"
 #include "domain/project.h"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -12,6 +13,7 @@ namespace gitman {
     struct workspace_document_shadow
     {
         std::u8string source_json {};
+        std::vector<std::size_t> project_source_indices {};
     };
 
     struct workspace_document_parse_result

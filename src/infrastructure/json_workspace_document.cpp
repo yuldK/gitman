@@ -408,7 +408,10 @@ namespace gitman {
         {
             std::optional<project_definition> project { parse_project((*projects)[project_index], project_index, document_path, result, project_ids) };
             if (project.has_value())
+            {
                 document.projects.push_back(std::move(*project));
+                result.shadow.project_source_indices.push_back(project_index);
+            }
         }
         result.document = std::move(document);
         return result;

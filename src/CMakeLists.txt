@@ -53,14 +53,25 @@ add_library(gitman_domain STATIC
 target_include_directories(gitman_domain PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_domain PUBLIC gitman_project_options)
 
+add_library(gitman_win32_platform STATIC
+    platform/win32/project_file_system.cpp
+    platform/win32/project_file_system.h
+    platform/win32/utf8.cpp
+    platform/win32/utf8.h)
+target_include_directories(gitman_win32_platform PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
+target_link_libraries(gitman_win32_platform PUBLIC gitman_domain)
+
 add_library(gitman_workspace STATIC
     infrastructure/json_workspace_document.cpp
-    infrastructure/json_workspace_document.h)
+    infrastructure/json_workspace_document.h
+    infrastructure/workspace_document_paths.cpp
+    infrastructure/workspace_document_paths.h)
 target_include_directories(gitman_workspace PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_workspace
     PUBLIC
         gitman_domain
     PRIVATE
+        gitman_win32_platform
         nlohmann_json::nlohmann_json)
 
 add_library(gitman_core STATIC
@@ -87,8 +98,6 @@ add_library(gitman_win32 STATIC
     platform/win32/embedded_assets.h
     platform/win32/skia_renderer.cpp
     platform/win32/skia_renderer.h
-    platform/win32/utf8.cpp
-    platform/win32/utf8.h
     platform/win32/win32_application.cpp
     platform/win32/win32_application.h
     presentation/caption_ui.cpp
@@ -103,6 +112,7 @@ target_include_directories(gitman_win32
 target_link_libraries(gitman_win32
     PUBLIC
         gitman_core
+        gitman_win32_platform
         unofficial::skia::skia
     PRIVATE
         d3d12

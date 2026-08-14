@@ -1,5 +1,29 @@
 # 변경 이력
 
+## 2026-08-15 - 단계 2 project path production code 구현
+
+### 사용자 지시
+
+- `S2-D2-TEST`를 승인하고 다음 구현을 진행한다.
+
+### 반영 내용
+
+- production 결함이 없었던 `S2-D2-FIX`를 생략하고 `S2-D3-CODE`를 진행했다.
+- document 디렉터리 기준 상대 path와 absolute drive 및 UNC path의 lexical 정규화를 구현했다.
+- UTF-8 원문을 보존하면서 별도의 absolute normalized path와 filesystem 상태를 계산한다.
+- missing, inaccessible, not-directory와 invalid 상태 및 구조화 diagnostic을 구현했다.
+- Windows case-insensitive ordinal 비교로 중복 normalized path의 첫 project만 유지한다.
+- schema parse와 filesystem resolution을 분리하고 원래 JSON project index를 shadow metadata에 보존했다.
+- Win32 path 및 UTF 구현을 UI/Skia와 독립적인 `gitman_win32_platform` target으로 분리했다.
+- VS2022와 VS2026 Debug build 및 기존 CTest 34/34를 통과했다.
+- 이번 체크포인트에서는 test source와 fixture를 변경하지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D3-CODE`는 사용자 코드 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D3-TEST` path test와 fixture를 작성하지 않는다.
+- test에서 production 결함이 발견되어도 `S2-D3-FIX` 승인 전에는 수정하지 않는다.
+
 ## 2026-08-14 - 단계 2 schema parser test 작성
 
 ### 사용자 지시

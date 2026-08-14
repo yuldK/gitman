@@ -23,14 +23,16 @@
 | 2026-08-14 | 범용 스레드 메시지 구조의 구현 전 별도 설계 검수 | ADR-004, 단계 6 | REQ-015 |
 | 2026-08-14 | 이번 세션은 문서 인수인계만 수행하고 실제 구현은 후속 세션으로 이관 | `docs/handoff.md` | REQ-012 |
 | 2026-08-14 | ADR-001 작업을 개시하고 단계 1 범위까지만 구현 | 단계 1, `docs/verification/2026-08-14-stage-1.md` | REQ-003, REQ-005, REQ-009~REQ-013 |
+| 2026-08-14 | 단계 2를 계획·production code·test code·bug 수정 체크포인트로 분리하고 매 체크포인트마다 사용자 검수를 받음 | `docs/stage-2-plan.md`, `docs/handoff.md` | REQ-001, REQ-002, REQ-004, REQ-009~REQ-012 |
 
 ### 1.2 단계 진행 상태
 
 | 단계 | 상태 | 검수 문서 |
 | --- | --- | --- |
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
-| 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 사용자 검수 대기 | `docs/verification/2026-08-14-stage-1.md` |
-| 단계 2~8 | 시작 전 - 단계 1 승인 대기 | `docs/handoff.md`에 따라 한 단계씩 진행 |
+| 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
+| 단계 2: 도메인과 설정 저장소 | 구현 계획 작성 완료 - 사용자 검수 대기 | `docs/stage-2-plan.md` |
+| 단계 3~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
 
@@ -427,6 +429,8 @@ gitman/
 완료 조건: 깨끗한 환경에서 build와 test가 재현되고 `${sourceDir}/bin/gitman.exe`가 외부 프로젝트 DLL 및 asset 없이 실행된다.
 
 ### 단계 2: 도메인과 설정 저장소
+
+상태: 구현 계획 작성 완료, 사용자 검수 대기. 세부 범위와 production code, test code 및 bug 수정 사이의 검수 게이트는 `docs/stage-2-plan.md`를 따른다. 사용자가 계획을 승인하기 전에는 단계 2 source와 test를 구현하지 않는다.
 
 - `std::u8string` 기반 프로젝트, 저장소 snapshot, 최신 상태, 작업, 오류 모델을 구현한다.
 - JSON 스키마 검증, 경로 정규화, 중복 검사, 원자적 저장을 구현한다.

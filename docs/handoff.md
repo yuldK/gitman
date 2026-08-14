@@ -3,13 +3,16 @@
 ## 1. 현재 상태
 
 - 기준일: 2026-08-14
-- 완료 단계: 단계 0 결정 사항 확정 및 사용자 검수 의견 반영
-- 현재 단계: 단계 1 구현 및 자동 검증 완료, 사용자 검수 대기
-- 다음 단계: 단계 2 도메인과 설정 저장소, 단계 1 승인 전 시작 금지
+- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증
+- 현재 단계: 단계 2 도메인과 설정 저장소
+- 현재 체크포인트: `S2-P0` 구현 계획 작성 완료, 사용자 검수 대기
+- 다음 허용 작업: 사용자가 `S2-P0`을 승인한 뒤 `S2-D1-CODE`만 진행
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
-- 검증 기록: `docs/verification/2026-08-14-stage-1.md`
+- 단계 2 production/test 구현: 시작하지 않음
+- 기준 문서: `docs/stage-2-plan.md`
+- 최근 검증 기록: `docs/verification/2026-08-14-stage-1.md`
 
-다음 작업은 이 문서와 단계 1 검증 기록을 먼저 읽어야 한다. 사용자가 단계 1을 승인하기 전에는 단계 2 구현을 시작하지 않는다.
+다음 작업은 이 문서와 단계 2 구현 계획을 먼저 읽어야 한다. 사용자가 `S2-P0`을 승인하기 전에는 단계 2 source, test와 fixture를 추가하거나 변경하지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -67,6 +70,8 @@ vcpkg baseline은 `b9a5010d499952121b0f1a40eb98963c37da32dc`, Codicons tag commi
 
 - 각 단계의 코드, 문서와 자동 및 수동 검증 결과를 제시한다.
 - 사용자 승인 전에는 다음 단계로 넘어가지 않는다.
+- 단계 2에서는 production code, test code와 bug 수정을 서로 다른 체크포인트로 나눈다.
+- 각 체크포인트 종료 시 이 문서의 진행 원장을 갱신하고 사용자 승인을 기다린다.
 
 ### 단계 6 이전의 메시지 구조
 
@@ -88,7 +93,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - [x] Direct3D, CPU, auto와 강제 CPU fallback smoke test가 통과했다.
 - [x] install tree가 `bin/gitman.exe` 단일 파일이며 VC runtime 및 프로젝트 DLL이 없음을 확인했다.
 - [ ] 사용자가 custom caption의 실제 표시, Snap Layout, `Alt+Space`, DPI와 고대비 수동 검수 결과를 확인한다.
-- [ ] 사용자가 단계 1을 승인한다.
+- [x] 사용자가 단계 2 진행을 지시해 다음 단계 진입을 승인했다.
 
 ## 7. 아직 하지 않은 작업
 
@@ -97,4 +102,44 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - 단계 3 이후의 프로세스 실행, provider, 탐색 및 실제 카드 UI
 - thread message API 상세 설계와 구현
 
-따라서 후속 작업은 단계 1 사용자 승인 뒤 단계 2만 진행하고 다시 검수를 요청해야 한다.
+따라서 후속 작업은 단계 2 계획의 활성 체크포인트 하나만 진행하고 다시 검수를 요청해야 한다.
+
+## 8. 단계 2 영속 세션 메모리
+
+### 8.1 현재 체크포인트
+
+| 항목 | 상태 |
+| --- | --- |
+| 계획 ID | `S2-P0` |
+| 제출 내용 | `docs/stage-2-plan.md` 작성 및 추적 문서 갱신 |
+| production code | 변경 없음 |
+| test code 및 fixture | 변경 없음 |
+| bug 수정 | 수행하지 않음 |
+| 검증 | `git diff --check` 통과, source style 72개 파일 통과, docs-only 변경 범위 확인 |
+| 승인 대기 | 단계 2 설계 제안과 세부 검수 순서 |
+| 승인 뒤 다음 작업 | `S2-D1-CODE`: 도메인 값 type과 diagnostic production code만 구현 |
+
+### 8.2 단계 2 진행 원장
+
+| 체크포인트 | 상태 | 비고 |
+| --- | --- | --- |
+| `S2-P0` 계획 | 사용자 검수 대기 | production/test source 변경 금지 |
+| `S2-D1-CODE` 도메인 production code | 시작 전 | `S2-P0` 승인 필요 |
+| `S2-D1-TEST` 도메인 test | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D1-FIX` 도메인 bug 수정 | 시작 전 | 발견 결함이 없으면 사용자 확인 후 생략 |
+| `S2-D2-CODE` schema/parser production code | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D2-TEST` schema/parser test | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D2-FIX` schema/parser bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D3-CODE` path production code | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D3-TEST` path test | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D3-FIX` path bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D4-CODE` save/recovery production code | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D4-TEST` save/recovery test | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D4-FIX` save/recovery bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-V1` 단계 2 최종 검증 | 시작 전 | 전체 체크포인트 승인 필요 |
+
+### 8.3 미해결 또는 보류 사항
+
+- `S2-P0`에서 기본 config 위치, 단일 활성 파일, unknown field 보존, 상대 path 기준, migration과 backup 정책을 사용자가 검수해야 한다.
+- 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 단계 2 진행 승인과 별도로 보존한다.
+- ADR-004의 범용 메시지 구조 구현 차단 조건은 그대로 유효하다.

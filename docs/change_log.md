@@ -1,5 +1,30 @@
 # 변경 이력
 
+## 2026-08-15 - 단계 2 원자적 저장과 복구 production code 구현
+
+### 사용자 지시
+
+- `S2-D3-TEST`를 검수 완료로 처리한다.
+- 발견 production 결함이 없는 `S2-D3-FIX`를 생략한다.
+- `S2-D4-CODE`의 원자적 저장, 동시 수정 감지, backup 및 명시적 recovery production 구현을 시작한다.
+
+### 반영 내용
+
+- 호출자가 해석하지 않는 revision token과 primary/backup load, save 결과를 제공하는 project store 계약을 추가했다.
+- load 당시 primary 원문 byte와 save 직전 byte를 정확히 비교해 동시 수정이면 파일을 변경하지 않는다.
+- unknown field와 원문 path를 보존하면서 UTF-8 무 BOM, 공백 4칸과 CRLF JSON을 serialize하고 저장 전 전체 후보를 재검증한다.
+- 대상과 같은 디렉터리의 임시 파일에 write 및 `FlushFileBuffers`를 수행하고, 기존 문서는 `ReplaceFileW`와 `.bak`, 최초 문서는 write-through move로 교체한다.
+- primary load 실패 시 유효한 backup을 진단으로만 알리고, 별도 `load_backup` 뒤 새 save 요청으로만 복구하도록 분리했다.
+- write, flush와 replace 실패를 구분하는 file adapter 계약을 두어 다음 test 체크포인트의 결정적 실패 주입 경계를 마련했다.
+- VS2022와 VS2026 Debug build 및 기존 전체 CTest 41/41을 통과했다.
+- 이번 체크포인트에서는 test source와 fixture를 변경하지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D4-CODE`는 사용자 코드 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D4-TEST`의 save/recovery test와 fixture를 작성하지 않는다.
+- test에서 production 결함이 발견되어도 `S2-D4-FIX` 승인 전에는 수정하지 않는다.
+
 ## 2026-08-15 - 단계 2 project path test 작성
 
 ### 사용자 지시

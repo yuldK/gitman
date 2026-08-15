@@ -57,11 +57,18 @@ add_library(gitman_win32_platform STATIC
     platform/win32/project_file_system.cpp
     platform/win32/project_file_system.h
     platform/win32/utf8.cpp
-    platform/win32/utf8.h)
+    platform/win32/utf8.h
+    platform/win32/workspace_document_file_system.cpp
+    platform/win32/workspace_document_file_system.h)
 target_include_directories(gitman_win32_platform PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_win32_platform PUBLIC gitman_domain)
 
 add_library(gitman_workspace STATIC
+    application/project_store.cpp
+    application/project_store.h
+    application/workspace_document_file_system.h
+    infrastructure/json_project_store.cpp
+    infrastructure/json_project_store.h
     infrastructure/json_workspace_document.cpp
     infrastructure/json_workspace_document.h
     infrastructure/workspace_document_paths.cpp

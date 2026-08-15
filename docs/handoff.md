@@ -5,17 +5,17 @@
 - 기준일: 2026-08-15
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증
 - 현재 단계: 단계 2 도메인과 설정 저장소
-- 현재 체크포인트: `S2-D3-TEST` 작성 및 양 toolchain 검증 완료, 사용자 test 검수 대기
+- 현재 체크포인트: `S2-D4-CODE` save/recovery production 구현 및 양 toolchain 검증 완료, 사용자 코드 검수 대기
 - 다음 허용 작업: 사용자 승인 전에는 상태 문서 보정과 read-only 검토만 허용
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
-- 단계 2 production 구현: `S2-D1-CODE`, `S2-D2-CODE`, `S2-D3-CODE` 완료
-- 단계 2 test source 및 fixture: `S2-D1-TEST`, `S2-D2-TEST` 완료, `S2-D3-TEST` 작성 완료 및 검수 대기
+- 단계 2 production 구현: `S2-D1-CODE`, `S2-D2-CODE`, `S2-D3-CODE` 승인 완료, `S2-D4-CODE` 구현 완료 및 검수 대기
+- 단계 2 test source 및 fixture: `S2-D1-TEST`, `S2-D2-TEST`, `S2-D3-TEST` 승인 완료
 - 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-15-stage-2-d3-test.md`
-- 직전 test 검증 기록: `docs/verification/2026-08-14-stage-2-d2-test.md`
+- 현재 검증 기록: `docs/verification/2026-08-15-stage-2-d4-code.md`
+- 직전 test 검증 기록: `docs/verification/2026-08-15-stage-2-d3-test.md`
 - 최근 검증 기록: `docs/verification/2026-08-14-stage-1.md`
 
-다음 작업은 이 문서, 단계 2 구현 계획과 `S2-D3-TEST` 검증 기록을 먼저 읽어야 한다. 현재 test는 사용자 검수 대기 상태다. 승인되면 발견 production 결함이 없으므로 `S2-D3-FIX`를 생략 완료로 기록한 뒤 `S2-D4-CODE`만 진행한다.
+다음 작업은 이 문서, 단계 2 구현 계획과 `S2-D4-CODE` 검증 기록을 먼저 읽어야 한다. 현재 production code는 사용자 검수 대기 상태다. 승인되면 `S2-D4-TEST`의 동시 수정 및 write/flush/replace 실패 주입 test만 작성한다.
 
 ## 2. 확정된 기술 기준선
 
@@ -113,14 +113,15 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S2-D3-TEST` |
-| 제출 내용 | path test 7개와 runtime filesystem fixture 작성 및 자동 검증 완료 |
-| production code | Win32 path adapter와 workspace path resolution 구현 완료 |
-| test code 및 fixture | runtime temp directory를 사용하는 path test 7개 완료 |
-| bug 수정 | 수행하지 않음, 발견 production 결함 없음 |
+| 계획 ID | `S2-D4-CODE` |
+| 제출 내용 | revision token, 원자적 save, backup 및 명시적 recovery production code 구현 완료 |
+| production code | project store 계약, JSON load/save pipeline과 Win32 atomic file adapter 구현 완료 |
+| test code 및 fixture | 이번 체크포인트에서 변경하지 않음 |
+| bug 수정 | `S2-D3-FIX`는 발견 production 결함이 없어 사용자 지시에 따라 생략 완료 |
+| 변경 파일 | `src/application/project_store.*`, `src/application/workspace_document_file_system.h`, `src/infrastructure/json_project_store.*`, `src/platform/win32/workspace_document_file_system.*`, `src/CMakeLists.txt` 및 상태 문서 |
 | 검증 | VS2022/VS2026 Debug build 및 전체 CTest 각각 41/41, format/style/diff 검사 통과 |
-| 승인 대기 | `S2-D3-TEST` test 검수 |
-| 승인 뒤 다음 작업 | `S2-D3-FIX` 생략 완료 기록 후 `S2-D4-CODE`만 허용 |
+| 승인 대기 | `S2-D4-CODE` 코드 검수 |
+| 승인 뒤 다음 작업 | `S2-D4-TEST` save/recovery test 작성만 허용 |
 
 ### 8.2 단계 2 진행 원장
 
@@ -134,9 +135,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S2-D2-TEST` schema/parser test | 승인 완료 | 사용자가 구현 진행을 지시함 |
 | `S2-D2-FIX` schema/parser bug 수정 | 생략 완료 | 발견 production 결함 없음 |
 | `S2-D3-CODE` path production code | 승인 완료 | 사용자가 작성을 지시함 |
-| `S2-D3-TEST` path test | 사용자 검수 대기 | test 7개 및 runtime fixture 완료, 양 toolchain 전체 41/41 통과 |
-| `S2-D3-FIX` path bug 수정 | 시작 전 | 발견 production 결함 없음, test 승인 뒤 생략 여부 확정 |
-| `S2-D4-CODE` save/recovery production code | 시작 전 | 앞 체크포인트 승인 필요 |
+| `S2-D3-TEST` path test | 승인 완료 | test 7개 및 runtime fixture 완료, 양 toolchain 전체 41/41 통과 |
+| `S2-D3-FIX` path bug 수정 | 생략 완료 | 발견 production 결함 없음 |
+| `S2-D4-CODE` save/recovery production code | 사용자 검수 대기 | revision token, atomic save, backup 및 explicit recovery 구현, 양 toolchain 전체 41/41 통과 |
 | `S2-D4-TEST` save/recovery test | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D4-FIX` save/recovery bug 수정 | 시작 전 | 앞 체크포인트 승인 필요 |
 | `S2-D5-CODE` launch path production code | 시작 전 | 앞 체크포인트 승인 필요 |

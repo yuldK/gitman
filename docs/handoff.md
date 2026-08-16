@@ -3,19 +3,19 @@
 ## 1. 현재 상태
 
 - 기준일: 2026-08-16
-- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증
+- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 구현 및 자동 검증
 - 현재 단계: 단계 2 도메인과 설정 저장소
-- 현재 체크포인트: `S2-D5-TEST` launch path test 4개 및 양 toolchain 검증 완료, 사용자 test 검수 대기
-- 다음 허용 작업: 사용자 승인 전에는 상태 문서 보정과 read-only 검토만 허용
+- 현재 체크포인트: `S2-V1` 전체 자동 검증 완료, 단계 2 최종 사용자 승인 대기
+- 다음 허용 작업: 단계 2 최종 승인 전에는 상태 문서 보정과 read-only 검토만 허용
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
 - 단계 2 production 구현: `S2-D1-CODE`, `S2-D2-CODE`, `S2-D3-CODE`, `S2-D4-CODE`, `S2-D5-CODE` 승인 완료
-- 단계 2 test source 및 fixture: `S2-D1-TEST`, `S2-D2-TEST`, `S2-D3-TEST`, `S2-D4-TEST` 승인 완료, `S2-D5-TEST` 작성 및 검증 완료 후 검수 대기
+- 단계 2 test source 및 fixture: `S2-D1-TEST`~`S2-D5-TEST` 승인 완료, 각 FIX 체크포인트는 production 결함이 없어 생략 완료
 - 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-2-d5-test.md`
-- 직전 code 검증 기록: `docs/verification/2026-08-16-stage-2-d5-code.md`
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-2.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-2-d5-test.md`
 - 최근 검증 기록: `docs/verification/2026-08-14-stage-1.md`
 
-다음 작업은 이 문서, 단계 2 구현 계획과 `S2-D5-TEST` 검증 기록을 먼저 읽어야 한다. 현재 test 결과는 사용자 검수 대기 상태다. 승인 전에는 `S2-D5-FIX`를 생략하거나 `S2-V1`을 시작하지 않는다. 승인되고 무결함 결과가 확인되면 `S2-D5-FIX`를 수정 없이 생략한 뒤 단계 2 최종 검증만 진행한다.
+다음 작업은 이 문서, 단계 2 구현 계획과 단계 2 최종 검증 기록을 먼저 읽어야 한다. `S2-D5-TEST` 승인, 무결함 `S2-D5-FIX` 생략과 `S2-V1` 자동 검증은 완료됐다. 사용자가 단계 2를 최종 승인하기 전에는 단계 3 프로세스 실행 계층을 시작하지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -101,7 +101,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 ## 7. 아직 하지 않은 작업
 
 - Git/SVN command 구현
-- 단계 2의 launch path test 승인, 조건부 fix와 최종 검증
+- 단계 2 최종 사용자 승인
 - 단계 3 이후의 프로세스 실행, provider, 탐색 및 실제 카드 UI
 - thread message API 상세 설계와 구현
 
@@ -113,15 +113,16 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S2-D5-TEST` |
-| 제출 내용 | launch path 없음, 정상, 중복 및 잘못된 확장자 test 작성 완료 |
-| production code | `application_options`에 UTF-8 `workspace_document_path`와 단일 경로 및 확장자 검증 추가 |
-| test code 및 fixture | `application_options_tests.cpp`에 launch path test 4개 추가, fixture 없음 |
-| bug 수정 | production source 수정 없음, `S2-D5-FIX` 후보 없음 |
-| 변경 파일 | `tests/application_options_tests.cpp` 및 상태 문서 |
-| 검증 | VS2022/VS2026 Debug build, 신규 subset 각각 4/4 및 전체 CTest 각각 54/54, 신규 test format과 source style/diff 검사 통과 |
-| 승인 대기 | `S2-D5-TEST` test 검수 |
-| 승인 뒤 다음 작업 | 무결함 확인에 따라 `S2-D5-FIX` 생략 후 `S2-V1`만 허용 |
+| 계획 ID | `S2-V1` |
+| 제출 내용 | 단계 2 전체 build/test/analyze/install 및 최종 검증 기록 완료 |
+| production code | D1 도메인부터 D5 positional launch path까지 모두 승인 완료 |
+| test code 및 fixture | D1~D5 test 승인 완료, VS2022/VS2026 전체 CTest 각각 54/54 |
+| bug 수정 | 모든 FIX 체크포인트는 production 결함 후보가 없어 생략 완료 |
+| 기준선 보정 | 기존 format 위반 3개 source를 clang-format 19.1.5로만 정렬, 의미 변경 없음 |
+| install | `bin/gitman.exe` 한 파일, 6,255,616 byte, 설치본 renderer smoke 4/4 통과 |
+| 검증 | VS2022 Debug/Release, `/analyze`, VS2026 Debug, aggregate format/style, install 및 PE 의존성 검사 통과 |
+| 승인 대기 | 단계 2 최종 사용자 검수 |
+| 승인 뒤 다음 작업 | 단계 3 프로세스 실행 계층 계획 및 첫 체크포인트만 허용 |
 
 ### 8.2 단계 2 진행 원장
 
@@ -141,14 +142,14 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S2-D4-TEST` save/recovery test | 승인 완료 | 사용자가 진행을 지시함 |
 | `S2-D4-FIX` save/recovery bug 수정 | 생략 완료 | 발견 production 결함 없음 |
 | `S2-D5-CODE` launch path production code | 승인 완료 | 사용자가 계속 진행을 지시함 |
-| `S2-D5-TEST` launch path test | 사용자 검수 대기 | test 4개, 양 toolchain 전체 54/54 통과, production 결함 없음 |
-| `S2-D5-FIX` launch contract bug 수정 | 시작 전 | 후보 없음, test 승인 뒤 생략 여부 확정 |
-| `S2-V1` 단계 2 최종 검증 | 시작 전 | 전체 체크포인트 승인 필요 |
+| `S2-D5-TEST` launch path test | 승인 완료 | test 4개, 양 toolchain 전체 54/54 통과, production 결함 없음 |
+| `S2-D5-FIX` launch contract bug 수정 | 생략 완료 | 발견 production 결함 없음 |
+| `S2-V1` 단계 2 최종 검증 | 자동 검증 완료 | 전체 matrix 통과, 단계 2 최종 사용자 승인 대기 |
 
 ### 8.3 미해결 또는 보류 사항
 
 - `.verison-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
 - unknown field 보존, 상대 path 기준, migration과 backup 정책은 계획대로 승인됐다.
-- aggregate `gitman_format_check`는 이번 diff에 없는 기존 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`의 clang-format 위반으로 실패한다. 신규 test 직접 dry-run과 source style 111개 파일 검사는 통과했으며 이번 test 체크포인트에서는 기존 source를 수정하지 않았다.
+- 기존 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`의 aggregate clang-format 기준선 위반은 `S2-V1`에서 프로젝트 formatter로만 정렬해 해소했다. 이후 모든 build, test, 분석과 aggregate format/style 검사를 다시 통과시켰다.
 - 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 단계 2 진행 승인과 별도로 보존한다.
 - ADR-004의 범용 메시지 구조 구현 차단 조건은 그대로 유효하다.

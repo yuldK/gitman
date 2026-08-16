@@ -4,8 +4,8 @@
 
 - 작성일: 2026-08-14
 - 대상: 구현 단계 2
-- 현재 상태: `S2-D5-TEST` launch path test 4개 및 양 toolchain 자동 검증 완료, 사용자 test 검수 대기
-- 현재 검수 게이트: `S2-D5-TEST`
+- 현재 상태: `S2-V1` 전체 자동 검증 완료, 단계 2 최종 사용자 승인 대기
+- 현재 검수 게이트: 단계 2 최종 검수
 - 관련 요구사항: REQ-001, REQ-002, REQ-004, REQ-009~REQ-013, REQ-016, NFR-005~NFR-006, NFR-009
 
 사용자는 `S2-P0` 계획을 승인하면서 설정 파일을 solution 및 `.code-workspace`와 같은 작업공간 문서로 변경했다. 확장자는 사용자 지시의 철자를 그대로 적용한 `.verison-list`다. 이후 작업은 7장의 체크포인트 순서를 따른다.
@@ -224,8 +224,9 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - `S2-D4-TEST`: fake adapter와 Win32 임시 디렉터리 test 9개 작성 및 사용자 승인 완료
 - `S2-D4-FIX`: production 결함 후보가 없어 사용자 진행 지시에 따라 생략 완료
 - `S2-D5-CODE`: 선택적 `.verison-list` positional path parsing 및 store 진입 값 보존 production 구현과 사용자 승인 완료
-- `S2-D5-TEST`: 경로 없음, Unicode 및 option 순서, 중복 path와 잘못된 확장자 test 4개 작성 및 양 toolchain 전체 CTest 54/54 완료, 사용자 test 검수 대기
-- `S2-D5-FIX`: production 결함 후보 없음, test 승인 전에는 생략 처리하지 않음
+- `S2-D5-TEST`: 경로 없음, Unicode 및 option 순서, 중복 path와 잘못된 확장자 test 4개 작성 및 양 toolchain 전체 CTest 54/54 완료, 사용자 승인 완료
+- `S2-D5-FIX`: production 결함 후보가 없어 사용자 진행 지시에 따라 생략 완료
+- `S2-V1`: VS2022 Debug/Release, VS2022 `/analyze`, VS2026 Debug, 전체 CTest 54/54, aggregate format/style, install 및 설치본 smoke/의존성 검증 완료, 단계 2 최종 사용자 승인 대기
 
 ## 8. 테스트 계획
 
@@ -278,7 +279,7 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - backup을 자동 적용하지 않고 명시적 복구 후보로 제공한다.
 - 실행 파일이 하나의 `.verison-list` positional path를 작업공간 문서 진입 값으로 인식한다.
 - VS2022 Debug/Release, VS2026 Debug, source style과 관련 test가 통과한다.
-- `docs/verification/2026-08-14-stage-2.md`, `docs/change_log.md`와 `docs/handoff.md`가 최종 상태를 기록한다.
+- `docs/verification/2026-08-16-stage-2.md`, `docs/change_log.md`와 `docs/handoff.md`가 최종 상태를 기록한다.
 
 ## 10. 계획 검수 항목
 

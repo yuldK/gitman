@@ -204,20 +204,19 @@ namespace gitman::win32 {
                 case WM_ERASEBKGND:
                     return 1;
 
-                case WM_PAINT:
+                case WM_PAINT: {
+                    PAINTSTRUCT paint {};
+                    BeginPaint(window_, &paint);
+                    std::u8string error {};
+                    const bool rendered { renderer_ != nullptr && render_one_frame(error) };
+                    EndPaint(window_, &paint);
+                    if (rendered == false)
                     {
-                        PAINTSTRUCT paint {};
-                        BeginPaint(window_, &paint);
-                        std::u8string error {};
-                        const bool rendered { renderer_ != nullptr && render_one_frame(error) };
-                        EndPaint(window_, &paint);
-                        if (rendered == false)
-                        {
-                            report_runtime_error(error);
-                            PostQuitMessage(1);
-                        }
-                        return 0;
+                        report_runtime_error(error);
+                        PostQuitMessage(1);
                     }
+                    return 0;
+                }
                 case WM_DESTROY:
                     renderer_.reset();
                     PostQuitMessage(0);
@@ -369,9 +368,7 @@ namespace gitman::win32 {
                 if (menu == nullptr)
                     return;
 
-                const auto command {
-                    static_cast<WPARAM>(TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, position.x, position.y, 0, window_, nullptr))
-                };
+                const auto command { static_cast<WPARAM>(TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, position.x, position.y, 0, window_, nullptr)) };
 
                 if (command != 0)
                     PostMessageW(window_, WM_SYSCOMMAND, command, 0);
@@ -416,9 +413,7 @@ namespace gitman::win32 {
 
                 HIGHCONTRASTW high_contrast {};
                 high_contrast.cbSize = sizeof(high_contrast);
-                const bool high_contrast_enabled = FALSE != SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(high_contrast), &high_contrast, 0)
-                    && (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0
-                ;
+                const bool high_contrast_enabled = FALSE != SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(high_contrast), &high_contrast, 0) && (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
 
                 smoke_view_state state {};
                 state.width = std::max(1L, client_rectangle.right - client_rectangle.left);

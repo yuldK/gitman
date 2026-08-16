@@ -1,5 +1,28 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 2 최종 자동 검증
+
+### 사용자 지시
+
+- `S2-D5-TEST` 결과 이후 다음 작업을 계속 진행한다.
+- 이를 `S2-D5-TEST` 승인, 무결함 `S2-D5-FIX` 생략과 `S2-V1` 진행 지시로 처리했다.
+
+### 반영 내용
+
+- VS2022 Debug/Release build와 각 전체 CTest 54/54가 통과했다.
+- VS2022 `/analyze` build가 경고 없이 통과했고 VS2026 Debug build 및 전체 CTest 54/54도 통과했다.
+- 기존 aggregate format 기준선 위반 3개 파일을 clang-format 19.1.5로만 정렬하고 모든 build, test와 분석을 다시 통과시켰다.
+- aggregate `gitman_format_check`와 source style 검사가 통과했다.
+- Release install tree에 6,255,616 byte의 `bin/gitman.exe` 한 파일만 생성되는 것을 확인했다.
+- 설치본의 CPU, auto, 강제 fallback과 Direct3D smoke test가 모두 종료 코드 0으로 통과했다.
+- `dumpbin /dependents`로 Windows 시스템 DLL 외의 VC runtime, 프로젝트 및 제3자 DLL이 없음을 확인했다.
+- 결과를 `docs/verification/2026-08-16-stage-2.md`에 기록했다.
+
+### 다음 작업 제한
+
+- `S2-V1` 자동 완료 조건은 충족했으며 단계 2 최종 사용자 검수 대기 상태다.
+- 사용자 최종 승인 전에는 단계 3 프로세스 실행 계층을 시작하지 않는다.
+
 ## 2026-08-16 - 단계 2 positional launch path test 작성
 
 ### 사용자 지시

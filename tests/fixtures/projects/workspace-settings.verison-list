@@ -1,0 +1,16 @@
+{
+    "schema_version": 1,
+    "settings": {
+        "git_executable": "C:/Program Files/Git/cmd/git.exe",
+        "svn_executable": "",
+        "future/option~v2": {
+            "retained": true
+        }
+    },
+    "projects": [
+        {
+            "id": "alpha",
+            "path": "C:/repositories/alpha"
+        }
+    ]
+}

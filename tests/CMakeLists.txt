@@ -14,6 +14,8 @@ add_executable(gitman_tests
     dependency_versions_tests.cpp
     domain_model_tests.cpp
     embedded_assets_tests.cpp
+    helpers/vcs_test_doubles.cpp
+    helpers/vcs_test_doubles.h
     json_project_store_tests.cpp
     process_cancellation_tests.cpp
     process_execution_tests.cpp
@@ -25,16 +27,25 @@ add_executable(gitman_tests
     secret_masking_tests.cpp
     ui_theme_tests.cpp
     utf8_tests.cpp
+    vcs_domain_tests.cpp
+    vcs_error_classifier_tests.cpp
+    vcs_execution_policy_tests.cpp
+    vcs_tool_discovery_tests.cpp
+    vcs_version_tests.cpp
     win32_process_runner_tests.cpp
     win32_text_transcoder_tests.cpp)
 add_dependencies(gitman_tests gitman_verify_assets gitman_process_test_child)
-target_include_directories(gitman_tests PRIVATE "${GITMAN_SOURCE_DIRECTORY}")
+target_include_directories(gitman_tests
+    PRIVATE
+        "${GITMAN_SOURCE_DIRECTORY}"
+        "${GITMAN_TEST_DIRECTORY}")
 target_compile_definitions(gitman_tests
     PRIVATE
         GITMAN_TEST_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/projects")
 target_link_libraries(gitman_tests
     PRIVATE
         gitman_process
+        gitman_vcs
         gitman_workspace
         gitman_win32
         Catch2::Catch2WithMain)

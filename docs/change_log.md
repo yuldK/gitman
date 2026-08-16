@@ -1,5 +1,44 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 4 `S4-D1-TEST` 계약 test 작성
+
+### 사용자 지시
+
+- `S4-D1-CODE`를 승인하고 다음 단계를 진행한다.
+
+### 반영 내용
+
+- `tests/helpers/vcs_test_doubles.h/.cpp`에 요청을 기록하는 `fake_process_runner`와 등록한 경로만 존재하는 `fake_vcs_file_probe`를 추가했다. 계획의 `fake_process_runner.*` 대신 probe 대역까지 담는 이름으로 정했다.
+- `tests/vcs_version_tests.cpp`에 Git과 SVN banner 파싱, patch 생략 표기, 첫 줄 계약과 최소 버전 경계 test 5개를 추가했다.
+- `tests/vcs_tool_discovery_tests.cpp`에 `PATH` 분해, 후보 순서, 도구 조사, 버전 미달과 판독 실패, 지정 경로 정책과 registry test 13개를 추가했다.
+- `tests/vcs_error_classifier_tests.cpp`에 로캘 독립 분류 test 12개를 추가했다. 같은 실패의 영어 출력과 한국어 출력이 같은 분류를 내는지 쌍으로 단정한다.
+- HTTP 상태 오탐 방지를 `issue-403`, `branch 404`, `error: 4031`, `error: 1401`로 고정했다.
+- 프로세스 결과가 stderr 검사보다 우선한다는 것과 취소가 마지막 판정을 오류로 덮지 않는다는 것을 확인했다.
+- `tests/vcs_execution_policy_tests.cpp`에 명령 부류별 한도, 비대화형 환경 override, 공통 인자 순서와 단계 3 요청 검증 통과 test 8개를 추가했다.
+- `LC_ALL`, `LANG`, `LANGUAGE` override가 없고 모든 명령이 `active_code_page_fallback`을 쓰는 것을 test로 고정했다.
+- `tests/vcs_domain_tests.cpp`에 도구 값, 버전 비교, 작업 트리 안전성, snapshot 기본값과 switch 및 update 열거형 test 11개를 추가했다.
+- **모든 VCS가 없는 환경**을 전용 test로 고정했다. 두 도구 모두 `not_found`, 프로세스를 하나도 만들지 않음, 진단이 모두 warning, `none_available()` 참을 단정한다.
+- 한쪽만 없는 구성에서 나머지 도구가 계속 동작하는 것과, 조사 전 registry가 경고를 내지 않는 것도 확인했다.
+- `tests/project_schema_tests.cpp`에 `settings` parse test 3개와 `workspace-settings.verison-list` fixture를 추가했다. 기존 fixture가 그대로 열리는 회귀도 함께 단정한다.
+- `tests/json_project_store_tests.cpp`에 `settings` 저장 test 4개를 추가했다. 알 수 없는 키 보존, 기본값 문서에 필드를 만들지 않음, 값 생성 시 기록, 상대 경로 저장 거부를 확인한다.
+- `tests/domain_model_tests.cpp`에 새 diagnostic code 11개, `authentication_required` 이름과 `workspace_settings` 기본값 단정을 추가했다.
+- `gitman_tests`에 `gitman_vcs` 링크와 `${GITMAN_TEST_DIRECTORY}` include 경로를 추가했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 195/195 통과했고 `/analyze`도 무경고로 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- production source를 변경하지 않았고 `S4-D1-FIX` 후보도 발견하지 않았다.
+- 결과를 `docs/verification/2026-08-16-stage-4-d1-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-001, REQ-002, REQ-006, REQ-007, REQ-009~REQ-013, REQ-017
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D1-TEST`는 사용자 test 검수 대기 상태다.
+- 발견 production 결함이 없어 `S4-D1-FIX`는 사용자 확인 후 생략한다.
+- 승인 전에는 `S4-D2-CODE`의 Git 명령 조립과 출력 파서를 작성하지 않는다.
+
 ## 2026-08-16 - 단계 4 `S4-D1-CODE` 계약과 도구 발견 구현
 
 ### 사용자 지시

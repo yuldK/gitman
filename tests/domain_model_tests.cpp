@@ -31,6 +31,17 @@ TEST_CASE("Workspace documents expose approved defaults", "[domain][project]")
     REQUIRE(document.document_path.empty());
     REQUIRE(document.projects.empty());
 
+    // `settings`가 없는 문서는 전부 기본값이며 실행 파일은 자동 탐색한다.
+    REQUIRE(document.settings.is_default());
+    REQUIRE(document.settings.git_executable.empty());
+    REQUIRE(document.settings.svn_executable.empty());
+    REQUIRE(document.settings == gitman::workspace_settings {});
+
+    gitman::workspace_settings configured {};
+    configured.git_executable = u8"C:/Program Files/Git/cmd/git.exe";
+    REQUIRE_FALSE(configured.is_default());
+    REQUIRE_FALSE(configured == gitman::workspace_settings {});
+
     const gitman::project_definition project {};
     REQUIRE(project.id.value.empty());
     REQUIRE(project.path.original.empty());
@@ -112,6 +123,8 @@ TEST_CASE("Repository snapshots expose neutral defaults and stable names", "[dom
     REQUIRE(u8_equal(gitman::remote_sync_state_name(gitman::remote_sync_state::diverged), u8"diverged"));
     REQUIRE(u8_equal(gitman::remote_sync_state_name(gitman::remote_sync_state::local_only), u8"local_only"));
     REQUIRE(u8_equal(gitman::remote_sync_state_name(gitman::remote_sync_state::remote_target_missing), u8"remote_target_missing"));
+    // ADR-003이 요구한 대로 인증 실패를 네트워크 단절과 구분한다.
+    REQUIRE(u8_equal(gitman::remote_sync_state_name(gitman::remote_sync_state::authentication_required), u8"authentication_required"));
     REQUIRE(u8_equal(gitman::remote_sync_state_name(gitman::remote_sync_state::offline), u8"offline"));
     REQUIRE(u8_equal(gitman::remote_sync_state_name(gitman::remote_sync_state::error), u8"error"));
     REQUIRE(u8_equal(gitman::working_tree_state_name(gitman::working_tree_state::unknown), u8"unknown"));
@@ -197,6 +210,17 @@ TEST_CASE("Diagnostics expose structured defaults and stable names", "[domain][d
         diagnostic_name_case { gitman::diagnostic_code::process_timed_out, u8"process_timed_out" },
         diagnostic_name_case { gitman::diagnostic_code::process_cancelled, u8"process_cancelled" },
         diagnostic_name_case { gitman::diagnostic_code::process_output_truncated, u8"process_output_truncated" },
+        diagnostic_name_case { gitman::diagnostic_code::vcs_tool_not_found, u8"vcs_tool_not_found" },
+        diagnostic_name_case { gitman::diagnostic_code::vcs_tool_too_old, u8"vcs_tool_too_old" },
+        diagnostic_name_case { gitman::diagnostic_code::vcs_tool_version_unreadable, u8"vcs_tool_version_unreadable" },
+        diagnostic_name_case { gitman::diagnostic_code::vcs_tool_path_invalid, u8"vcs_tool_path_invalid" },
+        diagnostic_name_case { gitman::diagnostic_code::vcs_command_failed, u8"vcs_command_failed" },
+        diagnostic_name_case { gitman::diagnostic_code::vcs_output_unparsable, u8"vcs_output_unparsable" },
+        diagnostic_name_case { gitman::diagnostic_code::authentication_required, u8"authentication_required" },
+        diagnostic_name_case { gitman::diagnostic_code::remote_unreachable, u8"remote_unreachable" },
+        diagnostic_name_case { gitman::diagnostic_code::repository_not_found, u8"repository_not_found" },
+        diagnostic_name_case { gitman::diagnostic_code::update_blocked, u8"update_blocked" },
+        diagnostic_name_case { gitman::diagnostic_code::switch_target_rejected, u8"switch_target_rejected" },
     };
     for (const auto& diagnostic_name : diagnostic_names)
         REQUIRE(u8_equal(gitman::diagnostic_code_name(diagnostic_name.code), diagnostic_name.name));

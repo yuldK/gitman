@@ -106,6 +106,74 @@ TEST_CASE("Schema parser loads complete and defaulted projects", "[workspace][sc
     REQUIRE(beta.svn_switch_targets.empty());
 }
 
+TEST_CASE("Schema parser reads workspace settings and keeps unknown keys", "[workspace][schema][settings]")
+{
+    const std::u8string source { load_fixture("workspace-settings.verison-list") };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+
+    REQUIRE(result.document.has_value());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE(result.document->projects.size() == 1);
+    REQUIRE(u8_equal(result.document->settings.git_executable, u8"C:/Program Files/Git/cmd/git.exe"));
+    // 빈 값은 "지정하지 않음"이며 자동 탐색으로 간다.
+    REQUIRE(result.document->settings.svn_executable.empty());
+    REQUIRE_FALSE(result.document->settings.is_default());
+    // 원문 byte를 그대로 보존해야 저장 시 알 수 없는 키를 되돌려 쓸 수 있다.
+    REQUIRE(u8_equal(result.shadow.source_json, source));
+
+    const gitman::diagnostic* unknown { find_diagnostic(result, gitman::diagnostic_code::unknown_field, u8"/settings/future~1option~0v2") };
+    REQUIRE(unknown != nullptr);
+    REQUIRE(unknown->severity == gitman::diagnostic_severity::warning);
+    REQUIRE_FALSE(unknown->source.project_index.has_value());
+}
+
+TEST_CASE("Documents without settings keep working with defaults", "[workspace][schema][settings]")
+{
+    // 스키마 버전을 올리지 않았으므로 `settings`를 모르는 기존 문서도 그대로 열린다.
+    for (const std::string_view fixture : { std::string_view { "valid-complete.verison-list" }, std::string_view { "unknown-fields.verison-list" } })
+    {
+        const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(load_fixture(fixture), test_document_path) };
+        REQUIRE(result.document.has_value());
+        REQUIRE(result.document->settings.is_default());
+    }
+
+    constexpr std::u8string_view explicit_null { u8"{\"schema_version\":1,\"settings\":null,\"projects\":[]}" };
+    const gitman::workspace_document_parse_result null_result { gitman::parse_workspace_document_json(explicit_null, test_document_path) };
+    REQUIRE(null_result.document.has_value());
+    REQUIRE(null_result.document->settings.is_default());
+    // `null`은 "값 없음"이므로 경고를 만들지 않는다.
+    REQUIRE_FALSE(null_result.has_warnings());
+    REQUIRE_FALSE(null_result.has_errors());
+}
+
+TEST_CASE("Settings executables must be absolute or empty", "[workspace][schema][settings]")
+{
+    // 상대 경로는 실행 시점의 현재 디렉터리에 따라 다른 프로그램을 가리킬 수 있다.
+    constexpr std::u8string_view relative { u8"{\"schema_version\":1,\"settings\":{\"git_executable\":\"git.exe\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result relative_result { gitman::parse_workspace_document_json(relative, test_document_path) };
+    REQUIRE(relative_result.has_errors());
+    const gitman::diagnostic* rejected { find_diagnostic(relative_result, gitman::diagnostic_code::vcs_tool_path_invalid, u8"/settings/git_executable") };
+    REQUIRE(rejected != nullptr);
+    REQUIRE(rejected->severity == gitman::diagnostic_severity::error);
+    // 거부한 값은 문서에 남기지 않는다.
+    REQUIRE(relative_result.document.has_value());
+    REQUIRE(relative_result.document->settings.git_executable.empty());
+
+    constexpr std::u8string_view wrong_type { u8"{\"schema_version\":1,\"settings\":{\"svn_executable\":7},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result type_result { gitman::parse_workspace_document_json(wrong_type, test_document_path) };
+    REQUIRE(find_diagnostic(type_result, gitman::diagnostic_code::invalid_project_field, u8"/settings/svn_executable") != nullptr);
+
+    constexpr std::u8string_view wrong_root { u8"{\"schema_version\":1,\"settings\":[],\"projects\":[]}" };
+    const gitman::workspace_document_parse_result root_result { gitman::parse_workspace_document_json(wrong_root, test_document_path) };
+    REQUIRE(find_diagnostic(root_result, gitman::diagnostic_code::invalid_project_field, u8"/settings") != nullptr);
+
+    constexpr std::u8string_view unc { u8"{\"schema_version\":1,\"settings\":{\"svn_executable\":\"\\\\\\\\build\\\\tools\\\\svn.exe\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result unc_result { gitman::parse_workspace_document_json(unc, test_document_path) };
+    REQUIRE_FALSE(unc_result.has_errors());
+    REQUIRE(unc_result.document.has_value());
+    REQUIRE(u8_equal(unc_result.document->settings.svn_executable, u8"\\\\build\\tools\\svn.exe"));
+}
+
 TEST_CASE("Schema parser accepts minimal and empty documents", "[workspace][schema]")
 {
     constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };

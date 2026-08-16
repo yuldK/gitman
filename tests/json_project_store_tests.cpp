@@ -413,6 +413,112 @@ TEST_CASE("Project store preserves shadow fields and canonical output", "[worksp
     REQUIRE(u8_equal(*backup, source));
 }
 
+TEST_CASE("Project store round-trips workspace settings and unknown keys", "[workspace][store][save][settings]")
+{
+    constexpr std::u8string_view source {
+        u8R"({
+    "schema_version": 1,
+    "settings": {
+        "git_executable": "C:/tools/git.exe",
+        "future_setting": { "keep": true }
+    },
+    "projects": []
+})",
+    };
+
+    fake_workspace_document_file_system file_system {};
+    file_system.set_file(fake_document_path, source);
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE(loaded.document.has_value());
+    REQUIRE_FALSE(loaded.has_errors());
+    REQUIRE(u8_equal(loaded.document->settings.git_executable, u8"C:/tools/git.exe"));
+
+    // 환경설정 화면이 SVN 경로를 채우는 상황이다.
+    loaded.document->settings.svn_executable = u8"D:/tools/svn/bin/svn.exe";
+
+    const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+
+    const std::u8string* output { file_system.file_bytes(fake_document_path) };
+    REQUIRE(output != nullptr);
+    REQUIRE(output->find(u8"\"git_executable\": \"C:/tools/git.exe\"") != std::u8string::npos);
+    REQUIRE(output->find(u8"\"svn_executable\": \"D:/tools/svn/bin/svn.exe\"") != std::u8string::npos);
+    // 알 수 없는 키는 project 필드와 같은 정책으로 보존한다.
+    REQUIRE(output->find(u8"\"future_setting\": {") != std::u8string::npos);
+
+    const gitman::project_store_load_result reloaded { store.load(fake_document_path) };
+    REQUIRE(reloaded.document.has_value());
+    REQUIRE(u8_equal(reloaded.document->settings.git_executable, u8"C:/tools/git.exe"));
+    REQUIRE(u8_equal(reloaded.document->settings.svn_executable, u8"D:/tools/svn/bin/svn.exe"));
+}
+
+TEST_CASE("Project store does not add a settings field to documents that lack one", "[workspace][store][save][settings]")
+{
+    constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };
+
+    fake_workspace_document_file_system file_system {};
+    file_system.set_file(fake_document_path, source);
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    const gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE(loaded.document.has_value());
+    REQUIRE(loaded.document->settings.is_default());
+
+    const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+
+    const std::u8string* output { file_system.file_bytes(fake_document_path) };
+    REQUIRE(output != nullptr);
+    // 기본값만 있는 문서에 필드를 만들지 않아 기존 문서 형태를 바꾸지 않는다.
+    REQUIRE(output->find(u8"\"settings\"") == std::u8string::npos);
+    REQUIRE(u8_equal(*output, u8"{\r\n    \"schema_version\": 1,\r\n    \"projects\": []\r\n}\r\n"));
+}
+
+TEST_CASE("Project store writes settings once a value is configured", "[workspace][store][save][settings]")
+{
+    fake_workspace_document_file_system file_system {};
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    const gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE_FALSE(loaded.document.has_value());
+
+    gitman::workspace_document document { empty_document(fake_document_path) };
+    document.settings.git_executable = u8"C:/tools/git.exe";
+
+    const gitman::project_store_save_result saved { store.save(fake_document_path, document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+
+    constexpr std::u8string_view expected {
+        u8"{\r\n    \"schema_version\": 1,\r\n    \"settings\": {\r\n        \"git_executable\": \"C:/tools/git.exe\"\r\n    },\r\n    \"projects\": []\r\n}\r\n",
+    };
+    REQUIRE(u8_equal(file_system.last_candidate_bytes(), expected));
+    // 지정하지 않은 SVN 경로는 빈 항목으로 채우지 않는다.
+    REQUIRE(file_system.last_candidate_bytes().find(u8"svn_executable") == std::u8string::npos);
+}
+
+TEST_CASE("Project store refuses to save relative executable paths", "[workspace][store][save][settings]")
+{
+    fake_workspace_document_file_system file_system {};
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    const gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    gitman::workspace_document document { empty_document(fake_document_path) };
+    document.settings.git_executable = u8"git.exe";
+
+    // 저장 직전 재검증이 상대 경로를 걸러내므로 손상된 문서가 디스크에 남지 않는다.
+    const gitman::project_store_save_result saved { store.save(fake_document_path, document, loaded.revision) };
+    REQUIRE_FALSE(saved.succeeded());
+    REQUIRE(find_diagnostic(saved.diagnostics, gitman::diagnostic_code::vcs_tool_path_invalid) != nullptr);
+    REQUIRE(file_system.atomic_commit_count() == 0);
+    REQUIRE_FALSE(file_system.has_file(fake_document_path));
+}
+
 TEST_CASE("Project store rejects stale exact byte revisions", "[workspace][store][concurrency]")
 {
     constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };

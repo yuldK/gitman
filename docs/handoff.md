@@ -5,14 +5,14 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-D1-CODE` 계약 production code 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D1-TEST` 계약 test 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-D1-CODE` 승인 후 `S4-D1-TEST` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D1-TEST` 승인과 무결함 `S4-D1-FIX` 생략 확인 후 `S4-D2-CODE` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d1-code.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d1-test.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d1-code.md`
 - 최근 검증 기록: `docs/verification/2026-08-16-stage-3.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
@@ -116,24 +116,24 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-D1-CODE` |
-| 제출 내용 | 도메인 확장, 문서 `settings` 스키마와 저장, provider/registry/probe 계약, 도구 탐색과 버전 비교, 실행 정책, 오류 분류기, `gitman_vcs` target |
-| production code | 신규 24개 파일과 기존 7개 파일 수정. 상세는 `docs/verification/2026-08-16-stage-4-d1-code.md` 4장 |
-| test code 및 fixture | 없음. 체크포인트 분리 규칙에 따라 `S4-D1-TEST`에서 작성한다. |
+| 계획 ID | `S4-D1-TEST` |
+| 제출 내용 | 계약 계층 test 56개와 `vcs_test_doubles` 도우미 |
+| production code | 변경 없음 |
+| test code 및 fixture | 신규 test source 6개, fixture 1개, 도우미 1쌍. 전체 CTest 139 → **195** |
 | bug 수정 | 없음 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 139/139, `/analyze` 무경고, aggregate format/style 통과. 임시 프로그램 수동 확인 69/69 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 195/195, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과 |
 | 발견 결함 | 없음 |
-| 승인 대기 | `S4-D1-CODE` 코드 검수 |
-| 승인 뒤 다음 작업 | `S4-D1-TEST` 한 구간만 허용 |
+| 승인 대기 | `S4-D1-TEST` test 검수 |
+| 승인 뒤 다음 작업 | 무결함 `S4-D1-FIX` 생략 후 `S4-D2-CODE` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
 | `S4-P0` 계획 | 승인 완료 | 1차 검수 결정을 반영해 개정. `docs/stage-4-plan.md` 10.1에 확정 사항 기록 |
-| `S4-D1-CODE` 계약과 도구 발견 | 제출, 검수 대기 | `docs/verification/2026-08-16-stage-4-d1-code.md` |
-| `S4-D1-TEST` | 시작 전 | 승인 전 착수 금지 |
-| `S4-D1-FIX` | 시작 전 | |
+| `S4-D1-CODE` 계약과 도구 발견 | 승인 완료 | `docs/verification/2026-08-16-stage-4-d1-code.md` |
+| `S4-D1-TEST` | 제출, 검수 대기 | test 56개, 전체 195/195. `docs/verification/2026-08-16-stage-4-d1-test.md` |
+| `S4-D1-FIX` | 시작 전 | 발견 production 결함이 없어 사용자 확인 후 생략 예정 |
 | `S4-D2-CODE` Git 로컬 상태 | 시작 전 | |
 | `S4-D2-TEST` | 시작 전 | |
 | `S4-D2-FIX` | 시작 전 | |
@@ -217,7 +217,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - REQ-017을 추가했다. 환경설정 화면 자체는 단계 6~7 범위다.
 - `is_absolute_windows_path`가 `application/process_request`에서 `domain/path_syntax`로 옮겨졌다. `process_request.h`가 새 헤더를 include하므로 기존 호출자는 그대로 동작한다.
 - `platform/win32/win32_vcs_file_probe.*`는 파일 위치는 계획대로지만 CMake target은 `gitman_win32_platform`이 아니라 `gitman_vcs`다. 단계 3의 `win32_process_runner`와 같은 이유로 계층 방향을 지키기 위한 선택이다.
-- 단계 4의 provider는 아직 없다. `S4-D1-CODE`는 계약과 도구 조사까지이며 Git/SVN 명령 조립은 `S4-D2-CODE` 이후다.
+- 단계 4의 provider는 아직 없다. `S4-D1`은 계약과 도구 조사까지이며 Git/SVN 명령 조립은 `S4-D2-CODE` 이후다.
+- test 도우미는 계획의 `helpers/fake_process_runner.*` 대신 `helpers/vcs_test_doubles.*`다. runner 대역과 file probe 대역을 함께 담기 때문이다. `gitman_tests`에 `${GITMAN_TEST_DIRECTORY}` include 경로가 추가됐다.
+- `fake_process_runner`는 받은 요청을 그대로 기록한다. 이후 구간에서 "검증 실패 시 명령을 만들지 않는다"는 REQ-007 수용 기준을 이 기록으로 단정한다.
 - 로컬 NTFS는 속성 조회를 부모 디렉터리 메타데이터로 처리해 deny ACE로도 `GetFileAttributesW`를 실패시킬 수 없다(호스트 실측). `inaccessible` 분기는 `project_path_state_from_error` 매핑 test로 검증한다.
 - `gitman_workspace`는 Win32 platform에 링크하지 않으며 경로 해석은 `project_path_resolver` 주입으로만 사용한다. 단계 6 조립 시 `win32::make_project_path_resolver()`를 주입해야 한다.
 - Catch2 test 전체에 CTest TIMEOUT 120초가 걸려 있다. 이를 넘는 통합 test는 개별 상향이 필요하다.

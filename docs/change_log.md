@@ -1,5 +1,34 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D4-CODE` timeout과 취소 구현
+
+### 사용자 지시
+
+- `S3-D3-TEST`를 승인하고 무결함 `S3-D3-FIX` 생략을 확인한 뒤 `S3-D4-CODE`를 진행한다.
+
+### 반영 내용
+
+- 이미 취소된 요청은 프로세스를 만들지 않고 `cancelled`로 반환하도록 했다.
+- `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` job을 만들고 자식을 `CREATE_SUSPENDED`로 시작한 뒤 배정하고 재개하도록 했다. 배정 전에 손자가 만들어지는 경쟁을 없앤다.
+- job을 만들거나 배정하지 못하면 warning 진단과 함께 단일 프로세스 종료로 물러서도록 했다. 제한된 환경에서 실행 자체가 막히지 않게 한 선택이다.
+- 취소 token 콜백이 event 하나를 신호하고 `WaitForMultipleObjects`가 프로세스와 취소 event를 함께 기다리도록 했다. polling이 없고 Win32 type도 상위 계층에 노출되지 않는다.
+- event handle을 registration보다 먼저 선언해 콜백이 닫힌 event를 신호하지 않도록 수명 순서를 고정했다.
+- timeout 초과와 취소에서 트리를 종료하고, 종료로 pipe가 닫혀 reader 스레드가 EOF를 보고 끝나도록 했다.
+- 강제 종료한 실행은 종료 코드를 채우지 않고 `timed_out` 또는 `cancelled`로 보고하며 그때까지 수집한 출력은 유지한다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 118/118 통과했고 `/analyze`도 무경고로 통과했다.
+- 임시 프로그램으로 19개 항목을 확인했다. 400 ms timeout이 483 ms에 반환되고, 300 ms 취소가 314 ms에 반환되며, 손자 프로세스가 job과 함께 사라지고, 30회 반복 실행 후 handle 수가 늘지 않았다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d4-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-006, REQ-007, REQ-009, REQ-012, REQ-013
+- NFR-007, NFR-009
+
+### 다음 작업 제한
+
+- `S3-D4-CODE` 검수 전에는 도우미 명령과 test source를 추가하지 않는다.
+- 마스킹은 `S3-D5-CODE` 승인 후에만 구현한다.
+
 ## 2026-08-16 - 단계 3 `S3-D3-TEST` code page fallback test 작성
 
 ### 사용자 지시

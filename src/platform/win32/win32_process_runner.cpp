@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -180,10 +181,44 @@ namespace gitman::win32 {
             return value;
         }
 
-        void terminate_child(const HANDLE process) noexcept
+        // 콘솔 없는 자식에게 보낼 안전한 graceful signal이 없으므로 즉시 종료한다.
+        // job이 있으면 자식이 만든 손자 프로세스까지 함께 정리된다.
+        void terminate_execution(const HANDLE job, const HANDLE process) noexcept
         {
-            // 콘솔 없는 자식에게 보낼 안전한 graceful signal이 없으므로 즉시 종료한다.
+            if (job != nullptr && job != INVALID_HANDLE_VALUE)
+            {
+                TerminateJobObject(job, static_cast<UINT>(ERROR_PROCESS_ABORTED));
+                return;
+            }
             TerminateProcess(process, static_cast<UINT>(ERROR_PROCESS_ABORTED));
+        }
+
+        // 자식과 손자를 함께 종료할 수 있도록 kill-on-close job을 만든다. 만들지 못하면
+        // 비어 있는 handle을 돌려주고 호출자가 단일 프로세스 종료로 물러선다.
+        unique_handle create_kill_on_close_job() noexcept
+        {
+            unique_handle job { CreateJobObjectW(nullptr, nullptr) };
+            if (job.valid() == false)
+                return {};
+
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits {};
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if (SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)) == FALSE)
+                return {};
+            return job;
+        }
+
+        DWORD wait_timeout_milliseconds(const std::optional<std::chrono::milliseconds> timeout) noexcept
+        {
+            if (timeout.has_value() == false)
+                return INFINITE;
+
+            const std::int64_t value { timeout->count() };
+            // `INFINITE`와 겹치지 않는 최대값으로 제한한다. 실용적인 상한을 넘는 요청은
+            // 사실상 무제한과 같다.
+            if (value >= static_cast<std::int64_t>(INFINITE))
+                return INFINITE - 1;
+            return static_cast<DWORD>(value);
         }
 
         void normalize_separators(std::wstring& path) noexcept
@@ -415,7 +450,7 @@ namespace gitman::win32 {
             return result;
         }
 
-        process_result run_impl(const process_request& request, process_output_sink* const sink)
+        process_result run_impl(const process_request& request, process_output_sink* const sink, const process_cancellation_token& token)
         {
             process_result result {};
             std::vector<diagnostic> validation { validate_process_request(request) };
@@ -423,6 +458,14 @@ namespace gitman::win32 {
             {
                 result.completion = process_completion::invalid_request;
                 result.diagnostics = std::move(validation);
+                return result;
+            }
+
+            // 이미 취소된 요청은 프로세스를 만들지 않는다.
+            if (token.cancelled())
+            {
+                result.completion = process_completion::cancelled;
+                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_cancelled, u8"실행을 시작하기 전에 취소가 요청되었습니다."));
                 return result;
             }
 
@@ -493,13 +536,30 @@ namespace gitman::win32 {
             if (environment.block.has_value())
                 environment_pointer = const_cast<wchar_t*>(environment.block->c_str());
 
+            // 취소 event는 registration보다 먼저 선언해 registration이 먼저 해제되게 한다.
+            // 그래야 콜백이 이미 닫힌 event를 신호하는 일이 없다.
+            unique_handle cancel_event { CreateEventW(nullptr, TRUE, FALSE, nullptr) };
+            if (cancel_event.valid() == false)
+            {
+                result.completion = process_completion::start_failed;
+                result.native_error = last_error_or(ERROR_INVALID_HANDLE);
+                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_start_failed, u8"취소 대기 event를 만들지 못했습니다.", result.native_error));
+                return result;
+            }
+
+            // 자식과 손자를 함께 정리하기 위한 job이다. 만들지 못해도 실행은 계속하되
+            // 종료 범위가 자식 하나로 줄어든다는 경고를 남긴다.
+            unique_handle job { create_kill_on_close_job() };
+            const bool job_available { job.valid() };
+
             PROCESS_INFORMATION created {};
             const std::chrono::steady_clock::time_point started { std::chrono::steady_clock::now() };
             result.started_at = std::chrono::system_clock::now();
             SetLastError(ERROR_SUCCESS);
+            // 자식이 job에 들어가기 전에 손자를 만들지 못하도록 정지 상태로 시작한다.
             const BOOL launched {
-                CreateProcessW(application_path.c_str(), mutable_command_line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
-                    environment_pointer, current_directory.c_str(), &startup.StartupInfo, &created),
+                CreateProcessW(application_path.c_str(), mutable_command_line.data(), nullptr, nullptr, TRUE,
+                    CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT, environment_pointer, current_directory.c_str(), &startup.StartupInfo, &created),
             };
             if (launched == FALSE)
             {
@@ -512,6 +572,32 @@ namespace gitman::win32 {
 
             const unique_handle process_handle { created.hProcess };
             const unique_handle thread_handle { created.hThread };
+
+            bool job_assigned { false };
+            if (job_available)
+            {
+                SetLastError(ERROR_SUCCESS);
+                job_assigned = AssignProcessToJobObject(job.get(), process_handle.get()) != FALSE;
+                if (job_assigned == false)
+                    job.reset();
+            }
+            if (job_assigned == false)
+            {
+                result.diagnostics.push_back(make_process_diagnostic(
+                    diagnostic_code::operation_failed, u8"job object를 사용할 수 없어 취소와 timeout에서 자식 프로세스만 종료합니다.", std::nullopt, diagnostic_severity::warning));
+            }
+
+            SetLastError(ERROR_SUCCESS);
+            if (ResumeThread(thread_handle.get()) == static_cast<DWORD>(-1))
+            {
+                const std::uint32_t resume_error { last_error_or(ERROR_INVALID_HANDLE) };
+                terminate_execution(job.get(), process_handle.get());
+                result.completion = process_completion::start_failed;
+                result.native_error = resume_error;
+                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_start_failed, u8"정지 상태로 시작한 자식 프로세스를 재개하지 못했습니다.", result.native_error));
+                finish_result(result, started);
+                return result;
+            }
             // 자식만 사용해야 하는 handle 사본을 닫는다. 이 시점에 닫지 않으면 자식이
             // 끝나도 부모의 쓰기 end가 남아 reader가 EOF를 관측할 수 없다.
             input.reset();
@@ -552,23 +638,27 @@ namespace gitman::win32 {
             catch (...)
             {
                 // reader가 없으면 자식이 pipe에서 막힐 수 있으므로 즉시 정리한다.
-                terminate_child(process_handle.get());
+                terminate_execution(job.get(), process_handle.get());
                 for (std::thread& reader : readers)
                     if (reader.joinable())
                         reader.join();
                 return make_reader_failure_result(std::move(result), started);
             }
 
-            // timeout과 취소 대기는 `S3-D4-CODE`에서 연결한다.
+            // 취소 콜백은 event 하나만 신호한다. registration은 이 scope에서 해제되므로
+            // 콜백이 실행 중이면 해제가 끝날 때까지 기다린다.
+            const HANDLE signalled_event { cancel_event.get() };
+            const process_cancellation_registration registration { token.register_callback([signalled_event]() { SetEvent(signalled_event); }) };
+
+            const HANDLE wait_handles[] { process_handle.get(), cancel_event.get() };
             SetLastError(ERROR_SUCCESS);
-            const bool waited { WaitForSingleObject(process_handle.get(), INFINITE) == WAIT_OBJECT_0 };
-            const std::uint32_t wait_error { waited ? std::uint32_t { ERROR_SUCCESS } : last_error_or(ERROR_INVALID_HANDLE) };
-            if (waited == false)
-            {
-                // 결과를 신뢰할 수 없는 상태에서 자식을 남기면 orphan이 된다. 정리한 뒤
-                // reader 스레드가 EOF를 보고 끝날 수 있게 한다.
-                terminate_child(process_handle.get());
-            }
+            const DWORD wait_result { WaitForMultipleObjects(static_cast<DWORD>(std::size(wait_handles)), wait_handles, FALSE, wait_timeout_milliseconds(request.timeout)) };
+            const std::uint32_t wait_error { wait_result == WAIT_FAILED ? last_error_or(ERROR_INVALID_HANDLE) : std::uint32_t { ERROR_SUCCESS } };
+
+            // 자식이 스스로 끝난 경우가 아니면 트리를 정리한다. 정리하면 pipe가 닫혀
+            // reader 스레드가 EOF를 보고 끝난다.
+            if (wait_result != WAIT_OBJECT_0)
+                terminate_execution(job.get(), process_handle.get());
 
             for (std::thread& reader : readers)
                 reader.join();
@@ -584,7 +674,22 @@ namespace gitman::win32 {
             if (collector.sink_failed())
                 result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"출력 sink가 예외를 던져 일부 레코드를 전달하지 못했습니다."));
 
-            if (waited == false)
+            if (wait_result == WAIT_TIMEOUT)
+            {
+                // 강제 종료한 자식의 종료 코드는 의미가 없으므로 채우지 않는다.
+                result.completion = process_completion::timed_out;
+                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_timed_out, u8"제한 시간을 초과해 자식 프로세스를 종료했습니다."));
+                finish_result(result, started);
+                return result;
+            }
+            if (wait_result == WAIT_OBJECT_0 + 1)
+            {
+                result.completion = process_completion::cancelled;
+                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_cancelled, u8"취소 요청으로 자식 프로세스를 종료했습니다."));
+                finish_result(result, started);
+                return result;
+            }
+            if (wait_result != WAIT_OBJECT_0)
             {
                 result.completion = process_completion::internal_error;
                 result.native_error = wait_error;
@@ -614,11 +719,11 @@ namespace gitman::win32 {
         class win32_process_runner final : public process_runner
         {
         public:
-            [[nodiscard]] process_result run(const process_request& request, process_output_sink* const sink, [[maybe_unused]] const process_cancellation_token& token) noexcept override
+            [[nodiscard]] process_result run(const process_request& request, process_output_sink* const sink, const process_cancellation_token& token) noexcept override
             {
                 try
                 {
-                    return run_impl(request, sink);
+                    return run_impl(request, sink, token);
                 }
                 catch (...)
                 {

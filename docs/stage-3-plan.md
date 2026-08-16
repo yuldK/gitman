@@ -274,7 +274,9 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - `S3-D2-TEST`: argv 기반 도우미 target과 test 29개 작성 완료, 양 toolchain 전체 CTest 107/107 통과, 발견 production 결함 없음, 사용자 검수 대기. 결과는 `docs/verification/2026-08-16-stage-3-d2-test.md`에 기록했다.
 - `S3-D2-FIX`: 발견 production 결함이 없어 사용자 확인에 따라 생략 완료
 - `S3-D3-CODE`: 활성 code page fallback transcoder 구현과 파이프라인 연결 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d3-code.md`에 기록했다.
-- `S3-D3-TEST`: fallback과 UTF-8 유효성 test 11개 작성 완료, 양 toolchain 전체 CTest 118/118 통과, 발견 production 결함 없음, 사용자 검수 대기. 결과는 `docs/verification/2026-08-16-stage-3-d3-test.md`에 기록했다.
+- `S3-D3-TEST`: fallback과 UTF-8 유효성 test 11개 작성 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d3-test.md`에 기록했다.
+- `S3-D3-FIX`: 발견 production 결함이 없어 사용자 확인에 따라 생략 완료
+- `S3-D4-CODE`: timeout, 취소, job object 트리 종료와 스레드 정리 구현 완료, 사용자 검수 대기. 결과는 `docs/verification/2026-08-16-stage-3-d4-code.md`에 기록했다.
 - 범위 이동: 사용자 지시로 출력 pipe와 줄 단위 레코드가 `S3-D2`로 옮겨졌다. `S3-D3`에는 활성 code page fallback transcoder 구현과 연결이 남는다. 체크포인트 수는 17개를 유지한다.
 
 ## 8. 테스트 계획

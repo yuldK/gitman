@@ -89,12 +89,15 @@ add_library(gitman_process STATIC
     application/process_request.cpp
     application/process_request.h
     application/process_runner.h
+    application/text_transcoder.h
     infrastructure/command_line_builder.cpp
     infrastructure/command_line_builder.h
     infrastructure/process_output_pipeline.cpp
     infrastructure/process_output_pipeline.h
     platform/win32/win32_process_runner.cpp
-    platform/win32/win32_process_runner.h)
+    platform/win32/win32_process_runner.h
+    platform/win32/win32_text_transcoder.cpp
+    platform/win32/win32_text_transcoder.h)
 target_include_directories(gitman_process PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_process
     PUBLIC

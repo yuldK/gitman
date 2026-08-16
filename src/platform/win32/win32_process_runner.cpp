@@ -3,6 +3,7 @@
 #include "infrastructure/command_line_builder.h"
 #include "infrastructure/process_output_pipeline.h"
 #include "platform/win32/utf8.h"
+#include "platform/win32/win32_text_transcoder.h"
 
 #include <windows.h>
 
@@ -517,8 +518,26 @@ namespace gitman::win32 {
             standard_output.write.reset();
             standard_error.write.reset();
 
-            process_output_pipeline output_pipeline { process_stream::standard_output, request.maximum_record_bytes, request.maximum_captured_bytes_per_stream };
-            process_output_pipeline error_pipeline { process_stream::standard_error, request.maximum_record_bytes, request.maximum_captured_bytes_per_stream };
+            // transcoder는 fallback을 요청한 실행에서만 만든다. 상태가 없으므로 두
+            // reader 스레드가 같은 instance를 함께 사용해도 안전하다.
+            std::unique_ptr<text_transcoder> transcoder {};
+            if (request.text_encoding == process_text_encoding::active_code_page_fallback)
+                transcoder = make_active_code_page_transcoder();
+
+            process_output_pipeline output_pipeline {
+                process_stream::standard_output,
+                request.maximum_record_bytes,
+                request.maximum_captured_bytes_per_stream,
+                request.text_encoding,
+                transcoder.get(),
+            };
+            process_output_pipeline error_pipeline {
+                process_stream::standard_error,
+                request.maximum_record_bytes,
+                request.maximum_captured_bytes_per_stream,
+                request.text_encoding,
+                transcoder.get(),
+            };
             output_collector collector { sink };
 
             // pipe마다 전용 reader 스레드를 둔다. 한 스레드로 두 pipe를 읽으면 읽지 않는

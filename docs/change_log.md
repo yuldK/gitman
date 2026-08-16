@@ -1,5 +1,34 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D3-CODE` 활성 code page fallback 구현
+
+### 사용자 지시
+
+- `S3-D2-TEST`를 승인하고 무결함 `S3-D2-FIX` 생략을 확인한 뒤 `S3-D3-CODE`를 진행한다.
+
+### 반영 내용
+
+- `application/text_transcoder.h`에 변환 실패를 값으로 보고하는 `noexcept` transcoder 계약을 추가했다.
+- `platform/win32/win32_text_transcoder.*`에 `CP_ACP`와 `MB_ERR_INVALID_CHARS` 기반 엄격 변환을 구현했다. 해석할 수 없는 byte는 실패로 보고해 호출자가 U+FFFD 대체로 되돌릴 수 있게 했다.
+- `process_output_pipeline`이 인코딩 모드와 transcoder를 받도록 확장했다. 기본값이 있어 기존 호출과 test는 변경 없이 동작한다.
+- 레코드가 유효한 UTF-8이면 그대로 두고, 아닐 때만 활성 code page로 변환한 뒤 `transcoded_from_active_code_page`를 세우도록 했다. 변환이 실패하면 U+FFFD 대체로 되돌린다.
+- 판단 단위를 레코드 하나로 두어 한 실행에서 UTF-8 줄과 code page 줄이 섞여도 각각 알맞게 처리된다.
+- `is_valid_utf8_text`를 공개해 `normalize_utf8_text`와 같은 기준으로 유효성을 판정하게 했다.
+- runner는 fallback을 요청한 실행에서만 transcoder를 만들고 두 스트림 파이프라인이 공유하게 했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 107/107 통과했고 `/analyze`도 무경고로 통과했다.
+- 활성 code page 949 호스트에서 임시 프로그램으로 15개 항목을 확인했다. CP949 byte가 `한글`로 복원되고, 유효한 UTF-8은 변형되지 않으며, CP949에서도 해석할 수 없는 byte는 U+FFFD로 대체된다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d3-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-006, REQ-009, REQ-011, REQ-012, REQ-013
+- NFR-005, NFR-007
+
+### 다음 작업 제한
+
+- `S3-D3-CODE` 검수 전에는 fallback test source를 추가하지 않는다.
+- timeout, 취소와 마스킹은 각각 `S3-D4-CODE`, `S3-D5-CODE` 승인 후에만 구현한다.
+
 ## 2026-08-16 - 단계 3 `S3-D2-TEST` 도우미 target과 실행 계층 test 작성
 
 ### 사용자 지시

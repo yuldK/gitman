@@ -1,6 +1,7 @@
 #include "infrastructure/process_output_pipeline.h"
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 namespace gitman {
@@ -101,8 +102,24 @@ namespace gitman {
         return output;
     }
 
-    process_output_pipeline::process_output_pipeline(const process_stream stream, const std::size_t maximum_record_bytes, const std::size_t maximum_captured_bytes)
+    bool is_valid_utf8_text(const std::u8string_view input) noexcept
+    {
+        std::size_t index { 0 };
+        while (index < input.size())
+        {
+            const std::size_t length { utf8_sequence_length(input, index) };
+            if (length == 0)
+                return false;
+            index += length;
+        }
+        return true;
+    }
+
+    process_output_pipeline::process_output_pipeline(
+        const process_stream stream, const std::size_t maximum_record_bytes, const std::size_t maximum_captured_bytes, const process_text_encoding encoding, text_transcoder* const transcoder)
         : stream_ { stream }
+        , encoding_ { encoding }
+        , transcoder_ { transcoder }
         , maximum_record_bytes_ { maximum_record_bytes }
         , maximum_captured_bytes_ { maximum_captured_bytes }
     {}
@@ -143,6 +160,22 @@ namespace gitman {
         return truncated_;
     }
 
+    void process_output_pipeline::fill_text(process_output_record& record)
+    {
+        if (encoding_ == process_text_encoding::active_code_page_fallback && is_valid_utf8_text(pending_) == false && transcoder_ != nullptr)
+        {
+            // UTF-8로 해석되지 않는 레코드만 활성 code page로 다시 해석한다. 이미 유효한
+            // UTF-8은 건드리지 않아 정상 출력이 code page 해석으로 훼손되지 않는다.
+            if (std::optional<std::u8string> transcoded { transcoder_->to_utf8(pending_) }; transcoded.has_value())
+            {
+                record.text = std::move(*transcoded);
+                record.transcoded_from_active_code_page = true;
+                return;
+            }
+        }
+        record.text = normalize_utf8_text(pending_, record.replaced_invalid_bytes);
+    }
+
     void process_output_pipeline::emit(const bool progress, const bool continued, const record_handler& handler)
     {
         // 내용 없는 진행 표시는 정보가 없으므로 레코드를 만들지 않는다. 빈 줄은 보존한다.
@@ -153,7 +186,7 @@ namespace gitman {
         record.stream = stream_;
         record.progress = progress;
         record.continued = continued;
-        record.text = normalize_utf8_text(pending_, record.replaced_invalid_bytes);
+        fill_text(record);
         pending_.clear();
 
         if (handler)

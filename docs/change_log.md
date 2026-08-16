@@ -1,5 +1,38 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 4 `S4-D4-CODE` SVN 조회 구현
+
+### 사용자 지시
+
+- `S4-D3-TEST`를 승인하고 무결함 `S4-D3-FIX` 생략을 확인한 뒤 다음 구간을 진행한다.
+- SVN은 실제 개발 시점에 쓰지 않는다. 나중에 프로덕션 환경에 **부품 끼워넣듯 최소 노력으로 적용할 수 있기만 하면 된다.**
+
+### 반영 내용
+
+- `infrastructure/svn_command_builder.*`에 `info --show-item`, 비verbose `status`, `svnversion`, 원격 리비전 요청을 추가했다.
+- **`svnversion`에는 공통 인자를 붙이지 않는다.** `svn`과 다른 실행 파일이라 `--non-interactive`를 받지 않고, 그대로 붙이면 인자 오류로 실패한다. timeout과 인코딩 정책은 다른 명령과 같게 맞췄다.
+- `infrastructure/svn_output_parser.*`에 값 한 줄 추출, 고정 칸 `status` 파서, `svnversion` 파서와 작업 트리 요약을 추가했다.
+- `status` 경로는 앞 7칸(항목·속성·잠금·이력·switched·잠금 토큰·tree conflict)을 상태 칸으로 보고 그 뒤 공백을 모두 건너뛴 지점부터 읽는다. 계획의 "고정 9칸"보다 배포판별 패딩 차이에 강하다.
+- 상태 칸이 모두 공백인 줄(`> moved from ...`)은 항목이 아니므로 건너뛴다. `I`(무시)와 `X`(외부 항목)는 어느 수에도 넣지 않는다.
+- `infrastructure/svn_repository_provider.*`에 로컬 및 원격 조회를 구현했다. 구조와 실패 처리를 Git provider와 똑같이 맞춰 나중에 붙일 때 읽어야 할 새 개념이 없게 했다.
+- mixed revision과 switched는 `svnversion`으로 판정한다. `svnversion`이 없거나 출력을 해석하지 못하면 조회를 막지 않고 `has_mixed_revision`을 비운 채 `status`의 switched 칸으로 보조 판정한다.
+- 원격 조회는 `info --show-item url`로 현재 URL을 다시 물어본 뒤 원격 HEAD 리비전과 비교한다. SVN에는 `ahead`와 `diverged`가 없어 `behind`와 `up_to_date`만 나오고 `ahead_count`는 항상 0이다.
+- 실패는 `S4-D1-CODE`의 분류기가 SVN `E<숫자>` 코드로 판정한다. 번역된 메시지에도 코드가 붙어 로캘에 의존하지 않는다.
+- SVN이 없는 환경은 계속 정상 상태다. 도구 부재는 warning이고 어떤 명령도 만들지 않는다. 이 경로는 이 호스트에서 실제로 확인했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 274/274 통과했고 `/analyze`도 무경고로 통과했다.
+- 저장소 밖 임시 프로그램으로 115개 항목을 확인하고 삭제했다. 그중 실제 실행으로 확인한 SVN 경로는 미설치 감지뿐이다.
+- 결과를 `docs/verification/2026-08-17-stage-4-d4-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-011, REQ-012
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D4-CODE`는 사용자 코드 검수 대기 상태다.
+- 승인 전에는 `S4-D4-TEST`의 SVN fixture와 파서 test를 작성하지 않는다.
+
 ## 2026-08-16 - 단계 4 `S4-D3-TEST` remote-first 판정 test 작성
 
 ### 사용자 지시

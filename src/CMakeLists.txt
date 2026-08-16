@@ -130,6 +130,12 @@ add_library(gitman_vcs STATIC
     infrastructure/git_repository_provider.h
     infrastructure/git_status_parser.cpp
     infrastructure/git_status_parser.h
+    infrastructure/svn_command_builder.cpp
+    infrastructure/svn_command_builder.h
+    infrastructure/svn_output_parser.cpp
+    infrastructure/svn_output_parser.h
+    infrastructure/svn_repository_provider.cpp
+    infrastructure/svn_repository_provider.h
     infrastructure/vcs_command_runner.cpp
     infrastructure/vcs_command_runner.h
     infrastructure/vcs_error_classifier.cpp

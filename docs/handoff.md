@@ -2,18 +2,18 @@
 
 ## 1. 현재 상태
 
-- 기준일: 2026-08-16
+- 기준일: 2026-08-17
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-D3-TEST` remote-first 판정 test 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D4-CODE` SVN 조회 production code 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-D3-TEST` 승인과 무결함 `S4-D3-FIX` 생략 확인 후 `S4-D4-CODE` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D4-CODE` 승인 후 `S4-D4-TEST` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 Git 로컬 조회, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d3-test.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d3-code.md`
-- 최근 검증 기록: `docs/verification/2026-08-16-stage-4-d2-test.md`
+- 현재 검증 기록: `docs/verification/2026-08-17-stage-4-d4-code.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d3-test.md`
+- 최근 검증 기록: `docs/verification/2026-08-16-stage-4-d3-code.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
 다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
@@ -115,15 +115,16 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-D3-TEST` |
-| 제출 내용 | 대상 선택 matrix, 명령 순서와 실패 분류, 실제 원격 통합 test, 인코딩 실측 |
-| production code | 변경 없음 |
-| test code 및 fixture | 신규 test source 1개와 기존 3개 보강. 새 fixture 없음. 전체 CTest 246 → **274** |
+| 계획 ID | `S4-D4-CODE` |
+| 제출 내용 | SVN 명령 조립, `--show-item`·`status`·`svnversion` 파서, 로컬 및 원격 상태와 mixed·switched 판정 |
+| production code | 신규 source 3쌍(`svn_command_builder`, `svn_output_parser`, `svn_repository_provider`), `src/CMakeLists.txt` 수정 |
+| test code 및 fixture | 변경 없음. 전체 CTest 274 유지 |
 | bug 수정 | 없음 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 274/274, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 274/274, `/analyze` 무경고, aggregate format/style 통과, 임시 프로그램 115/115 |
 | 발견 결함 | 없음 |
-| 승인 대기 | `S4-D3-TEST` test 검수 |
-| 승인 뒤 다음 작업 | 무결함 `S4-D3-FIX` 생략 후 `S4-D4-CODE` 한 구간만 허용 |
+| 승인 대기 | `S4-D4-CODE` 코드 검수 |
+| 검수에서 확인할 결정 | `svnversion`에 공통 인자 미부착, `status` 칸을 7칸+공백 건너뛰기로 해석, 원격 URL 재조회 |
+| 승인 뒤 다음 작업 | `S4-D4-TEST` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
@@ -137,9 +138,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S4-D2-TEST` | 승인 완료 | test 51개, 전체 246/246. `docs/verification/2026-08-16-stage-4-d2-test.md` |
 | `S4-D2-FIX` | 생략 완료 | 발견 production 결함 없음 |
 | `S4-D3-CODE` Git remote-first 최신 상태 | 승인 완료 | `docs/verification/2026-08-16-stage-4-d3-code.md` |
-| `S4-D3-TEST` | 제출, 검수 대기 | test 28개, 전체 274/274. `docs/verification/2026-08-16-stage-4-d3-test.md` |
-| `S4-D3-FIX` | 시작 전 | 발견 production 결함이 없어 사용자 확인 후 생략 예정 |
-| `S4-D4-CODE` SVN 상태 | 시작 전 | |
+| `S4-D3-TEST` | 승인 완료 | test 28개, 전체 274/274. `docs/verification/2026-08-16-stage-4-d3-test.md` |
+| `S4-D3-FIX` | 생략 완료 | 발견 production 결함 없음 |
+| `S4-D4-CODE` SVN 상태 | 제출, 검수 대기 | `docs/verification/2026-08-17-stage-4-d4-code.md` |
 | `S4-D4-TEST` | 시작 전 | |
 | `S4-D4-FIX` | 시작 전 | |
 | `S4-D5-CODE` update | 시작 전 | |
@@ -209,6 +210,11 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - job object를 만들거나 배정하지 못하는 환경에서는 warning 진단과 함께 종료 범위가 자식 하나로 줄어든다. 실행 자체를 막지 않는 선택이며 손자 정리는 보장되지 않는다. 감사 수정 이후에는 그런 환경에서도 손자가 pipe를 잡아 `run()`이 무기한 대기하는 일은 없다(drain 유예와 `CancelSynchronousIo` 최후 수단).
 - reader join의 drain 유예는 2초 상수다. 단계 4 계획은 이를 바꾸는 대신 모든 Git 명령에 `-c gc.auto=0`을 붙여 background 유지보수 프로세스를 원천 차단하는 방향을 제안했다. `S4-P0` 검수 항목 6번이다.
 - 사용자가 SVN CLI를 설치하지 않기로 했다. 단계 4의 SVN 실행 경로는 fixture와 fake runner 검증까지만 보장되며 실제 `svn.exe` 동작은 미검증으로 남는다. 단계 8에서 다시 다룬다.
+- 2026-08-17 사용자 방침: **SVN은 개발 시점에 쓰지 않으며 나중에 프로덕션에 부품 끼워넣듯 최소 노력으로 적용할 수 있기만 하면 된다.** 따라서 SVN 쪽은 Git provider와 같은 구조를 유지하고 계획 4.6의 명령 조합에서 벗어나지 않는 선까지만 구현한다.
+- `svnversion`은 `svn`과 다른 실행 파일이라 `--non-interactive`를 받지 않는다. SVN 공통 인자를 붙이면 인자 오류로 실패하므로 이 명령만 요청을 직접 만든다.
+- `svn status`의 경로는 앞 7칸(항목·속성·잠금·이력·switched·잠금 토큰·tree conflict)을 상태 칸으로 보고 그 뒤 공백을 모두 건너뛴 지점부터 읽는다. 계획의 "고정 9칸"보다 배포판별 패딩 차이에 강하다. switched는 색인 4, tree conflict는 색인 6이다.
+- SVN 원격 조회는 현재 URL을 `info --show-item url`로 다시 물어본 뒤 원격 HEAD 리비전과 비교한다. `ahead`와 `diverged`는 SVN에 없어 `behind`와 `up_to_date`만 나오고 `ahead_count`는 항상 0이다.
+- 실제 SVN 환경에 붙일 때 확인할 것은 네 가지다. 실제 실행 경로 전부, `status`의 실제 칸 패딩, 원격 인증·연결 실패 메시지의 오류 코드, `info --show-item`이 값 외의 줄을 내는 배포판 여부다. 어긋나면 파서 한 곳만 고치면 된다.
 - SVN은 XML을 쓰지 않는다. `info --show-item`, 비verbose `status`, `svnversion` 조합으로 값을 얻으므로 XML 파서 dependency가 없고 ADR-002와 `vcpkg.json`은 변경하지 않는다.
 - 로캘을 강제하지 않기로 했으므로 Git/SVN 오류 메시지가 시스템 언어로 나온다. 오류 분류는 SVN `E<숫자>` 코드, libcurl 및 OpenSSH 원문 문자열, HTTP 상태 번호 같은 로캘 독립 신호만 사용해야 한다. 번역되는 문장으로 분류하면 한국어 환경에서 오분류가 발생한다.
 - 모든 Git/SVN 실행은 `active_code_page_fallback` 인코딩 모드를 쓴다. `S4-D3-TEST`에서 실측한 결과, 이 호스트의 시스템 ANSI code page는 949지만 Git for Windows 2.52.0에 번역 catalog가 설치되어 있지 않아(`share/locale` 부재) `LANGUAGE`·`LC_ALL`·`LANG`을 어떻게 줘도 메시지가 영어다. Git이 되돌려 주는 비ASCII 내용은 UTF-8이라 fallback이 건드리지 않는다. 다른 호스트에는 번역본이 있을 수 있으므로 오류 분류는 계속 로캘 독립 신호만 사용한다.

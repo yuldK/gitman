@@ -633,7 +633,7 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 | 항목 | 결정 |
 | --- | --- |
 | SVN XML 처리 | 사용하지 않는다. `--show-item`, 비verbose `status`, `svnversion` 조합으로 대체하고 XML 파서 dependency를 추가하지 않는다. `vcpkg.json`과 ADR-002는 변경하지 않는다. |
-| SVN CLI 설치 | 설치하지 않는다. CLI가 있다는 가정으로 명령만 연결하고 실제 실행 경로는 미검증으로 남긴다. |
+| SVN CLI 설치 | 설치하지 않는다. CLI가 있다는 가정으로 명령만 연결하고 실제 실행 경로는 미검증으로 남긴다. 2026-08-17 사용자가 방침을 다시 확인했다. SVN은 개발 시점에 쓰지 않으며 나중에 프로덕션에 **부품 끼워넣듯 최소 노력으로 적용**할 수 있으면 충분하다. |
 | `authentication_required` | `remote_sync_state`에 추가하고 `docs/plan.md` 3.2 Codicon 표에 `key`와 “인증 필요”를 반영한다. |
 | 로캘 | 강제하지 않고 시스템 로캘을 따른다. 한국어 메시지를 그대로 보여 주고, 인코딩은 `active_code_page_fallback`으로 처리한다. 오류 분류는 4.10의 로캘 독립 신호만 사용한다. |
 | 실행 파일 경로 수동 지정 | 프로젝트 문서의 `settings` 속성으로 제공한다. 환경설정 화면은 후속 단계에서 이 값을 읽고 쓴다. |
@@ -657,7 +657,8 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 - `S4-D2-CODE`: Git 명령 조립, `rev-parse` 배치 파서, porcelain v2 파서, 진행 중 작업 표식 probe와 로컬 snapshot 변환 구현 및 사용자 승인 완료. `status`에 `-z`를 쓰지 않기로 확정했고 bare 저장소와 git dir 안의 경로를 `unsupported_layout`으로 보고하기로 정했다. 결과는 `docs/verification/2026-08-16-stage-4-d2-code.md`에 기록했다.
 - `S4-D2-TEST`: 파서와 provider test 39개, 실제 Git 통합 test 12개, `git_repository_fixture` 도우미와 실제 출력 fixture 5종 작성 및 사용자 승인 완료. 전체 CTest가 195에서 246으로 늘었고 양 toolchain에서 246/246 통과했다. 발견 production 결함이 없어 `S4-D2-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d2-test.md`에 기록했다.
 - `S4-D3-CODE`: remote 열거와 대상 선택, `fetch --prune`, ahead/behind 계산과 offline·인증 판정 구현 및 사용자 승인 완료. remote branch 존재 확인을 fetch 뒤로 옮겼고(4.5의 4·5번 순서) `preferred_remote`가 없으면 warning과 함께 다음 규칙으로 진행한다. 결과는 `docs/verification/2026-08-16-stage-4-d3-code.md`에 기록했다.
-- `S4-D3-TEST`: 대상 선택 matrix, 명령 순서와 실패 분류 test 22개, 실제 원격 통합 test 6개 작성 완료, 사용자 검수 대기. 전체 CTest가 246에서 274로 늘었고 양 toolchain에서 274/274 통과했다. 한국어 Git 출력 인코딩 실측도 함께 기록했다(11장 항목 해소). 발견 production 결함은 없다. 결과는 `docs/verification/2026-08-16-stage-4-d3-test.md`에 기록했다.
+- `S4-D3-TEST`: 대상 선택 matrix, 명령 순서와 실패 분류 test 22개, 실제 원격 통합 test 6개 작성 및 사용자 승인 완료. 전체 CTest가 246에서 274로 늘었고 양 toolchain에서 274/274 통과했다. 한국어 Git 출력 인코딩 실측도 함께 기록했다(11장 항목 해소). 발견 production 결함이 없어 `S4-D3-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d3-test.md`에 기록했다.
+- `S4-D4-CODE`: SVN 명령 조립, `--show-item`·`status`·`svnversion` 파서, 로컬 및 원격 상태와 mixed revision·switched 판정 구현 완료, 사용자 검수 대기. 2026-08-17 사용자 방침(SVN은 나중에 최소 노력으로 붙이기만 하면 된다)에 따라 Git provider와 같은 구조를 유지하고 4.6의 명령 조합에서 벗어나지 않았다. 결과는 `docs/verification/2026-08-17-stage-4-d4-code.md`에 기록했다.
 
 ## 11. 미결정 항목
 

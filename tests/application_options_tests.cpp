@@ -2,7 +2,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
 TEST_CASE("Command-line renderer defaults to auto", "[options]")
@@ -47,4 +49,72 @@ TEST_CASE("Duplicate or unknown renderer options are rejected", "[options]")
 
     const std::vector<std::u8string> unknown { u8"gitman.exe", u8"--renderer=opengl" };
     REQUIRE_FALSE(gitman::parse_application_options(unknown).options.has_value());
+}
+
+TEST_CASE("Workspace launch path is optional", "[options][workspace]")
+{
+    const std::vector<std::u8string> arguments {
+        u8"gitman.exe",
+        u8"--renderer=cpu",
+    };
+    const auto result { gitman::parse_application_options(arguments) };
+    REQUIRE(result.options.has_value());
+    REQUIRE_FALSE(result.options->workspace_document_path.has_value());
+}
+
+TEST_CASE("Workspace launch paths preserve Unicode and option ordering", "[options][workspace]")
+{
+    constexpr std::u8string_view document_path { u8"E:/한글 작업 공간/활성 목록.verison-list" };
+
+    const std::vector<std::u8string> path_first {
+        u8"gitman.exe",
+        std::u8string { document_path },
+        u8"--renderer=cpu",
+    };
+    const auto path_first_result { gitman::parse_application_options(path_first) };
+    REQUIRE(path_first_result.options.has_value());
+    REQUIRE(path_first_result.options->workspace_document_path.has_value());
+    REQUIRE(path_first_result.options->workspace_document_path->compare(document_path) == 0);
+    REQUIRE(path_first_result.options->renderer == gitman::renderer_mode::cpu);
+
+    constexpr std::u8string_view uppercase_path { u8"E:/work/ACTIVE.VERISON-LIST" };
+    const std::vector<std::u8string> options_first {
+        u8"gitman.exe",
+        u8"--renderer=direct3d",
+        std::u8string { uppercase_path },
+    };
+    const auto options_first_result { gitman::parse_application_options(options_first) };
+    REQUIRE(options_first_result.options.has_value());
+    REQUIRE(options_first_result.options->workspace_document_path.has_value());
+    REQUIRE(options_first_result.options->workspace_document_path->compare(uppercase_path) == 0);
+    REQUIRE(options_first_result.options->renderer == gitman::renderer_mode::direct3d);
+}
+
+TEST_CASE("Duplicate workspace launch paths are rejected", "[options][workspace]")
+{
+    const std::vector<std::u8string> arguments {
+        u8"gitman.exe",
+        u8"E:/work/first.verison-list",
+        u8"--renderer=cpu",
+        u8"E:/work/second.verison-list",
+    };
+    REQUIRE_FALSE(gitman::parse_application_options(arguments).options.has_value());
+}
+
+TEST_CASE("Invalid workspace launch extensions are rejected", "[options][workspace]")
+{
+    constexpr std::array invalid_paths {
+        std::u8string_view { u8"E:/work/workspace.json" },
+        std::u8string_view { u8"E:/work/workspace.verison-list.bak" },
+        std::u8string_view { u8"E:/work/workspace.verison-list " },
+    };
+
+    for (const std::u8string_view invalid_path : invalid_paths)
+    {
+        const std::vector<std::u8string> arguments {
+            u8"gitman.exe",
+            std::u8string { invalid_path },
+        };
+        REQUIRE_FALSE(gitman::parse_application_options(arguments).options.has_value());
+    }
 }

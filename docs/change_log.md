@@ -1,5 +1,27 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 2 positional launch path test 작성
+
+### 사용자 지시
+
+- `S2-D5-CODE` 검수 뒤 계속 진행한다.
+- 이를 `S2-D5-CODE` 승인과 다음 체크포인트 `S2-D5-TEST` 진행 지시로 처리한다.
+
+### 반영 내용
+
+- 문서 경로가 없는 기존 시작에서 optional launch path가 비어 있는지 검증했다.
+- 한글과 공백을 포함한 `.verison-list` 원문, path와 renderer option의 전후 순서 및 대문자 확장자 허용을 검증했다.
+- option이 사이에 있어도 두 번째 positional path를 거부하는지 검증했다.
+- `.json`, `.verison-list.bak`과 trailing space suffix를 잘못된 확장자로 거부하는지 검증했다.
+- 신규 Catch2 test 4개와 VS2022/VS2026 전체 CTest 54/54가 통과했다.
+- production source를 변경하지 않았고 `S2-D5-FIX` 후보도 발견하지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D5-TEST`는 사용자 test 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D5-FIX`를 생략하거나 `S2-V1` 단계 2 최종 검증을 시작하지 않는다.
+- 승인되고 무결함 결과가 확인되면 `S2-D5-FIX`를 수정 없이 생략한 뒤 `S2-V1`만 진행한다.
+
 ## 2026-08-16 - 단계 2 positional launch path production code 구현
 
 ### 사용자 지시

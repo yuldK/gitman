@@ -1,5 +1,40 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 4 `S4-D5-TEST` update test 작성
+
+### 사용자 지시
+
+- `S4-D5-CODE`를 승인하고 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `tests/git_update_tests.cpp`를 추가했다. 차단 사유 matrix, pull 성공·실패, submodule 경로 test 17개다.
+- 차단 사유를 전수 확인했다. 저장소 아님, 충돌, 진행 중 작업, `index.lock`, detached, dirty, **미상**, diverged와 통과 3종(`behind`, `up_to_date`, 원격 미확인)이다.
+- 사유가 여럿일 때 하나씩 사라질 때마다 다음 사유가 나오는 것으로 **우선순위 자체를 고정**했다.
+- provider 층의 모든 차단 경로에서 **`pull` 명령이 0개**임을 요청 기록으로 직접 단정했다.
+- 실행 경로는 명령 수와 순서로 고정했다. 기본 6개(조회 2 → remote → pull → 재조회 2), submodule 옵션 시 8개(조사와 갱신이 pull 앞뒤로 들어감)다.
+- 실패해도 사후 재조회를 수행하는 것, timeout이 차단이 아니라 실패인 것, 인증 실패가 한국어 메시지에서도 분류되는 것을 단정했다.
+- `tests/git_integration_tests.cpp`에 실제 Git test 4개를 추가했다. 뒤처진 저장소를 **실제로 fast-forward**하고, **원격 이력이 다시 쓰인 저장소에서 `pull --ff-only`가 merge를 만들지 않고 실패**하며, dirty·diverged·detached·remote 없음이 차단되고, 실제 submodule이 off/on에 따라 다르게 처리되는 것을 확인한다.
+- 이력 재작성 test가 이 구간의 핵심이다. 사전 검사만으로 걸러지지 않는 경우에 `--ff-only`가 마지막 방어선으로 동작하는 것을 실제 Git으로 보여 준다.
+- `tests/svn_repository_provider_tests.cpp`에 SVN 사전 검사와 update test 6개를 추가했다. 판정할 수 없는 switched·mixed가 update를 막지 않는 것도 함께 고정했다.
+- 명령 test와 `submodule status` 파서 test를 각 파일에 추가했다.
+- `git_repository_fixture`의 준비 명령에 `-c protocol.file.allow=always`를 추가했다. 임시 디렉터리의 로컬 경로를 submodule 원본으로 쓰기 위한 것이며 **production 명령은 이 설정을 만들지 않는다.**
+- 전체 CTest가 306에서 **338**로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 338/338 통과했다. `/analyze`도 무경고로 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- production source를 변경하지 않았고 `S4-D5-FIX` 후보도 발견하지 않았다.
+- 결과를 `docs/verification/2026-08-17-stage-4-d5-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-007, REQ-013
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D5-TEST`는 사용자 test 검수 대기 상태다.
+- 발견 production 결함이 없어 `S4-D5-FIX`는 사용자 확인 후 생략한다.
+- 승인 전에는 `S4-D6-CODE`의 switch 후보와 검증을 작성하지 않는다.
+
 ## 2026-08-17 - 단계 4 `S4-D5-CODE` update 구현
 
 ### 사용자 지시

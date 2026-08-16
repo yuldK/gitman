@@ -660,7 +660,8 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 - `S4-D3-TEST`: 대상 선택 matrix, 명령 순서와 실패 분류 test 22개, 실제 원격 통합 test 6개 작성 및 사용자 승인 완료. 전체 CTest가 246에서 274로 늘었고 양 toolchain에서 274/274 통과했다. 한국어 Git 출력 인코딩 실측도 함께 기록했다(11장 항목 해소). 발견 production 결함이 없어 `S4-D3-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d3-test.md`에 기록했다.
 - `S4-D4-CODE`: SVN 명령 조립, `--show-item`·`status`·`svnversion` 파서, 로컬 및 원격 상태와 mixed revision·switched 판정 구현 및 사용자 승인 완료. 2026-08-17 사용자 방침(SVN은 나중에 최소 노력으로 붙이기만 하면 된다)에 따라 Git provider와 같은 구조를 유지하고 4.6의 명령 조합에서 벗어나지 않았다. 결과는 `docs/verification/2026-08-17-stage-4-d4-code.md`에 기록했다.
 - `S4-D4-TEST`: SVN 파서와 provider test 30개, 통합 test 2개, 문서 근거 fixture 2개 작성 및 사용자 승인 완료. 전체 CTest가 274에서 306으로 늘었고 양 toolchain에서 306/306 통과했다. 이 호스트에서는 "SVN이 없어도 앱이 동작한다" test가 실행되고 실제 `svn.exe` test는 skip된다. 발견 production 결함은 없다. 결과는 `docs/verification/2026-08-17-stage-4-d4-test.md`에 기록했다.
-- `S4-D5-CODE`: update 사전 검사 보호 정책, `pull --ff-only`, submodule 옵션, `svn update`와 사후 재조회 구현 완료, 사용자 검수 대기. 4.7의 submodule dirty 검사는 `git submodule status`가 내부 dirty를 보고하지 않아 충돌과 커밋 불일치로 좁혔고, SVN의 switched·mixed는 판정 값이 있을 때만 차단한다. 결과는 `docs/verification/2026-08-17-stage-4-d5-code.md`에 기록했다.
+- `S4-D5-CODE`: update 사전 검사 보호 정책, `pull --ff-only`, submodule 옵션, `svn update`와 사후 재조회 구현 및 사용자 승인 완료. 4.7의 submodule dirty 검사는 `git submodule status`가 내부 dirty를 보고하지 않아 충돌과 커밋 불일치로 좁혔고, SVN의 switched·mixed는 판정 값이 있을 때만 차단한다. 결과는 `docs/verification/2026-08-17-stage-4-d5-code.md`에 기록했다.
+- `S4-D5-TEST`: 차단 사유 matrix, pull 성공·실패, submodule off/on test 28개와 실제 Git update 통합 test 4개 작성 완료, 사용자 검수 대기. 전체 CTest가 306에서 338로 늘었고 양 toolchain에서 338/338 통과했다. 원격 이력을 다시 쓴 저장소에서 `--ff-only`가 merge 없이 실패하는 것을 실제 Git으로 확인했다. 발견 production 결함은 없다. 결과는 `docs/verification/2026-08-17-stage-4-d5-test.md`에 기록했다.
 
 ## 11. 미결정 항목
 

@@ -1,5 +1,27 @@
 # 변경 이력
 
+## 2026-08-15 - 단계 2 원자적 저장과 복구 test 작성
+
+### 사용자 지시
+
+- 다음 작업 진행을 시작한다.
+- 이를 `S2-D4-CODE` 승인과 다음 체크포인트 `S2-D4-TEST` 진행 지시로 처리한다.
+
+### 반영 내용
+
+- in-memory file adapter fake로 최초 생성, 기존 교체, exact-byte 동시 수정, 후보 재검증과 write/flush/replace 실패 주입을 검증했다.
+- canonical JSON의 UTF-8 무 BOM, 공백 4칸, CRLF와 unknown field 및 원문 path 보존을 검증했다.
+- valid/invalid backup 탐지, 자동 적용 금지와 명시적 backup load 뒤 save 복구를 검증했다.
+- 실제 Win32 임시 디렉터리에서 최초 생성, `ReplaceFileW` 교체, 직전 원본 backup, 외부 변경 충돌과 replace 실패 뒤 임시 파일 정리를 검증했다.
+- 신규 Catch2 test 9개와 VS2022/VS2026 전체 CTest 50/50이 통과했다.
+- production source를 변경하지 않았고 `S2-D4-FIX` 후보도 발견하지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D4-TEST`는 사용자 test 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D4-FIX`를 생략하거나 `S2-D5-CODE`를 시작하지 않는다.
+- 승인되고 무결함 결과가 확인되면 `S2-D4-FIX`를 수정 없이 생략한 뒤 `S2-D5-CODE`만 진행한다.
+
 ## 2026-08-15 - 단계 2 원자적 저장과 복구 production code 구현
 
 ### 사용자 지시

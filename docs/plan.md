@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
-| 단계 2: 도메인과 설정 저장소 | `S2-D4-CODE` 완료 - 사용자 코드 검수 대기 | `docs/verification/2026-08-15-stage-2-d4-code.md` |
+| 단계 2: 도메인과 설정 저장소 | `S2-D4-TEST` 완료 - 사용자 test 검수 대기 | `docs/verification/2026-08-15-stage-2-d4-test.md` |
 | 단계 3~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
@@ -432,7 +432,7 @@ gitman/
 
 ### 단계 2: 도메인과 설정 저장소
 
-상태: `S2-D1-CODE` 승인 후 `S2-D1-TEST` 작성과 두 toolchain CTest 26/26 완료, 사용자 test 검수 대기. 세부 범위와 production code, test code 및 bug 수정 사이의 검수 게이트는 `docs/stage-2-plan.md`를 따른다. test 검수 전에는 schema/parser production code를 구현하지 않는다.
+상태: `S2-D4-CODE` 승인 후 `S2-D4-TEST` 9개 작성과 두 toolchain 전체 CTest 50/50 완료, 사용자 test 검수 대기. production 결함 후보는 없다. 세부 범위와 production code, test code 및 bug 수정 사이의 검수 게이트는 `docs/stage-2-plan.md`를 따른다. test 검수 전에는 `S2-D4-FIX`를 생략하거나 launch path production code를 구현하지 않는다.
 
 - `std::u8string` 기반 프로젝트, 저장소 snapshot, 최신 상태, 작업, 오류 모델을 구현한다.
 - JSON 스키마 검증, 경로 정규화, 중복 검사, 원자적 저장을 구현한다.

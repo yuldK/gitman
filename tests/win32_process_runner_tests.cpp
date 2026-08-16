@@ -1,0 +1,420 @@
+#include "platform/win32/win32_process_runner.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <windows.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <system_error>
+#include <thread>
+#include <utility>
+#include <vector>
+
+namespace {
+    constexpr std::size_t default_capture_limit { 32u * 1024u * 1024u };
+
+    class recording_sink final : public gitman::process_output_sink
+    {
+    public:
+        void on_record(const gitman::process_output_record& record) override
+        {
+            records.push_back(record);
+        }
+
+        [[nodiscard]] std::vector<std::u8string> texts(const gitman::process_stream stream) const
+        {
+            std::vector<std::u8string> values {};
+            for (const gitman::process_output_record& record : records)
+                if (record.stream == stream)
+                    values.push_back(record.text);
+            return values;
+        }
+
+        std::vector<gitman::process_output_record> records {};
+    };
+
+    // 도우미는 test 실행 파일과 같은 출력 디렉터리에 만들어진다. 경로를 compile
+    // definition으로 넘기면 backslash 이스케이프 문제가 생기므로 runtime에 찾는다.
+    std::u8string test_child_path()
+    {
+        std::array<wchar_t, MAX_PATH> module_path {};
+        const DWORD length { GetModuleFileNameW(nullptr, module_path.data(), static_cast<DWORD>(module_path.size())) };
+        REQUIRE(length > 0);
+
+        std::filesystem::path path { std::wstring_view { module_path.data(), static_cast<std::size_t>(length) } };
+        path.replace_filename(L"gitman_process_test_child.exe");
+        REQUIRE(std::filesystem::exists(path));
+        return path.u8string();
+    }
+
+    std::u8string windows_directory()
+    {
+        std::array<wchar_t, MAX_PATH> buffer {};
+        const UINT length { GetSystemWindowsDirectoryW(buffer.data(), static_cast<UINT>(buffer.size())) };
+        REQUIRE(length > 0);
+        return std::filesystem::path { std::wstring_view { buffer.data(), length } }.u8string();
+    }
+
+    class temporary_directory_fixture
+    {
+    public:
+        temporary_directory_fixture()
+        {
+            std::error_code error {};
+            const std::filesystem::path base { std::filesystem::temp_directory_path(error) };
+            REQUIRE_FALSE(static_cast<bool>(error));
+
+            const auto token { std::chrono::steady_clock::now().time_since_epoch().count() };
+            for (std::size_t attempt = 0; attempt < 100; ++attempt)
+            {
+                error.clear();
+                // 공백과 한글이 포함된 이름으로 경로 처리도 함께 검증한다.
+                const std::filesystem::path candidate { base / (L"gitman 프로세스 test-" + std::to_wstring(token) + L"-" + std::to_wstring(attempt)) };
+                if (std::filesystem::create_directory(candidate, error))
+                {
+                    root_ = candidate;
+                    break;
+                }
+            }
+            REQUIRE_FALSE(root_.empty());
+        }
+
+        ~temporary_directory_fixture()
+        {
+            std::error_code error {};
+            std::filesystem::remove_all(root_, error);
+        }
+
+        temporary_directory_fixture(const temporary_directory_fixture&) = delete;
+        temporary_directory_fixture(temporary_directory_fixture&&) = delete;
+        temporary_directory_fixture& operator=(const temporary_directory_fixture&) = delete;
+        temporary_directory_fixture& operator=(temporary_directory_fixture&&) = delete;
+
+        [[nodiscard]] const std::filesystem::path& root() const noexcept
+        {
+            return root_;
+        }
+
+    private:
+        std::filesystem::path root_ {};
+    };
+
+    struct runner_fixture
+    {
+        runner_fixture()
+            : runner { gitman::win32::make_process_runner() }
+            , child { test_child_path() }
+            , working_directory { windows_directory() }
+        {
+            REQUIRE(runner != nullptr);
+        }
+
+        [[nodiscard]] gitman::process_request request(std::vector<std::u8string> arguments) const
+        {
+            gitman::process_request value {};
+            value.executable = child;
+            value.arguments = std::move(arguments);
+            value.working_directory = working_directory;
+            value.maximum_captured_bytes_per_stream = default_capture_limit;
+            return value;
+        }
+
+        std::unique_ptr<gitman::process_runner> runner {};
+        std::u8string child {};
+        std::u8string working_directory {};
+    };
+} // namespace
+
+TEST_CASE("Child exit codes and durations are reported", "[win32][process][runner]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const gitman::process_result failure { fixture.runner->run(fixture.request({ u8"exit", u8"42" }), &sink, token) };
+    REQUIRE(failure.completion == gitman::process_completion::exited);
+    REQUIRE(failure.exit_code.has_value());
+    REQUIRE(*failure.exit_code == 42);
+    REQUIRE_FALSE(failure.succeeded());
+    REQUIRE(failure.diagnostics.empty());
+    REQUIRE(failure.masked_command_line.empty() == false);
+    REQUIRE(failure.duration.count() >= 0);
+    REQUIRE(failure.finished_at >= failure.started_at);
+    REQUIRE(sink.records.empty());
+
+    const gitman::process_result success { fixture.runner->run(fixture.request({ u8"exit", u8"0" }), nullptr, token) };
+    REQUIRE(success.succeeded());
+    REQUIRE(success.record_count == 0);
+}
+
+TEST_CASE("Arguments round trip through the command line", "[win32][process][runner]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const std::vector<std::u8string> arguments { u8"echo-args", u8"plain", u8"with space", u8"quote\"inside", u8"trailing\\", u8"", u8"한글 인자", u8"a&b|c^d" };
+    const gitman::process_result result { fixture.runner->run(fixture.request(arguments), &sink, token) };
+
+    REQUIRE(result.succeeded());
+    const std::vector<std::u8string> expected {
+        u8"[plain]",
+        u8"[with space]",
+        u8"[quote\"inside]",
+        u8"[trailing\\]",
+        u8"[]",
+        u8"[한글 인자]",
+        u8"[a&b|c^d]",
+    };
+    REQUIRE(sink.texts(gitman::process_stream::standard_output) == expected);
+    REQUIRE(result.record_count == expected.size());
+
+    // 실행 단위 sequence는 1부터 증가한다.
+    for (std::size_t index = 0; index < sink.records.size(); ++index)
+        REQUIRE(sink.records[index].sequence == index + 1);
+}
+
+TEST_CASE("The working directory is applied even with spaces and Korean names", "[win32][process][runner][path]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+    const temporary_directory_fixture directory {};
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"echo-cwd" }) };
+    request.working_directory = directory.root().u8string();
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+
+    REQUIRE(result.succeeded());
+    REQUIRE(sink.records.size() == 1);
+    REQUIRE(sink.records[0].text == directory.root().u8string());
+}
+
+TEST_CASE("Environment overrides set remove and inherit variables", "[win32][process][runner][environment]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+    REQUIRE(SetEnvironmentVariableW(L"GITMAN_PARENT_VARIABLE", L"parent") != FALSE);
+
+    recording_sink inherited {};
+    const gitman::process_result inherited_result { fixture.runner->run(fixture.request({ u8"echo-env", u8"GITMAN_PARENT_VARIABLE" }), &inherited, token) };
+    REQUIRE(inherited_result.succeeded());
+    REQUIRE(inherited.records.size() == 1);
+    REQUIRE(inherited.records[0].text == u8"parent");
+
+    recording_sink applied {};
+    gitman::process_request set_request { fixture.request({ u8"echo-env", u8"GITMAN_CHILD_VARIABLE" }) };
+    set_request.environment_overrides.push_back({ u8"GITMAN_CHILD_VARIABLE", u8"자식 값" });
+    const gitman::process_result set_result { fixture.runner->run(set_request, &applied, token) };
+    REQUIRE(set_result.succeeded());
+    REQUIRE(applied.records.size() == 1);
+    REQUIRE(applied.records[0].text == u8"자식 값");
+
+    recording_sink removed {};
+    gitman::process_request remove_request { fixture.request({ u8"echo-env", u8"GITMAN_PARENT_VARIABLE" }) };
+    remove_request.environment_overrides.push_back({ u8"GITMAN_PARENT_VARIABLE", std::nullopt });
+    const gitman::process_result remove_result { fixture.runner->run(remove_request, &removed, token) };
+    REQUIRE(remove_result.succeeded());
+    REQUIRE(removed.records.size() == 1);
+    REQUIRE(removed.records[0].text == u8"<unset>");
+
+    // 무관한 부모 변수는 override가 있어도 그대로 남는다.
+    recording_sink survived {};
+    gitman::process_request survive_request { fixture.request({ u8"echo-env", u8"GITMAN_PARENT_VARIABLE" }) };
+    survive_request.environment_overrides.push_back({ u8"GITMAN_CHILD_VARIABLE", u8"other" });
+    const gitman::process_result survive_result { fixture.runner->run(survive_request, &survived, token) };
+    REQUIRE(survive_result.succeeded());
+    REQUIRE(survived.records.size() == 1);
+    REQUIRE(survived.records[0].text == u8"parent");
+
+    SetEnvironmentVariableW(L"GITMAN_PARENT_VARIABLE", nullptr);
+}
+
+TEST_CASE("Large output is captured without deadlocking", "[win32][process][runner][output]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit", u8"4000000" }), &sink, token) };
+
+    REQUIRE(result.succeeded());
+    REQUIRE(result.captured_bytes >= 4000000);
+    REQUIRE_FALSE(result.output_truncated);
+    REQUIRE(result.record_count == sink.records.size());
+    REQUIRE(sink.records.size() > 1000);
+}
+
+TEST_CASE("Capture limits truncate output but keep the run successful", "[win32][process][runner][output]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"emit", u8"200000" }) };
+    request.maximum_captured_bytes_per_stream = 4096;
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+
+    REQUIRE(result.completion == gitman::process_completion::exited);
+    REQUIRE(result.output_truncated);
+    REQUIRE(result.captured_bytes == 4096);
+    REQUIRE(result.has_warnings());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE(result.succeeded());
+}
+
+TEST_CASE("Both streams are collected with a stable per stream order", "[win32][process][runner][output]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"interleave", u8"40" }), &sink, token) };
+    REQUIRE(result.succeeded());
+
+    const std::vector<std::u8string> output { sink.texts(gitman::process_stream::standard_output) };
+    const std::vector<std::u8string> errors { sink.texts(gitman::process_stream::standard_error) };
+    REQUIRE(output.size() == 40);
+    REQUIRE(errors.size() == 40);
+    REQUIRE(output.front() == u8"out 0");
+    REQUIRE(output.back() == u8"out 39");
+    REQUIRE(errors.front() == u8"err 0");
+    REQUIRE(errors.back() == u8"err 39");
+
+    std::uint64_t previous { 0 };
+    for (const gitman::process_output_record& record : sink.records)
+    {
+        REQUIRE(record.sequence > previous);
+        previous = record.sequence;
+    }
+}
+
+TEST_CASE("Mixed output reports invalid bytes progress and unterminated tails", "[win32][process][runner][output]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit-mixed" }), &sink, token) };
+    REQUIRE(result.succeeded());
+    REQUIRE(sink.records.size() == 5);
+
+    REQUIRE(sink.records[0].text == u8"한글 line");
+    REQUIRE_FALSE(sink.records[0].progress);
+    REQUIRE_FALSE(sink.records[0].replaced_invalid_bytes);
+    REQUIRE(sink.records[1].replaced_invalid_bytes);
+    REQUIRE(sink.records[2].text == u8"progress 10%");
+    REQUIRE(sink.records[2].progress);
+    REQUIRE(sink.records[3].text == u8"progress 100%");
+    REQUIRE(sink.records[3].progress);
+    REQUIRE(sink.records[4].text == u8"no newline tail");
+    REQUIRE_FALSE(sink.records[4].progress);
+}
+
+TEST_CASE("Characters split across pipe reads stay intact", "[win32][process][runner][output][utf8]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit-split" }), &sink, token) };
+    REQUIRE(result.succeeded());
+    REQUIRE(sink.records.size() == 1);
+    REQUIRE(sink.records[0].text == u8"한");
+    REQUIRE_FALSE(sink.records[0].replaced_invalid_bytes);
+}
+
+TEST_CASE("A null sink still drains the pipes and counts output", "[win32][process][runner][output]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit", u8"200000" }), nullptr, token) };
+    REQUIRE(result.succeeded());
+    REQUIRE(result.captured_bytes >= 200000);
+    REQUIRE(result.record_count > 0);
+}
+
+TEST_CASE("Standard input is at end of file so prompts cannot block", "[win32][process][runner]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"read-stdin" }), nullptr, token) };
+    REQUIRE(result.succeeded());
+}
+
+TEST_CASE("Missing executables report a start failure", "[win32][process][runner][failure]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"exit", u8"0" }) };
+    request.executable = fixture.working_directory + u8"/gitman-missing-child.exe";
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+
+    REQUIRE(result.completion == gitman::process_completion::start_failed);
+    REQUIRE(result.native_error.has_value());
+    REQUIRE(*result.native_error == ERROR_FILE_NOT_FOUND);
+    REQUIRE(result.diagnostics.size() == 1);
+    REQUIRE(result.diagnostics.front().code == gitman::diagnostic_code::process_start_failed);
+    REQUIRE(result.has_errors());
+    REQUIRE(sink.records.empty());
+    REQUIRE_FALSE(result.exit_code.has_value());
+}
+
+TEST_CASE("Invalid requests never start a process", "[win32][process][runner][failure]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"exit", u8"0" }) };
+    request.executable = u8"gitman_process_test_child.exe";
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+
+    REQUIRE(result.completion == gitman::process_completion::invalid_request);
+    REQUIRE(result.diagnostics.size() == 1);
+    REQUIRE(result.diagnostics.front().code == gitman::diagnostic_code::invalid_process_request);
+    // 명령줄을 만들지 않았으므로 기록도 없다.
+    REQUIRE(result.masked_command_line.empty());
+    REQUIRE(sink.records.empty());
+}
+
+TEST_CASE("One runner instance serves concurrent runs", "[win32][process][runner][threading]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    constexpr std::size_t worker_count { 4 };
+    std::array<gitman::process_result, worker_count> results {};
+    std::array<recording_sink, worker_count> sinks {};
+    std::vector<std::thread> workers {};
+    workers.reserve(worker_count);
+
+    for (std::size_t index = 0; index < worker_count; ++index)
+        workers.emplace_back([&fixture, &results, &sinks, &token, index]() {
+            const gitman::process_request request { fixture.request({ u8"emit", u8"120000" }) };
+            results[index] = fixture.runner->run(request, &sinks[index], token);
+        });
+    for (std::thread& worker : workers)
+        worker.join();
+
+    for (std::size_t index = 0; index < worker_count; ++index)
+    {
+        REQUIRE(results[index].succeeded());
+        REQUIRE(results[index].captured_bytes >= 120000);
+        REQUIRE(results[index].record_count == sinks[index].records.size());
+        // 실행마다 독립된 sequence를 부여한다.
+        REQUIRE(sinks[index].records.front().sequence == 1);
+    }
+}

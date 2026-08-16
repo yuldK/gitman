@@ -84,6 +84,7 @@ TEST_CASE("Cancelled and timed out runs are never reported as success", "[domain
         gitman::process_completion::cancelled,
         gitman::process_completion::start_failed,
         gitman::process_completion::invalid_request,
+        gitman::process_completion::internal_error,
     };
     for (const gitman::process_completion completion : unsuccessful_completions)
     {
@@ -106,6 +107,7 @@ TEST_CASE("Process streams and completions have stable names", "[domain][process
         completion_name_case { gitman::process_completion::timed_out, u8"timed_out" },
         completion_name_case { gitman::process_completion::cancelled, u8"cancelled" },
         completion_name_case { gitman::process_completion::invalid_request, u8"invalid_request" },
+        completion_name_case { gitman::process_completion::internal_error, u8"internal_error" },
     };
     for (const auto& completion_name : completion_names)
         REQUIRE(u8_equal(gitman::process_completion_name(completion_name.completion), completion_name.name));

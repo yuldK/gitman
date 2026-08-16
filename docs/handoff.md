@@ -5,13 +5,13 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 3 프로세스 실행 계층
-- 현재 체크포인트: `S3-D2-CODE` 구현 완료, 사용자 검수 대기 (`S3-P0`, `S3-D1-CODE`, `S3-D1-TEST` 승인과 `S3-D1-FIX` 생략 완료)
-- 다음 허용 작업: 승인 후 `S3-D2-TEST` 하나만 수행하고 다시 보고
+- 현재 체크포인트: `S3-D2-TEST` 작성 완료, 사용자 검수 대기 (`S3-P0`, `S3-D1` 구간과 `S3-D2-CODE` 승인 완료)
+- 다음 허용 작업: 무결함 `S3-D2-FIX` 생략 확인 후 `S3-D3-CODE` 하나만 수행하고 다시 보고
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, test와 install 구성
 - 기준 문서: `docs/stage-3-plan.md`
 - 직전 단계 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-3-d2-code.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-3-d1-test.md`
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-3-d2-test.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-3-d2-code.md`
 - 최근 검증 기록: `docs/verification/2026-08-16-stage-2.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 단계 2처럼 여러 체크포인트를 한 번에 자동 진행하지 않는다.
 
@@ -114,16 +114,14 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S3-D2-CODE` (수정 재제출) |
-| 제출 내용 | 인자 인용, `CreateProcessW` 시작, 작업 디렉터리와 환경, stdin `NUL`, 상속 handle 제한, 종료 코드, 시작 실패, 출력 pipe와 줄 단위 레코드 |
-| 1차 검수 지시 | wait 실패 시 자식 정리, 출력 pipe를 `S3-D2`에 포함 |
-| production code | `infrastructure/command_line_builder.*`, `infrastructure/process_output_pipeline.*`, `platform/win32/win32_process_runner.*`, `domain/process_execution.*`(`internal_error` 추가), `src/CMakeLists.txt` |
-| test code 및 fixture | 이번 구간 변경 없음. argv 기반 도우미 target과 test는 `S3-D2-TEST`에서 추가한다. |
-| 검증 | VS2022 Debug/Release와 VS2026 Debug 전체 CTest 각각 78/78, VS2022 `/analyze` 무경고, aggregate format/style, `git diff --check` 통과 |
-| 수동 확인 | 저장소 밖 임시 프로그램으로 시작 계약 21개와 출력 34개 항목 통과 후 삭제. 8 MB 출력 교착 없음과 chunk 경계 UTF-8 보존을 포함한다. |
-| 발견 결함 | 구현 중 강제 분할 경계 계산 오류를 발견해 같은 구간에서 고쳤다. `cmd.exe`는 argv 규칙을 쓰지 않아 test 자식으로 부적합하다. |
-| 승인 대기 | 수정된 `S3-D2-CODE` 검수 |
-| 승인 뒤 다음 작업 | `S3-D2-TEST` argv 기반 도우미 target과 시작 계약 및 출력 수집 test만 허용 |
+| 계획 ID | `S3-D2-TEST` |
+| 제출 내용 | argv 기반 콘솔 도우미 target과 시작 계약 및 출력 수집 Catch2 test 29개 |
+| production code | 이번 구간 변경 없음 |
+| test code 및 fixture | `tests/helpers/process_test_child.cpp`, `tests/command_line_builder_tests.cpp`, `tests/process_output_pipeline_tests.cpp`, `tests/win32_process_runner_tests.cpp`, `tests/process_execution_tests.cpp`, `tests/CMakeLists.txt` |
+| 검증 | VS2022 Debug/Release와 VS2026 Debug 전체 CTest 각각 107/107, VS2022 `/analyze` 무경고, aggregate format/style, Release install 단일 exe, `git diff --check` 통과 |
+| 발견 결함 | 없음. 29개 test가 첫 실행에서 모두 통과했다. |
+| 승인 대기 | `S3-D2-TEST` 검수와 무결함 `S3-D2-FIX` 생략 확인 |
+| 승인 뒤 다음 작업 | `S3-D3-CODE` 활성 code page fallback transcoder 구현과 연결만 허용 |
 
 ### 8.2 단계 3 진행 원장
 
@@ -133,8 +131,10 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S3-D1-CODE` 계약 production code | 승인 완료 | `docs/verification/2026-08-16-stage-3-d1-code.md` |
 | `S3-D1-TEST` 계약 test | 승인 완료 | test 24개, 양 toolchain 전체 78/78, production 결함 없음 |
 | `S3-D1-FIX` 계약 bug 수정 | 생략 완료 | 발견 production 결함 없음 |
-| `S3-D2-CODE` 시작 계약과 출력 수집 production code | 수정 후 검수 대기 | `docs/verification/2026-08-16-stage-3-d2-code.md` |
-| `S3-D2-TEST` ~ `S3-D5-FIX` | 시작 전 | 계획 7장 순서대로 하나씩 진행. `S3-D3`은 code page fallback만 남는다. |
+| `S3-D2-CODE` 시작 계약과 출력 수집 production code | 승인 완료 | 1차 검수 지시(wait 실패 정리, 출력 pipe 포함) 반영 후 승인 |
+| `S3-D2-TEST` 시작 계약과 출력 test | 검수 대기 | 도우미 target과 test 29개, 양 toolchain 107/107 |
+| `S3-D2-FIX` bug 수정 | 생략 후보 | 발견 production 결함 없음 |
+| `S3-D3-CODE` ~ `S3-D5-FIX` | 시작 전 | 계획 7장 순서대로 하나씩 진행. `S3-D3`은 code page fallback만 남는다. |
 | `S3-V1` 단계 3 최종 검증 | 시작 전 | 전체 build/test/analyze/install과 동시 실행 stress |
 
 ### 8.3 단계 2 진행 원장 (완료)

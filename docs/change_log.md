@@ -1,5 +1,34 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D2-TEST` 도우미 target과 실행 계층 test 작성
+
+### 사용자 지시
+
+- 수정한 `S3-D2-CODE`를 승인하고 `S3-D2-TEST`를 진행한다.
+
+### 반영 내용
+
+- `tests/helpers/process_test_child.cpp`와 `gitman_process_test_child` 콘솔 target을 추가했다. 표준 `wmain` argv를 쓰고 raw byte로 출력하며 install 대상이 아니다.
+- test는 `GetModuleFileNameW`로 도우미 경로를 runtime에 찾는다. compile definition으로 넘기면 Windows 경로의 backslash가 문자열 이스케이프로 해석되는 문제를 피했다.
+- `tests/command_line_builder_tests.cpp`에 인용 규칙, backslash 처리, 셸 metacharacter 보존과 명령줄 조립 test 5개를 추가했다.
+- `tests/process_output_pipeline_tests.cpp`에 UTF-8 정규화, 줄 분할, 진행 표시, chunk 경계, 강제 분할, 캡처 상한과 flush test 10개를 추가했다.
+- `tests/win32_process_runner_tests.cpp`에 종료 코드, 인자 왕복, 한글 및 공백 작업 디렉터리, 환경 override, 4 MB 출력, 절단, 두 스트림 순서, 혼합 출력, 읽기 경계, null sink, stdin EOF, 시작 실패, 잘못된 요청과 동시 실행 test 14개를 추가했다.
+- `tests/process_execution_tests.cpp`에 `internal_error` 이름 매핑과 성공 아님 판정을 추가했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 107/107 통과했고 `/analyze`도 무경고로 통과했다.
+- Release install 결과가 `bin/gitman.exe` 한 파일임을 다시 확인해 도우미 target이 배포에 포함되지 않음을 검증했다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d2-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-006, REQ-009, REQ-010, REQ-011, REQ-012, REQ-013
+- NFR-005, NFR-006, NFR-007, NFR-011
+
+### 다음 작업 제한
+
+- 발견 production 결함이 없어 `S3-D2-FIX`는 사용자 확인 후 생략한다.
+- `S3-D3-CODE` 승인 전에는 code page fallback transcoder를 구현하지 않는다.
+- `sleep`과 `spawn-child` 도우미 명령은 `S3-D4-TEST`에서만 추가한다.
+
 ## 2026-08-16 - 단계 3 `S3-D2-CODE` 수정 재제출
 
 ### 사용자 지시

@@ -1,5 +1,7 @@
 #include "infrastructure/process_output_pipeline.h"
 
+#include "infrastructure/secret_masking.h"
+
 #include <algorithm>
 #include <optional>
 #include <utility>
@@ -168,12 +170,14 @@ namespace gitman {
             // UTF-8은 건드리지 않아 정상 출력이 code page 해석으로 훼손되지 않는다.
             if (std::optional<std::u8string> transcoded { transcoder_->to_utf8(pending_) }; transcoded.has_value())
             {
-                record.text = std::move(*transcoded);
+                // 마스킹은 인코딩을 확정한 뒤 마지막에 적용한다. 그래야 자격 증명이
+                // 어떤 인코딩으로 들어와도 sink에 도달하기 전에 가려진다.
+                record.text = mask_secrets(*transcoded);
                 record.transcoded_from_active_code_page = true;
                 return;
             }
         }
-        record.text = normalize_utf8_text(pending_, record.replaced_invalid_bytes);
+        record.text = mask_secrets(normalize_utf8_text(pending_, record.replaced_invalid_bytes));
     }
 
     void process_output_pipeline::emit(const bool progress, const bool continued, const record_handler& handler)

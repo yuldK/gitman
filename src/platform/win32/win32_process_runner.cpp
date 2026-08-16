@@ -2,6 +2,7 @@
 
 #include "infrastructure/command_line_builder.h"
 #include "infrastructure/process_output_pipeline.h"
+#include "infrastructure/secret_masking.h"
 #include "platform/win32/utf8.h"
 #include "platform/win32/win32_text_transcoder.h"
 
@@ -469,10 +470,10 @@ namespace gitman::win32 {
                 return result;
             }
 
-            // 실제 실행에 쓰는 명령줄과 기록용 값을 분리해 둔다. `S3-D5-CODE`가 기록용
-            // 값에만 마스킹을 적용해도 실행 인자가 바뀌지 않는다.
+            // 실제 실행에 쓰는 명령줄과 기록용 값을 분리한다. 마스킹은 기록용 값에만
+            // 적용하므로 자식에게 전달하는 인자는 바뀌지 않는다.
             const std::u8string command_line_text { build_windows_command_line(request.executable, request.arguments) };
-            result.masked_command_line = command_line_text;
+            result.masked_command_line = mask_secrets(command_line_text);
 
             const auto executable { utf8_to_utf16(request.executable) };
             const auto command_line { utf8_to_utf16(command_line_text) };

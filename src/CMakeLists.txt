@@ -94,6 +94,8 @@ add_library(gitman_process STATIC
     infrastructure/command_line_builder.h
     infrastructure/process_output_pipeline.cpp
     infrastructure/process_output_pipeline.h
+    infrastructure/secret_masking.cpp
+    infrastructure/secret_masking.h
     platform/win32/win32_process_runner.cpp
     platform/win32/win32_process_runner.h
     platform/win32/win32_text_transcoder.cpp

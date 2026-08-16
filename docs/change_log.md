@@ -1,5 +1,35 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D5-CODE` 비밀 마스킹 구현
+
+### 사용자 지시
+
+- `S3-D4-TEST`를 승인하고 무결함 `S3-D4-FIX` 생략을 확인한 뒤 `S3-D5-CODE`를 진행한다.
+
+### 반영 내용
+
+- `infrastructure/secret_masking.*`에 `std::regex`를 쓰지 않는 단일 통과 scanner를 구현했다.
+- URL userinfo는 사용자 이름을 남기고 비밀만 가리며, 사용자 이름 없는 값은 token으로 보고 전체를 가린다.
+- 자격 증명 option 6종의 값을 `=` 형태와 공백 구분 형태 모두에서 가리고, 명령줄 인용이 남아 있으면 따옴표 안쪽만 가린다.
+- `Authorization:`, `PRIVATE-TOKEN:`, `x-access-token:` 값을 줄 끝까지 가리고 단독 `Basic` 자격 증명도 처리한다.
+- `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`, `glpat-` 접두어가 붙은 token을 가린다.
+- option과 token 이름은 단어의 처음에서만 인식하고, 이름 뒤에 `=`나 공백이 오는지로 접두어 충돌을 판정해 목록 순서에 의존하지 않게 했다.
+- 마스킹을 인코딩 확정 이후 단계에 두어 UTF-8과 code page fallback 경로 모두에서 sink 도달 전에 적용되게 했다.
+- 기록용 `masked_command_line`에만 마스킹을 적용하고 자식에게 넘기는 실제 명령줄은 원본을 유지했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 125/125 통과했고 `/analyze`도 무경고로 통과했다.
+- 임시 프로그램으로 26개 항목과 각 항목의 idempotency를 확인했고, 4 MB 출력 마스킹이 863 ms로 실용적임을 확인했다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d5-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-008, REQ-009, REQ-011, REQ-012, REQ-013
+- NFR-007, NFR-008
+
+### 다음 작업 제한
+
+- `S3-D5-CODE` 검수 전에는 마스킹 test source를 추가하지 않는다.
+- 단계 3 최종 검증 `S3-V1`은 `S3-D5-TEST` 승인 후에만 시작한다.
+
 ## 2026-08-16 - 단계 3 `S3-D4-TEST` timeout과 취소 test 작성
 
 ### 사용자 지시

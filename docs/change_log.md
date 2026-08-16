@@ -1,5 +1,31 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D4-TEST` timeout과 취소 test 작성
+
+### 사용자 지시
+
+- `S3-D4-CODE`를 승인하고 `S3-D4-TEST`를 진행한다.
+
+### 반영 내용
+
+- 도우미에 `sleep`, `write-marker`, `spawn-child` 명령을 추가했다. `sleep`은 대기 전에 한 줄을 출력해 timeout 이전 레코드 전달을 확인할 수 있게 했다.
+- timeout 종료, 실행 중 취소, 사전 취소, timeout 이전 정상 종료, 미사용 취소 source와 handle 누수 test를 추가했다.
+- 손자 종료 test에 대조군을 넣어 "파일이 없다"는 단정이 종료 동작 때문임을 보장했다. 손자가 200 ms 뒤 marker를 만들면 파일이 생기고, 2초 뒤 만들도록 하고 300 ms에 종료하면 3.5초를 기다려도 생기지 않는다.
+- handle 누수 test는 20회 반복 실행 전후의 프로세스 handle 수 차이를 확인한다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 125/125 통과했고 `/analyze`도 무경고로 통과했다.
+- 타이밍에 의존하는 test 14개를 `--repeat until-fail:3`으로 반복 실행해 flakiness가 없음을 확인했다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d4-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-006, REQ-009, REQ-010, REQ-012, REQ-013
+- NFR-007, NFR-009
+
+### 다음 작업 제한
+
+- 발견 production 결함이 없어 `S3-D4-FIX`는 사용자 확인 후 생략한다.
+- `S3-D5-CODE` 승인 전에는 마스킹 구현을 시작하지 않는다.
+
 ## 2026-08-16 - 단계 3 `S3-D4-CODE` timeout과 취소 구현
 
 ### 사용자 지시

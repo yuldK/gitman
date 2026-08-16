@@ -482,6 +482,144 @@ TEST_CASE("Invalid requests never start a process", "[win32][process][runner][fa
     REQUIRE(sink.records.empty());
 }
 
+TEST_CASE("Timeouts terminate the child and keep the output collected so far", "[win32][process][runner][timeout]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"sleep", u8"60000" }) };
+    request.timeout = std::chrono::milliseconds { 400 };
+    const std::chrono::steady_clock::time_point start { std::chrono::steady_clock::now() };
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+    const std::chrono::milliseconds elapsed { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start) };
+
+    REQUIRE(result.completion == gitman::process_completion::timed_out);
+    REQUIRE_FALSE(result.exit_code.has_value());
+    REQUIRE_FALSE(result.succeeded());
+    REQUIRE(result.has_errors());
+    REQUIRE(result.diagnostics.front().code == gitman::diagnostic_code::process_timed_out);
+    // 자식은 60초를 자므로 곧바로 돌아오지 않으면 종료가 동작하지 않은 것이다.
+    REQUIRE(elapsed < std::chrono::milliseconds { 20000 });
+    REQUIRE(result.duration >= std::chrono::milliseconds { 400 });
+    // 제한 시간 전에 나온 줄은 그대로 전달된다.
+    REQUIRE(sink.records.size() == 1);
+    REQUIRE(sink.records[0].text == u8"sleeping");
+}
+
+TEST_CASE("Cancellation during a run terminates the child", "[win32][process][runner][cancellation]")
+{
+    const runner_fixture fixture {};
+    gitman::process_cancellation_source source {};
+
+    recording_sink sink {};
+    const gitman::process_request request { fixture.request({ u8"sleep", u8"60000" }) };
+    const std::chrono::steady_clock::time_point start { std::chrono::steady_clock::now() };
+
+    const auto cancel_after_delay = [&source]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds { 300 });
+        source.request_cancellation();
+    };
+    std::thread canceller { cancel_after_delay };
+    const gitman::process_result result { fixture.runner->run(request, &sink, source.token()) };
+    canceller.join();
+    const std::chrono::milliseconds elapsed { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start) };
+
+    REQUIRE(result.completion == gitman::process_completion::cancelled);
+    REQUIRE_FALSE(result.exit_code.has_value());
+    REQUIRE_FALSE(result.succeeded());
+    REQUIRE(result.diagnostics.front().code == gitman::diagnostic_code::process_cancelled);
+    REQUIRE(elapsed < std::chrono::milliseconds { 20000 });
+}
+
+TEST_CASE("An already cancelled token never starts a process", "[win32][process][runner][cancellation]")
+{
+    const runner_fixture fixture {};
+    gitman::process_cancellation_source source {};
+    source.request_cancellation();
+
+    recording_sink sink {};
+    const std::chrono::steady_clock::time_point start { std::chrono::steady_clock::now() };
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"sleep", u8"60000" }), &sink, source.token()) };
+    const std::chrono::milliseconds elapsed { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start) };
+
+    REQUIRE(result.completion == gitman::process_completion::cancelled);
+    REQUIRE(sink.records.empty());
+    REQUIRE(result.record_count == 0);
+    REQUIRE(result.masked_command_line.empty());
+    REQUIRE(elapsed < std::chrono::milliseconds { 5000 });
+}
+
+TEST_CASE("Grandchild processes are terminated with the job", "[win32][process][runner][timeout]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+    const temporary_directory_fixture directory {};
+
+    const std::filesystem::path survivor { directory.root() / L"survivor.marker" };
+    const std::filesystem::path victim { directory.root() / L"victim.marker" };
+
+    // 대조군: 손자가 종료 전에 marker를 만들 시간이 있으면 파일이 생긴다. 경로와
+    // 손자 생성 자체가 동작한다는 것을 먼저 확인한다.
+    gitman::process_request control { fixture.request({ u8"spawn-child", u8"200", survivor.u8string() }) };
+    control.timeout = std::chrono::milliseconds { 2000 };
+    const gitman::process_result control_result { fixture.runner->run(control, nullptr, token) };
+    REQUIRE(control_result.completion == gitman::process_completion::timed_out);
+    REQUIRE(std::filesystem::exists(survivor));
+
+    // 손자가 marker를 만들기 전에 트리를 종료하면 이후에도 파일이 생기지 않는다.
+    gitman::process_request killed { fixture.request({ u8"spawn-child", u8"2000", victim.u8string() }) };
+    killed.timeout = std::chrono::milliseconds { 300 };
+    const gitman::process_result killed_result { fixture.runner->run(killed, nullptr, token) };
+    REQUIRE(killed_result.completion == gitman::process_completion::timed_out);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds { 3500 });
+    REQUIRE_FALSE(std::filesystem::exists(victim));
+}
+
+TEST_CASE("A child that finishes before its timeout keeps its exit code", "[win32][process][runner][timeout]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    gitman::process_request request { fixture.request({ u8"exit", u8"7" }) };
+    request.timeout = std::chrono::milliseconds { 30000 };
+    const gitman::process_result result { fixture.runner->run(request, nullptr, token) };
+
+    REQUIRE(result.completion == gitman::process_completion::exited);
+    REQUIRE(result.exit_code.has_value());
+    REQUIRE(*result.exit_code == 7);
+    REQUIRE(result.duration < std::chrono::milliseconds { 30000 });
+}
+
+TEST_CASE("An unused cancellation source does not disturb a normal run", "[win32][process][runner][cancellation]")
+{
+    const runner_fixture fixture {};
+    gitman::process_cancellation_source source {};
+
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit", u8"4096" }), nullptr, source.token()) };
+    REQUIRE(result.succeeded());
+    REQUIRE(result.record_count > 0);
+    REQUIRE_FALSE(source.cancellation_requested());
+}
+
+TEST_CASE("Repeated runs do not leak process handles", "[win32][process][runner][threading]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    DWORD before { 0 };
+    REQUIRE(GetProcessHandleCount(GetCurrentProcess(), &before) != FALSE);
+    for (std::size_t index = 0; index < 20; ++index)
+        REQUIRE(fixture.runner->run(fixture.request({ u8"exit", u8"0" }), nullptr, token).succeeded());
+
+    DWORD after { 0 };
+    REQUIRE(GetProcessHandleCount(GetCurrentProcess(), &after) != FALSE);
+    // 실행마다 process, thread, pipe, job과 event handle을 열고 닫는다. 누수가 있으면
+    // 20회 반복에서 수십 개가 남는다.
+    REQUIRE(after <= before + 8);
+}
+
 TEST_CASE("One runner instance serves concurrent runs", "[win32][process][runner][threading]")
 {
     const runner_fixture fixture {};

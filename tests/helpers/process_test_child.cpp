@@ -170,6 +170,65 @@ namespace {
         return 0;
     }
 
+    int run_sleep(const int argc, wchar_t** const argv)
+    {
+        if (argc < 3)
+            return usage_exit_code;
+
+        // 대기 전에 한 줄을 내보내 timeout 이전 출력이 전달되는지 확인할 수 있게 한다.
+        write_bytes(STD_OUTPUT_HANDLE, "sleeping\n");
+        Sleep(static_cast<DWORD>(std::wcstol(argv[2], nullptr, 10)));
+        write_bytes(STD_OUTPUT_HANDLE, "woke\n");
+        return 0;
+    }
+
+    int run_write_marker(const int argc, wchar_t** const argv)
+    {
+        if (argc < 4)
+            return usage_exit_code;
+
+        Sleep(static_cast<DWORD>(std::wcstol(argv[2], nullptr, 10)));
+        const HANDLE file { CreateFileW(argv[3], GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+        if (file == INVALID_HANDLE_VALUE)
+            return 93;
+        CloseHandle(file);
+        return 0;
+    }
+
+    // 손자 프로세스를 만들고 오래 대기한다. job이 트리를 함께 종료하는지 확인할 때
+    // 손자가 남아 있으면 지정한 시간 뒤 marker 파일을 만든다.
+    int run_spawn_child(const int argc, wchar_t** const argv)
+    {
+        if (argc < 4)
+            return usage_exit_code;
+
+        std::wstring module_path(MAX_PATH, L'\0');
+        const DWORD length { GetModuleFileNameW(nullptr, module_path.data(), static_cast<DWORD>(module_path.size())) };
+        if (length == 0 || length >= module_path.size())
+            return 94;
+        module_path.resize(static_cast<std::size_t>(length));
+
+        std::wstring command_line { L"\"" };
+        command_line.append(module_path);
+        command_line.append(L"\" write-marker ");
+        command_line.append(argv[2]);
+        command_line.append(L" \"");
+        command_line.append(argv[3]);
+        command_line.append(L"\"");
+
+        STARTUPINFOW startup {};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION information {};
+        if (CreateProcessW(module_path.c_str(), command_line.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &information) == FALSE)
+            return 95;
+
+        CloseHandle(information.hThread);
+        CloseHandle(information.hProcess);
+        write_bytes(STD_OUTPUT_HANDLE, "spawned\n");
+        Sleep(60000);
+        return 0;
+    }
+
     int run_read_stdin()
     {
         char buffer[64] {};
@@ -204,6 +263,12 @@ int wmain(const int argc, wchar_t** const argv)
         return run_emit_mixed();
     if (command == L"emit-split")
         return run_emit_split();
+    if (command == L"sleep")
+        return run_sleep(argc, argv);
+    if (command == L"write-marker")
+        return run_write_marker(argc, argv);
+    if (command == L"spawn-child")
+        return run_spawn_child(argc, argv);
     if (command == L"read-stdin")
         return run_read_stdin();
     return unknown_command_exit_code;

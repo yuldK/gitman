@@ -3,20 +3,20 @@
 ## 1. 현재 상태
 
 - 기준일: 2026-08-16
-- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체 (2026-08-16 사용자 최종 승인)
-- 현재 단계: 단계 3 프로세스 실행 계층
-- 현재 체크포인트: `S3-V1` 전체 자동 검증과 단계 2·3 독립 감사 결함 수정 완료, 단계 3 최종 사용자 승인 대기
+- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
+- 현재 단계: 단계 4 Git 및 SVN provider
+- 현재 체크포인트: `S4-P0` 구현 계획 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: 단계 3 최종 승인 전에는 상태 문서 보정과 read-only 검토만 허용
-- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, test와 install 구성
-- 기준 문서: `docs/stage-3-plan.md`
-- 직전 단계 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-3.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-3-d5-test.md`
-- 최근 검증 기록: `docs/verification/2026-08-16-stage-2.md`
-- 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 단계 2처럼 여러 체크포인트를 한 번에 자동 진행하지 않는다.
+- 다음 허용 작업: `S4-P0` 승인 후 `S4-D1-CODE` 한 구간만 수행하고 보고 뒤 중지
+- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, test와 install 구성
+- 기준 문서: `docs/stage-4-plan.md`
+- 직전 단계 기준 문서: `docs/stage-3-plan.md`
+- 현재 검증 기록: 없음 (`S4-P0`은 문서 구간)
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
+- 최근 검증 기록: `docs/verification/2026-08-16-stage-3.md`
+- 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
-다음 작업은 이 문서와 `docs/stage-3-plan.md`를 먼저 읽어야 한다. 단계 3에서는 범용 외부 프로세스 실행 계층만 구현하고 Git/SVN 명령 지식, scheduler, 로그 UI와 ADR-004 message component는 구현하지 않는다.
+다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -102,32 +102,56 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 ## 7. 아직 하지 않은 작업
 
-- 단계 3 최종 사용자 승인
-- Git/SVN 실행 파일 탐색, command 조립과 출력 파싱 (단계 4)
+- `S4-P0` 계획 사용자 승인
+- Git/SVN 실행 파일 탐색, command 조립과 출력 파싱, update 및 switch (단계 4)
 - 탐색 및 등록 (단계 5), 실제 카드 UI와 로그 UI (단계 6~7)
 - thread message API 상세 설계와 구현 (단계 6 이전 별도 승인)
-- 프로세스 실행 계층을 실행 파일에 링크하는 작업. 현재 `gitman_process`는 library와 test로만 검증됐고 단계 4에서 provider가 사용할 때 exe에 들어간다.
+- `gitman_process`와 단계 4의 `gitman_vcs`를 실행 파일에 링크하는 조립 작업. 두 library는 test로만 검증되며 exe 링크는 단계 6의 app 조립에서 이뤄진다.
 
-따라서 후속 작업은 단계 3 최종 승인 후 단계 4 계획부터 시작하며, 이후에도 체크포인트 하나씩 진행하고 다시 검수를 요청해야 한다.
+따라서 후속 작업은 `S4-P0` 승인 후 `S4-D1-CODE`부터 시작하며, 이후에도 체크포인트 하나씩 진행하고 다시 검수를 요청해야 한다.
 
-## 8. 단계 3 영속 세션 메모리
+## 8. 단계 4 영속 세션 메모리
 
 ### 8.1 현재 체크포인트
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S3-V1` + 감사 결함 수정 |
-| 제출 내용 | 단계 3 전체 자동 검증과 단계 2·3 독립 감사 결함 수정 |
-| production code | D1 계약부터 D5 마스킹까지 모두 승인 완료. 감사 수정으로 drain 유예, resolver 주입 등 보강 |
-| test code 및 fixture | D1~D5 test 승인 완료. 감사 수정 후 양 toolchain 전체 CTest 각각 139/139 |
-| bug 수정 | 모든 FIX 체크포인트는 production 결함이 없어 생략 완료 |
-| stress | 4스레드 × 25회 = 100 프로세스 동시 실행을 3회 반복. 실패 0, sequence 역전 0, handle 누적 증가 없음 |
-| install | `bin/gitman.exe` 한 파일, 6,255,616 byte, 설치본 renderer smoke 4/4 통과 |
-| 검증 | 삭제 후 재configure, VS2022 Debug/Release, `/analyze`, VS2026 Debug, 전체 suite 3회 반복, aggregate format/style, PE 의존성 검사 통과 |
-| 승인 대기 | 단계 3 최종 사용자 검수 |
-| 승인 뒤 다음 작업 | 단계 4 Git 및 SVN provider 계획과 첫 체크포인트만 허용 |
+| 계획 ID | `S4-P0` |
+| 제출 내용 | `docs/stage-4-plan.md` 단계 4 구현 계획과 설계 제안 |
+| production code | 없음. 이번 구간은 문서만 작성했다. |
+| test code 및 fixture | 없음 |
+| bug 수정 | 없음 |
+| 검증 | 문서 구간이므로 build와 test를 변경하지 않았다. 직전 HEAD 기준 양 toolchain 전체 CTest 139/139가 마지막 실측값이다. |
+| 1차 검수 결정 | SVN XML 미사용, SVN CLI 미설치, `authentication_required` 추가, 로캘 미강제, 문서 `settings` 도입을 사용자가 확정했고 계획서에 반영했다. |
+| 승인 대기 | 개정한 `S4-P0` 계획 검수. 남은 항목은 timeout 값, `-c gc.auto=0`, dirty 기본 차단, 체크포인트 20개 구성, 파일 배치, `settings` 키 이름이며 이견이 없으면 계획대로 진행한다. |
+| 승인 뒤 다음 작업 | `S4-D1-CODE` 한 구간만 허용 |
 
-### 8.2 단계 3 진행 원장
+### 8.2 단계 4 진행 원장
+
+| 체크포인트 | 상태 | 비고 |
+| --- | --- | --- |
+| `S4-P0` 계획 | 1차 검수 결정 반영 후 재제출, 검수 대기 | `docs/stage-4-plan.md` 10.1에 확정 사항 기록 |
+| `S4-D1-CODE` 계약과 도구 발견 | 시작 전 | 문서 `settings` 스키마 확장을 포함한다. 승인 전 착수 금지 |
+| `S4-D1-TEST` | 시작 전 | |
+| `S4-D1-FIX` | 시작 전 | |
+| `S4-D2-CODE` Git 로컬 상태 | 시작 전 | |
+| `S4-D2-TEST` | 시작 전 | |
+| `S4-D2-FIX` | 시작 전 | |
+| `S4-D3-CODE` Git remote-first 최신 상태 | 시작 전 | |
+| `S4-D3-TEST` | 시작 전 | |
+| `S4-D3-FIX` | 시작 전 | |
+| `S4-D4-CODE` SVN 상태 | 시작 전 | |
+| `S4-D4-TEST` | 시작 전 | |
+| `S4-D4-FIX` | 시작 전 | |
+| `S4-D5-CODE` update | 시작 전 | |
+| `S4-D5-TEST` | 시작 전 | |
+| `S4-D5-FIX` | 시작 전 | |
+| `S4-D6-CODE` switch | 시작 전 | |
+| `S4-D6-TEST` | 시작 전 | |
+| `S4-D6-FIX` | 시작 전 | |
+| `S4-V1` 단계 4 최종 검증 | 시작 전 | |
+
+### 8.3 단계 3 진행 원장 (완료)
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
@@ -147,10 +171,10 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S3-D5-CODE` 마스킹 production code | 승인 완료 | `docs/verification/2026-08-16-stage-3-d5-code.md` |
 | `S3-D5-TEST` 마스킹 test | 승인 완료 | test 10개, 양 toolchain 135/135 |
 | `S3-D5-FIX` bug 수정 | 생략 완료 | 발견 production 결함 없음 |
-| `S3-V1` 단계 3 최종 검증 | 자동 검증 완료 | 전체 matrix 통과, 단계 3 최종 사용자 승인 대기 |
+| `S3-V1` 단계 3 최종 검증 | 승인 완료 | 전체 matrix 통과 후 2026-08-16 사용자 최종 승인 |
 | 단계 2·3 독립 감사 및 결함 수정 | 완료 | 사용자 지시. `docs/verification/2026-08-16-stage-2-3-audit-fix.md`, 양 toolchain CTest 139/139 |
 
-### 8.3 단계 2 진행 원장 (완료)
+### 8.4 단계 2 진행 원장 (완료)
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
@@ -172,7 +196,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S2-D5-FIX` launch contract bug 수정 | 생략 완료 | 발견 production 결함 없음 |
 | `S2-V1` 단계 2 최종 검증 | 승인 완료 | 전체 matrix 통과 후 2026-08-16 사용자 최종 승인 |
 
-### 8.4 미해결 또는 보류 사항
+### 8.5 미해결 또는 보류 사항
 
 - `.verison-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
 - unknown field 보존, 상대 path 기준, migration과 backup 정책은 계획대로 승인됐다.
@@ -180,11 +204,17 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 계속 보존한다.
 - ADR-004의 범용 메시지 구조 구현 차단 조건은 그대로 유효하다. 단계 3의 reader 스레드는 실행 하나에 종속된 내부 구현이며 이 차단 조건에 해당하지 않는다.
 - Git/SVN 실행 파일 탐색과 최소 버전 확인은 ADR-003에 따라 단계 4에서 구현한다. 현재 호스트에 SVN이 없어 단계 3 test는 실제 VCS 대신 전용 콘솔 도우미를 사용한다.
-- 단계 3의 기본 timeout, 기본 캡처 상한과 로캘 강제 여부는 명령별로 결정할 사항이므로 단계 4까지 미정으로 둔다.
+- 단계 3이 미정으로 남긴 명령별 timeout, 캡처 상한과 로캘 강제 여부는 `docs/stage-4-plan.md` 4.3에 값으로 제안했고 `S4-P0` 검수에서 확정한다.
 - `S3-D5-CODE`까지 적용한 runner에는 계획에 명시된 미구현 항목이 없다. 남은 구간은 마스킹 test와 단계 3 최종 검증이다.
 - 마스킹은 값의 끝을 공백과 줄 끝으로 판정하므로 자격 증명 뒤에 붙은 구두점이 함께 가려질 수 있다. 덜 가리는 것보다 안전한 방향으로 의도한 동작이다.
 - job object를 만들거나 배정하지 못하는 환경에서는 warning 진단과 함께 종료 범위가 자식 하나로 줄어든다. 실행 자체를 막지 않는 선택이며 손자 정리는 보장되지 않는다. 감사 수정 이후에는 그런 환경에서도 손자가 pipe를 잡아 `run()`이 무기한 대기하는 일은 없다(drain 유예와 `CancelSynchronousIo` 최후 수단).
-- reader join의 drain 유예는 2초 상수다. 단계 4에서 Git background 프로세스(`gc --auto`, credential helper 등) 대응 정책과 함께 재검토한다.
+- reader join의 drain 유예는 2초 상수다. 단계 4 계획은 이를 바꾸는 대신 모든 Git 명령에 `-c gc.auto=0`을 붙여 background 유지보수 프로세스를 원천 차단하는 방향을 제안했다. `S4-P0` 검수 항목 6번이다.
+- 사용자가 SVN CLI를 설치하지 않기로 했다. 단계 4의 SVN 실행 경로는 fixture와 fake runner 검증까지만 보장되며 실제 `svn.exe` 동작은 미검증으로 남는다. 단계 8에서 다시 다룬다.
+- SVN은 XML을 쓰지 않는다. `info --show-item`, 비verbose `status`, `svnversion` 조합으로 값을 얻으므로 XML 파서 dependency가 없고 ADR-002와 `vcpkg.json`은 변경하지 않는다.
+- 로캘을 강제하지 않기로 했으므로 Git/SVN 오류 메시지가 시스템 언어로 나온다. 오류 분류는 SVN `E<숫자>` 코드, libcurl 및 OpenSSH 원문 문자열, HTTP 상태 번호 같은 로캘 독립 신호만 사용해야 한다. 번역되는 문장으로 분류하면 한국어 환경에서 오분류가 발생한다.
+- 모든 Git/SVN 실행은 `active_code_page_fallback` 인코딩 모드를 쓴다. 한국어 Git 출력의 실제 인코딩 실측은 `S4-D3-TEST`에서 기록한다.
+- 프로젝트 문서에 `settings`가 추가된다. 스키마 버전은 1을 유지하고 optional이며, `S4-D1-CODE`가 단계 2의 parser와 store를 함께 수정한다. 기존 fixture 6종 회귀 확인이 필요하다.
+- REQ-017을 추가했다. 환경설정 화면 자체는 단계 6~7 범위다.
 - 로컬 NTFS는 속성 조회를 부모 디렉터리 메타데이터로 처리해 deny ACE로도 `GetFileAttributesW`를 실패시킬 수 없다(호스트 실측). `inaccessible` 분기는 `project_path_state_from_error` 매핑 test로 검증한다.
 - `gitman_workspace`는 Win32 platform에 링크하지 않으며 경로 해석은 `project_path_resolver` 주입으로만 사용한다. 단계 6 조립 시 `win32::make_project_path_resolver()`를 주입해야 한다.
 - Catch2 test 전체에 CTest TIMEOUT 120초가 걸려 있다. 이를 넘는 통합 test는 개별 상향이 필요하다.

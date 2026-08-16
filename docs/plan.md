@@ -30,6 +30,10 @@
 | 2026-08-16 | `S3-D2-CODE` 1차 검수에서 wait 실패 시 자식 정리와 출력 pipe의 `S3-D2` 포함을 지시 | `docs/verification/2026-08-16-stage-3-d2-code.md` | REQ-006, REQ-008 |
 | 2026-08-16 | clang-format과 수동 줄바꿈 규칙 충돌을 formatter 결과 수용으로 처리 | `docs/code_style.md` 2장 | REQ-010 |
 | 2026-08-16 | 단계 4 진행 전 단계 2·3 독립 감사와 발견 사항 해소 | `docs/verification/2026-08-16-stage-2-3-audit-fix.md` | REQ-001, REQ-006, REQ-008~REQ-013 |
+| 2026-08-16 | 단계 3 최종 승인 후 단계 4 진행. 작업 단위 변경마다 검수 후 사용자가 커밋 | `docs/stage-4-plan.md`, 단계 4 | REQ-002, REQ-006, REQ-007, REQ-009~REQ-014 |
+| 2026-08-16 | SVN CLI 미설치 유지, SVN XML 처리 대신 명령 연결만 수행 | `docs/stage-4-plan.md` 4.6, 8.4 | REQ-002, REQ-006, REQ-007 |
+| 2026-08-16 | 로캘을 강제하지 않고 시스템 로캘의 한국어 출력을 그대로 표시. 인코딩은 앱이 감당 | `docs/stage-4-plan.md` 4.3, 4.10 | REQ-008, REQ-011 |
+| 2026-08-16 | Git/SVN 실행 파일 경로의 수동 지정을 환경설정에서 제공하고 값은 프로젝트 문서 `settings`에 저장 | 3.7, `docs/stage-4-plan.md` 4.11 | REQ-001, REQ-017 |
 
 ### 1.2 단계 진행 상태
 
@@ -38,8 +42,9 @@
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
 | 단계 2: 도메인과 설정 저장소 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-2.md` |
-| 단계 3: 프로세스 실행 계층 | `S3-V1` 자동 검증 및 감사 결함 수정 완료 - 단계 3 최종 검수 대기 | `docs/verification/2026-08-16-stage-3.md` |
-| 단계 4~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
+| 단계 3: 프로세스 실행 계층 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-3.md` |
+| 단계 4: Git 및 SVN provider | `S4-P0` 계획 제출 - 사용자 검수 대기 | `docs/stage-4-plan.md` |
+| 단계 5~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
 
@@ -63,6 +68,7 @@
 | REQ-014 | 명시적인 상태 새로 고침 기능을 제공한다. | 전체 및 카드별 refresh 버튼으로 최신 조회를 요청하고 진행 및 완료 상태를 확인할 수 있다. |
 | REQ-015 | 입력, UI, 로직 스레드를 분리한다. | 세 스레드의 소유권을 지키고 범용 메시지 구조는 별도 설계 승인 후 구현한다. |
 | REQ-016 | `.verison-list`를 solution과 같은 작업공간 문서 및 Windows 연결 프로그램 대상으로 제공한다. | shell에서 전달된 문서를 한 창의 활성 목록으로 열고 association 등록 및 제거를 검증한다. |
+| REQ-017 | 문서 수준 환경설정을 `.verison-list`의 `settings`에 저장한다. | Git 및 SVN 실행 파일 경로를 수동으로 지정할 수 있고, 지정하지 않으면 자동 탐색하며, 저장 시 값이 보존된다. |
 
 ### 2.2 초기 버전에서 제외할 범위
 
@@ -106,9 +112,10 @@ CMake는 애플리케이션, 테스트, 자산 생성 대상을 관리한다. `W
 | `ahead` | 로컬에만 커밋이 있다. |
 | `diverged` | 로컬과 원격 양쪽에 고유 변경이 있다. |
 | `unknown` | 업스트림이 없거나 최신 조회를 아직 수행하지 않았다. |
+| `authentication_required` | 자격 증명이 없거나 거부되어 원격 확인에 실패했다. |
 | `local_only` | remote가 없어 local HEAD와 작업 트리만 기준으로 판단했다. |
 | `remote_target_missing` | remote는 있지만 현재 branch와 비교할 remote branch가 없다. |
-| `offline` | 네트워크 또는 인증 문제로 원격 확인에 실패했다. |
+| `offline` | 네트워크 문제로 원격 확인에 실패했다. |
 | `error` | 저장소 손상 또는 명령 실행 오류로 판정할 수 없다. |
 
 실제 앱에서는 열거형 이름을 그대로 노출하지 않고 Microsoft VS Code Codicons의 아이콘 글리프로 표시한다. 아이콘만으로 의미를 판단하게 하지 않고 색상, 한국어 툴팁, 접근성 이름을 함께 제공한다.
@@ -120,9 +127,10 @@ CMake는 애플리케이션, 테스트, 자산 생성 대상을 관리한다. `W
 | `ahead` | `arrow-up` | “로컬이 앞섬”과 커밋 수 |
 | `diverged` | `git-compare` | “분기됨”과 양방향 커밋 수 |
 | `unknown` | `question` | “확인되지 않음” |
+| `authentication_required` | `key` | “인증 필요” |
 | `local_only` | `home` | “로컬 저장소 기준” |
 | `remote_target_missing` | `warning` | “비교할 원격 브랜치 없음” |
-| `offline` | `debug-disconnect` | “오프라인 또는 인증 실패” |
+| `offline` | `debug-disconnect` | “오프라인” |
 | `error` | `error` | 오류 요약과 상세 보기 |
 
 Codicons의 버전을 고정하고 아이콘 폰트와 공식 `mapping.json`에서 필요한 코드포인트만 C++ 헤더로 생성한다. 런타임 웹 또는 npm 의존 없이 폰트를 실행 파일 resource로 포함하고 Skia font manager로 로드한다. `refresh`, `loading`, `repo-pull`, `git-compare`, `terminal` 등 동작 아이콘도 같은 자산을 사용한다. 아이콘 콘텐츠와 코드의 라이선스 및 attribution text도 실행 파일에 embed하고 앱에서 열람 가능하게 한다.
@@ -187,6 +195,10 @@ Git과 SVN 실행 파일의 존재 및 버전을 시작 시 확인한다. 명령
 ```json
 {
     "schema_version": 1,
+    "settings": {
+        "git_executable": "",
+        "svn_executable": ""
+    },
     "projects": [
         {
             "id": "stable-generated-id",
@@ -200,6 +212,8 @@ Git과 SVN 실행 파일의 존재 및 버전을 시작 시 확인한다. 명령
 }
 ```
 
+- `settings`는 문서 수준 환경설정이며 optional이다. 없으면 기본값을 쓰고 스키마 버전은 그대로 1이다.
+- `settings.git_executable`과 `settings.svn_executable`은 빈 문자열이면 자동 탐색, 절대 경로면 그 경로만 사용한다. 환경설정 화면이 이 값을 읽고 쓴다.
 - `path`는 읽을 때 정규화하되 사용자가 입력한 의미를 훼손하지 않는다.
 - 알 수 없는 필드의 보존 여부와 향후 마이그레이션 정책을 정한다.
 - 중복 ID와 중복 경로, 잘못된 타입을 항목별 오류로 보고한다.
@@ -448,7 +462,7 @@ gitman/
 
 ### 단계 3: 프로세스 실행 계층
 
-상태: 모든 체크포인트 승인과 `S3-V1` 전체 자동 검증을 완료했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 135/135, 전체 suite 3회 반복, 100개 프로세스 동시 실행 stress 3회, aggregate format/style, 단일 exe install과 설치본 smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-3.md`에 기록하며, 단계 3 최종 사용자 승인 전에는 단계 4를 시작하지 않는다. 단계 2와 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지한다. 2026-08-16 독립 감사에서 발견된 손자 pipe 점유 hang 등 잠재 결함을 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`에서 해소했고 이후 양 toolchain CTest는 각각 139/139다.
+상태: 완료. 모든 체크포인트 승인과 `S3-V1` 전체 자동 검증을 마쳤고 2026-08-16 사용자가 단계 4 진행을 지시하며 단계 3을 최종 승인했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 135/135, 전체 suite 3회 반복, 100개 프로세스 동시 실행 stress 3회, aggregate format/style, 단일 exe install과 설치본 smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-3.md`에 기록한다. 2026-08-16 독립 감사에서 발견된 손자 pipe 점유 hang 등 잠재 결함을 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`에서 해소했고 이후 양 toolchain CTest는 각각 139/139다.
 
 - 셸을 거치지 않는 인자 배열 실행을 구현한다.
 - 출력 스트리밍, 종료 코드, 제한 시간, 취소, 비밀 마스킹을 구현한다.
@@ -457,6 +471,8 @@ gitman/
 완료 조건: 성공, 실패, 시간 초과, 취소, 출력 인코딩, 프로세스 시작 실패 테스트가 통과한다.
 
 ### 단계 4: Git 및 SVN provider
+
+상태: `S4-P0` 구현 계획을 제출하고 사용자 검수를 기다린다. 단계 2·3과 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지하며 사용자가 직접 커밋한다. 상세 계획은 `docs/stage-4-plan.md`에 있다.
 
 - 로컬 상태 조회와 기계 판독 파서를 먼저 구현한다.
 - remote-first 최신 상태, optional submodule 갱신, remote-first switch 후보, dialog 검증과 전환을 순서대로 구현한다.

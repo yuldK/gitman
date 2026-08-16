@@ -1,5 +1,83 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 4 `S4-P0` 1차 검수 결정 반영
+
+### 사용자 지시
+
+- `remote_sync_state`에 `authentication_required`를 제안대로 추가한다.
+- 로캘은 강제하지 말고 시스템 로캘에 맞춘다. 이 프로젝트는 한국어 기반이므로 한국어 출력이 나오며, stderr를 표시하는 로그 뷰를 앱이 직접 제공하므로 인코딩 문제는 앱이 감당한다.
+- SVN CLI는 설치하지 않는다. CLI가 있다고 가정하고 SVN 명령만 연결한다. XML 처리가 꼭 필요한지 재검토한다.
+- Git 및 SVN 경로의 수동 입력을 추후 환경설정에서 제어할 수 있게 한다. 환경설정 값은 프로젝트 파일의 `settings` 속성에 둔다.
+
+### 반영 내용
+
+- SVN에서 XML을 사용하지 않기로 확정했다. `info --show-item`(값 한 줄), 비verbose `status`(고정 9칸 + 경로), `svnversion`(`4123:4168MS` 형태) 조합으로 필요한 값을 모두 얻는다.
+- `status --verbose`는 작성자 컬럼 때문에 공백 포함 경로에서 경계가 모호해지므로 사용하지 않기로 하고, mixed revision 판정을 `svnversion`으로 옮겼다.
+- 원격 대비 상태를 로캘 의존 요약 줄 대신 원격 URL의 `--show-item revision`과 작업 복사본 리비전 비교로 판정하게 했다.
+- XML 파서 dependency를 추가하지 않으므로 `vcpkg.json`과 ADR-002는 변경하지 않는다.
+- `LC_ALL=C` 강제를 계획에서 제거하고 시스템 로캘을 따르도록 바꿨다.
+- 로캘을 강제하지 않으면 번역된 메시지로 오류를 분류할 수 없으므로, 분류 근거를 SVN `E<숫자>` 코드, libcurl 및 OpenSSH 원문 문자열, HTTP 상태 번호, 프로세스 완료 사유 같은 로캘 독립 신호로 다시 설계했다.
+- 어떤 신호에도 맞지 않는 실패는 추측하지 않고 `error`로 보고하도록 정했다.
+- 오류 분류 test가 같은 오류의 영어 출력과 한국어 출력에서 같은 분류를 내는지 단정하도록 test 계획을 보강했다.
+- 인코딩 모드를 Git 포함 모든 명령에서 `active_code_page_fallback`으로 통일했다. 단계 3에서 이미 구현하고 검증한 경로다.
+- `remote_sync_state`에 `authentication_required`를 추가하기로 확정하고 `docs/plan.md` 3.2의 상태 표와 Codicon 표에 `key` 아이콘 및 “인증 필요”를 반영했다. `offline` 설명에서 인증 실패를 분리했다.
+- 프로젝트 문서에 optional `settings` 속성을 도입하는 설계를 계획 4.11에 추가했다. 스키마 버전은 1을 유지하고, 없으면 자동 탐색 기본값이며, 알 수 없는 키까지 round-trip 보존한다.
+- 도구 탐색 순서를 `settings` 수동 지정 → PATH → 기본 설치 경로로 바꾸고, 지정 경로가 잘못되면 자동 탐색으로 물러서지 않고 `vcs_tool_path_invalid`로 보고하도록 정했다.
+- `docs/plan.md` 3.7의 스키마 예시와 `docs/requirements.md`에 REQ-017을 추가했다.
+- `S4-D1` 구간 범위에 문서 `settings` 스키마 확장과 기존 fixture 6종 회귀를 포함했다.
+- SVN 통합 검증 정책을 미설치 확정 기준으로 다시 썼다. 도구 미설치 감지는 이 호스트에서 실제 검증 가능한 유일한 SVN 경로이므로 유지한다.
+
+### 영향 요구사항
+
+- REQ-001, REQ-002, REQ-006, REQ-007, REQ-008, REQ-011, REQ-012, REQ-017
+- NFR-005, NFR-007, NFR-008
+
+### 다음 작업 제한
+
+- 개정한 `S4-P0` 계획 승인 전에는 `src/`와 `tests/`에 VCS provider 관련 source를 추가하지 않는다.
+- 승인 후에도 `S4-D1-CODE` 한 구간만 수행하고 보고 뒤 중지한다.
+- 환경설정 화면은 단계 6~7 범위이며 단계 4에서 UI를 만들지 않는다.
+
+## 2026-08-16 - 단계 3 승인과 단계 4 `S4-P0` 계획 작성
+
+### 사용자 지시
+
+- 단계 4를 진행한다.
+- 이전 단계와 같이 작업 단위의 변경마다 검수를 받고, 검수 후 사용자가 직접 커밋한다.
+
+### 반영 내용
+
+- 단계 4 진행 지시를 단계 3 최종 승인으로 처리하고 `docs/plan.md`와 `docs/handoff.md`의 승인 대기 상태를 완료로 갱신했다.
+- `docs/stage-4-plan.md`에 Git 및 SVN provider 구현 계획을 작성했다.
+- provider가 `process_runner`를 주입받아 Win32 API를 직접 호출하지 않는 계층 경계와 의존성 방향을 정의했다.
+- PATH 직접 분해 기반 도구 탐색, `--version` 파싱과 `not_found` / `version_unreadable` / `too_old` / `available` 상태를 제안했다.
+- Git 비대화형 환경 override 7종과 공통 인자 `-c core.quotepath=false`, `-c gc.auto=0`, `-c color.ui=false`, `--no-pager`를 제안했다.
+- 단계 3이 미정으로 남긴 명령별 timeout과 스트림당 캡처 상한을 부류별 값으로 확정 제안했다.
+- `rev-parse`와 `status --porcelain=v2 --branch -z` 기반 로컬 상태 조회, 진행 중 작업 표식 파일 판정을 제안했다.
+- upstream → `preferred_remote` → `origin` → 유일한 remote 순서의 remote target 선택과 `fetch --prune`, `rev-list --left-right --count` 기반 ahead/behind 판정을 제안했다.
+- SVN `info --xml`, `status --verbose --xml`, `status --show-updates --xml` 기반 조회와 mixed revision 및 switched subtree 판정을 제안했다.
+- SVN XML 처리 방식으로 pugixml 추가를 권장하고 자체 reader 및 `--show-item` 대체안과 함께 검수 항목으로 올렸다.
+- update의 사전 차단 사유 8종, `pull --ff-only`, submodule dirty 사전 검사와 recursive update 순서를 제안했다.
+- switch 후보의 remote-first 정렬, ambiguous remote 자동 선택 금지, tracking branch 확인 요구와 `--no-guess` 실행을 제안했다.
+- 검증 실패 시 `process_request`를 만들지 않는 REQ-007 수용 기준을 fake runner 기록으로 직접 검증하는 test 전략을 정의했다.
+- `remote_sync_state`의 `authentication_required` 추가와 `docs/plan.md` 3.2 Codicon 표 갱신을 검수 항목으로 올렸다.
+- stderr 패턴 기반 `authentication_required` / `offline` / `repository_not_found` / `error` 분류기를 제안했다.
+- fake runner 단위 test와 실제 임시 Git 저장소 통합 test의 두 층 전략, fixture 12종과 SVN 미설치 대응 정책을 정의했다.
+- `CODE` / `TEST` / `FIX` 6분할과 `S4-V1`로 구성한 20개 체크포인트 및 검수 게이트를 정의했다.
+- `docs/handoff.md`의 현재 단계, 진행 원장과 미해결 항목을 단계 4 기준으로 갱신했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-007, REQ-009~REQ-014
+- NFR-005~NFR-009
+
+### 다음 작업 제한
+
+- `S4-P0` 계획 승인 전에는 `src/`와 `tests/`에 VCS provider 관련 source를 추가하지 않는다.
+- 승인 후에도 `S4-D1-CODE` 한 구간만 수행하고 보고 뒤 중지한다.
+- pugixml 추가와 ADR-002 개정은 계획 검수에서 승인된 뒤에만 수행한다.
+- ADR-004의 범용 메시지 구조는 단계 6 이전 별도 승인 없이 구현하지 않는다.
+
 ## 2026-08-16 - 단계 2·3 독립 감사 및 발견 사항 해소
 
 ### 사용자 지시

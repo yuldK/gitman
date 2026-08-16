@@ -10,7 +10,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <iterator>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace gitman {
     namespace {
@@ -139,6 +142,68 @@ namespace gitman {
         bool contains_remote(const std::vector<std::u8string>& remotes, const std::u8string_view name) noexcept
         {
             return std::ranges::find(remotes, name) != remotes.end();
+        }
+
+        constexpr std::u8string_view local_reference_prefix { u8"refs/heads/" };
+        constexpr std::u8string_view remote_reference_prefix { u8"refs/remotes/" };
+        // `refs/remotes/<remote>/HEAD`는 기본 branch를 가리키는 심볼릭 ref이며 전환
+        // 후보가 아니다. `%(symref)`가 비어 있는 배포판을 위해 이름으로도 걸러 낸다.
+        constexpr std::u8string_view remote_head_suffix { u8"/HEAD" };
+
+        struct remote_reference_parts
+        {
+            std::u8string_view remote {};
+            std::u8string_view branch {};
+            bool parsed { false };
+        };
+
+        remote_reference_parts split_remote_reference(const std::u8string_view name, const std::vector<std::u8string>& remotes) noexcept
+        {
+            remote_reference_parts parts {};
+            if (name.starts_with(remote_reference_prefix) == false)
+                return parts;
+
+            const std::u8string_view rest { name.substr(remote_reference_prefix.size()) };
+            // remote 이름에도 `/`가 들어갈 수 있으므로 설정된 remote 중 가장 긴 접두사를
+            // 고른다. `find_upstream_remote`와 같은 규칙이다.
+            std::size_t boundary { 0 };
+            for (const std::u8string& remote : remotes)
+            {
+                if (rest.size() <= remote.size() + 1 || rest.starts_with(remote) == false || rest[remote.size()] != u8'/')
+                    continue;
+                boundary = std::max(boundary, remote.size());
+            }
+            if (boundary == 0)
+            {
+                // 지워진 remote가 남긴 tracking ref다. 첫 `/`로 나눠 후보에는 남긴다.
+                const std::size_t separator { rest.find(u8'/') };
+                if (separator == std::u8string_view::npos || separator == 0 || separator + 1 >= rest.size())
+                    return parts;
+                boundary = separator;
+            }
+
+            parts.remote = rest.substr(0, boundary);
+            parts.branch = rest.substr(boundary + 1);
+            parts.parsed = parts.remote.empty() == false && parts.branch.empty() == false;
+            return parts;
+        }
+
+        const git_local_branch_state* find_local_branch(const std::vector<git_local_branch_state>& branches, const std::u8string_view name) noexcept
+        {
+            for (const git_local_branch_state& branch : branches)
+                if (branch.name == name)
+                    return &branch;
+            return nullptr;
+        }
+
+        // 검증 서비스와 같은 기준으로 고른다. 표시 이름과 tracking 정보는 조회 시점의
+        // 값이라 대상을 고르는 데 쓰지 않는다.
+        const switch_candidate* find_switch_candidate(const std::vector<switch_candidate>& candidates, const switch_candidate& target) noexcept
+        {
+            for (const switch_candidate& candidate : candidates)
+                if (candidate.kind == target.kind && candidate.target == target.target && candidate.remote_name == target.remote_name)
+                    return &candidate;
+            return nullptr;
         }
 
         std::u8string describe_current_reference(const git_status_summary& status)
@@ -577,10 +642,172 @@ namespace gitman {
         return result;
     }
 
-    switch_candidate_result git_repository_provider::query_switch_candidates(const project_definition&, const process_cancellation_token&) noexcept
+    std::u8string select_git_candidate_fetch_remote(const std::vector<std::u8string>& remotes, const std::u8string_view preferred_remote)
     {
-        // 후보 조회는 `S4-D6-CODE` 구간이다.
+        if (remotes.empty())
+            return {};
+        if (preferred_remote.empty() == false && contains_remote(remotes, preferred_remote))
+            return std::u8string { preferred_remote };
+        if (contains_remote(remotes, u8"origin"))
+            return std::u8string { u8"origin" };
+        if (remotes.size() == 1)
+            return remotes.front();
+        // 여럿 중 하나를 자동으로 고르면 사용자가 의도하지 않은 원격만 새로 고쳐진다.
+        // 어느 것도 고르지 않고 이미 받아 둔 목록을 그대로 쓴다.
         return {};
+    }
+
+    std::vector<git_local_branch_state> collect_git_local_branches(const std::vector<git_reference_entry>& references)
+    {
+        std::vector<git_local_branch_state> branches {};
+        for (const git_reference_entry& entry : references)
+        {
+            if (entry.symbolic() || entry.name.starts_with(local_reference_prefix) == false)
+                continue;
+
+            git_local_branch_state branch {};
+            branch.name = entry.name.substr(local_reference_prefix.size());
+            if (branch.name.empty())
+                continue;
+            // `branch.<name>.remote = .`처럼 local branch를 가리키는 upstream은 원격
+            // 전환 판정에 쓸 수 없다. 값이 없는 것과 같이 다룬다.
+            if (entry.upstream.starts_with(remote_reference_prefix))
+                branch.upstream = entry.upstream;
+            branches.push_back(std::move(branch));
+        }
+        return branches;
+    }
+
+    std::vector<switch_candidate> build_git_switch_candidates(const std::vector<git_reference_entry>& references, const std::vector<std::u8string>& remotes, const std::u8string_view refreshed_remote)
+    {
+        const std::vector<git_local_branch_state> local_branches { collect_git_local_branches(references) };
+
+        std::vector<switch_candidate> remote_candidates {};
+        for (const git_reference_entry& entry : references)
+        {
+            if (entry.symbolic() || entry.name.ends_with(remote_head_suffix))
+                continue;
+
+            const remote_reference_parts parts { split_remote_reference(entry.name, remotes) };
+            if (parts.parsed == false)
+                continue;
+
+            switch_candidate candidate {};
+            candidate.kind = switch_candidate_kind::git_remote_branch;
+            candidate.display_name = make_display_name(parts.remote, parts.branch);
+            candidate.target = entry.name;
+            candidate.remote_name = parts.remote;
+            if (const git_local_branch_state* const local { find_local_branch(local_branches, parts.branch) }; local != nullptr)
+                candidate.local_branch = local->name;
+            // 대응하는 local branch가 없으면 만들어야 전환할 수 있다. 실제 생성은
+            // 사용자가 확인한 뒤에만 이뤄진다.
+            candidate.requires_tracking_branch = candidate.local_branch.empty();
+            candidate.stale = refreshed_remote.empty() || parts.remote != refreshed_remote;
+            remote_candidates.push_back(std::move(candidate));
+        }
+
+        std::vector<switch_candidate> local_candidates {};
+        for (const git_local_branch_state& local : local_branches)
+        {
+            bool reachable { false };
+            for (const switch_candidate& candidate : remote_candidates)
+            {
+                // upstream이 그 remote와 다른 local branch는 remote 후보를 골라도
+                // 도달할 수 없다. 그런 branch만 local 후보로 남는다.
+                if (candidate.local_branch == local.name && (local.upstream.empty() || local.upstream == candidate.target))
+                    reachable = true;
+            }
+            if (reachable)
+                continue;
+
+            switch_candidate candidate {};
+            candidate.kind = switch_candidate_kind::git_local_branch;
+            candidate.display_name = local.name;
+            candidate.target = std::u8string { local_reference_prefix };
+            candidate.target.append(local.name);
+            candidate.local_branch = local.name;
+            local_candidates.push_back(std::move(candidate));
+        }
+
+        // remote branch를 먼저, local branch를 다음에 둔다. 두 묶음 안의 순서는
+        // `for-each-ref`의 ref 이름 정렬 그대로다.
+        std::vector<switch_candidate> candidates { std::move(remote_candidates) };
+        candidates.insert(candidates.end(), std::make_move_iterator(local_candidates.begin()), std::make_move_iterator(local_candidates.end()));
+        return candidates;
+    }
+
+    switch_candidate_result git_repository_provider::query_switch_candidates(const project_definition& project, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            return query_switch_candidates_impl(project, token);
+        }
+        catch (...)
+        {
+            switch_candidate_result result {};
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"전환 후보를 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    switch_candidate_result git_repository_provider::query_switch_candidates_impl(const project_definition& project, const process_cancellation_token& token)
+    {
+        switch_candidate_result result {};
+        if (available() == false)
+        {
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::git, tool_.availability) }, project));
+            return result;
+        }
+
+        const std::u8string_view working_directory { git_working_directory(project) };
+        if (is_absolute_windows_path(working_directory) == false || probe_->probe(working_directory) != vcs_path_kind::directory)
+        {
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::path_missing, diagnostic_severity::error, std::u8string { u8"프로젝트 경로를 찾을 수 없습니다." }, project));
+            return result;
+        }
+
+        // remote 목록은 새로 고칠 대상을 고르는 데도, tracking ref를 remote와 branch로
+        // 나누는 데도 필요하다.
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        if (remote_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
+            result.stale = true;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, remote_result), project));
+            return result;
+        }
+
+        const std::vector<std::u8string> remotes { parse_git_remote_names(remote_result.standard_output_lines) };
+        std::u8string refreshed_remote { select_git_candidate_fetch_remote(remotes, project.preferred_remote.value_or(std::u8string {})) };
+        if (refreshed_remote.empty() == false)
+        {
+            const vcs_command_result fetch_result { run_vcs_command(*runner_, make_git_fetch_request(tool_.executable, working_directory, refreshed_remote), token, log_) };
+            if (fetch_result.succeeded() == false)
+            {
+                // 원격을 새로 고치지 못해도 목록 자체는 만든다. 이미 받아 둔 tracking
+                // ref로 만든 목록이라는 사실은 `stale`로 알린다.
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, fetch_result) };
+                refreshed_remote.clear();
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::warning, describe_failure(failure, fetch_result), project));
+            }
+        }
+
+        const vcs_command_result reference_result { run_vcs_command(*runner_, make_git_reference_list_request(tool_.executable, working_directory), token, log_) };
+        if (reference_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, reference_result) };
+            result.stale = true;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, reference_result), project));
+            return result;
+        }
+
+        result.candidates = build_git_switch_candidates(parse_git_reference_list(reference_result.standard_output_lines), remotes, refreshed_remote);
+        // 하나라도 이번에 새로 고치지 않은 remote의 후보가 있으면 목록 전체를 stale로
+        // 표시한다. 카드가 "지금 원격을 확인한 목록"이라고 오해하지 않게 한다.
+        result.stale = std::ranges::any_of(result.candidates, [](const switch_candidate& candidate) { return candidate.stale; });
+        return result;
     }
 
     update_block_reason evaluate_git_update_preflight(const repository_snapshot& snapshot) noexcept
@@ -731,9 +958,139 @@ namespace gitman {
         return result;
     }
 
-    repository_change_result git_repository_provider::switch_to(const project_definition&, const switch_candidate&, const process_cancellation_token&) noexcept
+    repository_change_result git_repository_provider::switch_to(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token) noexcept
     {
-        // switch는 `S4-D6-CODE` 구간이다.
-        return {};
+        try
+        {
+            return switch_to_impl(project, target, token);
+        }
+        catch (...)
+        {
+            repository_change_result result {};
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"전환 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    repository_change_result git_repository_provider::switch_to_impl(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token)
+    {
+        repository_change_result result {};
+        const auto reject = [&result, &project](const switch_rejection rejection) {
+            result.rejected_by = rejection;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::switch_target_rejected, diagnostic_severity::warning, std::u8string { switch_rejection_message(rejection) }, project));
+        };
+
+        if (target.kind == switch_candidate_kind::subversion_url || target.target.empty())
+        {
+            // 대상 자체가 이 provider의 것이 아니거나 비어 있다. 조회하지 않고 거부한다.
+            reject(switch_rejection::target_not_found);
+            return result;
+        }
+        if (available() == false)
+        {
+            reject(switch_rejection::tool_unavailable);
+            return result;
+        }
+
+        // 검증은 dialog가 들고 있는 값이 아니라 지금 다시 조회한 상태로 한다.
+        const repository_query_result before { query_local_impl(project, token) };
+        result.snapshot = before.snapshot;
+        for (const diagnostic& value : before.diagnostics)
+            result.diagnostics.push_back(value);
+        if (before.snapshot.availability != repository_availability::ready)
+        {
+            reject(switch_rejection::repository_unavailable);
+            return result;
+        }
+
+        const std::u8string_view working_directory { git_working_directory(project) };
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        if (remote_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
+            result.rejected_by = switch_rejection::repository_unavailable;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, remote_result), project));
+            return result;
+        }
+
+        // 실행 직전에는 fetch하지 않는다. 전환은 이미 받아 둔 ref로만 하며 `--no-guess`가
+        // 목록에 없던 대상으로의 암묵 전환을 막는다.
+        const vcs_command_result reference_result { run_vcs_command(*runner_, make_git_reference_list_request(tool_.executable, working_directory), token, log_) };
+        if (reference_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, reference_result) };
+            result.rejected_by = switch_rejection::repository_unavailable;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, reference_result), project));
+            return result;
+        }
+
+        const vcs_command_result worktree_result { run_vcs_command(*runner_, make_git_worktree_list_request(tool_.executable, working_directory), token, log_) };
+        if (worktree_result.succeeded() == false)
+        {
+            // 어떤 branch가 다른 worktree에 잡혀 있는지 모르는 채로 전환하지 않는다.
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, worktree_result) };
+            result.rejected_by = switch_rejection::repository_unavailable;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, worktree_result), project));
+            return result;
+        }
+
+        const std::vector<std::u8string> remotes { parse_git_remote_names(remote_result.standard_output_lines) };
+        const std::vector<git_reference_entry> references { parse_git_reference_list(reference_result.standard_output_lines) };
+        const std::vector<switch_candidate> candidates { build_git_switch_candidates(references, remotes, {}) };
+
+        git_switch_context context {};
+        context.snapshot = before.snapshot;
+        context.local_branches = collect_git_local_branches(references);
+        context.checked_out_branches = parse_git_worktree_branches(worktree_result.standard_output_lines);
+
+        const switch_validation_result validation { validate_git_switch(candidates, target, context) };
+        if (validation.approved == false)
+        {
+            // 검증에 실패하면 어떤 process request도 만들지 않는다. REQ-007의 수용
+            // 기준이며 `executed == false`가 그 사실을 나타낸다.
+            result.rejected_by = validation.rejection;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::switch_target_rejected, diagnostic_severity::warning, validation.message, project));
+            return result;
+        }
+
+        const switch_candidate* const resolved { find_switch_candidate(candidates, target) };
+        if (resolved == nullptr)
+        {
+            // 검증을 통과했다면 반드시 있다. 방어적으로만 남긴다.
+            reject(switch_rejection::target_not_found);
+            return result;
+        }
+
+        const bool create_tracking_branch { resolved->kind == switch_candidate_kind::git_remote_branch && resolved->local_branch.empty() };
+        std::u8string branch {};
+        if (create_tracking_branch)
+            // `<remote>/<branch>` 표시 이름에서 remote 부분을 뗀 값이 새 local branch 이름이다.
+            branch = resolved->display_name.substr(resolved->remote_name.size() + 1);
+        else if (resolved->kind == switch_candidate_kind::git_remote_branch)
+            branch = resolved->local_branch;
+        else
+            branch = resolved->display_name;
+
+        process_request request {};
+        if (create_tracking_branch)
+            request = make_git_create_tracking_branch_request(tool_.executable, working_directory, branch, resolved->target);
+        else
+            request = make_git_switch_request(tool_.executable, working_directory, branch);
+
+        const vcs_command_result switch_result { run_vcs_command(*runner_, request, token, log_) };
+        result.executed = true;
+        result.succeeded = switch_result.succeeded();
+        if (result.succeeded == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, switch_result) };
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, switch_result), project));
+        }
+
+        // 성공과 실패 모두 실행 직후 상태를 다시 조회한다.
+        const repository_query_result after { query_local_impl(project, token) };
+        result.snapshot = after.snapshot;
+        for (const diagnostic& value : after.diagnostics)
+            result.diagnostics.push_back(value);
+        return result;
     }
 } // namespace gitman

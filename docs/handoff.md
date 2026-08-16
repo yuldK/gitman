@@ -5,15 +5,15 @@
 - 기준일: 2026-08-17
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-D5-TEST` update test 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D6-CODE` switch 구현 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-D5-TEST` 승인과 무결함 `S4-D5-FIX` 생략 확인 후 `S4-D6-CODE` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D6-CODE` 승인 후 `S4-D6-TEST` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 Git 로컬 조회, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-17-stage-4-d5-test.md`
-- 직전 검증 기록: `docs/verification/2026-08-17-stage-4-d5-code.md`
-- 최근 검증 기록: `docs/verification/2026-08-17-stage-4-d4-test.md`
+- 현재 검증 기록: `docs/verification/2026-08-17-stage-4-d6-code.md`
+- 직전 검증 기록: `docs/verification/2026-08-17-stage-4-d5-test.md`
+- 최근 검증 기록: `docs/verification/2026-08-17-stage-4-d5-code.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
 다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
@@ -115,15 +115,15 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-D5-TEST` |
-| 제출 내용 | 차단 사유 matrix, pull 성공·실패, submodule off/on, 실제 Git update 통합 test |
-| production code | 변경 없음 |
-| test code 및 fixture | 신규 test source 1개와 기존 5개 보강, fixture 도우미에 준비용 설정 1개 추가. 전체 CTest 306 → **338** |
+| 계획 ID | `S4-D6-CODE` |
+| 제출 내용 | switch 후보 조회, tracking branch 정책, SVN 허용 URL 검증, 검증 서비스와 두 provider의 실행 |
+| production code | 신규 `application/switch_validation_service.h/.cpp`, 도메인·명령·파서·provider 7쌍 수정, `src/CMakeLists.txt` 갱신 |
+| test code 및 fixture | 기존 test 2개의 "미구현" 단정을 "빈 대상 거부" 단정으로 좁힘. 새 test source 없음. 전체 CTest 338 유지 |
 | bug 수정 | 없음 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 338/338, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 338/338, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과, 임시 프로그램 228/228 |
 | 발견 결함 | 없음 |
-| 승인 대기 | `S4-D5-TEST` test 검수 |
-| 승인 뒤 다음 작업 | 무결함 `S4-D5-FIX` 생략 후 `S4-D6-CODE` 한 구간만 허용 |
+| 승인 대기 | `S4-D6-CODE` 코드 검수 |
+| 승인 뒤 다음 작업 | `S4-D6-TEST` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
@@ -143,9 +143,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S4-D4-TEST` | 승인 완료 | test 32개, 전체 306/306. `docs/verification/2026-08-17-stage-4-d4-test.md` |
 | `S4-D4-FIX` | 생략 완료 | 발견 production 결함 없음 |
 | `S4-D5-CODE` update | 승인 완료 | `docs/verification/2026-08-17-stage-4-d5-code.md` |
-| `S4-D5-TEST` | 제출, 검수 대기 | test 32개, 전체 338/338. `docs/verification/2026-08-17-stage-4-d5-test.md` |
-| `S4-D5-FIX` | 시작 전 | 발견 production 결함이 없어 사용자 확인 후 생략 예정 |
-| `S4-D6-CODE` switch | 시작 전 | |
+| `S4-D5-TEST` | 승인 완료 | test 32개, 전체 338/338. `docs/verification/2026-08-17-stage-4-d5-test.md` |
+| `S4-D5-FIX` | 생략 완료 | 발견 production 결함 없음 |
+| `S4-D6-CODE` switch | 제출, 검수 대기 | 신규 검증 서비스와 두 provider의 switch. `docs/verification/2026-08-17-stage-4-d6-code.md` |
 | `S4-D6-TEST` | 시작 전 | |
 | `S4-D6-FIX` | 시작 전 | |
 | `S4-V1` 단계 4 최종 검증 | 시작 전 | |
@@ -224,7 +224,15 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - REQ-017을 추가했다. 환경설정 화면 자체는 단계 6~7 범위다.
 - `is_absolute_windows_path`가 `application/process_request`에서 `domain/path_syntax`로 옮겨졌다. `process_request.h`가 새 헤더를 include하므로 기존 호출자는 그대로 동작한다.
 - `platform/win32/win32_vcs_file_probe.*`는 파일 위치는 계획대로지만 CMake target은 `gitman_win32_platform`이 아니라 `gitman_vcs`다. 단계 3의 `win32_process_runner`와 같은 이유로 계층 방향을 지키기 위한 선택이다.
-- Git provider는 로컬 조회(`S4-D2`), 원격 판정(`S4-D3`), update(`S4-D5`)를 구현했다. SVN provider는 조회(`S4-D4`)와 update(`S4-D5`)를 구현했다. 두 provider의 `query_switch_candidates`와 `switch_to`는 계약만 있고 본문이 비어 있으며 어떤 process request도 만들지 않는다. `S4-D6` 구간에서 채운다.
+- `S4-D6-CODE`로 두 provider의 `repository_provider` 계약이 모두 채워졌다. Git은 로컬 조회(`S4-D2`), 원격 판정(`S4-D3`), update(`S4-D5`), switch(`S4-D6`)를, SVN은 조회(`S4-D4`), update(`S4-D5`), switch(`S4-D6`)를 구현했다.
+- switch 검증 규칙은 `application/switch_validation_service`에 순수 함수로 모여 있다. provider는 승인 결과를 받은 뒤에만 전환 명령을 만든다. REQ-007 수용 기준을 한 곳에서만 지키면 되게 한 분리다.
+- `switch_candidate::tracking_branch_confirmed`는 dialog가 사용자 확인을 받은 뒤에만 켜는 값이다. 후보 조회는 채우지 않는다. 이 값이 꺼져 있으면 tracking branch를 만들지 않고 `tracking_branch_confirmation_required`로 되돌려 보낸다. 단계 6~7의 dialog가 이 계약을 지켜야 한다.
+- Git 후보 목록에서 **remote 후보로 도달할 수 있는 local branch는 중복해 넣지 않는다.** upstream이 그 remote와 다른 local branch만 local 후보로 남는다. 계획 4.8의 "local-only"를 그대로 읽으면 그런 branch로 전환할 방법이 사라진다.
+- 후보를 새로 고칠 remote는 `preferred_remote` → `origin` → 유일한 remote 순서로만 고른다. 좁혀지지 않으면 fetch하지 않고 목록을 `stale`로 표시한다. upstream은 현재 branch에 종속된 값이라 쓰지 않는다.
+- `switch_to`는 실행 직전에 fetch하지 않는다. 이미 받아 둔 ref로만 전환하며 `--no-guess`가 목록에 없던 대상으로의 암묵 전환을 막는다.
+- SVN 후보 조회는 process request를 하나도 만들지 않는다. 후보가 문서의 `svn_switch_targets`뿐이기 때문이다.
+- SVN 전환 검증은 허용 목록·형식·현재 위치·작업 트리를 네트워크보다 먼저 본다. 저장소 root와 UUID는 양쪽 값이 모두 있고 같을 때만 통과시킨다.
+- `git switch`는 `--`를 받아들이고, `--track` 뒤의 완전한 ref는 옵션 값이 아니라 시작 지점으로 해석된다. 호스트 Git 2.52.0 실측이다. `--no-guess`는 목록에 없는 이름을 `fatal: invalid reference`로 실패시킨다.
 - update는 사전 검사를 위해 **스스로 로컬 조회를 수행한다.** 계약에 snapshot 인자가 없고 오래된 값으로 보호 정책을 판단하면 안 되기 때문이다. 정상 경로의 명령 수는 Git이 6개(조회 2 + remote + pull + 재조회 2), submodule 옵션이 켜지면 8개다.
 - update 차단 사유의 우선순위는 도구 부재 → 저장소 아님 → 충돌 → 진행 중 작업 → `index.lock` → detached → dirty → diverged → 대상 없음이다. `working_tree_state::unknown`은 dirty와 함께 막는다.
 - SVN의 `switched_subtree`와 `mixed_revision`은 값이 있을 때만 차단한다. `svnversion`이 없어 판정할 수 없다는 이유로 update를 영영 막지 않는 선택이며, 더 안전한 쪽을 원하면 `value_or(false)`를 `value_or(true)`로 바꾸면 된다.

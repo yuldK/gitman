@@ -429,7 +429,7 @@ TEST_CASE("Unreadable status records are reported as a warning", "[infrastructur
     REQUIRE_FALSE(result.has_errors());
 }
 
-TEST_CASE("Operations that are not implemented yet build no request", "[infrastructure][git][provider]")
+TEST_CASE("An empty switch target builds no request", "[infrastructure][git][provider]")
 {
     gitman::testing::fake_process_runner runner {};
     gitman::testing::fake_vcs_file_probe probe {};
@@ -437,16 +437,13 @@ TEST_CASE("Operations that are not implemented yet build no request", "[infrastr
     gitman::git_repository_provider provider { available_tool(), runner, probe };
     const gitman::project_definition project { make_project() };
 
-    // switch와 후보 조회는 `S4-D6` 구간이다. 원격 판정은 `S4-D3-CODE`가, update는
-    // `S4-D5-CODE`가 구현했으므로 여기서 다루지 않는다.
-    const gitman::switch_candidate_result candidates { provider.query_switch_candidates(project, {}) };
-    REQUIRE(candidates.candidates.empty());
-    REQUIRE_FALSE(candidates.stale);
-
+    // 대상이 비어 있으면 저장소를 조회할 이유가 없다. `S4-D6-CODE`가 switch를 구현한
+    // 뒤에도 남는 경로다.
     const gitman::repository_change_result switched { provider.switch_to(project, {}, {}) };
     REQUIRE_FALSE(switched.executed);
+    REQUIRE(switched.rejected_by == gitman::switch_rejection::target_not_found);
 
-    // REQ-007의 수용 기준이다. 실행하지 않은 동작은 process request를 만들지 않는다.
+    // REQ-007의 수용 기준이다. 검증에 실패한 전환은 process request를 만들지 않는다.
     REQUIRE(runner.request_count() == 0);
 }
 

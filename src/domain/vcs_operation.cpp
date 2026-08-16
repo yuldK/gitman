@@ -43,6 +43,8 @@ namespace gitman {
             return u8"repository_mismatch";
         case switch_rejection::tool_unavailable:
             return u8"tool_unavailable";
+        case switch_rejection::repository_unavailable:
+            return u8"repository_unavailable";
         }
         return u8"none";
     }
@@ -75,6 +77,8 @@ namespace gitman {
             return u8"저장소 root 또는 UUID가 현재 작업 복사본과 다릅니다.";
         case switch_rejection::tool_unavailable:
             return u8"이 저장소 종류의 명령줄 도구를 사용할 수 없습니다.";
+        case switch_rejection::repository_unavailable:
+            return u8"저장소를 조회할 수 없어 전환하지 않았습니다.";
         }
         return u8"전환할 수 없습니다.";
     }

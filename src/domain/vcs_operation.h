@@ -29,7 +29,12 @@ namespace gitman {
         std::u8string local_branch {};
         // local tracking branch를 새로 만들어야 전환할 수 있다. 사용자 확인이 필요하다.
         bool requires_tracking_branch { false };
-        // fetch가 실패해 cache된 remote tracking ref로만 만든 후보다.
+        // 사용자가 tracking branch 생성을 확인했다. 후보 조회는 이 값을 채우지 않으며
+        // dialog가 확인을 받은 뒤에만 켠다. 이 값이 꺼져 있으면 provider는 branch를
+        // 만들지 않고 `tracking_branch_confirmation_required`로 되돌려 보낸다.
+        bool tracking_branch_confirmed { false };
+        // fetch가 실패했거나 이번 조회에서 갱신하지 않은 remote의 tracking ref로만 만든
+        // 후보다.
         bool stale { false };
     };
 
@@ -54,6 +59,8 @@ namespace gitman {
         // 저장소 root 또는 UUID가 다르다.
         repository_mismatch,
         tool_unavailable,
+        // 저장소를 조회할 수 없어 검증 자체를 할 수 없다.
+        repository_unavailable,
     };
 
     struct switch_validation_result

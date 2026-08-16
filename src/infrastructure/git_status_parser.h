@@ -70,6 +70,23 @@ namespace gitman {
         std::uint64_t unparsable_records { 0 };
     };
 
+    // `for-each-ref`가 낸 한 줄이다. 값이 없는 칸은 비어 있다.
+    struct git_reference_entry
+    {
+        // `refs/heads/<name>` 또는 `refs/remotes/<remote>/<branch>` 형태의 완전한 ref다.
+        std::u8string name {};
+        std::u8string object_id {};
+        // `refs/remotes/<remote>/<branch>` 형태의 upstream이다. 없으면 비어 있다.
+        std::u8string upstream {};
+        // `%(HEAD)`가 `*`다. 현재 checkout된 branch를 나타낸다.
+        bool head { false };
+        // 심볼릭 ref가 가리키는 대상이다. `refs/remotes/<remote>/HEAD`가 대표적이며
+        // 전환 후보가 아니다.
+        std::u8string symbolic_target {};
+
+        [[nodiscard]] bool symbolic() const noexcept;
+    };
+
     struct git_ahead_behind
     {
         std::uint64_t ahead { 0 };
@@ -93,6 +110,15 @@ namespace gitman {
     // `rev-list --left-right --count`의 `<ahead>\t<behind>` 한 줄을 읽는다. 왼쪽이 로컬,
     // 오른쪽이 원격이다.
     [[nodiscard]] git_ahead_behind parse_git_ahead_behind(std::u8string_view line);
+
+    // TAB으로 나눈 `for-each-ref` 출력을 읽는다. ref 이름에는 TAB과 공백이 들어갈 수
+    // 없으므로 경계가 흔들리지 않는다. `refs/`로 시작하지 않는 줄은 버린다.
+    [[nodiscard]] std::vector<git_reference_entry> parse_git_reference_list(const std::vector<std::u8string>& lines);
+
+    // `worktree list --porcelain`에서 checkout된 local branch 이름을 모은다. 항목은 빈
+    // 줄로 나뉘며 detached worktree와 bare 항목에는 `branch` 줄이 없다. 현재 worktree의
+    // branch도 함께 나온다.
+    [[nodiscard]] std::vector<std::u8string> parse_git_worktree_branches(const std::vector<std::u8string>& lines);
 
     // 항목을 세어 카드가 쓰는 요약으로 옮긴다. 진행 중 작업과 `index.lock`은 표식
     // 파일로만 알 수 있으므로 호출자가 따로 채운다. 해석하지 못한 레코드가 있으면

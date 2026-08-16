@@ -7,10 +7,12 @@
 #include "infrastructure/vcs_command_runner.h"
 #include "infrastructure/vcs_error_classifier.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace gitman {
     namespace {
@@ -305,10 +307,51 @@ namespace gitman {
         return result;
     }
 
-    switch_candidate_result svn_repository_provider::query_switch_candidates(const project_definition&, const process_cancellation_token&) noexcept
+    svn_switch_candidate_set build_svn_switch_candidates(const std::vector<std::u8string>& allowed_targets)
     {
-        // 허용 목록 기반 후보 조회는 `S4-D6-CODE` 구간이다.
-        return {};
+        svn_switch_candidate_set result {};
+        for (const std::u8string& url : allowed_targets)
+        {
+            if (is_supported_svn_url(url) == false)
+            {
+                // 문서에 적혀 있어도 URL로 다룰 수 없는 값은 후보에 넣지 않는다.
+                result.rejected.push_back(url);
+                continue;
+            }
+            // 같은 URL이 여러 번 적혀 있어도 후보는 하나만 만든다.
+            if (std::ranges::any_of(result.candidates, [&url](const switch_candidate& candidate) { return candidate.target == url; }))
+                continue;
+
+            switch_candidate candidate {};
+            candidate.kind = switch_candidate_kind::subversion_url;
+            candidate.display_name = url;
+            candidate.target = url;
+            result.candidates.push_back(std::move(candidate));
+        }
+        return result;
+    }
+
+    switch_candidate_result svn_repository_provider::query_switch_candidates(const project_definition& project, const process_cancellation_token&) noexcept
+    {
+        switch_candidate_result result {};
+        if (available() == false)
+        {
+            result.diagnostics.push_back(make_diagnostic(
+                diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::subversion, tool_.availability) }, project));
+            return result;
+        }
+
+        // 후보는 문서의 허용 목록뿐이라 저장소를 조회하지 않는다. 이 동작은 어떤 process
+        // request도 만들지 않으며 `stale`도 될 수 없다.
+        svn_switch_candidate_set candidates { build_svn_switch_candidates(project.svn_switch_targets) };
+        for (const std::u8string& rejected : candidates.rejected)
+        {
+            std::u8string message { u8"svn_switch_targets의 URL 형식을 해석할 수 없어 후보에서 제외했습니다: " };
+            message.append(rejected);
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::invalid_project_field, diagnostic_severity::warning, std::move(message), project));
+        }
+        result.candidates = std::move(candidates.candidates);
+        return result;
     }
 
     update_block_reason evaluate_svn_update_preflight(const repository_snapshot& snapshot) noexcept
@@ -381,9 +424,126 @@ namespace gitman {
         return result;
     }
 
-    repository_change_result svn_repository_provider::switch_to(const project_definition&, const switch_candidate&, const process_cancellation_token&) noexcept
+    repository_change_result svn_repository_provider::switch_to(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token) noexcept
     {
-        // `svn switch`는 `S4-D6-CODE` 구간이다.
-        return {};
+        try
+        {
+            return switch_to_impl(project, target, token);
+        }
+        catch (...)
+        {
+            repository_change_result result {};
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"전환 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    repository_change_result svn_repository_provider::switch_to_impl(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token)
+    {
+        repository_change_result result {};
+        const auto reject = [&result, &project](const switch_rejection rejection) {
+            result.rejected_by = rejection;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::switch_target_rejected, diagnostic_severity::warning, std::u8string { switch_rejection_message(rejection) }, project));
+        };
+
+        if (target.kind != switch_candidate_kind::subversion_url || target.target.empty())
+        {
+            // 대상 자체가 이 provider의 것이 아니거나 비어 있다. 조회하지 않고 거부한다.
+            reject(switch_rejection::target_not_found);
+            return result;
+        }
+        if (available() == false)
+        {
+            reject(switch_rejection::tool_unavailable);
+            return result;
+        }
+
+        const repository_query_result before { query_local_impl(project, token) };
+        result.snapshot = before.snapshot;
+        for (const diagnostic& value : before.diagnostics)
+            result.diagnostics.push_back(value);
+        if (before.snapshot.availability != repository_availability::ready)
+        {
+            reject(switch_rejection::repository_unavailable);
+            return result;
+        }
+
+        const std::u8string_view working_directory { svn_working_directory(project) };
+        // 현재 URL을 다시 물어본다. 상대 URL과 저장소 루트를 이어 붙이는 것보다 규칙이
+        // 하나 적다. `query_remote`와 같은 방식이다.
+        const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url), token, log_) };
+        const std::u8string current_url { url_result.succeeded() ? parse_svn_info_item(url_result.standard_output_lines) : std::u8string {} };
+        if (current_url.empty())
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, url_result) };
+            result.rejected_by = switch_rejection::repository_unavailable;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, url_result), project));
+            return result;
+        }
+
+        // 네트워크를 쓰기 전에 문서 허용 목록, URL 형식, 현재 위치와 작업 트리 상태를
+        // 먼저 본다. 여기서 걸리면 원격에 접속하지 않는다.
+        const switch_validation_result local_validation { validate_svn_switch_target(project.svn_switch_targets, target, before.snapshot, current_url) };
+        if (local_validation.approved == false)
+        {
+            result.rejected_by = local_validation.rejection;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::switch_target_rejected, diagnostic_severity::warning, local_validation.message, project));
+            return result;
+        }
+
+        // 대상 URL이 실제로 있는지와 같은 저장소인지를 확인한다. 여기서 처음 네트워크를
+        // 쓴다.
+        struct identity_field
+        {
+            svn_info_item item {};
+            std::u8string* target {};
+        };
+
+        std::u8string target_root {};
+        std::u8string target_uuid {};
+        const identity_field identity_fields[] {
+            { svn_info_item::repository_root, &target_root },
+            { svn_info_item::repository_uuid, &target_uuid },
+        };
+
+        for (const identity_field& field : identity_fields)
+        {
+            const vcs_command_result identity_result {
+                run_vcs_command(*runner_, make_svn_remote_info_item_request(tool_.executable, working_directory, field.item, target.target), token, log_),
+            };
+            if (identity_result.succeeded() == false)
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, identity_result) };
+                result.rejected_by = switch_rejection::target_unreachable;
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, identity_result), project));
+                return result;
+            }
+            *field.target = parse_svn_info_item(identity_result.standard_output_lines);
+        }
+
+        const switch_validation_result identity_validation { validate_svn_repository_identity(before.snapshot, target_root, target_uuid) };
+        if (identity_validation.approved == false)
+        {
+            // 검증에 실패하면 `switch` 명령을 만들지 않는다. REQ-007의 수용 기준이다.
+            result.rejected_by = identity_validation.rejection;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::switch_target_rejected, diagnostic_severity::warning, identity_validation.message, project));
+            return result;
+        }
+
+        const vcs_command_result switch_result { run_vcs_command(*runner_, make_svn_switch_request(tool_.executable, working_directory, target.target), token, log_) };
+        result.executed = true;
+        result.succeeded = switch_result.succeeded();
+        if (result.succeeded == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, switch_result) };
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, switch_result), project));
+        }
+
+        // 성공과 실패 모두 실행 직후 상태를 다시 조회한다.
+        const repository_query_result after { query_local_impl(project, token) };
+        result.snapshot = after.snapshot;
+        for (const diagnostic& value : after.diagnostics)
+            result.diagnostics.push_back(value);
+        return result;
     }
 } // namespace gitman

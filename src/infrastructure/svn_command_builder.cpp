@@ -74,12 +74,24 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::subversion, executable, working_directory, make_arguments(u8"update"), vcs_command_class::update);
     }
 
-    process_request make_svn_remote_revision_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url)
+    process_request make_svn_switch_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url)
+    {
+        std::vector<std::u8string> arguments { make_arguments(u8"switch") };
+        arguments.push_back(std::u8string { url });
+        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::switch_target);
+    }
+
+    process_request make_svn_remote_info_item_request(const std::u8string_view executable, const std::u8string_view working_directory, const svn_info_item item, const std::u8string_view url)
     {
         std::vector<std::u8string> arguments { make_arguments(u8"info") };
         arguments.push_back(std::u8string { u8"--show-item" });
-        arguments.push_back(std::u8string { svn_info_item_name(svn_info_item::revision) });
+        arguments.push_back(std::u8string { svn_info_item_name(item) });
         arguments.push_back(std::u8string { url });
         return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::remote_query);
+    }
+
+    process_request make_svn_remote_revision_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url)
+    {
+        return make_svn_remote_info_item_request(executable, working_directory, svn_info_item::revision, url);
     }
 } // namespace gitman

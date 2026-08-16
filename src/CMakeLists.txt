@@ -121,6 +121,8 @@ target_link_libraries(gitman_process
 add_library(gitman_vcs STATIC
     application/repository_provider.cpp
     application/repository_provider.h
+    application/switch_validation_service.cpp
+    application/switch_validation_service.h
     application/vcs_file_probe.h
     application/vcs_tool_registry.cpp
     application/vcs_tool_registry.h

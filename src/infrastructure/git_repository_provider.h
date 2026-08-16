@@ -3,14 +3,17 @@
 #include "application/process_cancellation.h"
 #include "application/process_runner.h"
 #include "application/repository_provider.h"
+#include "application/switch_validation_service.h"
 #include "application/vcs_file_probe.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "domain/vcs_operation.h"
 #include "domain/vcs_tool.h"
+#include "infrastructure/git_status_parser.h"
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace gitman {
     // Git은 진행 중인 작업을 알려 주는 기계 판독 명령을 제공하지 않는다. 표식 파일을
@@ -90,9 +93,31 @@ namespace gitman {
     // 않는다. 부분적으로 갱신된 상태가 가장 되돌리기 어렵기 때문이다.
     [[nodiscard]] update_block_reason evaluate_git_submodule_preflight(const std::vector<submodule_status>& submodules) noexcept;
 
+    // 후보 목록을 새로 고칠 remote를 고른다. upstream은 현재 branch에 종속된 값이라
+    // 후보 조회에는 쓰지 않고 `preferred_remote` → `origin` → 유일한 remote 순서만
+    // 적용한다. 좁혀지지 않으면 빈 값이며 이때는 fetch하지 않고 이미 받아 둔 tracking
+    // ref로만 목록을 만든다.
+    [[nodiscard]] std::u8string select_git_candidate_fetch_remote(const std::vector<std::u8string>& remotes, std::u8string_view preferred_remote);
+
+    // `for-each-ref` 결과를 전환 후보로 옮긴다. 순수 함수라 정렬과 제외 규칙을 프로세스
+    // 없이 검증할 수 있다.
+    //
+    // - 심볼릭 ref(`refs/remotes/<remote>/HEAD`)는 후보가 아니다.
+    // - 같은 branch 이름이 여러 remote에 있어도 합치지 않고 remote별 후보로 남긴다.
+    // - remote 후보를 먼저, 그 뒤에 local branch를 둔다.
+    // - remote 후보로 도달할 수 있는 local branch는 목록에 두 번 넣지 않는다. upstream이
+    //   그 remote와 다른 local branch는 remote 후보로 도달할 수 없으므로 그대로 남는다.
+    // - `refreshed_remote`가 아닌 remote의 후보는 `stale`이다. 이번 조회에서 갱신하지
+    //   않았다는 사실을 카드가 표시할 수 있어야 한다.
+    [[nodiscard]] std::vector<switch_candidate> build_git_switch_candidates(
+        const std::vector<git_reference_entry>& references, const std::vector<std::u8string>& remotes, std::u8string_view refreshed_remote);
+
+    // 검증에 필요한 local branch와 upstream만 뽑는다.
+    [[nodiscard]] std::vector<git_local_branch_state> collect_git_local_branches(const std::vector<git_reference_entry>& references);
+
     // Git provider다. `S4-D2-CODE`가 로컬 조회를, `S4-D3-CODE`가 remote-first 판정을,
-    // `S4-D5-CODE`가 update를 구현했다. switch는 `S4-D6` 구간에서 채운다. 아직 구현하지
-    // 않은 동작은 어떤 process request도 만들지 않는다.
+    // `S4-D5-CODE`가 update를, `S4-D6-CODE`가 switch를 구현했다. 계약의 모든 동작이
+    // 채워졌으며 검증에 실패한 전환은 어떤 process request도 만들지 않는다.
     class git_repository_provider final : public repository_provider
     {
     public:
@@ -117,7 +142,9 @@ namespace gitman {
     private:
         [[nodiscard]] repository_query_result query_local_impl(const project_definition& project, const process_cancellation_token& token);
         [[nodiscard]] repository_query_result query_remote_impl(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token);
+        [[nodiscard]] switch_candidate_result query_switch_candidates_impl(const project_definition& project, const process_cancellation_token& token);
         [[nodiscard]] repository_change_result update_impl(const project_definition& project, const update_options& options, const process_cancellation_token& token);
+        [[nodiscard]] repository_change_result switch_to_impl(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token);
 
         vcs_tool_info tool_ {};
         process_runner* runner_ { nullptr };

@@ -313,6 +313,74 @@ namespace gitman {
         return submodules;
     }
 
+    bool git_reference_entry::symbolic() const noexcept
+    {
+        return symbolic_target.empty() == false;
+    }
+
+    std::vector<git_reference_entry> parse_git_reference_list(const std::vector<std::u8string>& lines)
+    {
+        constexpr std::u8string_view reference_prefix { u8"refs/" };
+        constexpr std::size_t minimum_field_count { 2 };
+
+        std::vector<git_reference_entry> references {};
+        for (const std::u8string& line : lines)
+        {
+            std::vector<std::u8string_view> fields {};
+            std::u8string_view rest { line };
+            while (true)
+            {
+                const std::size_t separator { rest.find(u8'\t') };
+                if (separator == std::u8string_view::npos)
+                {
+                    fields.push_back(rest);
+                    break;
+                }
+                fields.push_back(rest.substr(0, separator));
+                rest = rest.substr(separator + 1);
+            }
+
+            if (fields.size() < minimum_field_count || fields[0].starts_with(reference_prefix) == false)
+                continue;
+
+            git_reference_entry entry {};
+            entry.name = fields[0];
+            entry.object_id = fields[1];
+            if (fields.size() > 2)
+                entry.upstream = fields[2];
+            // `%(HEAD)`는 현재 branch에서만 `*`이고 나머지는 공백 한 칸이다.
+            if (fields.size() > 3)
+                entry.head = trim_ascii_whitespace(fields[3]) == u8"*";
+            if (fields.size() > 4)
+                entry.symbolic_target = fields[4];
+            references.push_back(std::move(entry));
+        }
+        return references;
+    }
+
+    std::vector<std::u8string> parse_git_worktree_branches(const std::vector<std::u8string>& lines)
+    {
+        constexpr std::u8string_view branch_prefix { u8"branch " };
+        constexpr std::u8string_view local_branch_prefix { u8"refs/heads/" };
+
+        std::vector<std::u8string> branches {};
+        for (const std::u8string& line : lines)
+        {
+            const std::u8string_view text { line };
+            if (text.starts_with(branch_prefix) == false)
+                continue;
+
+            std::u8string_view branch { text.substr(branch_prefix.size()) };
+            // 값은 항상 완전한 ref다. 카드와 검증은 짧은 이름을 쓰므로 접두어를 뗀다.
+            if (branch.starts_with(local_branch_prefix))
+                branch = branch.substr(local_branch_prefix.size());
+            if (branch.empty())
+                continue;
+            branches.emplace_back(branch);
+        }
+        return branches;
+    }
+
     git_ahead_behind parse_git_ahead_behind(const std::u8string_view line)
     {
         git_ahead_behind result {};

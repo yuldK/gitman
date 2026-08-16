@@ -1,5 +1,47 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 4 `S4-D6-CODE` switch 구현
+
+### 사용자 지시
+
+- `S4-D5-TEST`를 승인하고 무결함 `S4-D5-FIX` 생략을 확인한 뒤 `S4-D6-CODE`를 진행한다.
+
+### 반영 내용
+
+- `application/switch_validation_service.h/.cpp`를 추가했다. Git과 SVN의 전환 검증 규칙 전체를 프로세스도 filesystem도 쓰지 않는 순수 함수로 모았다. **검증 실패 시 명령을 만들지 않는다**는 REQ-007 수용 기준이 provider 한 곳에서만 지켜지면 되게 하려는 분리다.
+- `infrastructure/git_command_builder.*`에 `for-each-ref`, `worktree list --porcelain`, `switch --no-guess`와 tracking branch 생성 요청을 추가했다. `--discard-changes`, `--merge`, `--force`는 쓰지 않는다.
+- `for-each-ref` 형식에 `%(symref)`를 넣어 `refs/remotes/<remote>/HEAD` 같은 심볼릭 항목을 이름 규칙이 아니라 값으로 제외한다. 계획 4.8의 형식에 한 칸을 더한 것이다.
+- `switch`와 tracking 생성 모두 `--`로 인자를 끊는다. 호스트 Git 2.52.0에서 `switch`가 `--`를 받아들이는 것과 `--track` 뒤의 완전한 ref가 옵션 값이 아니라 시작 지점으로 해석되는 것을 실측했다.
+- `infrastructure/git_status_parser.*`에 `parse_git_reference_list`와 `parse_git_worktree_branches`를 추가했다. ref 이름에는 TAB이 들어갈 수 없어 TAB 구분 형식의 경계가 흔들리지 않는다.
+- `build_git_switch_candidates`를 순수 함수로 추가했다. remote 후보를 먼저, local branch를 뒤에 두고, 같은 이름이 여러 remote에 있어도 합치지 않으며 자동으로 고르지 않는다.
+- **remote 후보로 도달할 수 있는 local branch는 목록에 두 번 넣지 않는다.** 반대로 upstream이 그 remote와 다른 local branch는 remote 후보로 도달할 수 없으므로 그대로 남긴다. 계획 4.8의 "local-only"를 그대로 읽으면 이런 branch로 전환할 방법이 사라진다.
+- 후보를 새로 고칠 remote는 `preferred_remote` → `origin` → 유일한 remote 순서로 고른다. 좁혀지지 않으면 **fetch하지 않고** 이미 받아 둔 tracking ref로 목록을 만든 뒤 `stale`로 알린다. upstream은 현재 branch에 종속된 값이라 후보 조회 기준으로 쓰지 않는다.
+- fetch가 실패해도 목록 자체는 만든다. 원격을 새로 고치지 못한 것과 후보를 전혀 알 수 없는 것은 사용자가 할 일이 다르다.
+- Git 검증 순서를 정했다. 대상 없음 → remote 미지정 → 저장소 조회 불가 → 이미 대상 → 다른 worktree 사용 중 → 작업 트리 위험 → tracking 충돌 → 확인 요구다. **확인 요구를 가장 뒤에 둔다.** 오류가 아니라 확인 요구이므로 실제 차단 사유가 있으면 그것을 먼저 알려야 한다.
+- `switch_candidate`에 `tracking_branch_confirmed`를 추가했다. 후보 조회는 채우지 않고 dialog가 확인을 받은 뒤에만 켠다. 계약에 별도 인자가 없어 확인 여부를 실을 자리가 필요했고, 이 값이 없으면 "확인 후 생성"과 "무조건 생성" 중 하나만 구현할 수 있다.
+- upstream이 **없는** local branch는 tracking 충돌로 보지 않는다. 이때 전환은 upstream을 건드리지 않고 그 branch로 옮기기만 한다.
+- `switch_rejection::repository_unavailable`을 추가했다. 조회 자체가 안 되는 상태를 `working_tree_unsafe`로 보고하면 카드에 잘못된 사유가 뜬다.
+- `switch_to`는 **재조회 → 재검증 → 실행 → 사후 재조회** 순서다. dialog 검증과 실행 사이의 상태 변경을 방어한다. 정상 경로의 명령 수는 Git이 8개, SVN이 16개다.
+- 실행 직전에는 fetch하지 않는다. 전환은 이미 받아 둔 ref로만 하며 `--no-guess`가 목록에 없던 대상으로의 암묵 전환을 막는다.
+- `infrastructure/svn_*`에 `svn switch`와 URL 대상 원격 `info --show-item`을 추가했다. `--ignore-ancestry`, `--force`, `--accept`는 쓰지 않는다.
+- **SVN 후보 조회는 process request를 하나도 만들지 않는다.** 후보가 문서의 `svn_switch_targets`뿐이고 저장소 layout을 자동으로 가정하지 않기 때문이다. 형식을 해석할 수 없는 값은 후보에서 빼고 warning 진단으로 남긴다.
+- SVN 검증은 허용 목록·형식·현재 위치·작업 트리를 **네트워크보다 먼저** 본다. 어차피 실패할 전환에 원격을 건드릴 이유가 없다. 계획 4.8의 나열 순서를 바꾼 것이며 판정 결과는 같다.
+- 저장소 root와 UUID는 양쪽 값이 모두 있고 같을 때만 통과시킨다. 전환은 되돌리기 어려운 동작이라 확인하지 못한 것을 안전하다고 보지 않는다.
+- `tests/`의 "아직 구현하지 않은 동작" test 2개를 **빈 대상은 조회 없이 거부한다**는 test로 좁혔다. 원래 단정은 더 이상 사실이 아니지만 REQ-007 수용 기준은 남겨야 한다. 새 test는 작성하지 않았다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 338/338 통과했고 `/analyze`도 무경고로 통과했다.
+- 저장소 밖 임시 프로그램으로 228개 항목을 확인하고 삭제했다. 실제 Git으로 **확인 후 tracking branch를 실제로 만들어 전환했고**, 확인 전 거부·기존 branch 복귀·재선택 거부·다른 worktree 점유 거부·dirty 거부를 모두 확인했다.
+- 결과를 `docs/verification/2026-08-17-stage-4-d6-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-007, REQ-013, REQ-014
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D6-CODE`는 사용자 코드 검수 대기 상태다.
+- 승인 전에는 `S4-D6-TEST`의 후보 정렬과 거부 사유 test를 작성하지 않는다.
+
 ## 2026-08-17 - 단계 4 `S4-D5-TEST` update test 작성
 
 ### 사용자 지시

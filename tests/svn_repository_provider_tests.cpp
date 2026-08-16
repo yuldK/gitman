@@ -518,7 +518,7 @@ TEST_CASE("SVN updates do nothing when the tool is missing", "[infrastructure][s
     REQUIRE(runner.request_count() == 0);
 }
 
-TEST_CASE("SVN operations that are not implemented yet build no request", "[infrastructure][svn][provider]")
+TEST_CASE("SVN switch candidates and an empty target build no request", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
     gitman::testing::fake_vcs_file_probe probe {};
@@ -526,9 +526,13 @@ TEST_CASE("SVN operations that are not implemented yet build no request", "[infr
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
     const gitman::project_definition project { make_project() };
 
-    // 허용 목록 기반 switch는 `S4-D6` 구간이다. `svn update`는 `S4-D5-CODE`가 구현했다.
+    // 후보는 문서의 허용 목록뿐이라 저장소를 조회하지 않는다. 기본 프로젝트에는 허용
+    // 목록이 없으므로 후보도 없다.
     REQUIRE(provider.query_switch_candidates(project, {}).candidates.empty());
-    REQUIRE_FALSE(provider.switch_to(project, {}, {}).executed);
+
+    const gitman::repository_change_result switched { provider.switch_to(project, {}, {}) };
+    REQUIRE_FALSE(switched.executed);
+    REQUIRE(switched.rejected_by == gitman::switch_rejection::target_not_found);
     REQUIRE(runner.request_count() == 0);
 }
 

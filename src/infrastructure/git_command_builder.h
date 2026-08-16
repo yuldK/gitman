@@ -69,4 +69,27 @@ namespace gitman {
 
     // parent pull이 성공한 뒤에만 실행한다.
     [[nodiscard]] process_request make_git_submodule_update_request(std::u8string_view executable, std::u8string_view working_directory);
+
+    // switch 후보를 한 번에 조회한다. remote tracking ref와 local branch를 같은 명령으로
+    // 얻고 필드는 TAB으로 나눈다. ref 이름에는 TAB이 들어갈 수 없어 경계가 모호하지 않다.
+    //
+    //     %(refname)\t%(objectname)\t%(upstream)\t%(HEAD)\t%(symref)
+    //
+    // `%(symref)`는 `refs/remotes/<remote>/HEAD` 같은 심볼릭 항목을 이름 규칙이 아니라
+    // 값으로 골라내려고 넣었다. 계획 4.8의 형식에 이 한 칸을 더한 것이다.
+    [[nodiscard]] process_request make_git_reference_list_request(std::u8string_view executable, std::u8string_view working_directory);
+
+    // 다른 worktree가 사용 중인 branch를 확인한다. 기계 판독 형식이라 로캘과 무관하다.
+    [[nodiscard]] process_request make_git_worktree_list_request(std::u8string_view executable, std::u8string_view working_directory);
+
+    // 이미 있는 local branch로 전환한다. `--no-guess`로 선택하지 않은 remote branch로의
+    // 암묵 전환을 막는다. `--discard-changes`, `--merge`, `--force`는 쓰지 않으므로
+    // 작업 트리에 변경이 남아 있으면 Git 자체가 거부한다.
+    [[nodiscard]] process_request make_git_switch_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view branch);
+
+    // remote branch에 대응하는 local branch가 없을 때만 사용한다. 사용자가 tracking
+    // branch 생성을 확인한 뒤에만 만들어지는 명령이다. `start_point`는
+    // `refs/remotes/<remote>/<branch>` 형태의 완전한 ref다.
+    [[nodiscard]] process_request make_git_create_tracking_branch_request(
+        std::u8string_view executable, std::u8string_view working_directory, std::u8string_view local_branch, std::u8string_view start_point);
 } // namespace gitman

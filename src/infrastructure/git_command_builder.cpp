@@ -98,6 +98,57 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::update);
     }
 
+    process_request make_git_reference_list_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"for-each-ref" });
+        arguments.push_back(std::u8string { u8"--format=%(refname)%09%(objectname)%09%(upstream)%09%(HEAD)%09%(symref)" });
+        // 출력은 ref 이름 순서로 정렬되어 나온다. `refs/heads`가 `refs/remotes`보다 앞서지만
+        // 후보 목록의 순서는 호출자가 remote 우선으로 다시 만든다.
+        arguments.push_back(std::u8string { u8"refs/heads" });
+        arguments.push_back(std::u8string { u8"refs/remotes" });
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+    }
+
+    process_request make_git_worktree_list_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"worktree" });
+        arguments.push_back(std::u8string { u8"list" });
+        arguments.push_back(std::u8string { u8"--porcelain" });
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+    }
+
+    process_request make_git_switch_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view branch)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"switch" });
+        // 목록에 없던 remote branch 이름을 주면 Git이 조용히 tracking branch를 만드는
+        // 대신 실패한다. 사용자가 고르지 않은 전환을 만들지 않는다.
+        arguments.push_back(std::u8string { u8"--no-guess" });
+        // branch 이름은 저장소에서 오므로 옵션으로 해석되지 않게 끊어 준다. 호스트
+        // Git 2.52.0으로 `switch`가 `--`를 받아들이는 것을 실측했다.
+        arguments.push_back(std::u8string { u8"--" });
+        arguments.push_back(std::u8string { branch });
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::switch_target);
+    }
+
+    process_request make_git_create_tracking_branch_request(
+        const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view local_branch, const std::u8string_view start_point)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"switch" });
+        arguments.push_back(std::u8string { u8"--no-guess" });
+        arguments.push_back(std::u8string { u8"--create" });
+        arguments.push_back(std::u8string { local_branch });
+        // `--track`은 값을 함께 받을 수 있는 옵션이지만 값을 `=`로만 받는다. 따라서
+        // 뒤에 오는 완전한 ref는 옵션 값이 아니라 시작 지점 인자다.
+        arguments.push_back(std::u8string { u8"--track" });
+        arguments.push_back(std::u8string { u8"--" });
+        arguments.push_back(std::u8string { start_point });
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::switch_target);
+    }
+
     process_request make_git_ahead_behind_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view target_reference)
     {
         std::u8string range { u8"HEAD..." };

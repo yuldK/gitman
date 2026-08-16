@@ -3,11 +3,15 @@
 #include "application/process_cancellation.h"
 #include "application/process_runner.h"
 #include "application/repository_provider.h"
+#include "application/switch_validation_service.h"
 #include "application/vcs_file_probe.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "domain/vcs_operation.h"
 #include "domain/vcs_tool.h"
+
+#include <string>
+#include <vector>
 
 namespace gitman {
     // update 전에 작업 복사본 상태만으로 판정할 수 있는 차단 사유다.
@@ -17,8 +21,19 @@ namespace gitman {
     // 기능이 사라진다. 대신 조회가 그 사실을 진단으로 남긴다.
     [[nodiscard]] update_block_reason evaluate_svn_update_preflight(const repository_snapshot& snapshot) noexcept;
 
+    // 허용 목록을 그대로 후보로 옮긴다. 저장소 layout을 자동으로 가정하지 않으므로
+    // 프로세스를 하나도 만들지 않는 순수 함수다. 형식을 해석할 수 없는 값은 목록에서
+    // 빼고 `rejected`에 담아 호출자가 진단으로 남길 수 있게 한다.
+    struct svn_switch_candidate_set
+    {
+        std::vector<switch_candidate> candidates {};
+        std::vector<std::u8string> rejected {};
+    };
+
+    [[nodiscard]] svn_switch_candidate_set build_svn_switch_candidates(const std::vector<std::u8string>& allowed_targets);
+
     // SVN provider다. 구조는 Git provider와 같고 명령과 파서만 다르다. `S4-D4-CODE`가
-    // 조회를, `S4-D5-CODE`가 update를 구현했다. switch는 `S4-D6` 구간에서 채운다.
+    // 조회를, `S4-D5-CODE`가 update를, `S4-D6-CODE`가 switch를 구현했다.
     //
     // 이 호스트에는 SVN이 설치되어 있지 않다. 계획 8.4에 따라 명령 조립, 파서와 상태
     // 변환은 fake runner로 검증하고 실제 `svn.exe` 실행 경로는 미검증으로 남긴다.
@@ -43,6 +58,7 @@ namespace gitman {
         [[nodiscard]] repository_query_result query_local_impl(const project_definition& project, const process_cancellation_token& token);
         [[nodiscard]] repository_query_result query_remote_impl(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token);
         [[nodiscard]] repository_change_result update_impl(const project_definition& project, const process_cancellation_token& token);
+        [[nodiscard]] repository_change_result switch_to_impl(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token);
 
         vcs_tool_info tool_ {};
         process_runner* runner_ { nullptr };

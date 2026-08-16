@@ -311,11 +311,74 @@ namespace gitman {
         return {};
     }
 
-    repository_change_result svn_repository_provider::update(const project_definition&, const update_options&, const process_cancellation_token&) noexcept
+    update_block_reason evaluate_svn_update_preflight(const repository_snapshot& snapshot) noexcept
     {
-        // `svn update`는 `S4-D5-CODE` 구간이다. `executed`가 거짓이므로 어떤 process
-        // request도 만들지 않았다는 계약은 그대로 지켜진다.
-        return {};
+        if (snapshot.availability != repository_availability::ready)
+            return update_block_reason::repository_unavailable;
+        if (snapshot.working_tree.state == working_tree_state::conflicted)
+            return update_block_reason::working_tree_conflicted;
+        if (snapshot.working_tree.state != working_tree_state::clean)
+            // `modified`와 `unknown`을 함께 막는다.
+            return update_block_reason::working_tree_dirty;
+        if (snapshot.has_switched_subtree.value_or(false))
+            return update_block_reason::switched_subtree;
+        if (snapshot.has_mixed_revision.value_or(false))
+            return update_block_reason::mixed_revision;
+        return update_block_reason::none;
+    }
+
+    repository_change_result svn_repository_provider::update(const project_definition& project, const update_options&, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            // SVN에는 submodule이 없어 `update_options`를 쓰지 않는다.
+            return update_impl(project, token);
+        }
+        catch (...)
+        {
+            repository_change_result result {};
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"업데이트 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    repository_change_result svn_repository_provider::update_impl(const project_definition& project, const process_cancellation_token& token)
+    {
+        repository_change_result result {};
+        if (available() == false)
+        {
+            result.blocked_by = update_block_reason::tool_unavailable;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::update_blocked, diagnostic_severity::warning, std::u8string { update_block_reason_message(result.blocked_by) }, project));
+            return result;
+        }
+
+        const repository_query_result before { query_local_impl(project, token) };
+        result.snapshot = before.snapshot;
+        for (const diagnostic& value : before.diagnostics)
+            result.diagnostics.push_back(value);
+
+        result.blocked_by = evaluate_svn_update_preflight(before.snapshot);
+        if (result.blocked_by != update_block_reason::none)
+        {
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::update_blocked, diagnostic_severity::warning, std::u8string { update_block_reason_message(result.blocked_by) }, project));
+            return result;
+        }
+
+        const vcs_command_result update_result { run_vcs_command(*runner_, make_svn_update_request(tool_.executable, svn_working_directory(project)), token, log_) };
+        result.executed = true;
+        result.succeeded = update_result.succeeded();
+        if (result.succeeded == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, update_result) };
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, update_result), project));
+        }
+
+        // 성공과 실패 모두 실행 직후 상태를 다시 조회한다.
+        const repository_query_result after { query_local_impl(project, token) };
+        result.snapshot = after.snapshot;
+        for (const diagnostic& value : after.diagnostics)
+            result.diagnostics.push_back(value);
+        return result;
     }
 
     repository_change_result svn_repository_provider::switch_to(const project_definition&, const switch_candidate&, const process_cancellation_token&) noexcept

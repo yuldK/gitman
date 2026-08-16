@@ -389,9 +389,8 @@ TEST_CASE("SVN operations that are not implemented yet build no request", "[infr
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
     const gitman::project_definition project { make_project() };
 
-    // `svn update`는 `S4-D5`, 허용 목록 기반 switch는 `S4-D6` 구간이다.
+    // 허용 목록 기반 switch는 `S4-D6` 구간이다. `svn update`는 `S4-D5-CODE`가 구현했다.
     REQUIRE(provider.query_switch_candidates(project, {}).candidates.empty());
-    REQUIRE_FALSE(provider.update(project, {}, {}).executed);
     REQUIRE_FALSE(provider.switch_to(project, {}, {}).executed);
     REQUIRE(runner.request_count() == 0);
 }

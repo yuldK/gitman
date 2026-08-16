@@ -1,5 +1,72 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 4 `S4-D5-CODE` update 구현
+
+### 사용자 지시
+
+- `S4-D4-TEST`를 승인하고 무결함 `S4-D4-FIX` 생략을 확인한 뒤 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `infrastructure/git_command_builder.*`에 `pull --ff-only`, `submodule status --recursive`, `submodule update --init --recursive` 요청을 추가했다. `--force`, `--rebase`, `--autostash`는 쓰지 않는다.
+- pull은 remote와 branch를 명시하고 앞에 `--`를 둔다. 설정에 따라 다른 대상이 당겨지지 않고 `-`로 시작하는 이름이 인자로 해석되지 않는다. 호스트 Git 2.52.0으로 실측했다.
+- `infrastructure/git_status_parser.*`에 `parse_git_submodule_status`를 추가했다. `<표시><커밋 ID> <경로> (<describe>)` 형식을 읽고 describe 접미사를 떼어 낸다.
+- `evaluate_git_update_preflight`와 `evaluate_svn_update_preflight`를 순수 함수로 추가했다. 보호 정책 자체를 프로세스 없이 검증할 수 있다.
+- **사전 검사는 지금 다시 조회한 상태로 한다.** 카드가 들고 있는 값으로 판단하면 그 사이에 바뀐 저장소에서 명령이 나갈 수 있다.
+- 차단 사유 우선순위를 정했다. 도구 부재 → 저장소 아님 → 충돌 → 진행 중 작업 → `index.lock` → detached → dirty → diverged → 대상 없음이다. `working_tree_state::unknown`을 dirty와 함께 막는다.
+- **SVN의 switched·mixed는 값이 있을 때만 차단한다.** `svnversion`이 없어 판정할 수 없다는 이유로 update를 영영 막으면 도구 구성 문제 하나로 기능이 사라진다. 조회가 이미 warning을 남긴다.
+- submodule 옵션이 켜지면 pull 전에 `submodule status --recursive`로 조사하고 충돌(`U`)이나 커밋 불일치(`+`)가 하나라도 있으면 **parent pull을 시작하지 않는다.** 미초기화(`-`)는 `--init`이 처리하므로 위험으로 보지 않는다.
+- `submodule update --init --recursive`는 parent pull이 **성공한 경우에만** 실행한다. 실패한 pull 뒤에 submodule을 옮기면 되돌리기 어려운 조합이 남는다.
+- 계획 4.7의 "submodule dirty 검사"는 `git submodule status`가 내부 dirty를 보고하지 않아 충돌과 커밋 불일치로 좁혔다. 내부 dirty 검사는 단계 6~7에서 다시 본다.
+- 성공과 실패 모두 실행 직후 로컬 상태를 다시 조회한다. 실행의 성공 여부와 조회 결과를 분리해 보고한다.
+- `infrastructure/svn_*`에 `svn update`를 추가했다. `--accept`를 주지 않아 충돌을 자동으로 해결하지 않는다.
+- `tests/`의 "아직 구현하지 않은 동작" test 2개에서 `update` 단정만 걷어냈다. 이번 구간이 구현한 동작이라 더 이상 사실이 아니다. 새 test는 작성하지 않았다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 306/306 통과했고 `/analyze`도 무경고로 통과했다.
+- 저장소 밖 임시 프로그램으로 109개 항목을 확인하고 삭제했다. 실제 Git으로 **원격이 앞선 저장소를 실제로 fast-forward했고** dirty·diverged·remote 없음·detached 저장소가 모두 차단되는 것을 확인했다.
+- 결과를 `docs/verification/2026-08-17-stage-4-d5-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-007, REQ-013
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D5-CODE`는 사용자 코드 검수 대기 상태다.
+- 승인 전에는 `S4-D5-TEST`의 차단 사유 matrix와 update 통합 test를 작성하지 않는다.
+
+## 2026-08-17 - 단계 4 `S4-D4-TEST` SVN 조회 test 작성
+
+### 사용자 지시
+
+- `S4-D4-CODE`를 승인하고 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `tests/svn_command_builder_tests.cpp`에 명령 test 6개를 추가했다. 네 명령의 인자와 한도, `--non-interactive` 위치, **`svnversion`에 공통 인자가 없음**, `--trust-server-cert`와 자격 증명 인자를 절대 만들지 않는 것을 단정한다.
+- `tests/svn_output_parser_tests.cpp`에 파서 test 8개를 추가했다. 상태 문자 12종, switched·tree conflict 칸, 부가 설명 줄 무시, 무시·외부 항목 제외, `svnversion` 단일·범위·`M`/`S`/`P`·비작업복사본·잘못된 형식을 다룬다.
+- 상태 칸 뒤 패딩이 하나 더 있어도 경로가 잘리지 않는 것을 test로 고정했다. 계획의 "고정 9칸" 대신 공백을 건너뛰는 구현의 근거다.
+- `tests/fixtures/vcs/svn/`에 fixture 2개를 추가했다. 실제 출력을 캡처할 수 없어 **Apache Subversion 공식 문서의 출력 계약을 근거로 작성하고 출처와 미대조 사실을 파일 주석에 남겼다.** 주석은 `#`로 시작하며 test 도우미가 버린다.
+- `tests/svn_repository_provider_tests.cpp`에 provider test 16개를 추가했다. 정상 조회의 명령 7개 순서, `svnversion` 부재와 해석 실패, `status` 실패, 원격 behind·up_to_date, 실패 분류 3종과 미구현 동작을 다루며 **명령 미생성을 요청 기록 수로 직접 단정한다.**
+- 실패 분류 test는 모두 한국어 메시지에 SVN 오류 코드가 붙은 형태다. 번역된 메시지에도 코드가 남는다는 전제를 언어에 의존하지 않고 단정한다.
+- `tests/svn_integration_tests.cpp`에 통합 test 2개를 추가했다. SVN이 없는 호스트에서 앱이 계속 동작하는 것은 **실제로 실행되고**, 실제 `svn.exe`를 쓰는 test는 skip된다. 두 test는 서로 배타적이라 SVN이 설치된 호스트에서는 반대로 동작한다.
+- 실제 작업 복사본을 만들려면 `svnadmin`이 필요하다. 단계 4는 실행 파일 연결과 판정까지만 확인하고 실제 작업 복사본 통합 검증은 단계 8로 남긴다.
+- 전체 CTest가 274에서 **306**으로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 306/306 통과했다. `/analyze`도 무경고로 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- production source를 변경하지 않았고 `S4-D4-FIX` 후보도 발견하지 않았다.
+- 결과를 `docs/verification/2026-08-17-stage-4-d4-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-011, REQ-012
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D4-TEST`는 사용자 test 검수 대기 상태다.
+- 발견 production 결함이 없어 `S4-D4-FIX`는 사용자 확인 후 생략한다.
+- 승인 전에는 `S4-D5-CODE`의 update 보호 정책과 실행을 작성하지 않는다.
+
 ## 2026-08-17 - 단계 4 `S4-D4-CODE` SVN 조회 구현
 
 ### 사용자 지시

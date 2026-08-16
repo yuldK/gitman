@@ -658,7 +658,9 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 - `S4-D2-TEST`: 파서와 provider test 39개, 실제 Git 통합 test 12개, `git_repository_fixture` 도우미와 실제 출력 fixture 5종 작성 및 사용자 승인 완료. 전체 CTest가 195에서 246으로 늘었고 양 toolchain에서 246/246 통과했다. 발견 production 결함이 없어 `S4-D2-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d2-test.md`에 기록했다.
 - `S4-D3-CODE`: remote 열거와 대상 선택, `fetch --prune`, ahead/behind 계산과 offline·인증 판정 구현 및 사용자 승인 완료. remote branch 존재 확인을 fetch 뒤로 옮겼고(4.5의 4·5번 순서) `preferred_remote`가 없으면 warning과 함께 다음 규칙으로 진행한다. 결과는 `docs/verification/2026-08-16-stage-4-d3-code.md`에 기록했다.
 - `S4-D3-TEST`: 대상 선택 matrix, 명령 순서와 실패 분류 test 22개, 실제 원격 통합 test 6개 작성 및 사용자 승인 완료. 전체 CTest가 246에서 274로 늘었고 양 toolchain에서 274/274 통과했다. 한국어 Git 출력 인코딩 실측도 함께 기록했다(11장 항목 해소). 발견 production 결함이 없어 `S4-D3-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d3-test.md`에 기록했다.
-- `S4-D4-CODE`: SVN 명령 조립, `--show-item`·`status`·`svnversion` 파서, 로컬 및 원격 상태와 mixed revision·switched 판정 구현 완료, 사용자 검수 대기. 2026-08-17 사용자 방침(SVN은 나중에 최소 노력으로 붙이기만 하면 된다)에 따라 Git provider와 같은 구조를 유지하고 4.6의 명령 조합에서 벗어나지 않았다. 결과는 `docs/verification/2026-08-17-stage-4-d4-code.md`에 기록했다.
+- `S4-D4-CODE`: SVN 명령 조립, `--show-item`·`status`·`svnversion` 파서, 로컬 및 원격 상태와 mixed revision·switched 판정 구현 및 사용자 승인 완료. 2026-08-17 사용자 방침(SVN은 나중에 최소 노력으로 붙이기만 하면 된다)에 따라 Git provider와 같은 구조를 유지하고 4.6의 명령 조합에서 벗어나지 않았다. 결과는 `docs/verification/2026-08-17-stage-4-d4-code.md`에 기록했다.
+- `S4-D4-TEST`: SVN 파서와 provider test 30개, 통합 test 2개, 문서 근거 fixture 2개 작성 및 사용자 승인 완료. 전체 CTest가 274에서 306으로 늘었고 양 toolchain에서 306/306 통과했다. 이 호스트에서는 "SVN이 없어도 앱이 동작한다" test가 실행되고 실제 `svn.exe` test는 skip된다. 발견 production 결함은 없다. 결과는 `docs/verification/2026-08-17-stage-4-d4-test.md`에 기록했다.
+- `S4-D5-CODE`: update 사전 검사 보호 정책, `pull --ff-only`, submodule 옵션, `svn update`와 사후 재조회 구현 완료, 사용자 검수 대기. 4.7의 submodule dirty 검사는 `git submodule status`가 내부 dirty를 보고하지 않아 충돌과 커밋 불일치로 좁혔고, SVN의 switched·mixed는 판정 값이 있을 때만 차단한다. 결과는 `docs/verification/2026-08-17-stage-4-d5-code.md`에 기록했다.
 
 ## 11. 미결정 항목
 

@@ -280,6 +280,39 @@ namespace gitman {
         return names;
     }
 
+    std::vector<submodule_status> parse_git_submodule_status(const std::vector<std::u8string>& lines)
+    {
+        std::vector<submodule_status> submodules {};
+        for (const std::u8string& line : lines)
+        {
+            const std::u8string_view text { line };
+            if (text.size() < 3)
+                continue;
+
+            const std::size_t separator { text.find(u8' ', 1) };
+            if (separator == std::u8string_view::npos || separator + 1 >= text.size())
+                continue;
+
+            submodule_status entry {};
+            entry.initialized = text.front() != u8'-';
+            entry.revision_mismatch = text.front() == u8'+';
+            entry.conflicted = text.front() == u8'U';
+            entry.revision = text.substr(1, separator - 1);
+
+            std::u8string_view path { text.substr(separator + 1) };
+            // 뒤에 붙는 ` (<describe>)`는 표시용이라 경로에서 떼어 낸다. 경로 자체가
+            // 괄호로 끝나는 경우를 위해 여는 괄호가 있을 때만 자른다.
+            if (path.ends_with(u8')'))
+            {
+                if (const std::size_t describe { path.rfind(u8" (") }; describe != std::u8string_view::npos)
+                    path = path.substr(0, describe);
+            }
+            entry.relative_path = path;
+            submodules.push_back(std::move(entry));
+        }
+        return submodules;
+    }
+
     git_ahead_behind parse_git_ahead_behind(const std::u8string_view line)
     {
         git_ahead_behind result {};

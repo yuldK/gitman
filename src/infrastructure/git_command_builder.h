@@ -49,4 +49,24 @@ namespace gitman {
     // `<ahead>\t<behind>` 한 줄을 얻는다. `HEAD`를 쓰면 branch 이름을 인자로 넘기지 않아도
     // 되고 이름에 특수 문자가 있어도 안전하다.
     [[nodiscard]] process_request make_git_ahead_behind_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view target_reference);
+
+    enum class git_submodule_recursion
+    {
+        // `update_submodules`가 꺼진 기본값이다. pull이 submodule을 건드리지 않는다.
+        none,
+        // 켜진 경우다. parent가 가리키는 커밋이 바뀐 submodule만 갱신한다.
+        on_demand,
+    };
+
+    // ADR-003이 정한 update 명령이다. merge와 rebase를 만들지 않는 `--ff-only`만 쓰고
+    // `--force`, `--rebase`, `--autostash`는 쓰지 않는다. remote와 branch를 명시해
+    // 설정에 따라 다른 대상이 당겨지는 일이 없게 한다.
+    [[nodiscard]] process_request make_git_pull_request(
+        std::u8string_view executable, std::u8string_view working_directory, std::u8string_view remote, std::u8string_view branch, git_submodule_recursion recursion);
+
+    // 등록된 submodule과 그 상태를 얻는다. 네트워크를 쓰지 않는다.
+    [[nodiscard]] process_request make_git_submodule_status_request(std::u8string_view executable, std::u8string_view working_directory);
+
+    // parent pull이 성공한 뒤에만 실행한다.
+    [[nodiscard]] process_request make_git_submodule_update_request(std::u8string_view executable, std::u8string_view working_directory);
 } // namespace gitman

@@ -83,6 +83,13 @@ namespace gitman {
     // `git remote`는 이름을 한 줄에 하나씩 낸다. 빈 줄은 버린다.
     [[nodiscard]] std::vector<std::u8string> parse_git_remote_names(const std::vector<std::u8string>& lines);
 
+    // `git submodule status --recursive` 출력이다. 한 줄이 `<표시><커밋 ID> <경로>
+    // (<describe>)` 형태이며 표시가 상태를 나타낸다.
+    //
+    //     ' ' 등록된 커밋과 같다   '+' 다른 커밋이 checkout되어 있다
+    //     '-' 초기화되지 않았다    'U' 충돌이 남아 있다
+    [[nodiscard]] std::vector<submodule_status> parse_git_submodule_status(const std::vector<std::u8string>& lines);
+
     // `rev-list --left-right --count`의 `<ahead>\t<behind>` 한 줄을 읽는다. 왼쪽이 로컬,
     // 오른쪽이 원격이다.
     [[nodiscard]] git_ahead_behind parse_git_ahead_behind(std::u8string_view line);

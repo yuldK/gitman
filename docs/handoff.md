@@ -5,15 +5,15 @@
 - 기준일: 2026-08-17
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-D4-CODE` SVN 조회 production code 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D5-CODE` update production code 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-D4-CODE` 승인 후 `S4-D4-TEST` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D5-CODE` 승인 후 `S4-D5-TEST` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 Git 로컬 조회, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-17-stage-4-d4-code.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d3-test.md`
-- 최근 검증 기록: `docs/verification/2026-08-16-stage-4-d3-code.md`
+- 현재 검증 기록: `docs/verification/2026-08-17-stage-4-d5-code.md`
+- 직전 검증 기록: `docs/verification/2026-08-17-stage-4-d4-test.md`
+- 최근 검증 기록: `docs/verification/2026-08-17-stage-4-d4-code.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
 다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
@@ -115,16 +115,16 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-D4-CODE` |
-| 제출 내용 | SVN 명령 조립, `--show-item`·`status`·`svnversion` 파서, 로컬 및 원격 상태와 mixed·switched 판정 |
-| production code | 신규 source 3쌍(`svn_command_builder`, `svn_output_parser`, `svn_repository_provider`), `src/CMakeLists.txt` 수정 |
-| test code 및 fixture | 변경 없음. 전체 CTest 274 유지 |
+| 계획 ID | `S4-D5-CODE` |
+| 제출 내용 | update 사전 검사 보호 정책, `pull --ff-only`, submodule 옵션, `svn update`, 사후 재조회 |
+| production code | 수정 5쌍(`git_command_builder`, `git_status_parser`, `git_repository_provider`, `svn_command_builder`, `svn_repository_provider`). 새 파일과 CMake 변경 없음 |
+| test code 및 fixture | 기존 test 2개에서 이제 사실이 아닌 `update` 단정만 제거. 새 test 없음. 전체 CTest 306 유지 |
 | bug 수정 | 없음 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 274/274, `/analyze` 무경고, aggregate format/style 통과, 임시 프로그램 115/115 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 306/306, `/analyze` 무경고, aggregate format/style 통과, 임시 프로그램 109/109 |
 | 발견 결함 | 없음 |
-| 승인 대기 | `S4-D4-CODE` 코드 검수 |
-| 검수에서 확인할 결정 | `svnversion`에 공통 인자 미부착, `status` 칸을 7칸+공백 건너뛰기로 해석, 원격 URL 재조회 |
-| 승인 뒤 다음 작업 | `S4-D4-TEST` 한 구간만 허용 |
+| 승인 대기 | `S4-D5-CODE` 코드 검수 |
+| 검수에서 확인할 결정 | SVN switched·mixed를 값이 있을 때만 차단, submodule 검사 범위를 충돌·커밋 불일치로 한정, update가 사전 검사용 로컬 조회를 스스로 수행 |
+| 승인 뒤 다음 작업 | `S4-D5-TEST` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
@@ -140,10 +140,10 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S4-D3-CODE` Git remote-first 최신 상태 | 승인 완료 | `docs/verification/2026-08-16-stage-4-d3-code.md` |
 | `S4-D3-TEST` | 승인 완료 | test 28개, 전체 274/274. `docs/verification/2026-08-16-stage-4-d3-test.md` |
 | `S4-D3-FIX` | 생략 완료 | 발견 production 결함 없음 |
-| `S4-D4-CODE` SVN 상태 | 제출, 검수 대기 | `docs/verification/2026-08-17-stage-4-d4-code.md` |
-| `S4-D4-TEST` | 시작 전 | |
-| `S4-D4-FIX` | 시작 전 | |
-| `S4-D5-CODE` update | 시작 전 | |
+| `S4-D4-CODE` SVN 상태 | 승인 완료 | `docs/verification/2026-08-17-stage-4-d4-code.md` |
+| `S4-D4-TEST` | 승인 완료 | test 32개, 전체 306/306. `docs/verification/2026-08-17-stage-4-d4-test.md` |
+| `S4-D4-FIX` | 생략 완료 | 발견 production 결함 없음 |
+| `S4-D5-CODE` update | 제출, 검수 대기 | `docs/verification/2026-08-17-stage-4-d5-code.md` |
 | `S4-D5-TEST` | 시작 전 | |
 | `S4-D5-FIX` | 시작 전 | |
 | `S4-D6-CODE` switch | 시작 전 | |
@@ -214,7 +214,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - `svnversion`은 `svn`과 다른 실행 파일이라 `--non-interactive`를 받지 않는다. SVN 공통 인자를 붙이면 인자 오류로 실패하므로 이 명령만 요청을 직접 만든다.
 - `svn status`의 경로는 앞 7칸(항목·속성·잠금·이력·switched·잠금 토큰·tree conflict)을 상태 칸으로 보고 그 뒤 공백을 모두 건너뛴 지점부터 읽는다. 계획의 "고정 9칸"보다 배포판별 패딩 차이에 강하다. switched는 색인 4, tree conflict는 색인 6이다.
 - SVN 원격 조회는 현재 URL을 `info --show-item url`로 다시 물어본 뒤 원격 HEAD 리비전과 비교한다. `ahead`와 `diverged`는 SVN에 없어 `behind`와 `up_to_date`만 나오고 `ahead_count`는 항상 0이다.
-- 실제 SVN 환경에 붙일 때 확인할 것은 네 가지다. 실제 실행 경로 전부, `status`의 실제 칸 패딩, 원격 인증·연결 실패 메시지의 오류 코드, `info --show-item`이 값 외의 줄을 내는 배포판 여부다. 어긋나면 파서 한 곳만 고치면 된다.
+- 실제 SVN 환경에 붙일 때 확인할 것은 네 가지다. 실제 실행 경로 전부, `status`의 실제 칸 패딩, 원격 인증·연결 실패 메시지의 오류 코드, `info --show-item`이 값 외의 줄을 내는 배포판 여부다. 어긋나면 파서 한 곳을 고친 뒤 `tests/fixtures/vcs/svn/`의 fixture를 실제 출력으로 교체하면 된다.
+- SVN fixture는 실제 출력을 캡처할 수 없어 Apache Subversion 공식 문서의 출력 계약을 근거로 작성했다. 출처와 "실제 출력과 대조하지 않았다"는 사실을 파일 안 `#` 주석에 남겼고 test 도우미가 그 줄을 버린다. SVN은 상태 줄을 `#`로 시작하지 않는다.
+- SVN 통합 test 2개는 서로 배타적이다. 이 호스트에서는 "SVN이 없어도 앱이 동작한다"가 실행되고 실제 `svn.exe` test는 skip된다. SVN이 설치된 호스트에서는 반대가 된다. 실제 작업 복사본을 만들려면 `svnadmin`이 필요해 단계 8로 남겼다.
 - SVN은 XML을 쓰지 않는다. `info --show-item`, 비verbose `status`, `svnversion` 조합으로 값을 얻으므로 XML 파서 dependency가 없고 ADR-002와 `vcpkg.json`은 변경하지 않는다.
 - 로캘을 강제하지 않기로 했으므로 Git/SVN 오류 메시지가 시스템 언어로 나온다. 오류 분류는 SVN `E<숫자>` 코드, libcurl 및 OpenSSH 원문 문자열, HTTP 상태 번호 같은 로캘 독립 신호만 사용해야 한다. 번역되는 문장으로 분류하면 한국어 환경에서 오분류가 발생한다.
 - 모든 Git/SVN 실행은 `active_code_page_fallback` 인코딩 모드를 쓴다. `S4-D3-TEST`에서 실측한 결과, 이 호스트의 시스템 ANSI code page는 949지만 Git for Windows 2.52.0에 번역 catalog가 설치되어 있지 않아(`share/locale` 부재) `LANGUAGE`·`LC_ALL`·`LANG`을 어떻게 줘도 메시지가 영어다. Git이 되돌려 주는 비ASCII 내용은 UTF-8이라 fallback이 건드리지 않는다. 다른 호스트에는 번역본이 있을 수 있으므로 오류 분류는 계속 로캘 독립 신호만 사용한다.
@@ -223,7 +225,12 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - REQ-017을 추가했다. 환경설정 화면 자체는 단계 6~7 범위다.
 - `is_absolute_windows_path`가 `application/process_request`에서 `domain/path_syntax`로 옮겨졌다. `process_request.h`가 새 헤더를 include하므로 기존 호출자는 그대로 동작한다.
 - `platform/win32/win32_vcs_file_probe.*`는 파일 위치는 계획대로지만 CMake target은 `gitman_win32_platform`이 아니라 `gitman_vcs`다. 단계 3의 `win32_process_runner`와 같은 이유로 계층 방향을 지키기 위한 선택이다.
-- Git provider는 `S4-D2-CODE`의 로컬 조회와 `S4-D3-CODE`의 원격 판정까지 구현했다. `query_switch_candidates`, `update`, `switch_to`는 계약을 구현하지만 본문이 비어 있고 어떤 process request도 만들지 않는다. 각각 `S4-D6`, `S4-D5`, `S4-D6` 구간에서 채운다. SVN provider는 아직 없다.
+- Git provider는 로컬 조회(`S4-D2`), 원격 판정(`S4-D3`), update(`S4-D5`)를 구현했다. SVN provider는 조회(`S4-D4`)와 update(`S4-D5`)를 구현했다. 두 provider의 `query_switch_candidates`와 `switch_to`는 계약만 있고 본문이 비어 있으며 어떤 process request도 만들지 않는다. `S4-D6` 구간에서 채운다.
+- update는 사전 검사를 위해 **스스로 로컬 조회를 수행한다.** 계약에 snapshot 인자가 없고 오래된 값으로 보호 정책을 판단하면 안 되기 때문이다. 정상 경로의 명령 수는 Git이 6개(조회 2 + remote + pull + 재조회 2), submodule 옵션이 켜지면 8개다.
+- update 차단 사유의 우선순위는 도구 부재 → 저장소 아님 → 충돌 → 진행 중 작업 → `index.lock` → detached → dirty → diverged → 대상 없음이다. `working_tree_state::unknown`은 dirty와 함께 막는다.
+- SVN의 `switched_subtree`와 `mixed_revision`은 값이 있을 때만 차단한다. `svnversion`이 없어 판정할 수 없다는 이유로 update를 영영 막지 않는 선택이며, 더 안전한 쪽을 원하면 `value_or(false)`를 `value_or(true)`로 바꾸면 된다.
+- submodule 사전 검사는 `git submodule status`가 보고하는 충돌(`U`)과 커밋 불일치(`+`)만 본다. 이 명령은 submodule 내부의 dirty를 보고하지 않으므로 계획 4.7의 "dirty 검사"는 범위에서 빠졌다. 단계 6~7에서 다시 본다.
+- `submodule update --init --recursive`는 parent pull이 성공한 경우에만 실행한다. 실패한 pull 뒤에 submodule을 옮기면 되돌리기 어려운 조합이 남는다.
 - `rev-parse`에는 `--`를 쓰면 안 된다. 뒤의 값을 경로로 해석해 ref 확인이 항상 실패한다. `fetch`는 `--`를 받아들이며 remote 이름을 옵션으로 오해하지 않게 붙여 두었다. 호스트 Git 2.52.0 실측이다.
 - remote branch 존재 확인은 `fetch` **뒤에** 한다. 한 번도 fetch하지 않은 저장소에는 tracking ref가 없어 앞에서 확인하면 원격에 있는 branch를 없다고 오판한다. 계획 4.5의 4·5번 순서를 바꾼 것이며 판정 결과는 같다.
 - `query_remote`는 로컬 상태를 다시 만들지 않는다. 받은 snapshot을 복사해 원격 값만 덮어쓰므로 fetch가 실패해도 작업 트리 상태, 마지막 성공 `remote_checked_at`, 직전 로컬 비교가 남는다. 반대로 `local_only`와 `remote_target_missing`으로 판정한 경우에는 이전 비교 값을 지운다.

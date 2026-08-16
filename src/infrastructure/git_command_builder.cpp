@@ -64,6 +64,40 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
     }
 
+    process_request make_git_pull_request(
+        const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view remote, const std::u8string_view branch, const git_submodule_recursion recursion)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"pull" });
+        // fast-forward가 불가능하면 merge를 만들지 않고 실패한다. 보호 정책의 핵심이다.
+        arguments.push_back(std::u8string { u8"--ff-only" });
+        arguments.push_back(std::u8string { recursion == git_submodule_recursion::on_demand ? u8"--recurse-submodules=on-demand" : u8"--recurse-submodules=no" });
+        // remote와 branch 이름은 저장소 설정에서 오므로 인자로 해석되지 않게 끊어 준다.
+        arguments.push_back(std::u8string { u8"--" });
+        arguments.push_back(std::u8string { remote });
+        arguments.push_back(std::u8string { branch });
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::update);
+    }
+
+    process_request make_git_submodule_status_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"submodule" });
+        arguments.push_back(std::u8string { u8"status" });
+        arguments.push_back(std::u8string { u8"--recursive" });
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+    }
+
+    process_request make_git_submodule_update_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"submodule" });
+        arguments.push_back(std::u8string { u8"update" });
+        arguments.push_back(std::u8string { u8"--init" });
+        arguments.push_back(std::u8string { u8"--recursive" });
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::update);
+    }
+
     process_request make_git_ahead_behind_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view target_reference)
     {
         std::u8string range { u8"HEAD..." };

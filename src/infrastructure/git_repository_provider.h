@@ -78,9 +78,21 @@ namespace gitman {
     [[nodiscard]] git_remote_target select_git_remote_target(
         const std::vector<std::u8string>& remotes, std::u8string_view branch, std::u8string_view upstream, std::u8string_view preferred_remote, bool detached);
 
-    // Git provider다. `S4-D2-CODE`가 로컬 조회를, `S4-D3-CODE`가 remote-first 판정을
-    // 구현했다. update는 `S4-D5`, switch는 `S4-D6` 구간에서 채운다. 아직 구현하지 않은
-    // 동작은 어떤 process request도 만들지 않는다.
+    // update 전에 저장소 상태만으로 판정할 수 있는 차단 사유다. 순수 함수라 보호 정책
+    // 자체를 프로세스 없이 검증할 수 있다. 사유가 여럿이면 사용자가 먼저 해결해야 하는
+    // 것을 돌려준다.
+    //
+    // `working_tree_state::unknown`도 차단한다. 모르는 상태에서 변경 명령을 실행하는
+    // 편이 더 위험하다.
+    [[nodiscard]] update_block_reason evaluate_git_update_preflight(const repository_snapshot& snapshot) noexcept;
+
+    // submodule을 함께 갱신할 때만 사용한다. 하나라도 위험하면 parent pull을 시작하지
+    // 않는다. 부분적으로 갱신된 상태가 가장 되돌리기 어렵기 때문이다.
+    [[nodiscard]] update_block_reason evaluate_git_submodule_preflight(const std::vector<submodule_status>& submodules) noexcept;
+
+    // Git provider다. `S4-D2-CODE`가 로컬 조회를, `S4-D3-CODE`가 remote-first 판정을,
+    // `S4-D5-CODE`가 update를 구현했다. switch는 `S4-D6` 구간에서 채운다. 아직 구현하지
+    // 않은 동작은 어떤 process request도 만들지 않는다.
     class git_repository_provider final : public repository_provider
     {
     public:
@@ -105,6 +117,7 @@ namespace gitman {
     private:
         [[nodiscard]] repository_query_result query_local_impl(const project_definition& project, const process_cancellation_token& token);
         [[nodiscard]] repository_query_result query_remote_impl(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token);
+        [[nodiscard]] repository_change_result update_impl(const project_definition& project, const update_options& options, const process_cancellation_token& token);
 
         vcs_tool_info tool_ {};
         process_runner* runner_ { nullptr };

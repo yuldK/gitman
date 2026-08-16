@@ -583,11 +583,152 @@ namespace gitman {
         return {};
     }
 
-    repository_change_result git_repository_provider::update(const project_definition&, const update_options&, const process_cancellation_token&) noexcept
+    update_block_reason evaluate_git_update_preflight(const repository_snapshot& snapshot) noexcept
     {
-        // update는 `S4-D5-CODE` 구간이다. `executed`가 거짓이므로 어떤 process request도
-        // 만들지 않았다는 계약은 그대로 지켜진다.
-        return {};
+        if (snapshot.availability != repository_availability::ready)
+            return update_block_reason::repository_unavailable;
+        if (snapshot.working_tree.state == working_tree_state::conflicted)
+            return update_block_reason::working_tree_conflicted;
+        if (snapshot.working_tree.operation_in_progress)
+            return update_block_reason::operation_in_progress;
+        if (snapshot.working_tree.has_index_lock)
+            return update_block_reason::index_locked;
+        if (snapshot.working_tree.is_detached)
+            // 비교할 branch가 없어 fast-forward 대상을 정할 수 없다.
+            return update_block_reason::detached_head;
+        if (snapshot.working_tree.state != working_tree_state::clean)
+            // `modified`와 `unknown`을 함께 막는다. ADR-003의 기본 보호 정책이다.
+            return update_block_reason::working_tree_dirty;
+        if (snapshot.sync_state == remote_sync_state::diverged)
+            return update_block_reason::diverged;
+        return update_block_reason::none;
+    }
+
+    update_block_reason evaluate_git_submodule_preflight(const std::vector<submodule_status>& submodules) noexcept
+    {
+        for (const submodule_status& submodule : submodules)
+        {
+            // 초기화되지 않은 submodule은 위험하지 않다. `--init`이 그대로 처리한다.
+            if (submodule.conflicted || submodule.revision_mismatch)
+                return update_block_reason::submodule_unsafe;
+        }
+        return update_block_reason::none;
+    }
+
+    repository_change_result git_repository_provider::update(const project_definition& project, const update_options& options, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            return update_impl(project, options, token);
+        }
+        catch (...)
+        {
+            repository_change_result result {};
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"업데이트 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    repository_change_result git_repository_provider::update_impl(const project_definition& project, const update_options& options, const process_cancellation_token& token)
+    {
+        repository_change_result result {};
+        if (available() == false)
+        {
+            result.blocked_by = update_block_reason::tool_unavailable;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::update_blocked, diagnostic_severity::warning, std::u8string { update_block_reason_message(result.blocked_by) }, project));
+            return result;
+        }
+
+        // 사전 검사는 지금 상태로 한다. 카드가 들고 있는 값은 오래됐을 수 있다.
+        const repository_query_result before { query_local_impl(project, token) };
+        result.snapshot = before.snapshot;
+        for (const diagnostic& value : before.diagnostics)
+            result.diagnostics.push_back(value);
+
+        result.blocked_by = evaluate_git_update_preflight(before.snapshot);
+        if (result.blocked_by != update_block_reason::none)
+        {
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::update_blocked, diagnostic_severity::warning, std::u8string { update_block_reason_message(result.blocked_by) }, project));
+            return result;
+        }
+
+        const std::u8string_view working_directory { git_working_directory(project) };
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        if (remote_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
+            result.blocked_by = update_block_reason::no_remote_target;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, remote_result), project));
+            return result;
+        }
+
+        const std::u8string_view upstream { before.snapshot.comparison == comparison_source::local ? std::u8string_view { before.snapshot.comparison_target } : std::u8string_view {} };
+        const git_remote_target target {
+            select_git_remote_target(parse_git_remote_names(remote_result.standard_output_lines), before.snapshot.current_reference, upstream, project.preferred_remote.value_or(std::u8string {}),
+                before.snapshot.working_tree.is_detached),
+        };
+        if (target.resolved == false)
+        {
+            // 어디서 무엇을 당길지 모르면 명령을 만들지 않는다.
+            result.blocked_by = update_block_reason::no_remote_target;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::update_blocked, diagnostic_severity::warning, remote_target_missing_message(target.reason), project));
+            return result;
+        }
+
+        std::vector<submodule_status> submodules {};
+        if (options.update_submodules)
+        {
+            const vcs_command_result submodule_result { run_vcs_command(*runner_, make_git_submodule_status_request(tool_.executable, working_directory), token, log_) };
+            if (submodule_result.succeeded() == false)
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, submodule_result) };
+                result.blocked_by = update_block_reason::submodule_unsafe;
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, submodule_result), project));
+                return result;
+            }
+
+            submodules = parse_git_submodule_status(submodule_result.standard_output_lines);
+            result.snapshot.submodules = submodules;
+            result.blocked_by = evaluate_git_submodule_preflight(submodules);
+            if (result.blocked_by != update_block_reason::none)
+            {
+                // 하나라도 위험하면 parent pull을 시작하지 않는다.
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code::update_blocked, diagnostic_severity::warning, std::u8string { update_block_reason_message(result.blocked_by) }, project));
+                return result;
+            }
+        }
+
+        const git_submodule_recursion recursion { options.update_submodules ? git_submodule_recursion::on_demand : git_submodule_recursion::none };
+        const vcs_command_result pull_result { run_vcs_command(*runner_, make_git_pull_request(tool_.executable, working_directory, target.remote, target.branch, recursion), token, log_) };
+        result.executed = true;
+        result.succeeded = pull_result.succeeded();
+        if (result.succeeded == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, pull_result) };
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, pull_result), project));
+        }
+
+        if (result.succeeded && options.update_submodules)
+        {
+            // parent가 성공한 경우에만 실행한다. 실패한 pull 뒤에 submodule을 옮기면
+            // 되돌리기 어려운 조합이 남는다.
+            const vcs_command_result submodule_update { run_vcs_command(*runner_, make_git_submodule_update_request(tool_.executable, working_directory), token, log_) };
+            if (submodule_update.succeeded() == false)
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, submodule_update) };
+                result.succeeded = false;
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, submodule_update), project));
+            }
+        }
+
+        // 성공과 실패 모두 실행 직후 상태를 다시 조회한다. 실행의 성공 여부와 조회 결과는
+        // 분리해 보고한다.
+        const repository_query_result after { query_local_impl(project, token) };
+        result.snapshot = after.snapshot;
+        result.snapshot.submodules = std::move(submodules);
+        for (const diagnostic& value : after.diagnostics)
+            result.diagnostics.push_back(value);
+        return result;
     }
 
     repository_change_result git_repository_provider::switch_to(const project_definition&, const switch_candidate&, const process_cancellation_token&) noexcept

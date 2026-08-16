@@ -69,6 +69,11 @@ namespace gitman {
         return request;
     }
 
+    process_request make_svn_update_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    {
+        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, make_arguments(u8"update"), vcs_command_class::update);
+    }
+
     process_request make_svn_remote_revision_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url)
     {
         std::vector<std::u8string> arguments { make_arguments(u8"info") };

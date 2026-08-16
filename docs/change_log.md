@@ -1,5 +1,31 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D5-TEST` 마스킹 test 작성
+
+### 사용자 지시
+
+- `S3-D5-CODE`를 승인하고 `S3-D5-TEST`를 진행한다.
+
+### 반영 내용
+
+- `tests/secret_masking_tests.cpp`에 URL userinfo, 자격 증명 option, 헤더와 `Basic`, token 접두어, 일반 출력 불변, 복수 비밀과 보수적 경계 test 9개를 추가했다.
+- 모든 단정이 기대값 비교와 함께 결과를 다시 마스킹해도 같은지 확인하는 idempotency 검사를 거치게 했다.
+- `://`가 없는 SSH 축약 형태(`git@github.com:owner/repo.git`)와 `--password-from-stdin` 같은 접두어 공유 이름이 변형되지 않는 것을 고정했다.
+- 자격 증명에 붙은 구두점이 함께 가려지는 문서화된 동작을 test로 고정해 의도치 않은 변경을 잡을 수 있게 했다.
+- `tests/win32_process_runner_tests.cpp`에 end-to-end 적용 test를 추가해 기록된 명령줄과 출력 레코드 양쪽에서 비밀이 사라지는 것을 확인했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 135/135 통과했고 `/analyze`도 무경고로 통과했다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d5-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-008, REQ-010, REQ-011, REQ-012, REQ-013
+- NFR-006, NFR-008
+
+### 다음 작업 제한
+
+- 발견 production 결함이 없어 `S3-D5-FIX`는 사용자 확인 후 생략한다.
+- 남은 작업은 `S3-V1` 단계 3 최종 검증뿐이며 승인 후에만 시작한다.
+
 ## 2026-08-16 - 단계 3 `S3-D5-CODE` 비밀 마스킹 구현
 
 ### 사용자 지시

@@ -482,6 +482,26 @@ TEST_CASE("Invalid requests never start a process", "[win32][process][runner][fa
     REQUIRE(sink.records.empty());
 }
 
+TEST_CASE("Credentials are masked in the recorded command line and the output", "[win32][process][runner][masking]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"echo-args", u8"https://user:s3cr3t@example.com/repo.git", u8"--password=hunter2" }), &sink, token) };
+
+    REQUIRE(result.succeeded());
+    // 기록용 명령줄에는 비밀이 남지 않지만 자식은 원본 인자를 그대로 받는다.
+    REQUIRE(result.masked_command_line.find(u8"s3cr3t") == std::u8string::npos);
+    REQUIRE(result.masked_command_line.find(u8"hunter2") == std::u8string::npos);
+    REQUIRE(result.masked_command_line.find(u8"https://user:***@example.com/repo.git") != std::u8string::npos);
+
+    REQUIRE(sink.records.size() == 2);
+    REQUIRE(sink.records[0].text == u8"[https://user:***@example.com/repo.git]");
+    REQUIRE(sink.records[1].text.find(u8"hunter2") == std::u8string::npos);
+    REQUIRE(sink.records[1].text.starts_with(u8"[--password=***"));
+}
+
 TEST_CASE("Timeouts terminate the child and keep the output collected so far", "[win32][process][runner][timeout]")
 {
     const runner_fixture fixture {};

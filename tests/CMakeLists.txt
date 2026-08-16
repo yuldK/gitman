@@ -22,6 +22,7 @@ add_executable(gitman_tests
     project_path_tests.cpp
     project_schema_tests.cpp
     renderer_policy_tests.cpp
+    secret_masking_tests.cpp
     ui_theme_tests.cpp
     utf8_tests.cpp
     win32_process_runner_tests.cpp

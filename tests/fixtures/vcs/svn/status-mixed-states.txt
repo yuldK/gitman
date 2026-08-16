@@ -1,0 +1,15 @@
+# Apache Subversion 1.14 `svn status` 출력 계약을 근거로 작성했다.
+# 출처: Apache Subversion 문서 "svn status" (상태 칸 1~7과 그 뒤의 경로).
+# 실제 `svn.exe` 출력과 대조하지 않았다. `#`로 시작하는 줄은 test 도우미가 버린다.
+M       trunk/source/a.txt
+ M      trunk/속성만 바뀐 파일.txt
+MM      trunk/둘 다 바뀐 파일.txt
+A  +    trunk/새 파일 😀.txt
+D       trunk/지운 파일.txt
+R       trunk/바꿔 넣은 파일.txt
+!       trunk/사라진 파일.txt
+~       trunk/막힌 항목
+C       trunk/충돌한 파일.txt
+?       trunk/미추적 파일.txt
+I       trunk/무시한 파일.txt
+X       externals/third-party

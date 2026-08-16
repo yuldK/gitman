@@ -32,6 +32,10 @@ add_executable(gitman_tests
     project_schema_tests.cpp
     renderer_policy_tests.cpp
     secret_masking_tests.cpp
+    svn_command_builder_tests.cpp
+    svn_integration_tests.cpp
+    svn_output_parser_tests.cpp
+    svn_repository_provider_tests.cpp
     ui_theme_tests.cpp
     utf8_tests.cpp
     vcs_domain_tests.cpp

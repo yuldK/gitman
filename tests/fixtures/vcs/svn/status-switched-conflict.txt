@@ -1,0 +1,9 @@
+# Apache Subversion 1.14 `svn status` 출력 계약을 근거로 작성했다.
+# 5번 칸은 switched, 7번 칸은 tree conflict다. 상태 칸이 모두 공백인 줄은
+# 항목이 아니라 부가 설명이다. 실제 `svn.exe` 출력과 대조하지 않았다.
+    S   trunk/전환된 폴더
+A  +    trunk/옮긴 파일.txt
+        > moved from trunk/이전 이름.txt
+D       trunk/이전 이름.txt
+        > moved to trunk/옮긴 파일.txt
+      C trunk/tree conflict 파일.txt

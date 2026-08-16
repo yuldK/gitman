@@ -4,6 +4,7 @@
 
 #include <windows.h>
 
+#include <cstddef>
 #include <limits>
 #include <utility>
 
@@ -27,6 +28,26 @@ namespace gitman::win32 {
                 {
                     return std::nullopt;
                 }
+            }
+
+            [[nodiscard]] std::size_t safe_split_position(const std::u8string_view bytes) const noexcept override
+            {
+                // DBCS가 아닌 code page는 모든 byte가 문자 경계이므로 그대로 자른다.
+                CPINFO info {};
+                if (GetCPInfo(CP_ACP, &info) == FALSE || info.MaxCharSize <= 1)
+                    return bytes.size();
+
+                // lead와 trail byte 값 범위가 겹치므로 앞에서부터 걸어야 경계가 정확하다.
+                // 마지막 문자의 trail이 아직 도착하지 않았으면 lead 앞에서 끊는다.
+                std::size_t index { 0 };
+                while (index < bytes.size())
+                {
+                    const std::size_t length { IsDBCSLeadByteEx(CP_ACP, static_cast<BYTE>(bytes[index])) != FALSE ? std::size_t { 2 } : std::size_t { 1 } };
+                    if (index + length > bytes.size())
+                        return index;
+                    index += length;
+                }
+                return bytes.size();
             }
 
         private:

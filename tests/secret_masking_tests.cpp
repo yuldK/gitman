@@ -27,6 +27,8 @@ TEST_CASE("URL user information is masked", "[infrastructure][masking]")
     // 사용자 이름 없이 들어간 값은 대개 token이므로 전체를 가린다.
     check_masked(u8"https://ghp_0123456789abcdef@github.com/o/r.git", u8"https://***@github.com/o/r.git");
     check_masked(u8"fatal: could not read from https://a:b@h/x", u8"fatal: could not read from https://a:***@h/x");
+    // percent-encoding 없이 password에 `@`가 들어가도 마지막 `@`까지 전부 가린다.
+    check_masked(u8"https://user:p@ss@example.com/repo.git", u8"https://user:***@example.com/repo.git");
     check_masked(u8"remote: https://user:pw@a/x and https://other:pw@b/y", u8"remote: https://user:***@a/x and https://other:***@b/y");
 }
 

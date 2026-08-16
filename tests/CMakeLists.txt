@@ -39,7 +39,9 @@ target_link_libraries(gitman_tests
         gitman_win32
         Catch2::Catch2WithMain)
 gitman_disable_automatic_windows_manifest(gitman_tests)
-catch_discover_tests(gitman_tests)
+# hang 유형의 회귀가 CI에서 무기한 대기 대신 실패로 드러나도록 모든 Catch2 test에
+# timeout을 부여한다. 가장 긴 통합 test 기준으로 여유를 둔 값이다.
+catch_discover_tests(gitman_tests PROPERTIES TIMEOUT 120)
 
 add_test(NAME gitman_assets_checksum
     COMMAND "${CMAKE_COMMAND}"

@@ -116,13 +116,12 @@ namespace gitman {
             while (cursor < text.size())
             {
                 const char8_t value { text[cursor] };
+                // percent-encoding 없이 password에 `@`가 들어간 URL도 있으므로 authority가
+                // 끝나기 전의 마지막 `@`를 userinfo 구분자로 삼아야 값이 새지 않는다.
                 if (value == u8'@')
-                {
                     separator = cursor;
-                    break;
-                }
                 // authority가 끝나면 userinfo가 없는 URL이다.
-                if (value == u8'/' || value == u8'?' || value == u8'#' || value == u8'"' || is_inline_space(value) || is_line_break(value))
+                else if (value == u8'/' || value == u8'?' || value == u8'#' || value == u8'"' || is_inline_space(value) || is_line_break(value))
                     break;
                 ++cursor;
             }

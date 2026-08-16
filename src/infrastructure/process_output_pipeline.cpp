@@ -229,7 +229,15 @@ namespace gitman {
             if (pending_.size() < maximum_record_bytes_)
                 continue;
 
-            const std::size_t split { utf8_split_position(pending_) };
+            // UTF-8이 아닌 레코드는 활성 code page로 재해석되므로 분할 경계도 그 code
+            // page의 문자 경계를 따라야 양쪽 조각이 각각 온전히 변환된다.
+            std::size_t split {};
+            if (encoding_ == process_text_encoding::active_code_page_fallback && transcoder_ != nullptr && is_valid_utf8_text(pending_) == false)
+                split = transcoder_->safe_split_position(pending_);
+            else
+                split = utf8_split_position(pending_);
+            if (split == 0)
+                split = pending_.size();
             std::u8string remainder { pending_.substr(split) };
             pending_.resize(split);
             emit(false, true, handler);

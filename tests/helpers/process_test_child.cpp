@@ -229,6 +229,49 @@ namespace {
         return 0;
     }
 
+    // 아무 출력 없이 대기만 한다. 상속한 표준 handle을 잡은 채 살아남는 손자 역할이다.
+    int run_hold_handles(const int argc, wchar_t** const argv)
+    {
+        if (argc < 3)
+            return usage_exit_code;
+        Sleep(static_cast<DWORD>(std::wcstol(argv[2], nullptr, 10)));
+        return 0;
+    }
+
+    // 표준 handle을 물려준 손자를 만들고 기다리지 않은 채 즉시 끝난다. 자식이 정상
+    // 종료해도 출력 pipe를 잡은 프로세스가 남는 상황을 재현한다.
+    int run_spawn_detached(const int argc, wchar_t** const argv)
+    {
+        if (argc < 3)
+            return usage_exit_code;
+
+        std::wstring module_path(MAX_PATH, L'\0');
+        const DWORD length { GetModuleFileNameW(nullptr, module_path.data(), static_cast<DWORD>(module_path.size())) };
+        if (length == 0 || length >= module_path.size())
+            return 94;
+        module_path.resize(static_cast<std::size_t>(length));
+
+        std::wstring command_line { L"\"" };
+        command_line.append(module_path);
+        command_line.append(L"\" hold-handles ");
+        command_line.append(argv[2]);
+
+        STARTUPINFOW startup {};
+        startup.cb = sizeof(startup);
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        startup.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        PROCESS_INFORMATION information {};
+        if (CreateProcessW(module_path.c_str(), command_line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &information) == FALSE)
+            return 95;
+
+        CloseHandle(information.hThread);
+        CloseHandle(information.hProcess);
+        write_bytes(STD_OUTPUT_HANDLE, "detached\n");
+        return 0;
+    }
+
     int run_read_stdin()
     {
         char buffer[64] {};
@@ -269,6 +312,10 @@ int wmain(const int argc, wchar_t** const argv)
         return run_write_marker(argc, argv);
     if (command == L"spawn-child")
         return run_spawn_child(argc, argv);
+    if (command == L"hold-handles")
+        return run_hold_handles(argc, argv);
+    if (command == L"spawn-detached")
+        return run_spawn_detached(argc, argv);
     if (command == L"read-stdin")
         return run_read_stdin();
     return unknown_command_exit_code;

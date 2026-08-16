@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -182,6 +183,11 @@ namespace gitman::win32 {
             return value;
         }
 
+        // 자식이 끝난 뒤에도 pipe 쓰기 handle을 상속한 손자가 남아 있으면 reader가
+        // EOF를 보지 못한다. 이 유예를 넘기면 트리를 종료해 수집을 강제로 마감한다.
+        constexpr DWORD reader_drain_grace_milliseconds { 2'000 };
+        constexpr DWORD reader_cancel_interval_milliseconds { 100 };
+
         // 콘솔 없는 자식에게 보낼 안전한 graceful signal이 없으므로 즉시 종료한다.
         // job이 있으면 자식이 만든 손자 프로세스까지 함께 정리된다.
         void terminate_execution(const HANDLE job, const HANDLE process) noexcept
@@ -192,6 +198,44 @@ namespace gitman::win32 {
                 return;
             }
             TerminateProcess(process, static_cast<UINT>(ERROR_PROCESS_ABORTED));
+        }
+
+        // reader가 유예 안에 EOF를 관측했으면 true다. 유예를 넘기면 트리를 종료해
+        // pipe를 닫고, job이 없어 손자가 살아남는 경우까지 대비해 마지막 수단으로
+        // reader의 동기 ReadFile을 직접 취소한다. 어떤 경로로든 join은 반드시 끝난다.
+        bool join_readers(std::vector<std::thread>& readers, const HANDLE job, const HANDLE process) noexcept
+        {
+            HANDLE handles[2] { nullptr, nullptr };
+            DWORD count { 0 };
+            for (std::thread& reader : readers)
+                if (reader.joinable() && count < 2)
+                    handles[count++] = reader.native_handle();
+
+            bool drained_promptly { true };
+            if (count != 0)
+            {
+                DWORD wait_result { WaitForMultipleObjects(count, handles, TRUE, reader_drain_grace_milliseconds) };
+                if (wait_result == WAIT_TIMEOUT)
+                {
+                    drained_promptly = false;
+                    terminate_execution(job, process);
+                    wait_result = WaitForMultipleObjects(count, handles, TRUE, reader_drain_grace_milliseconds);
+                }
+                while (wait_result == WAIT_TIMEOUT)
+                {
+                    // ReadFile 사이의 좁은 틈에 취소가 빗나갈 수 있으므로 끝날 때까지
+                    // 짧은 간격으로 반복한다. 취소된 ReadFile은 실패로 반환되어 reader가
+                    // 스스로 끝난다.
+                    for (DWORD index = 0; index < count; ++index)
+                        CancelSynchronousIo(handles[index]);
+                    wait_result = WaitForMultipleObjects(count, handles, TRUE, reader_cancel_interval_milliseconds);
+                }
+            }
+
+            for (std::thread& reader : readers)
+                if (reader.joinable())
+                    reader.join();
+            return drained_promptly;
         }
 
         // 자식과 손자를 함께 종료할 수 있도록 kill-on-close job을 만든다. 만들지 못하면
@@ -396,7 +440,7 @@ namespace gitman::win32 {
             process_output_sink* sink_ { nullptr };
         };
 
-        void read_output_stream(const HANDLE pipe, process_output_pipeline& pipeline, output_collector& collector) noexcept
+        void read_output_stream(const HANDLE pipe, process_output_pipeline& pipeline, output_collector& collector, std::atomic<bool>& read_failed) noexcept
         {
             const process_output_pipeline::record_handler handler { [&collector](process_output_record& record) { collector.submit(record); } };
             try
@@ -416,7 +460,14 @@ namespace gitman::win32 {
             }
             catch (...)
             {
-                // 수집 실패는 실행 결과의 절단 표시로만 남기고 스레드를 정상 종료한다.
+                // 수집이 실패해도 pipe는 계속 비워 자식이 backpressure로 멈추지 않게
+                // 한다. 할당 없는 buffer로 남은 byte를 버리고 결과에는 실패만 표시한다.
+                read_failed.store(true, std::memory_order_relaxed);
+                std::byte discard[4096];
+                DWORD read_count { 0 };
+                while (ReadFile(pipe, discard, static_cast<DWORD>(sizeof(discard)), &read_count, nullptr) != FALSE && read_count != 0)
+                {
+                }
             }
         }
 
@@ -626,6 +677,7 @@ namespace gitman::win32 {
                 transcoder.get(),
             };
             output_collector collector { sink };
+            std::atomic<bool> read_failed { false };
 
             // pipe마다 전용 reader 스레드를 둔다. 한 스레드로 두 pipe를 읽으면 읽지 않는
             // pipe의 buffer가 가득 차서 자식이 멈출 수 있다.
@@ -633,88 +685,117 @@ namespace gitman::win32 {
             try
             {
                 readers.reserve(2);
-                readers.emplace_back([&standard_output, &output_pipeline, &collector]() { read_output_stream(standard_output.read.get(), output_pipeline, collector); });
-                readers.emplace_back([&standard_error, &error_pipeline, &collector]() { read_output_stream(standard_error.read.get(), error_pipeline, collector); });
+                readers.emplace_back([&standard_output, &output_pipeline, &collector, &read_failed]() { read_output_stream(standard_output.read.get(), output_pipeline, collector, read_failed); });
+                readers.emplace_back([&standard_error, &error_pipeline, &collector, &read_failed]() { read_output_stream(standard_error.read.get(), error_pipeline, collector, read_failed); });
             }
             catch (...)
             {
                 // reader가 없으면 자식이 pipe에서 막힐 수 있으므로 즉시 정리한다.
                 terminate_execution(job.get(), process_handle.get());
-                for (std::thread& reader : readers)
-                    if (reader.joinable())
-                        reader.join();
+                join_readers(readers, job.get(), process_handle.get());
                 return make_reader_failure_result(std::move(result), started);
             }
 
-            // 취소 콜백은 event 하나만 신호한다. registration은 이 scope에서 해제되므로
-            // 콜백이 실행 중이면 해제가 끝날 때까지 기다린다.
-            const HANDLE signalled_event { cancel_event.get() };
-            const process_cancellation_registration registration { token.register_callback([signalled_event]() { SetEvent(signalled_event); }) };
+            // reader가 joinable한 동안 예외로 unwinding하면 std::terminate가 일어난다.
+            // 이 아래 구간의 어떤 예외도 트리 종료와 join을 거친 뒤 결과로 변환한다.
+            try
+            {
+                // 취소 콜백은 event 하나만 신호한다. registration은 이 scope에서 해제되므로
+                // 콜백이 실행 중이면 해제가 끝날 때까지 기다린다.
+                const HANDLE signalled_event { cancel_event.get() };
+                const process_cancellation_registration registration { token.register_callback([signalled_event]() { SetEvent(signalled_event); }) };
 
-            const HANDLE wait_handles[] { process_handle.get(), cancel_event.get() };
-            SetLastError(ERROR_SUCCESS);
-            const DWORD wait_result { WaitForMultipleObjects(static_cast<DWORD>(std::size(wait_handles)), wait_handles, FALSE, wait_timeout_milliseconds(request.timeout)) };
-            const std::uint32_t wait_error { wait_result == WAIT_FAILED ? last_error_or(ERROR_INVALID_HANDLE) : std::uint32_t { ERROR_SUCCESS } };
+                const HANDLE wait_handles[] { process_handle.get(), cancel_event.get() };
+                SetLastError(ERROR_SUCCESS);
+                const DWORD wait_result { WaitForMultipleObjects(static_cast<DWORD>(std::size(wait_handles)), wait_handles, FALSE, wait_timeout_milliseconds(request.timeout)) };
+                const std::uint32_t wait_error { wait_result == WAIT_FAILED ? last_error_or(ERROR_INVALID_HANDLE) : std::uint32_t { ERROR_SUCCESS } };
 
-            // 자식이 스스로 끝난 경우가 아니면 트리를 정리한다. 정리하면 pipe가 닫혀
-            // reader 스레드가 EOF를 보고 끝난다.
-            if (wait_result != WAIT_OBJECT_0)
+                // 자식이 스스로 끝난 경우가 아니면 트리를 정리한다. 정리하면 pipe가 닫혀
+                // reader 스레드가 EOF를 보고 끝난다.
+                if (wait_result != WAIT_OBJECT_0)
+                    terminate_execution(job.get(), process_handle.get());
+
+                const bool drained_promptly { join_readers(readers, job.get(), process_handle.get()) };
+
+                result.captured_bytes = output_pipeline.captured_bytes() + error_pipeline.captured_bytes();
+                result.output_truncated = output_pipeline.truncated() || error_pipeline.truncated();
+                result.record_count = collector.count();
+                if (result.output_truncated)
+                {
+                    result.diagnostics.push_back(
+                        make_process_diagnostic(diagnostic_code::process_output_truncated, u8"출력이 스트림별 캡처 상한을 넘어 이후 내용을 버렸습니다.", std::nullopt, diagnostic_severity::warning));
+                }
+                if (collector.sink_failed())
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"출력 sink가 예외를 던져 일부 레코드를 전달하지 못했습니다."));
+                if (drained_promptly == false)
+                {
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed,
+                        u8"자식 프로세스가 끝난 뒤에도 출력 pipe를 상속한 프로세스가 남아 유예 후 트리를 종료하고 수집을 마감했습니다.", std::nullopt, diagnostic_severity::warning));
+                }
+                if (read_failed.load(std::memory_order_relaxed))
+                {
+                    result.output_truncated = true;
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_pipe_failed, u8"출력 수집 스레드가 오류로 일부 출력을 버렸습니다."));
+                }
+
+                if (wait_result == WAIT_TIMEOUT)
+                {
+                    // 강제 종료한 자식의 종료 코드는 의미가 없으므로 채우지 않는다.
+                    result.completion = process_completion::timed_out;
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_timed_out, u8"제한 시간을 초과해 자식 프로세스를 종료했습니다."));
+                    finish_result(result, started);
+                    return result;
+                }
+                if (wait_result == WAIT_OBJECT_0 + 1)
+                {
+                    result.completion = process_completion::cancelled;
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_cancelled, u8"취소 요청으로 자식 프로세스를 종료했습니다."));
+                    finish_result(result, started);
+                    return result;
+                }
+                if (wait_result != WAIT_OBJECT_0)
+                {
+                    result.completion = process_completion::internal_error;
+                    result.native_error = wait_error;
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"자식 프로세스의 종료를 기다리지 못해 강제로 종료했습니다.", result.native_error));
+                    finish_result(result, started);
+                    return result;
+                }
+
+                DWORD exit_code { 0 };
+                SetLastError(ERROR_SUCCESS);
+                if (GetExitCodeProcess(process_handle.get(), &exit_code) == FALSE)
+                {
+                    result.completion = process_completion::internal_error;
+                    result.native_error = last_error_or(ERROR_INVALID_HANDLE);
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"자식 프로세스의 종료 코드를 읽지 못했습니다.", result.native_error));
+                    finish_result(result, started);
+                    return result;
+                }
+
+                result.completion = process_completion::exited;
+                // Windows 종료 코드는 `0xC0000005`처럼 상위 bit를 쓰므로 bit 값을 보존한다.
+                result.exit_code = static_cast<std::int32_t>(exit_code);
+                finish_result(result, started);
+                return result;
+            }
+            catch (...)
+            {
                 terminate_execution(job.get(), process_handle.get());
-
-            for (std::thread& reader : readers)
-                reader.join();
-
-            result.captured_bytes = output_pipeline.captured_bytes() + error_pipeline.captured_bytes();
-            result.output_truncated = output_pipeline.truncated() || error_pipeline.truncated();
-            result.record_count = collector.count();
-            if (result.output_truncated)
-            {
-                result.diagnostics.push_back(
-                    make_process_diagnostic(diagnostic_code::process_output_truncated, u8"출력이 스트림별 캡처 상한을 넘어 이후 내용을 버렸습니다.", std::nullopt, diagnostic_severity::warning));
-            }
-            if (collector.sink_failed())
-                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"출력 sink가 예외를 던져 일부 레코드를 전달하지 못했습니다."));
-
-            if (wait_result == WAIT_TIMEOUT)
-            {
-                // 강제 종료한 자식의 종료 코드는 의미가 없으므로 채우지 않는다.
-                result.completion = process_completion::timed_out;
-                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_timed_out, u8"제한 시간을 초과해 자식 프로세스를 종료했습니다."));
-                finish_result(result, started);
-                return result;
-            }
-            if (wait_result == WAIT_OBJECT_0 + 1)
-            {
-                result.completion = process_completion::cancelled;
-                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::process_cancelled, u8"취소 요청으로 자식 프로세스를 종료했습니다."));
-                finish_result(result, started);
-                return result;
-            }
-            if (wait_result != WAIT_OBJECT_0)
-            {
+                join_readers(readers, job.get(), process_handle.get());
                 result.completion = process_completion::internal_error;
-                result.native_error = wait_error;
-                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"자식 프로세스의 종료를 기다리지 못해 강제로 종료했습니다.", result.native_error));
+                result.native_error = ERROR_NOT_ENOUGH_MEMORY;
+                try
+                {
+                    result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"실행 감시 중 예외가 발생해 자식 프로세스를 종료했습니다.", result.native_error));
+                }
+                catch (...)
+                {
+                    // 진단 문자열조차 만들 수 없는 상황이므로 구조화된 결과만 반환한다.
+                }
                 finish_result(result, started);
                 return result;
             }
-
-            DWORD exit_code { 0 };
-            SetLastError(ERROR_SUCCESS);
-            if (GetExitCodeProcess(process_handle.get(), &exit_code) == FALSE)
-            {
-                result.completion = process_completion::internal_error;
-                result.native_error = last_error_or(ERROR_INVALID_HANDLE);
-                result.diagnostics.push_back(make_process_diagnostic(diagnostic_code::operation_failed, u8"자식 프로세스의 종료 코드를 읽지 못했습니다.", result.native_error));
-                finish_result(result, started);
-                return result;
-            }
-
-            result.completion = process_completion::exited;
-            // Windows 종료 코드는 `0xC0000005`처럼 상위 bit를 쓰므로 bit 값을 보존한다.
-            result.exit_code = static_cast<std::int32_t>(exit_code);
-            finish_result(result, started);
-            return result;
         }
 
         class win32_process_runner final : public process_runner

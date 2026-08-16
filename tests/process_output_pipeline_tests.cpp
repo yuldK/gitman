@@ -31,13 +31,29 @@ namespace {
         {
             ++call_count;
             last_input.assign(bytes);
+            inputs.emplace_back(bytes);
             if (succeeds == false)
                 return std::nullopt;
             return std::u8string { u8"복원된 텍스트" };
         }
 
+        [[nodiscard]] std::size_t safe_split_position(const std::u8string_view bytes) const noexcept override
+        {
+            // 0xC7을 lead byte로 취급하는 2 byte 문자 규칙을 흉내 낸다.
+            std::size_t index { 0 };
+            while (index < bytes.size())
+            {
+                const std::size_t length { bytes[index] == char8_t { 0xC7 } ? std::size_t { 2 } : std::size_t { 1 } };
+                if (index + length > bytes.size())
+                    return index;
+                index += length;
+            }
+            return bytes.size();
+        }
+
         std::size_t call_count {};
         std::u8string last_input {};
+        std::vector<std::u8string> inputs {};
         bool succeeds { true };
     };
 
@@ -303,6 +319,33 @@ TEST_CASE("Fallback without a transcoder still replaces invalid bytes", "[infras
     REQUIRE(recorder.records.size() == 1);
     REQUIRE(recorder.records[0].replaced_invalid_bytes);
     REQUIRE_FALSE(recorder.records[0].transcoded_from_active_code_page);
+}
+
+TEST_CASE("Forced splits in fallback mode follow the code page character boundary", "[infrastructure][pipeline][encoding]")
+{
+    fake_transcoder transcoder {};
+    record_recorder recorder {};
+    // 상한 5 byte에 2 byte 문자 세 개를 넣으면 경계를 무시할 때 세 번째 문자 가운데서
+    // 잘린다. transcoder의 문자 경계를 따르면 4 byte에서 끊겨 양쪽이 온전해야 한다.
+    gitman::process_output_pipeline pipeline {
+        gitman::process_stream::standard_output,
+        5,
+        large_capture_limit,
+        gitman::process_text_encoding::active_code_page_fallback,
+        &transcoder,
+    };
+
+    const std::u8string bytes { char8_t { 0xC7 }, char8_t { 0xD1 }, char8_t { 0xC7 }, char8_t { 0xD1 }, char8_t { 0xC7 }, char8_t { 0xD1 }, char8_t { 0x0A } };
+    pipeline.append(bytes, recorder.handler());
+    pipeline.flush(recorder.handler());
+
+    REQUIRE(recorder.records.size() == 2);
+    REQUIRE(recorder.records[0].continued);
+    REQUIRE(recorder.records[0].transcoded_from_active_code_page);
+    REQUIRE(recorder.records[1].transcoded_from_active_code_page);
+    REQUIRE(transcoder.inputs.size() == 2);
+    REQUIRE(transcoder.inputs[0].size() == 4);
+    REQUIRE(transcoder.inputs[1].size() == 2);
 }
 
 TEST_CASE("Flush reports a pending carriage return as progress", "[infrastructure][pipeline]")

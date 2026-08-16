@@ -273,11 +273,13 @@ TEST_CASE("Large output is captured without deadlocking", "[win32][process][runn
     const runner_fixture fixture {};
     const gitman::process_cancellation_token token {};
 
+    // 계획 8.3의 8 MiB 출력을 그대로 사용해 교착 없는 전량 수집을 확인한다.
+    constexpr std::size_t large_output_bytes { 8u * 1024u * 1024u };
     recording_sink sink {};
-    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit", u8"4000000" }), &sink, token) };
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit", u8"8388608" }), &sink, token) };
 
     REQUIRE(result.succeeded());
-    REQUIRE(result.captured_bytes >= 4000000);
+    REQUIRE(result.captured_bytes >= large_output_bytes);
     REQUIRE_FALSE(result.output_truncated);
     REQUIRE(result.record_count == sink.records.size());
     REQUIRE(sink.records.size() > 1000);
@@ -595,6 +597,52 @@ TEST_CASE("Grandchild processes are terminated with the job", "[win32][process][
 
     std::this_thread::sleep_for(std::chrono::milliseconds { 3500 });
     REQUIRE_FALSE(std::filesystem::exists(victim));
+}
+
+TEST_CASE("A lingering grandchild cannot block the run after the child exits", "[win32][process][runner][drain]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    const std::chrono::steady_clock::time_point start { std::chrono::steady_clock::now() };
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"spawn-detached", u8"60000" }), &sink, token) };
+    const std::chrono::milliseconds elapsed { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start) };
+
+    // 자식은 정상 종료했으므로 결과는 exited지만, 출력 pipe를 잡은 손자 때문에 유예
+    // 후 수집을 강제로 마감했다는 경고가 남고 run은 무기한 기다리지 않는다.
+    REQUIRE(result.completion == gitman::process_completion::exited);
+    REQUIRE(result.exit_code.has_value());
+    REQUIRE(*result.exit_code == 0);
+    REQUIRE(result.has_warnings());
+    REQUIRE(elapsed < std::chrono::milliseconds { 30000 });
+
+    const std::vector<std::u8string> output { sink.texts(gitman::process_stream::standard_output) };
+    REQUIRE(std::ranges::find(output, u8"detached") != output.end());
+}
+
+TEST_CASE("Executables run from paths with spaces Korean and emoji", "[win32][process][runner][path]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+    const temporary_directory_fixture directory {};
+
+    // fixture 디렉터리 이름의 공백 및 한글에 emoji 파일 이름을 더해 실행 파일 경로
+    // 자체의 비ASCII 처리를 검증한다.
+    const std::filesystem::path copied { directory.root() / L"도우미 사본 🚀.exe" };
+    std::error_code error {};
+    std::filesystem::copy_file(std::filesystem::path { fixture.child }, copied, error);
+    REQUIRE_FALSE(static_cast<bool>(error));
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"echo-args", u8"이모지 경로" }) };
+    request.executable = copied.u8string();
+    request.working_directory = directory.root().u8string();
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+
+    REQUIRE(result.succeeded());
+    REQUIRE(sink.records.size() == 1);
+    REQUIRE(sink.records[0].text == u8"[이모지 경로]");
 }
 
 TEST_CASE("A child that finishes before its timeout keeps its exit code", "[win32][process][runner][timeout]")

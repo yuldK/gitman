@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -22,5 +23,12 @@ namespace gitman {
 
         // 변환할 수 없으면 값을 돌려주지 않는다. 호출자는 U+FFFD 대체로 되돌린다.
         [[nodiscard]] virtual std::optional<std::u8string> to_utf8(std::u8string_view bytes) noexcept = 0;
+
+        // 레코드 강제 분할이 멀티바이트 문자 가운데를 가르지 않도록 문자 경계에 있는
+        // 가장 뒤쪽 분할 위치를 돌려준다. 경계를 판정할 수 없으면 전체 길이를 돌려준다.
+        [[nodiscard]] virtual std::size_t safe_split_position(const std::u8string_view bytes) const noexcept
+        {
+            return bytes.size();
+        }
     };
 } // namespace gitman

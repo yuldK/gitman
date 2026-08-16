@@ -41,20 +41,6 @@ namespace gitman {
             return std::string { bytes };
         }
 
-        std::u8string default_display_name(const std::u8string_view path)
-        {
-            std::size_t end { path.size() };
-            while (end > 0 && (path[end - 1] == u8'/' || path[end - 1] == u8'\\'))
-                --end;
-            if (end == 0)
-                return std::u8string { path };
-
-            const std::size_t separator { path.find_last_of(u8"/\\", end - 1) };
-            if (separator == std::u8string_view::npos)
-                return std::u8string { path.substr(0, end) };
-            return std::u8string { path.substr(separator + 1, end - separator - 1) };
-        }
-
         void write_optional_project_fields(json& value, const project_definition& project)
         {
             const bool had_display_name { value.contains("display_name") };
@@ -63,7 +49,7 @@ namespace gitman {
             const bool had_preferred_remote { value.contains("preferred_remote") };
             const bool had_svn_switch_targets { value.contains("svn_switch_targets") };
 
-            if (had_display_name || project.display_name != default_display_name(project.path.original))
+            if (had_display_name || project.display_name != default_project_display_name(project.path.original))
                 value["display_name"] = as_string(project.display_name);
             else
                 value.erase("display_name");
@@ -155,8 +141,8 @@ namespace gitman {
             return result;
         }
 
-        serialized_workspace_document serialize_workspace_document(
-            const workspace_document& document, const std::u8string_view document_path, const std::u8string_view shadow_source_json, const std::span<const std::size_t> project_source_indices)
+        serialized_workspace_document serialize_workspace_document(const workspace_document& document, const std::u8string_view document_path, const std::u8string_view shadow_source_json,
+            const std::span<const std::size_t> project_source_indices, project_path_resolver& path_resolver)
         {
             json root { shadow_root(shadow_source_json) };
             std::unordered_map<std::string, json> templates { project_templates(root, project_source_indices) };
@@ -174,7 +160,7 @@ namespace gitman {
             serialized_workspace_document result {};
             result.bytes = format_json_bytes(root.dump(4, ' ', false, json::error_handler_t::strict));
             result.validation = parse_workspace_document_json(result.bytes, document_path);
-            resolve_workspace_document_paths(result.validation);
+            resolve_workspace_document_paths(result.validation, path_resolver);
             return result;
         }
 
@@ -195,10 +181,10 @@ namespace gitman {
             target.insert(target.end(), std::make_move_iterator(source.begin()), std::make_move_iterator(source.end()));
         }
 
-        workspace_document_parse_result parse_and_resolve(const std::u8string_view bytes, const std::u8string_view document_path)
+        workspace_document_parse_result parse_and_resolve(const std::u8string_view bytes, const std::u8string_view document_path, project_path_resolver& path_resolver)
         {
             workspace_document_parse_result result { parse_workspace_document_json(bytes, document_path) };
-            resolve_workspace_document_paths(result);
+            resolve_workspace_document_paths(result, path_resolver);
             return result;
         }
 
@@ -216,6 +202,7 @@ namespace gitman {
             case workspace_file_commit_failure::flush:
                 return diagnostic_code::document_flush_failed;
             case workspace_file_commit_failure::replace:
+            case workspace_file_commit_failure::restore:
                 return diagnostic_code::document_replace_failed;
             case workspace_file_commit_failure::none:
                 return diagnostic_code::unknown;
@@ -233,6 +220,8 @@ namespace gitman {
                 return u8"작업공간 문서 임시 파일을 디스크에 반영하지 못했습니다.";
             case workspace_file_commit_failure::replace:
                 return u8"작업공간 문서 원본을 교체하지 못했습니다.";
+            case workspace_file_commit_failure::restore:
+                return u8"작업공간 문서 교체와 원본 복원이 모두 실패해 원본이 backup 위치에만 남았습니다. `.bak` 파일에서 복구할 수 있습니다.";
             case workspace_file_commit_failure::none:
                 return u8"작업공간 문서 저장에 실패했습니다.";
             }
@@ -247,8 +236,9 @@ namespace gitman {
         return result;
     }
 
-    json_project_store::json_project_store(workspace_document_file_system& file_system) noexcept
+    json_project_store::json_project_store(workspace_document_file_system& file_system, project_path_resolver& path_resolver) noexcept
         : file_system_ { file_system }
+        , path_resolver_ { path_resolver }
     {}
 
     project_store_load_result json_project_store::load(const std::u8string_view document_path) noexcept
@@ -285,7 +275,7 @@ namespace gitman {
             return result;
         }
 
-        workspace_document_parse_result parsed { parse_and_resolve(source.bytes, document_path) };
+        workspace_document_parse_result parsed { parse_and_resolve(source.bytes, document_path, path_resolver_) };
         result.revision = make_revision_token(revision_file_state::present, std::u8string { document_path }, source.bytes, parsed.shadow.source_json, parsed.shadow.project_source_indices);
         result.document = std::move(parsed.document);
         result.diagnostics = std::move(parsed.diagnostics);
@@ -307,7 +297,7 @@ namespace gitman {
             return;
         }
 
-        const workspace_document_parse_result parsed { parse_and_resolve(backup.bytes, backup_path) };
+        const workspace_document_parse_result parsed { parse_and_resolve(backup.bytes, backup_path, path_resolver_) };
         if (is_valid_recovery_document(parsed))
         {
             result.diagnostics.push_back(
@@ -365,7 +355,7 @@ namespace gitman {
             return result;
         }
 
-        workspace_document_parse_result parsed { parse_and_resolve(backup.bytes, backup_path) };
+        workspace_document_parse_result parsed { parse_and_resolve(backup.bytes, backup_path, path_resolver_) };
         if (is_valid_recovery_document(parsed) == false)
         {
             append_diagnostics(result.diagnostics, std::move(parsed.diagnostics));
@@ -408,7 +398,7 @@ namespace gitman {
         }
 
         serialized_workspace_document serialized {
-            serialize_workspace_document(document, document_path, revision->shadow_source_json, revision->project_source_indices),
+            serialize_workspace_document(document, document_path, revision->shadow_source_json, revision->project_source_indices, path_resolver_),
         };
         append_diagnostics(result.diagnostics, std::move(serialized.validation.diagnostics));
         if (serialized.validation.document.has_value() == false || result.has_errors())

@@ -1,5 +1,6 @@
 #include "infrastructure/json_project_store.h"
 #include "infrastructure/json_workspace_document.h"
+#include "platform/win32/project_file_system.h"
 #include "platform/win32/workspace_document_file_system.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -174,6 +176,28 @@ namespace {
         std::u8string last_candidate_bytes_ {};
     };
 
+    // 저장 계약 단위 test가 실제 디스크를 조회하지 않도록 lexical 규칙만 흉내 낸다.
+    class fake_project_path_resolver final : public gitman::project_path_resolver
+    {
+    public:
+        [[nodiscard]] gitman::project_path_resolution resolve(const std::u8string_view original_path, const std::u8string_view) noexcept override
+        {
+            try
+            {
+                return { std::u8string { original_path }, gitman::configured_path_state::available, std::nullopt };
+            }
+            catch (...)
+            {
+                return {};
+            }
+        }
+
+        [[nodiscard]] bool normalized_equal(const std::u8string_view left, const std::u8string_view right) noexcept override
+        {
+            return left == right;
+        }
+    };
+
     class temporary_directory_fixture
     {
     public:
@@ -316,7 +340,8 @@ namespace {
 TEST_CASE("Project store creates new documents without replacement backups", "[workspace][store][save]")
 {
     fake_workspace_document_file_system file_system {};
-    gitman::json_project_store store { file_system };
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
 
     const gitman::project_store_load_result loaded { store.load(fake_document_path) };
     REQUIRE_FALSE(loaded.document.has_value());
@@ -357,7 +382,8 @@ TEST_CASE("Project store preserves shadow fields and canonical output", "[worksp
 
     fake_workspace_document_file_system file_system {};
     file_system.set_file(fake_document_path, source);
-    gitman::json_project_store store { file_system };
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
 
     gitman::project_store_load_result loaded { store.load(fake_document_path) };
     REQUIRE(loaded.document.has_value());
@@ -393,7 +419,8 @@ TEST_CASE("Project store rejects stale exact byte revisions", "[workspace][store
     constexpr std::u8string_view external_source { u8"{ \"schema_version\": 1, \"projects\": [] }" };
     fake_workspace_document_file_system file_system {};
     file_system.set_file(fake_document_path, source);
-    gitman::json_project_store store { file_system };
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
 
     const gitman::project_store_load_result loaded { store.load(fake_document_path) };
     REQUIRE(loaded.document.has_value());
@@ -417,7 +444,8 @@ TEST_CASE("Project store revalidates complete candidates before committing", "[w
     };
     fake_workspace_document_file_system file_system {};
     file_system.set_file(fake_document_path, source);
-    gitman::json_project_store store { file_system };
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
 
     gitman::project_store_load_result loaded { store.load(fake_document_path) };
     REQUIRE(loaded.document.has_value());
@@ -442,6 +470,7 @@ TEST_CASE("Project store maps injected commit failures without changing original
         failure_case { gitman::workspace_file_commit_failure::write, gitman::diagnostic_code::document_write_failed },
         failure_case { gitman::workspace_file_commit_failure::flush, gitman::diagnostic_code::document_flush_failed },
         failure_case { gitman::workspace_file_commit_failure::replace, gitman::diagnostic_code::document_replace_failed },
+        failure_case { gitman::workspace_file_commit_failure::restore, gitman::diagnostic_code::document_replace_failed },
     };
     constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };
 
@@ -450,7 +479,8 @@ TEST_CASE("Project store maps injected commit failures without changing original
         CAPTURE(index);
         fake_workspace_document_file_system file_system {};
         file_system.set_file(fake_document_path, source);
-        gitman::json_project_store store { file_system };
+        fake_project_path_resolver path_resolver {};
+        gitman::json_project_store store { file_system, path_resolver };
         const gitman::project_store_load_result loaded { store.load(fake_document_path) };
         REQUIRE(loaded.document.has_value());
         file_system.inject_commit_failure(cases[index].failure);
@@ -474,7 +504,8 @@ TEST_CASE("Project store reports backups and requires explicit recovery", "[work
     fake_workspace_document_file_system file_system {};
     file_system.set_file(fake_document_path, malformed_primary);
     file_system.set_file(backup_path, valid_backup);
-    gitman::json_project_store store { file_system };
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
 
     const gitman::project_store_load_result primary { store.load(fake_document_path) };
     REQUIRE_FALSE(primary.document.has_value());
@@ -507,7 +538,8 @@ TEST_CASE("Project store rejects invalid recovery backups", "[workspace][store][
     fake_workspace_document_file_system file_system {};
     file_system.set_file(fake_document_path, malformed_primary);
     file_system.set_file(backup_path, invalid_backup);
-    gitman::json_project_store store { file_system };
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
 
     const gitman::project_store_load_result primary { store.load(fake_document_path) };
     REQUIRE_FALSE(primary.document.has_value());
@@ -528,7 +560,10 @@ TEST_CASE("Win32 workspace storage creates replaces and detects external changes
     const std::u8string document_path_utf8 { document_path.u8string() };
     const std::filesystem::path backup_path { document_path.wstring() + L".bak" };
     gitman::win32::workspace_document_file_system file_system {};
-    gitman::json_project_store store { file_system };
+    // Win32 통합 test는 실제 경로 해석 구현을 그대로 주입한다.
+    const std::unique_ptr<gitman::project_path_resolver> path_resolver { gitman::win32::make_project_path_resolver() };
+    REQUIRE(path_resolver != nullptr);
+    gitman::json_project_store store { file_system, *path_resolver };
 
     const gitman::project_store_load_result missing { store.load(document_path_utf8) };
     REQUIRE_FALSE(missing.document.has_value());

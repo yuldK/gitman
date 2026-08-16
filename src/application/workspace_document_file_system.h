@@ -26,6 +26,9 @@ namespace gitman {
         write,
         flush,
         replace,
+        // replace 도중 원본이 backup 위치로 이동된 뒤 복원까지 실패했다. 원본 내용은
+        // backup 경로에만 남아 있으므로 호출자가 복구 안내를 구분해서 표시해야 한다.
+        restore,
     };
 
     struct workspace_file_commit_result

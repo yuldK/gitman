@@ -65,7 +65,10 @@ add_library(gitman_win32_platform STATIC
 target_include_directories(gitman_win32_platform PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_win32_platform PUBLIC gitman_domain)
 
+# 경로 해석은 `project_path_resolver` 계약으로만 사용하므로 workspace 계층은 Win32
+# platform에 링크하지 않는다. 구현체 주입은 호출자(테스트와 후속 app 조립)가 한다.
 add_library(gitman_workspace STATIC
+    application/project_path_resolver.h
     application/project_store.cpp
     application/project_store.h
     application/workspace_document_file_system.h
@@ -80,7 +83,6 @@ target_link_libraries(gitman_workspace
     PUBLIC
         gitman_domain
     PRIVATE
-        gitman_win32_platform
         nlohmann_json::nlohmann_json)
 
 add_library(gitman_process STATIC

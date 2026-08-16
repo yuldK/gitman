@@ -4,12 +4,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <windows.h>
+
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -204,6 +207,20 @@ TEST_CASE("Project path states distinguish directories files missing and invalid
     REQUIRE(invalid_document.native_error.has_value());
 }
 
+TEST_CASE("Attribute query errors map to distinct path states", "[workspace][path]")
+{
+    // 로컬 NTFS는 속성 조회를 부모 디렉터리 메타데이터로 처리하므로 대상에 deny
+    // ACE를 붙여도 GetFileAttributesW가 실패하지 않는다. 접근 거부는 네트워크 공유나
+    // 잠긴 파일에서만 실제로 발생하므로 `inaccessible` 분기는 오류 매핑으로 검증한다.
+    REQUIRE(gitman::win32::project_path_state_from_error(ERROR_ACCESS_DENIED) == gitman::configured_path_state::inaccessible);
+    REQUIRE(gitman::win32::project_path_state_from_error(ERROR_SHARING_VIOLATION) == gitman::configured_path_state::inaccessible);
+    REQUIRE(gitman::win32::project_path_state_from_error(ERROR_FILE_NOT_FOUND) == gitman::configured_path_state::missing);
+    REQUIRE(gitman::win32::project_path_state_from_error(ERROR_PATH_NOT_FOUND) == gitman::configured_path_state::missing);
+    REQUIRE(gitman::win32::project_path_state_from_error(ERROR_BAD_NETPATH) == gitman::configured_path_state::missing);
+    REQUIRE(gitman::win32::project_path_state_from_error(ERROR_INVALID_NAME) == gitman::configured_path_state::invalid);
+    REQUIRE(gitman::win32::project_path_state_from_error(ERROR_FILENAME_EXCED_RANGE) == gitman::configured_path_state::invalid);
+}
+
 TEST_CASE("Project paths preserve Unicode spaces and long lexical values", "[workspace][path]")
 {
     temporary_directory_fixture fixture {};
@@ -238,7 +255,9 @@ TEST_CASE("Workspace path resolution excludes invalid and duplicate projects", "
     const std::vector<std::size_t> parsed_source_indices { 1, 2, 3, 4, 5 };
     REQUIRE(result.shadow.project_source_indices == parsed_source_indices);
 
-    gitman::resolve_workspace_document_paths(result);
+    const std::unique_ptr<gitman::project_path_resolver> path_resolver { gitman::win32::make_project_path_resolver() };
+    REQUIRE(path_resolver != nullptr);
+    gitman::resolve_workspace_document_paths(result, *path_resolver);
 
     REQUIRE(result.document.has_value());
     REQUIRE(result.document->projects.size() == 3);
@@ -282,7 +301,9 @@ TEST_CASE("Workspace path resolution ignores failed schema documents", "[workspa
     REQUIRE_FALSE(result.document.has_value());
     const std::vector<gitman::diagnostic> original_diagnostics { result.diagnostics };
 
-    gitman::resolve_workspace_document_paths(result);
+    const std::unique_ptr<gitman::project_path_resolver> path_resolver { gitman::win32::make_project_path_resolver() };
+    REQUIRE(path_resolver != nullptr);
+    gitman::resolve_workspace_document_paths(result, *path_resolver);
 
     REQUIRE_FALSE(result.document.has_value());
     REQUIRE(result.diagnostics.size() == original_diagnostics.size());

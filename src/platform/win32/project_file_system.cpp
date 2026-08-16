@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -333,6 +334,11 @@ namespace gitman::win32 {
         }
     } // namespace
 
+    configured_path_state project_path_state_from_error(const std::uint32_t native_error) noexcept
+    {
+        return state_from_error(native_error);
+    }
+
     project_path_resolution resolve_project_path(const std::u8string_view original_path, const std::u8string_view document_path) noexcept
     {
         try
@@ -361,5 +367,26 @@ namespace gitman::win32 {
         {
             return false;
         }
+    }
+
+    namespace {
+        class win32_project_path_resolver final : public project_path_resolver
+        {
+        public:
+            [[nodiscard]] project_path_resolution resolve(const std::u8string_view original_path, const std::u8string_view document_path) noexcept override
+            {
+                return resolve_project_path(original_path, document_path);
+            }
+
+            [[nodiscard]] bool normalized_equal(const std::u8string_view left, const std::u8string_view right) noexcept override
+            {
+                return normalized_project_paths_equal(left, right);
+            }
+        };
+    } // namespace
+
+    std::unique_ptr<project_path_resolver> make_project_path_resolver()
+    {
+        return std::make_unique<win32_project_path_resolver>();
     }
 } // namespace gitman::win32

@@ -1,7 +1,5 @@
 #include "infrastructure/workspace_document_paths.h"
 
-#include "platform/win32/project_file_system.h"
-
 #include <array>
 #include <charconv>
 #include <cstddef>
@@ -45,16 +43,16 @@ namespace gitman {
             result.diagnostics.push_back(std::move(value));
         }
 
-        bool contains_normalized_path(const std::vector<std::u8string>& paths, const std::u8string_view candidate) noexcept
+        bool contains_normalized_path(project_path_resolver& path_resolver, const std::vector<std::u8string>& paths, const std::u8string_view candidate) noexcept
         {
             for (const std::u8string& path : paths)
-                if (win32::normalized_project_paths_equal(path, candidate))
+                if (path_resolver.normalized_equal(path, candidate))
                     return true;
             return false;
         }
 
         void add_state_diagnostic(workspace_document_parse_result& result, const project_definition& project, const std::size_t source_index, const std::u8string_view document_path,
-            const win32::project_path_resolution& resolution)
+            const project_path_resolution& resolution)
         {
             switch (resolution.state)
             {
@@ -79,7 +77,7 @@ namespace gitman {
         }
     } // namespace
 
-    void resolve_workspace_document_paths(workspace_document_parse_result& result)
+    void resolve_workspace_document_paths(workspace_document_parse_result& result, project_path_resolver& path_resolver)
     {
         if (result.document.has_value() == false)
             return;
@@ -97,7 +95,7 @@ namespace gitman {
         {
             project_definition project { std::move(document.projects[project_position]) };
             const std::size_t source_index { has_source_indices ? result.shadow.project_source_indices[project_position] : project_position };
-            win32::project_path_resolution resolution { win32::resolve_project_path(project.path.original, document.document_path) };
+            project_path_resolution resolution { path_resolver.resolve(project.path.original, document.document_path) };
             project.path.normalized = std::move(resolution.normalized);
             project.path.state = resolution.state;
 
@@ -107,7 +105,7 @@ namespace gitman {
                     source_index, project.id.value, resolution.native_error);
                 continue;
             }
-            if (contains_normalized_path(normalized_paths, project.path.normalized))
+            if (contains_normalized_path(path_resolver, normalized_paths, project.path.normalized))
             {
                 add_path_diagnostic(
                     result, diagnostic_code::duplicate_project_path, diagnostic_severity::error, u8"중복된 project 경로입니다.", document.document_path, source_index, project.id.value);

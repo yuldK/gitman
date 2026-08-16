@@ -117,20 +117,6 @@ namespace gitman {
             return std::ranges::find(known_fields, field) != known_fields.end();
         }
 
-        std::u8string default_display_name(const std::u8string_view path)
-        {
-            std::size_t end { path.size() };
-            while (end > 0 && (path[end - 1] == u8'/' || path[end - 1] == u8'\\'))
-                --end;
-            if (end == 0)
-                return std::u8string { path };
-
-            const std::size_t separator { path.find_last_of(u8"/\\", end - 1) };
-            if (separator == std::u8string_view::npos)
-                return std::u8string { path.substr(0, end) };
-            return std::u8string { path.substr(separator + 1, end - separator - 1) };
-        }
-
         std::optional<std::int32_t> parse_schema_version(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
         {
             const auto version { root.find("schema_version") };
@@ -242,7 +228,7 @@ namespace gitman {
 
             const auto display_name { source.find("display_name") };
             if (display_name == source.end())
-                project.display_name = default_display_name(project.path.original);
+                project.display_name = default_project_display_name(project.path.original);
             else if (display_name->is_string())
                 project.display_name = as_utf8(display_name->get_ref<const std::string&>());
             else
@@ -355,6 +341,20 @@ namespace gitman {
     bool workspace_document_parse_result::has_warnings() const noexcept
     {
         return std::ranges::any_of(diagnostics, [](const diagnostic& value) { return value.severity == diagnostic_severity::warning; });
+    }
+
+    std::u8string default_project_display_name(const std::u8string_view path)
+    {
+        std::size_t end { path.size() };
+        while (end > 0 && (path[end - 1] == u8'/' || path[end - 1] == u8'\\'))
+            --end;
+        if (end == 0)
+            return std::u8string { path };
+
+        const std::size_t separator { path.find_last_of(u8"/\\", end - 1) };
+        if (separator == std::u8string_view::npos)
+            return std::u8string { path.substr(0, end) };
+        return std::u8string { path.substr(separator + 1, end - separator - 1) };
     }
 
     workspace_document_parse_result parse_workspace_document_json(const std::u8string_view source_json, const std::u8string_view document_path)

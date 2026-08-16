@@ -325,7 +325,16 @@ namespace gitman::win32 {
 
                 const std::uint32_t replace_error { last_error_or(ERROR_WRITE_FAULT) };
                 if (replace_error == ERROR_UNABLE_TO_MOVE_REPLACEMENT_2)
-                    MoveFileExW(prepared_backup.value->c_str(), prepared_document.value->c_str(), MOVEFILE_WRITE_THROUGH);
+                {
+                    // 원본이 이미 backup 위치로 이동된 상태다. 복원까지 실패하면 원본이
+                    // backup 경로에만 남으므로 호출자가 구분할 수 있게 별도로 보고한다.
+                    SetLastError(ERROR_SUCCESS);
+                    if (MoveFileExW(prepared_backup.value->c_str(), prepared_document.value->c_str(), MOVEFILE_WRITE_THROUGH) == FALSE)
+                    {
+                        delete_temporary_file(temporary.path);
+                        return { workspace_file_commit_failure::restore, last_error_or(replace_error) };
+                    }
+                }
                 delete_temporary_file(temporary.path);
                 return { workspace_file_commit_failure::replace, replace_error };
             }

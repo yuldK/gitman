@@ -95,3 +95,24 @@ gitman_add_clang_format_targets(
         -File "${GITMAN_SOURCE_STYLE_SCRIPT}"
         -root "${PROJECT_SOURCE_DIR}"
 )
+
+# IDE 필터 구성은 target 정의와 분리해 이 한 곳에서만 관리한다. 실행 파일 target인
+# `gitman`만 최상위에 남겨 솔루션을 열었을 때 진입점이 바로 보이게 한다.
+gitman_set_ide_folder("Libraries"
+    gitman_core
+    gitman_domain
+    gitman_process
+    gitman_vcs
+    gitman_win32
+    gitman_win32_platform
+    gitman_workspace)
+gitman_set_ide_folder("Tooling"
+    gitman_format
+    gitman_format_check
+    gitman_generate_codicons
+    gitman_verify_assets)
+if(BUILD_TESTING AND GITMAN_BUILD_TESTS)
+    gitman_set_ide_folder("Tests"
+        gitman_process_test_child
+        gitman_tests)
+endif()

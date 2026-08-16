@@ -1,5 +1,23 @@
 include_guard(GLOBAL)
 
+# 솔루션 최상위에는 앱 target만 두고 라이브러리와 도구 target은 필터로 접는다.
+# `FOLDER`는 IDE generator 전용 속성이며 다른 generator는 무시하므로 분기하지 않는다.
+function(gitman_set_ide_folder folder)
+    if(NOT folder)
+        message(FATAL_ERROR "An IDE folder name is required.")
+    endif()
+    if(NOT ARGN)
+        message(FATAL_ERROR "At least one target is required for IDE folder ${folder}.")
+    endif()
+
+    foreach(target IN LISTS ARGN)
+        if(NOT TARGET "${target}")
+            message(FATAL_ERROR "Target not found for the IDE folder: ${target}")
+        endif()
+        set_target_properties("${target}" PROPERTIES FOLDER "${folder}")
+    endforeach()
+endfunction()
+
 function(gitman_add_clang_format_targets)
     set(one_value_arguments
         CLANG_FORMAT_EXECUTABLE

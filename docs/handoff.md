@@ -5,7 +5,8 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 3 프로세스 실행 계층
-- 현재 체크포인트: `S3-V1` 전체 자동 검증 완료, 단계 3 최종 사용자 승인 대기
+- 현재 체크포인트: `S3-V1` 전체 자동 검증과 단계 2·3 독립 감사 결함 수정 완료, 단계 3 최종 사용자 승인 대기
+- 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
 - 다음 허용 작업: 단계 3 최종 승인 전에는 상태 문서 보정과 read-only 검토만 허용
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, test와 install 구성
 - 기준 문서: `docs/stage-3-plan.md`
@@ -115,10 +116,10 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S3-V1` |
-| 제출 내용 | 단계 3 전체 build/test/analyze/install 검증과 최종 검증 기록 |
-| production code | D1 계약부터 D5 마스킹까지 모두 승인 완료 |
-| test code 및 fixture | D1~D5 test 승인 완료. 양 toolchain 전체 CTest 각각 135/135 |
+| 계획 ID | `S3-V1` + 감사 결함 수정 |
+| 제출 내용 | 단계 3 전체 자동 검증과 단계 2·3 독립 감사 결함 수정 |
+| production code | D1 계약부터 D5 마스킹까지 모두 승인 완료. 감사 수정으로 drain 유예, resolver 주입 등 보강 |
+| test code 및 fixture | D1~D5 test 승인 완료. 감사 수정 후 양 toolchain 전체 CTest 각각 139/139 |
 | bug 수정 | 모든 FIX 체크포인트는 production 결함이 없어 생략 완료 |
 | stress | 4스레드 × 25회 = 100 프로세스 동시 실행을 3회 반복. 실패 0, sequence 역전 0, handle 누적 증가 없음 |
 | install | `bin/gitman.exe` 한 파일, 6,255,616 byte, 설치본 renderer smoke 4/4 통과 |
@@ -147,7 +148,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S3-D5-TEST` 마스킹 test | 승인 완료 | test 10개, 양 toolchain 135/135 |
 | `S3-D5-FIX` bug 수정 | 생략 완료 | 발견 production 결함 없음 |
 | `S3-V1` 단계 3 최종 검증 | 자동 검증 완료 | 전체 matrix 통과, 단계 3 최종 사용자 승인 대기 |
-| `S3-V1` 단계 3 최종 검증 | 시작 전 | 전체 build/test/analyze/install과 동시 실행 stress |
+| 단계 2·3 독립 감사 및 결함 수정 | 완료 | 사용자 지시. `docs/verification/2026-08-16-stage-2-3-audit-fix.md`, 양 toolchain CTest 139/139 |
 
 ### 8.3 단계 2 진행 원장 (완료)
 
@@ -182,7 +183,11 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - 단계 3의 기본 timeout, 기본 캡처 상한과 로캘 강제 여부는 명령별로 결정할 사항이므로 단계 4까지 미정으로 둔다.
 - `S3-D5-CODE`까지 적용한 runner에는 계획에 명시된 미구현 항목이 없다. 남은 구간은 마스킹 test와 단계 3 최종 검증이다.
 - 마스킹은 값의 끝을 공백과 줄 끝으로 판정하므로 자격 증명 뒤에 붙은 구두점이 함께 가려질 수 있다. 덜 가리는 것보다 안전한 방향으로 의도한 동작이다.
-- job object를 만들거나 배정하지 못하는 환경에서는 warning 진단과 함께 종료 범위가 자식 하나로 줄어든다. 실행 자체를 막지 않는 선택이며 손자 정리는 보장되지 않는다.
+- job object를 만들거나 배정하지 못하는 환경에서는 warning 진단과 함께 종료 범위가 자식 하나로 줄어든다. 실행 자체를 막지 않는 선택이며 손자 정리는 보장되지 않는다. 감사 수정 이후에는 그런 환경에서도 손자가 pipe를 잡아 `run()`이 무기한 대기하는 일은 없다(drain 유예와 `CancelSynchronousIo` 최후 수단).
+- reader join의 drain 유예는 2초 상수다. 단계 4에서 Git background 프로세스(`gc --auto`, credential helper 등) 대응 정책과 함께 재검토한다.
+- 로컬 NTFS는 속성 조회를 부모 디렉터리 메타데이터로 처리해 deny ACE로도 `GetFileAttributesW`를 실패시킬 수 없다(호스트 실측). `inaccessible` 분기는 `project_path_state_from_error` 매핑 test로 검증한다.
+- `gitman_workspace`는 Win32 platform에 링크하지 않으며 경로 해석은 `project_path_resolver` 주입으로만 사용한다. 단계 6 조립 시 `win32::make_project_path_resolver()`를 주입해야 한다.
+- Catch2 test 전체에 CTest TIMEOUT 120초가 걸려 있다. 이를 넘는 통합 test는 개별 상향이 필요하다.
 - 이 호스트의 활성 code page는 949다. 실행 파일 manifest에 `activeCodePage` 설정이 없으므로 시스템 설정을 따르며, UTF-8 code page 환경에서는 fallback이 무해한 no-op이 된다.
 - 사용자 지시로 출력 pipe와 줄 단위 레코드가 `S3-D3`에서 `S3-D2`로 이동했다. 체크포인트 수는 17개를 유지하고 `S3-D3`은 code page fallback transcoder와 파이프라인 단위 test 보강만 담당한다.
 - test 자식으로 `cmd.exe`를 사용하면 `CommandLineToArgvW`와 다른 자체 따옴표 처리 때문에 인용 및 인자 검증이 잘못 실패한다. 도우미는 표준 `wmain` argv 실행 파일로 만든다.

@@ -283,6 +283,7 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - `S3-D5-TEST`: 마스킹 규칙과 end-to-end 적용 test 10개 작성 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d5-test.md`에 기록했다.
 - `S3-D5-FIX`: 발견 production 결함이 없어 사용자 확인에 따라 생략 완료
 - `S3-V1`: 삭제 후 재configure를 포함한 VS2022 Debug/Release, VS2026 Debug, `/analyze`, 전체 CTest 135/135, 3회 반복, 동시 실행 stress 3회, aggregate format/style, install과 설치본 smoke 및 PE 의존성 검증 완료. 단계 3 최종 사용자 승인 대기. 결과는 `docs/verification/2026-08-16-stage-3.md`에 기록했다.
+- 감사 결함 수정: 사용자 지시로 수행한 독립 감사에서 발견된 손자 pipe 점유 hang, reader 예외 안전성, fallback 강제 분할 경계, URL 마스킹 부분 누출을 해소했다. 이후 전체 CTest는 양 toolchain 각각 139/139다. 결과는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`에 기록했다.
 - 범위 이동: 사용자 지시로 출력 pipe와 줄 단위 레코드가 `S3-D2`로 옮겨졌다. `S3-D3`에는 활성 code page fallback transcoder 구현과 연결이 남는다. 체크포인트 수는 17개를 유지한다.
 
 ## 8. 테스트 계획

@@ -1,5 +1,42 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 2·3 독립 감사 및 발견 사항 해소
+
+### 사용자 지시
+
+- 단계 4 진행 전에 단계 2·3의 진행 상황을 독립적으로 감사하고 보고한다.
+- 감사에서 확인한 발견 사항들을 해소한 뒤 단계 4로 넘어간다.
+
+### 감사 결과
+
+- 계획 문서 대비 코드·테스트 전수 대조와 현재 HEAD의 build/test 재현으로 두 단계 모두 완료 조건 충족을 확인했다.
+- 검증 기록의 test 개수 등 수치 주장이 실측과 일치했고 과장이나 허위는 발견되지 않았다.
+
+### 반영 내용
+
+- runner에 reader join drain 유예(2초)와 `CancelSynchronousIo` 최후 수단을 추가해, 자식이 정상 종료해도 출력 pipe를 상속한 손자 때문에 `run()`이 무기한 블록되는 경로를 없앴다. 강제 마감은 warning 진단으로 보고한다.
+- reader 생성 이후 구간을 예외 안전하게 만들어 joinable 스레드 unwinding에 의한 `std::terminate` 경로를 제거하고, reader catch-all이 pipe를 계속 비우며 `process_pipe_failed` 진단을 남기게 했다.
+- `text_transcoder`에 `safe_split_position`을 추가하고 fallback 강제 분할이 활성 code page 문자 경계를 따르게 해 CP949 2 byte 문자 훼손을 막았다.
+- URL userinfo 마스킹이 authority 안의 마지막 `@`를 구분자로 삼아 percent-encoding 없는 password `@`가 부분 누출되지 않게 했다.
+- `application/project_path_resolver.h` 계약을 추가하고 `gitman_workspace`의 Win32 platform 링크를 제거했다. store와 경로 해석은 주입받은 resolver만 사용하며 단위 test는 lexical fake를 쓴다.
+- `ReplaceFileW` 실패 후 원본 복원까지 실패한 경우를 `workspace_file_commit_failure::restore`로 구분하고 `.bak` 복구 안내 메시지를 추가했다.
+- `default_project_display_name`을 공개해 parser와 store의 중복 정의를 통합했다.
+- test 보강: 손자 pipe 점유 drain 회귀(`spawn-detached`/`hold-handles` 도우미), emoji 실행 파일 경로, 8 MiB 대용량 상향, fallback 강제 분할 경계, raw `@` URL 마스킹, `restore` 매핑, `project_path_state_from_error` 매핑. 전체 Catch2 test에 CTest TIMEOUT 120초를 부여했다.
+- 로컬 NTFS에서 deny ACE로 `GetFileAttributesW`를 실패시킬 수 없음을 실측으로 확인하고 `inaccessible` 검증을 오류 매핑 방식으로 확정했다.
+- TOCTOU 창, 레코드 분할 마스킹 우회, unknown field의 ID 매칭 의존 등은 설계상 수용으로 문서화했다.
+- VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 139/139, `/analyze` 무경고, aggregate format/style 154개 파일 통과.
+- 결과를 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-001, REQ-006, REQ-008~REQ-013
+- NFR-005~NFR-009
+
+### 다음 작업 제한
+
+- 단계 3 최종 사용자 승인 대기 상태는 유지된다. 승인 전에는 단계 4를 시작하지 않는다.
+- drain 유예 상수와 Git background 프로세스 대응 정책은 단계 4 계획(`S4-P0`)에서 재검토한다.
+
 ## 2026-08-16 - 단계 3 최종 자동 검증
 
 ### 사용자 지시

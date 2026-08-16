@@ -29,6 +29,7 @@
 | 2026-08-16 | 단계 2 승인 후 단계 3 진행. 계획·작업·테스트 중간마다 진행 보고와 검수를 요구 | `docs/stage-3-plan.md`, 단계 3 | REQ-006, REQ-008, REQ-009~REQ-013 |
 | 2026-08-16 | `S3-D2-CODE` 1차 검수에서 wait 실패 시 자식 정리와 출력 pipe의 `S3-D2` 포함을 지시 | `docs/verification/2026-08-16-stage-3-d2-code.md` | REQ-006, REQ-008 |
 | 2026-08-16 | clang-format과 수동 줄바꿈 규칙 충돌을 formatter 결과 수용으로 처리 | `docs/code_style.md` 2장 | REQ-010 |
+| 2026-08-16 | 단계 4 진행 전 단계 2·3 독립 감사와 발견 사항 해소 | `docs/verification/2026-08-16-stage-2-3-audit-fix.md` | REQ-001, REQ-006, REQ-008~REQ-013 |
 
 ### 1.2 단계 진행 상태
 
@@ -37,7 +38,7 @@
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
 | 단계 2: 도메인과 설정 저장소 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-2.md` |
-| 단계 3: 프로세스 실행 계층 | `S3-V1` 자동 검증 완료 - 단계 3 최종 검수 대기 | `docs/verification/2026-08-16-stage-3.md` |
+| 단계 3: 프로세스 실행 계층 | `S3-V1` 자동 검증 및 감사 결함 수정 완료 - 단계 3 최종 검수 대기 | `docs/verification/2026-08-16-stage-3.md` |
 | 단계 4~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
@@ -437,7 +438,7 @@ gitman/
 
 ### 단계 2: 도메인과 설정 저장소
 
-상태: 완료. `S2-V1` 전체 자동 검증 후 2026-08-16 사용자가 단계 3 진행을 지시하며 단계 2를 최종 승인했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 54/54, aggregate format/style, 단일 exe install과 설치본 renderer smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-2.md`에 기록한다.
+상태: 완료. `S2-V1` 전체 자동 검증 후 2026-08-16 사용자가 단계 3 진행을 지시하며 단계 2를 최종 승인했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 54/54, aggregate format/style, 단일 exe install과 설치본 renderer smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-2.md`에 기록한다. 2026-08-16 독립 감사에서 발견된 계층 규칙 위반(경로 해석의 Win32 하드 의존)과 `ReplaceFileW` 복원 미확인을 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`에서 해소했다.
 
 - `std::u8string` 기반 프로젝트, 저장소 snapshot, 최신 상태, 작업, 오류 모델을 구현한다.
 - JSON 스키마 검증, 경로 정규화, 중복 검사, 원자적 저장을 구현한다.
@@ -447,7 +448,7 @@ gitman/
 
 ### 단계 3: 프로세스 실행 계층
 
-상태: 모든 체크포인트 승인과 `S3-V1` 전체 자동 검증을 완료했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 135/135, 전체 suite 3회 반복, 100개 프로세스 동시 실행 stress 3회, aggregate format/style, 단일 exe install과 설치본 smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-3.md`에 기록하며, 단계 3 최종 사용자 승인 전에는 단계 4를 시작하지 않는다. 단계 2와 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지한다.
+상태: 모든 체크포인트 승인과 `S3-V1` 전체 자동 검증을 완료했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 135/135, 전체 suite 3회 반복, 100개 프로세스 동시 실행 stress 3회, aggregate format/style, 단일 exe install과 설치본 smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-3.md`에 기록하며, 단계 3 최종 사용자 승인 전에는 단계 4를 시작하지 않는다. 단계 2와 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지한다. 2026-08-16 독립 감사에서 발견된 손자 pipe 점유 hang 등 잠재 결함을 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`에서 해소했고 이후 양 toolchain CTest는 각각 139/139다.
 
 - 셸을 거치지 않는 인자 배열 실행을 구현한다.
 - 출력 스트리밍, 종료 코드, 제한 시간, 취소, 비밀 마스킹을 구현한다.

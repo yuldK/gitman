@@ -227,6 +227,7 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - `S2-D5-TEST`: 경로 없음, Unicode 및 option 순서, 중복 path와 잘못된 확장자 test 4개 작성 및 양 toolchain 전체 CTest 54/54 완료, 사용자 승인 완료
 - `S2-D5-FIX`: production 결함 후보가 없어 사용자 진행 지시에 따라 생략 완료
 - `S2-V1`: VS2022 Debug/Release, VS2022 `/analyze`, VS2026 Debug, 전체 CTest 54/54, aggregate format/style, install 및 설치본 smoke/의존성 검증 완료 후 2026-08-16 사용자 최종 승인 완료
+- 감사 결함 수정: 2026-08-16 독립 감사에서 발견된 경로 해석의 Win32 하드 의존을 `project_path_resolver` 주입으로 해소하고 `ReplaceFileW` 복원 실패를 `restore` 유형으로 구분했다. 결과는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`에 기록했다.
 
 ## 8. 테스트 계획
 

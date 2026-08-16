@@ -36,6 +36,8 @@ namespace gitman {
             return u8"tool_unavailable";
         case repository_availability::not_a_repository:
             return u8"not_a_repository";
+        case repository_availability::unsupported_layout:
+            return u8"unsupported_layout";
         case repository_availability::path_unavailable:
             return u8"path_unavailable";
         }

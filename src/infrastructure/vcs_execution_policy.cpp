@@ -1,5 +1,6 @@
 #include "infrastructure/vcs_execution_policy.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace gitman {
@@ -100,8 +101,8 @@ namespace gitman {
         return kind == repository_kind::subversion ? svn_common_arguments() : git_common_arguments();
     }
 
-    process_request make_vcs_process_request(
-        const repository_kind kind, const std::u8string_view executable, const std::u8string_view working_directory, std::vector<std::u8string> arguments, const vcs_command_class command_class)
+    process_request make_vcs_process_request(const repository_kind kind, const std::u8string_view executable, const std::u8string_view working_directory, std::vector<std::u8string> arguments,
+        const vcs_command_class command_class, const std::size_t maximum_record_bytes)
     {
         const vcs_command_limits limits { vcs_limits_for(command_class) };
 
@@ -115,6 +116,7 @@ namespace gitman {
         request.environment_overrides = vcs_environment_overrides(kind);
         request.timeout = limits.timeout;
         request.maximum_captured_bytes_per_stream = limits.maximum_captured_bytes_per_stream;
+        request.maximum_record_bytes = std::max(maximum_record_bytes, minimum_process_record_byte_limit);
         // 로캘을 강제하지 않기로 했으므로 Git과 SVN 모두 시스템 언어 메시지를 낼 수
         // 있다. Windows에서 그 인코딩은 UTF-8일 수도 활성 code page일 수도 있어
         // fallback 모드를 쓴다. 유효한 UTF-8 레코드는 변환하지 않으므로 기계 판독

@@ -51,6 +51,10 @@ namespace gitman {
     [[nodiscard]] std::vector<std::u8string> vcs_common_arguments(repository_kind kind);
 
     // 공통 정책을 적용한 요청을 만든다. `arguments`는 공통 인자 뒤에 붙는다.
-    [[nodiscard]] process_request make_vcs_process_request(
-        repository_kind kind, std::u8string_view executable, std::u8string_view working_directory, std::vector<std::u8string> arguments, vcs_command_class command_class);
+    //
+    // `maximum_record_bytes`는 줄 하나의 강제 분할 상한이다. 기본값을 넘길 수 있는
+    // 명령(경로 두 개를 한 줄에 담는 `status --porcelain=v2`의 rename 항목 등)만 값을
+    // 올려 레코드가 중간에서 끊기지 않게 한다.
+    [[nodiscard]] process_request make_vcs_process_request(repository_kind kind, std::u8string_view executable, std::u8string_view working_directory, std::vector<std::u8string> arguments,
+        vcs_command_class command_class, std::size_t maximum_record_bytes = default_process_record_byte_limit);
 } // namespace gitman

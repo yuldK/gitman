@@ -124,6 +124,12 @@ add_library(gitman_vcs STATIC
     application/vcs_file_probe.h
     application/vcs_tool_registry.cpp
     application/vcs_tool_registry.h
+    infrastructure/git_command_builder.cpp
+    infrastructure/git_command_builder.h
+    infrastructure/git_repository_provider.cpp
+    infrastructure/git_repository_provider.h
+    infrastructure/git_status_parser.cpp
+    infrastructure/git_status_parser.h
     infrastructure/vcs_command_runner.cpp
     infrastructure/vcs_command_runner.h
     infrastructure/vcs_error_classifier.cpp

@@ -26,6 +26,10 @@ namespace gitman {
         ready,
         tool_unavailable,
         not_a_repository,
+        // 저장소이긴 하지만 카드가 다루는 작업 트리 배치가 아니다. bare 저장소와 git
+        // dir 안을 가리키는 등록 경로가 여기에 해당한다. 지원 범위 자체는 단계 5에서
+        // 정하며, 단계 4는 이 상태를 잘못된 경로나 미설치와 구분해 보고만 한다.
+        unsupported_layout,
         path_unavailable,
     };
 

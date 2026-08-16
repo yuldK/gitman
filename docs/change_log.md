@@ -1,5 +1,40 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 4 `S4-D2-CODE` Git 로컬 조회 구현
+
+### 사용자 지시
+
+- `S4-D2-CODE`를 진행한다.
+
+### 반영 내용
+
+- `infrastructure/git_command_builder.*`에 `rev-parse` 배치 조회와 `status --porcelain=v2` 요청 조립을 추가했다.
+- `rev-parse` 인자 순서를 `--absolute-git-dir --is-bare-repository --is-inside-work-tree --show-toplevel`로 고정했다. 마지막 인자는 bare 저장소에서 실패하지만 앞의 값은 이미 출력되므로 실패한 경우에도 배치를 판정할 수 있다.
+- **`status`에 `-z`를 쓰지 않기로 확정했다.** 단계 3 파이프라인이 줄 끝 문자를 남기지 않아 NUL 구분 출력은 경계 정보를 잃고, 개행이 든 경로가 오히려 손상된다. 줄 단위 출력에서는 Git이 그런 경로를 C 인용으로 감싸므로 경계가 흔들리지 않는다. 계획 4.10이 이 구간에서 정하라고 남긴 항목이다.
+- `infrastructure/git_status_parser.*`에 배치 파서, porcelain v2 파서, 작업 트리 요약과 C 인용 경로 해제(`unquote_git_path`)를 추가했다.
+- 해석하지 못한 레코드가 있거나 branch 헤더를 찾지 못하면 작업 트리 상태를 `unknown`으로 둔다. 출력을 다 읽지 못한 저장소를 깨끗하다고 보고하면 보호 정책이 무력해진다.
+- `infrastructure/git_repository_provider.*`에 진행 중 작업 표식 probe와 `query_local`의 snapshot 변환을 추가했다. `index.lock`은 중단된 작업과 구분해 따로 보고한다.
+- `domain/repository_snapshot.*`에 `repository_availability::unsupported_layout`을 추가했다. bare 저장소와 git dir 안의 경로를 `not_a_repository`로 보고하면 카드에 잘못된 사유가 뜬다. 계획 11장이 이 구간에서 정하라고 남긴 항목이다.
+- linked worktree는 추가 처리 없이 조회된다. git dir이 worktree 전용 디렉터리이고 진행 중 작업 표식도 그곳에 있다.
+- 저장소 아님 판정을 번역되는 `fatal: not a git repository` 문장 대신 "정상 종료했는데 출력이 없다"는 구조적 신호로 한다. 로캘 독립 원칙을 따른다.
+- 명령을 만들기 전에 등록 경로의 절대 경로 여부와 디렉터리 존재를 확인해 `path_unavailable`을 먼저 판정한다.
+- 로컬 조회가 `branch.ab`로 `sync_state`를 채우되 근거를 `comparison_source::local`로 남긴다. 원격을 실제로 확인하는 remote-first 판정은 `S4-D3`이 덮어쓴다.
+- `make_vcs_process_request`에 `maximum_record_bytes` 기본 인자를 추가하고 `status`에만 64 KiB를 준다. rename 레코드가 기본 8 KiB를 넘겨 줄이 끊기면 파서가 다른 레코드로 오해한다.
+- `git_repository_provider`가 `repository_provider` 계약을 구현한다. 아직 구현하지 않은 원격 조회, switch 후보, update와 switch는 어떤 process request도 만들지 않고 중립 값을 돌려준다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 195/195 통과했고 `/analyze`도 무경고로 통과했다.
+- 저장소 밖 임시 프로그램으로 177개 항목을 확인하고 삭제했다. 그중 19개는 실제 `git.exe`와 임시 저장소 6종(dirty, 충돌, bare, linked worktree, 커밋 없음, 비저장소)을 사용했다.
+- 새 test source를 작성하지 않았다. 결과를 `docs/verification/2026-08-16-stage-4-d2-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-009, REQ-010, REQ-012
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D2-CODE`는 사용자 코드 검수 대기 상태다.
+- 승인 전에는 `S4-D2-TEST`의 파서 test와 Git 통합 fixture를 작성하지 않는다.
+
 ## 2026-08-16 - 단계 4 `S4-D1-TEST` 계약 test 작성
 
 ### 사용자 지시

@@ -78,18 +78,65 @@ TEST_CASE("Git status requests raise the record limit", "[infrastructure][git][c
     REQUIRE(layout.maximum_record_bytes == gitman::default_process_record_byte_limit);
 }
 
+TEST_CASE("Remote enumeration does not ask for URLs", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_remote_list_request(git_executable, working_directory) };
+
+    // `-v`를 쓰지 않는다. URL이 필요하지 않고, URL에 자격 증명이 들어 있으면 로그로
+    // 흘러나갈 수 있다.
+    REQUIRE(command_arguments(request) == std::vector<std::u8string> { u8"remote" });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+}
+
+TEST_CASE("Fetch requests prune and separate the remote name", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_fetch_request(git_executable, working_directory, u8"origin") };
+
+    // remote 이름은 저장소 설정에서 오므로 `-`로 시작해도 인자로 해석되지 않아야 한다.
+    const std::vector<std::u8string> expected { u8"fetch", u8"--prune", u8"--", u8"origin" };
+    REQUIRE(command_arguments(request) == expected);
+    // 원격을 실제로 확인하는 유일한 조회 명령이라 한도가 다르다.
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 120000 });
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
+TEST_CASE("Reference checks avoid the path separator of rev-parse", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_verify_reference_request(git_executable, working_directory, u8"refs/remotes/origin/main") };
+
+    // `rev-parse`의 `--`는 뒤의 값을 경로로 만들어 확인이 항상 실패한다. 대신 완전한
+    // ref만 넘긴다.
+    const std::vector<std::u8string> expected { u8"rev-parse", u8"--verify", u8"--quiet", u8"refs/remotes/origin/main" };
+    REQUIRE(command_arguments(request) == expected);
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+}
+
+TEST_CASE("Ahead behind requests compare HEAD with the tracking reference", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_ahead_behind_request(git_executable, working_directory, u8"refs/remotes/origin/feature/a b") };
+
+    // `HEAD`를 쓰면 branch 이름을 인자로 넘기지 않아도 되어 이름에 특수 문자가 있어도
+    // 안전하다.
+    const std::vector<std::u8string> expected { u8"rev-list", u8"--left-right", u8"--count", u8"HEAD...refs/remotes/origin/feature/a b" };
+    REQUIRE(command_arguments(request) == expected);
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
 TEST_CASE("Git local queries carry the approved execution policy", "[infrastructure][git][command]")
 {
     const gitman::process_request requests[] {
         gitman::make_git_layout_request(git_executable, working_directory),
         gitman::make_git_status_request(git_executable, working_directory),
+        gitman::make_git_remote_list_request(git_executable, working_directory),
+        gitman::make_git_fetch_request(git_executable, working_directory, u8"origin"),
+        gitman::make_git_verify_reference_request(git_executable, working_directory, u8"refs/remotes/origin/main"),
+        gitman::make_git_ahead_behind_request(git_executable, working_directory, u8"refs/remotes/origin/main"),
     };
 
     for (const gitman::process_request& request : requests)
     {
         REQUIRE(gitman::validate_process_request(request).empty());
         REQUIRE(request.timeout.has_value());
-        REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
         REQUIRE(request.maximum_captured_bytes_per_stream == 8u * 1024u * 1024u);
         REQUIRE(request.text_encoding == gitman::process_text_encoding::active_code_page_fallback);
 

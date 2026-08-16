@@ -1,5 +1,38 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 4 `S4-D3-TEST` remote-first 판정 test 작성
+
+### 사용자 지시
+
+- `S4-D3-CODE`를 승인하고 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `tests/git_remote_query_tests.cpp`를 추가했다. 대상 선택 matrix, 명령 순서, 실패 분류와 값 보존 test 16개다.
+- 대상 선택은 upstream, `/`가 든 branch 이름, 가장 긴 remote 접두사, local branch upstream, preferred, preferred 부재, origin, 유일 remote, 모호, remote 없음, detached, branch 미상을 모두 단정한다.
+- **네트워크를 쓰기 전에 끝나는 경로**를 요청 수로 직접 단정했다. 도구 부재·로컬 미준비·경로 소멸·detached는 0개, `local_only`와 모호는 1개, fetch 실패는 2개, ref 부재와 커밋 없음은 3개다.
+- 실패 분류는 같은 실패의 영어 출력과 한국어 출력이 같은 분류를 내는지 쌍으로 단정한다. libcurl, OpenSSH, HTTP 상태와 미분류 실패, timeout, 취소를 다룬다.
+- fetch가 실패해도 직전 로컬 비교, ahead 수, 작업 트리 상태와 이전에 성공한 `remote_checked_at`이 남는 것을 단정했다. 반대로 `remote_target_missing`에서는 비교 값을 지우는 것도 단정했다.
+- `tests/git_integration_tests.cpp`에 실제 원격 비교 test 6개를 추가했다. 동기, ahead, behind, diverged, remote 없음, 원격 branch 부재, 도달 불가 URL과 비ASCII 왕복이다. 로컬 bare 저장소만 쓰며 네트워크에 접근하지 않는다.
+- `behind`와 `diverged`는 원격을 건드리지 않고 clone을 `reset --hard HEAD~1`로 되돌려 만든다. 준비가 결정적이다.
+- `tests/git_command_builder_tests.cpp`에 새 명령 4종의 인자와 한도 test를, `tests/git_status_parser_tests.cpp`에 remote 이름과 ahead/behind 파서 test를 추가했다.
+- **한국어 Git 출력 인코딩을 실측해 기록했다.** 이 호스트의 시스템 ANSI code page는 949지만 Git for Windows 2.52.0에는 번역 catalog가 설치되어 있지 않아(`share/locale` 부재) `LANGUAGE`, `LC_ALL`, `LANG`을 어떻게 줘도 메시지가 영어다. Git이 되돌려 주는 비ASCII 내용은 UTF-8이라 `active_code_page_fallback`이 건드리지 않는다. 다른 호스트에는 번역본이 있을 수 있으므로 오류 분류는 계속 로캘 독립 신호만 쓴다.
+- 전체 CTest가 246에서 **274**로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 274/274 통과했다. `/analyze`도 무경고로 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- production source를 변경하지 않았고 `S4-D3-FIX` 후보도 발견하지 않았다.
+- 결과를 `docs/verification/2026-08-16-stage-4-d3-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-009~REQ-012
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D3-TEST`는 사용자 test 검수 대기 상태다.
+- 발견 production 결함이 없어 `S4-D3-FIX`는 사용자 확인 후 생략한다.
+- 승인 전에는 `S4-D4-CODE`의 SVN 명령 조립과 파서를 작성하지 않는다.
+
 ## 2026-08-16 - 단계 4 `S4-D3-CODE` Git remote-first 판정 구현
 
 ### 사용자 지시

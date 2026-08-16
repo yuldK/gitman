@@ -656,7 +656,8 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 - `S4-D1-TEST`: 계약 계층 test 56개와 `vcs_test_doubles` 도우미 작성 완료, 사용자 승인 완료. 전체 CTest가 139에서 195로 늘었고 양 toolchain에서 195/195 통과했다. 발견 production 결함이 없어 `S4-D1-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d1-test.md`에 기록했다.
 - `S4-D2-CODE`: Git 명령 조립, `rev-parse` 배치 파서, porcelain v2 파서, 진행 중 작업 표식 probe와 로컬 snapshot 변환 구현 및 사용자 승인 완료. `status`에 `-z`를 쓰지 않기로 확정했고 bare 저장소와 git dir 안의 경로를 `unsupported_layout`으로 보고하기로 정했다. 결과는 `docs/verification/2026-08-16-stage-4-d2-code.md`에 기록했다.
 - `S4-D2-TEST`: 파서와 provider test 39개, 실제 Git 통합 test 12개, `git_repository_fixture` 도우미와 실제 출력 fixture 5종 작성 및 사용자 승인 완료. 전체 CTest가 195에서 246으로 늘었고 양 toolchain에서 246/246 통과했다. 발견 production 결함이 없어 `S4-D2-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d2-test.md`에 기록했다.
-- `S4-D3-CODE`: remote 열거와 대상 선택, `fetch --prune`, ahead/behind 계산과 offline·인증 판정 구현 완료, 사용자 검수 대기. remote branch 존재 확인을 fetch 뒤로 옮겼고(4.5의 4·5번 순서) `preferred_remote`가 없으면 warning과 함께 다음 규칙으로 진행한다. 결과는 `docs/verification/2026-08-16-stage-4-d3-code.md`에 기록했다.
+- `S4-D3-CODE`: remote 열거와 대상 선택, `fetch --prune`, ahead/behind 계산과 offline·인증 판정 구현 및 사용자 승인 완료. remote branch 존재 확인을 fetch 뒤로 옮겼고(4.5의 4·5번 순서) `preferred_remote`가 없으면 warning과 함께 다음 규칙으로 진행한다. 결과는 `docs/verification/2026-08-16-stage-4-d3-code.md`에 기록했다.
+- `S4-D3-TEST`: 대상 선택 matrix, 명령 순서와 실패 분류 test 22개, 실제 원격 통합 test 6개 작성 완료, 사용자 검수 대기. 전체 CTest가 246에서 274로 늘었고 양 toolchain에서 274/274 통과했다. 한국어 Git 출력 인코딩 실측도 함께 기록했다(11장 항목 해소). 발견 production 결함은 없다. 결과는 `docs/verification/2026-08-16-stage-4-d3-test.md`에 기록했다.
 
 ## 11. 미결정 항목
 
@@ -666,4 +667,4 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 - SVN의 `ahead` 개념 부재를 UI에서 어떻게 표현할지는 단계 6에서 정한다.
 - 환경설정 화면의 구성과 `settings` 편집 UX는 단계 6~7에서 정한다. 단계 4는 문서에서 provider까지의 데이터 경로만 만든다.
 - `settings`에 추가될 나머지 항목(동시 실행 상한, 로그 ring buffer 크기 등)은 해당 단계에서 정의한다.
-- Git이 시스템 로캘로 내는 메시지의 실제 인코딩은 Git for Windows 배포판과 콘솔 설정에 따라 다를 수 있다. `active_code_page_fallback`이 두 경우를 모두 처리하지만, 실제 한국어 Git 출력의 인코딩 실측은 `S4-D3-TEST`에서 기록한다.
+- Git이 시스템 로캘로 내는 메시지의 실제 인코딩 실측은 `S4-D3-TEST`에서 끝냈다. 이 호스트의 ANSI code page는 949지만 Git for Windows 2.52.0에 번역 catalog가 없어 메시지가 항상 영어이며, 비ASCII 내용은 UTF-8이라 `active_code_page_fallback`이 건드리지 않는다. 다른 호스트에는 번역본이 설치될 수 있으므로 오류 분류는 계속 로캘 독립 신호만 사용한다.

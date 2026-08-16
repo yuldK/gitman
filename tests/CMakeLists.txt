@@ -16,6 +16,7 @@ add_executable(gitman_tests
     embedded_assets_tests.cpp
     git_command_builder_tests.cpp
     git_integration_tests.cpp
+    git_remote_query_tests.cpp
     git_repository_provider_tests.cpp
     git_status_parser_tests.cpp
     helpers/git_repository_fixture.cpp

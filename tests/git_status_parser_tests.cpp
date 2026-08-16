@@ -325,6 +325,38 @@ TEST_CASE("Unreadable status output leaves the working tree unknown", "[infrastr
     REQUIRE(bad_states.unparsable_records == 1);
 }
 
+TEST_CASE("Remote names are read one per line", "[infrastructure][git][parser]")
+{
+    const std::vector<std::u8string> names { gitman::parse_git_remote_names(lines_of({ u8"origin", u8"", u8"  upstream  ", u8"fork" })) };
+
+    REQUIRE(names.size() == 3);
+    REQUIRE(names[0] == u8"origin");
+    REQUIRE(names[1] == u8"upstream");
+    REQUIRE(names[2] == u8"fork");
+    REQUIRE(gitman::parse_git_remote_names({}).empty());
+    REQUIRE(gitman::parse_git_remote_names(lines_of({ u8"", u8"   " })).empty());
+}
+
+TEST_CASE("Ahead behind counts are read from one line", "[infrastructure][git][parser]")
+{
+    const gitman::git_ahead_behind counts { gitman::parse_git_ahead_behind(u8"3\t5") };
+    REQUIRE(counts.parsed);
+    // 왼쪽이 로컬, 오른쪽이 원격이다.
+    REQUIRE(counts.ahead == 3);
+    REQUIRE(counts.behind == 5);
+
+    REQUIRE(gitman::parse_git_ahead_behind(u8"0\t0").parsed);
+    REQUIRE(gitman::parse_git_ahead_behind(u8" 12\t34 ").ahead == 12);
+    REQUIRE(gitman::parse_git_ahead_behind(u8"2 7").behind == 7);
+
+    // 형식이 다르면 추측하지 않는다.
+    REQUIRE_FALSE(gitman::parse_git_ahead_behind(u8"").parsed);
+    REQUIRE_FALSE(gitman::parse_git_ahead_behind(u8"3").parsed);
+    REQUIRE_FALSE(gitman::parse_git_ahead_behind(u8"a\tb").parsed);
+    REQUIRE_FALSE(gitman::parse_git_ahead_behind(u8"-1\t2").parsed);
+    REQUIRE_FALSE(gitman::parse_git_ahead_behind(u8"1\t").parsed);
+}
+
 TEST_CASE("Status output without branch headers is not trusted", "[infrastructure][git][parser]")
 {
     const gitman::git_status_summary status { gitman::parse_git_status_porcelain_v2(lines_of({ u8"? a.txt" })) };

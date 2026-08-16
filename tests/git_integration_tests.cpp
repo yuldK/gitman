@@ -1,7 +1,10 @@
+#include "application/process_request.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "helpers/git_repository_fixture.h"
 #include "infrastructure/git_repository_provider.h"
+#include "infrastructure/vcs_command_runner.h"
+#include "infrastructure/vcs_execution_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -34,6 +37,34 @@ namespace {
         fixture.git(repository, { u8"add", u8"-A" });
         fixture.git(repository, { u8"commit", u8"-m", u8"init" });
         return repository;
+    }
+
+    // 커밋 세 개를 담은 bare 원격을 만든다. 네트워크를 쓰지 않는 로컬 경로 원격이다.
+    std::u8string make_published_remote(gitman::testing::git_repository_fixture& fixture)
+    {
+        const std::u8string remote { fixture.make_bare_repository(u8"remote") };
+        const std::u8string source { make_committed_repository(fixture, u8"source") };
+        fixture.git(source, { u8"remote", u8"add", u8"origin", remote });
+        fixture.git(source, { u8"commit", u8"--allow-empty", u8"-m", u8"second" });
+        fixture.git(source, { u8"commit", u8"--allow-empty", u8"-m", u8"third" });
+        fixture.git(source, { u8"push", u8"-u", u8"origin", u8"main" });
+        return remote;
+    }
+
+    std::u8string clone_of(gitman::testing::git_repository_fixture& fixture, const std::u8string_view remote, const std::u8string_view name)
+    {
+        const std::u8string workspace { fixture.make_directory(u8"clones") };
+        fixture.git(workspace, { u8"clone", std::u8string { remote }, std::u8string { name } });
+        return fixture.path_of(std::u8string { u8"clones\\" } + std::u8string { name });
+    }
+
+    // 로컬 조회 뒤 원격 조회까지 수행한다. 실제 카드가 새로 고침에서 하는 순서다.
+    gitman::repository_query_result refresh(gitman::testing::git_repository_fixture& fixture, const std::u8string_view path)
+    {
+        gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+        const gitman::project_definition project { make_project(path) };
+        const gitman::repository_query_result local { provider.query_local(project, {}) };
+        return provider.query_remote(project, local.snapshot, {});
     }
 } // namespace
 
@@ -254,6 +285,139 @@ TEST_CASE("Real paths that are not repositories are separated from missing paths
 
     const gitman::repository_query_result missing { query(fixture, fixture.path_of(u8"absent")) };
     REQUIRE(missing.snapshot.availability == gitman::repository_availability::path_unavailable);
+}
+
+TEST_CASE("A real remote comparison reports the synchronised state", "[integration][git][remote]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_published_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"synced") };
+    REQUIRE(fixture.failures().empty());
+
+    const gitman::repository_query_result result { refresh(fixture, clone) };
+
+    REQUIRE(result.snapshot.sync_state == gitman::remote_sync_state::up_to_date);
+    // 이제는 cache된 ref가 아니라 실제로 확인한 원격이 근거다.
+    REQUIRE(result.snapshot.comparison == gitman::comparison_source::remote);
+    REQUIRE(result.snapshot.comparison_target == u8"origin/main");
+    REQUIRE(result.snapshot.remote_checked_at.has_value());
+    REQUIRE(result.snapshot.ahead_count == 0);
+    REQUIRE(result.snapshot.behind_count == 0);
+    REQUIRE(result.diagnostics.empty());
+}
+
+TEST_CASE("A real remote comparison separates ahead, behind and diverged", "[integration][git][remote]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_published_remote(fixture) };
+
+    const std::u8string ahead { clone_of(fixture, remote, u8"ahead") };
+    fixture.git(ahead, { u8"commit", u8"--allow-empty", u8"-m", u8"local work" });
+
+    // 원격보다 한 커밋 뒤로 되돌려 놓는다. 원격을 건드리지 않고 behind를 만든다.
+    const std::u8string behind { clone_of(fixture, remote, u8"behind") };
+    fixture.git(behind, { u8"reset", u8"--hard", u8"HEAD~1" });
+
+    const std::u8string diverged { clone_of(fixture, remote, u8"diverged") };
+    fixture.git(diverged, { u8"reset", u8"--hard", u8"HEAD~1" });
+    fixture.git(diverged, { u8"commit", u8"--allow-empty", u8"-m", u8"mine" });
+    REQUIRE(fixture.failures().empty());
+
+    const gitman::repository_query_result ahead_result { refresh(fixture, ahead) };
+    REQUIRE(ahead_result.snapshot.sync_state == gitman::remote_sync_state::ahead);
+    REQUIRE(ahead_result.snapshot.ahead_count == 1);
+    REQUIRE(ahead_result.snapshot.behind_count == 0);
+
+    const gitman::repository_query_result behind_result { refresh(fixture, behind) };
+    REQUIRE(behind_result.snapshot.sync_state == gitman::remote_sync_state::behind);
+    REQUIRE(behind_result.snapshot.ahead_count == 0);
+    REQUIRE(behind_result.snapshot.behind_count == 1);
+
+    const gitman::repository_query_result diverged_result { refresh(fixture, diverged) };
+    REQUIRE(diverged_result.snapshot.sync_state == gitman::remote_sync_state::diverged);
+    REQUIRE(diverged_result.snapshot.ahead_count == 1);
+    REQUIRE(diverged_result.snapshot.behind_count == 1);
+}
+
+TEST_CASE("A real repository without remotes is local only", "[integration][git][remote]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string repository { make_committed_repository(fixture, u8"lonely") };
+    REQUIRE(fixture.failures().empty());
+
+    const gitman::repository_query_result result { refresh(fixture, repository) };
+
+    REQUIRE(result.snapshot.sync_state == gitman::remote_sync_state::local_only);
+    REQUIRE(result.snapshot.comparison == gitman::comparison_source::none);
+    REQUIRE_FALSE(result.snapshot.remote_checked_at.has_value());
+}
+
+TEST_CASE("A real branch missing on the remote is not compared locally", "[integration][git][remote]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_published_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"topic") };
+    fixture.git(clone, { u8"checkout", u8"-b", u8"local-only-branch" });
+    REQUIRE(fixture.failures().empty());
+
+    const gitman::repository_query_result result { refresh(fixture, clone) };
+
+    REQUIRE(result.snapshot.sync_state == gitman::remote_sync_state::remote_target_missing);
+    // fetch는 성공했으므로 원격 확인 시각은 남는다.
+    REQUIRE(result.snapshot.remote_checked_at.has_value());
+    REQUIRE(result.snapshot.comparison == gitman::comparison_source::none);
+}
+
+TEST_CASE("A real unreachable remote is reported as offline", "[integration][git][remote]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_published_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"unreachable") };
+    // 닫힌 포트라 DNS 없이 즉시 연결에 실패한다. 실패 문장은 libcurl이 만든다.
+    fixture.git(clone, { u8"remote", u8"set-url", u8"origin", u8"http://127.0.0.1:1/absent.git" });
+    REQUIRE(fixture.failures().empty());
+
+    const gitman::repository_query_result result { refresh(fixture, clone) };
+
+    REQUIRE(result.snapshot.sync_state == gitman::remote_sync_state::offline);
+    REQUIRE(result.has_errors());
+    // 실패해도 직전에 알던 로컬 비교와 작업 트리 상태는 남는다.
+    REQUIRE(result.snapshot.comparison == gitman::comparison_source::local);
+    REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::clean);
+    REQUIRE_FALSE(result.snapshot.remote_checked_at.has_value());
+}
+
+TEST_CASE("Non ASCII text in real Git output reaches the caller unchanged", "[integration][git][encoding]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string repository { make_committed_repository(fixture, u8"encoding") };
+    REQUIRE(fixture.failures().empty());
+
+    // 없는 branch 이름을 그대로 되돌려 주는 명령이다. 로캘을 강제하지 않으므로 문장은
+    // 호스트 설정을 따르지만, 되돌려 주는 이름은 우리가 넘긴 값이라 인코딩 왕복을
+    // 그대로 확인할 수 있다.
+    std::vector<std::u8string> arguments { u8"checkout", u8"없는 브랜치 😀" };
+    const gitman::process_request request {
+        gitman::make_vcs_process_request(gitman::repository_kind::git, fixture.tool().executable, repository, std::move(arguments), gitman::vcs_command_class::local_query),
+    };
+    const gitman::vcs_command_result result { gitman::run_vcs_command(fixture.runner(), request, {}) };
+
+    REQUIRE_FALSE(result.succeeded());
+    const std::u8string text { result.standard_error_text() };
+    // `active_code_page_fallback`은 유효한 UTF-8 레코드를 건드리지 않는다.
+    REQUIRE(text.find(u8"없는 브랜치 😀") != std::u8string::npos);
 }
 
 TEST_CASE("Local queries of a real repository never touch the network", "[integration][git]")

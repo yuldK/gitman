@@ -268,13 +268,18 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 
 - `S3-P0`: 2026-08-16 사용자 승인 완료. 체크포인트 17개 유지와 활성 code page fallback의 단계 3 포함을 함께 승인했다.
 - `S3-D1-CODE`: 값 model, 요청 검증, runner/sink 계약, 취소 primitive와 `gitman_process` target 구현 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d1-code.md`에 기록했다.
-- `S3-D1-TEST`: 계약 test 24개 작성 완료, 양 toolchain 전체 CTest 78/78 통과, 발견 production 결함 없음, 사용자 검수 대기. 결과는 `docs/verification/2026-08-16-stage-3-d1-test.md`에 기록했다.
+- `S3-D1-TEST`: 계약 test 24개 작성 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d1-test.md`에 기록했다.
+- `S3-D1-FIX`: 발견 production 결함이 없어 사용자 확인에 따라 생략 완료
+- `S3-D2-CODE`: 인자 인용, `CreateProcessW` 시작, 작업 디렉터리와 환경, stdin `NUL`, 종료 코드와 시작 실패 구현 후 1차 검수에서 두 가지 수정 지시를 받았다. wait 실패 시 자식 정리와 `internal_error` 도입, 출력 pipe 및 reader 스레드 포함을 반영해 재제출했고 사용자 검수 대기 중이다. 결과는 `docs/verification/2026-08-16-stage-3-d2-code.md`에 기록했다.
+- 범위 이동: 사용자 지시로 출력 pipe와 줄 단위 레코드가 `S3-D2`로 옮겨졌다. `S3-D3`에는 활성 code page fallback transcoder와 출력 파이프라인 단위 test 보강이 남는다. 체크포인트 수는 17개를 유지한다.
 
 ## 8. 테스트 계획
 
 ### 8.1 테스트 도우미 실행 파일
 
 실제 Git/SVN에 의존하면 결정적 검증이 불가능하고 현재 호스트에는 SVN이 없다. 따라서 `S3-D2-TEST`에서 콘솔 subsystem 도우미 `gitman_process_test_child`를 추가한다.
+
+도우미는 반드시 표준 `wmain` argv를 사용하는 실행 파일이어야 한다. `cmd.exe`는 `CommandLineToArgvW` 규칙이 아닌 자체 따옴표 처리를 하므로 test 자식으로 쓰지 않는다. 근거는 `docs/verification/2026-08-16-stage-3-d2-code.md` 6장에 있다.
 
 | 도우미 명령 | 동작 |
 | --- | --- |

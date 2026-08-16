@@ -88,9 +88,19 @@ add_library(gitman_process STATIC
     application/process_cancellation.h
     application/process_request.cpp
     application/process_request.h
-    application/process_runner.h)
+    application/process_runner.h
+    infrastructure/command_line_builder.cpp
+    infrastructure/command_line_builder.h
+    infrastructure/process_output_pipeline.cpp
+    infrastructure/process_output_pipeline.h
+    platform/win32/win32_process_runner.cpp
+    platform/win32/win32_process_runner.h)
 target_include_directories(gitman_process PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_process PUBLIC gitman_domain)
+target_link_libraries(gitman_process
+    PUBLIC
+        gitman_domain
+    PRIVATE
+        gitman_win32_platform)
 
 add_library(gitman_core STATIC
     application/application_options.cpp

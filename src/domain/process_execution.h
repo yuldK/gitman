@@ -24,6 +24,9 @@ namespace gitman {
         timed_out,
         cancelled,
         invalid_request,
+        // 프로세스는 시작했지만 대기, 출력 수집 또는 종료 코드 확인이 실패해 결과를
+        // 신뢰할 수 없는 경우다. 이때 자식은 정리된다.
+        internal_error,
     };
 
     // 출력 레코드는 줄 단위이며 카드 로그가 그대로 표시할 수 있는 UTF-8 및 마스킹 완료 값이다.

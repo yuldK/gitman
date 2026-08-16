@@ -44,6 +44,8 @@ namespace gitman {
             return u8"cancelled";
         case process_completion::invalid_request:
             return u8"invalid_request";
+        case process_completion::internal_error:
+            return u8"internal_error";
         }
         return u8"unknown";
     }

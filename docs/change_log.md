@@ -1,5 +1,50 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D2-CODE` 수정 재제출
+
+### 사용자 지시
+
+- `S3-D2-CODE` 1차 제출을 수정 후 재검수로 판정하고 두 항목을 지시했다.
+- `WaitForSingleObject` 실패 시 자식을 정리한다.
+- `S3-D3`의 출력 pipe와 reader 스레드를 `S3-D2`에 포함한다.
+
+### 반영 내용
+
+- `process_completion::internal_error`를 추가해 프로세스는 시작했지만 결과를 신뢰할 수 없는 경로를 구분했다.
+- wait 실패, reader 스레드 생성 실패, 종료 코드 확인 실패에서 자식을 `TerminateProcess`로 정리하고 `internal_error`를 반환하도록 했다.
+- stdout과 stderr에 익명 pipe를 연결하고 쓰기 end만 상속시키며 시작 직후 부모 사본을 닫아 EOF를 관측하게 했다.
+- pipe별 전용 reader 스레드를 만들고 `run` 반환 전에 항상 join하도록 했다.
+- `infrastructure/process_output_pipeline.*`에 줄 단위 레코드, `\r\n` 및 단독 `\r` 처리, 강제 분할, UTF-8 경계 보정, 잘못된 byte의 U+FFFD 대체, 스트림별 캡처 상한과 절단 표시를 구현했다.
+- `output_collector`가 mutex 아래에서 실행 단위 sequence를 부여하고 sink 예외를 흡수한 뒤 진단으로 보고하게 했다.
+- 절단 발생 시 warning 진단을 남기고 실행 자체는 실패로 보지 않도록 했다.
+- 저장소 밖 임시 프로그램으로 출력 34개 항목을 확인했다. 8,000,028 byte 출력이 교착 없이 131,148 레코드로 수집되고, chunk 경계에 걸친 한글 문자가 온전하며, 8 byte 상한에서 `continued` 분할이 동작한다.
+- 구현 중 강제 분할 경계 계산 오류를 발견해 같은 구간에서 고쳤다.
+- 범위 이동에 따라 `S3-D3`은 활성 code page fallback transcoder와 파이프라인 단위 test 보강만 담당하도록 계획을 갱신했다.
+
+### 이전 제출 내용
+
+- `infrastructure/command_line_builder.*`에 `CommandLineToArgvW` 규칙 인자 인용과 명령줄 조립을 구현했다.
+- `platform/win32/win32_process_runner.*`에 `lpApplicationName` 기반 절대 경로 실행, 셸 미사용 시작, 작업 디렉터리 적용을 구현했다.
+- 부모 환경 상속과 override 설정 및 삭제, 대소문자 무시 이름 비교, 정렬된 환경 block 생성을 구현했다.
+- stdin을 항상 `NUL`에 연결해 대화형 프롬프트가 즉시 EOF가 되게 했다.
+- `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`로 표준 handle 세 개만 상속시키고 시작 직후 부모 사본을 닫았다.
+- 종료 코드를 bit 값 그대로 보존하고 시작 실패를 `start_failed`와 Win32 error code, 구조화 진단으로 반환했다.
+- 실행용 명령줄과 기록용 `masked_command_line`을 분리해 `S3-D5-CODE`의 마스킹이 실행 인자에 영향을 주지 않게 했다.
+- `gitman_process` target에 두 source를 넣고 `gitman_win32_platform`을 PRIVATE으로 링크했다. static library 순환 참조를 피하려고 runner의 target만 계획과 다르게 정했고 파일 위치는 계획대로 유지했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest 78/78, `/analyze` 무경고, aggregate format/style이 통과했다.
+- 저장소 밖 임시 프로그램으로 21개 시작 계약 항목을 수동 확인하고 삭제했다. 결과는 `docs/verification/2026-08-16-stage-3-d2-code.md`에 기록했다.
+- `cmd.exe`가 argv 규칙을 쓰지 않아 test 자식으로 부적합함을 확인하고 계획 8.1에 도우미 요건을 명시했다.
+
+### 영향 요구사항
+
+- REQ-006, REQ-009, REQ-010, REQ-011, REQ-012, REQ-013
+- NFR-005, NFR-007, NFR-008
+
+### 다음 작업 제한
+
+- `S3-D2-CODE` 검수 전에는 도우미 실행 파일 target과 test source를 추가하지 않는다.
+- 출력 수집, timeout 및 취소, 마스킹은 각각 `S3-D3-CODE`, `S3-D4-CODE`, `S3-D5-CODE` 승인 후에만 구현한다.
+
 ## 2026-08-16 - 단계 3 `S3-D1-TEST` 계약 test 작성과 format 기준선 정렬
 
 ### 사용자 지시

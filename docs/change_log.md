@@ -1,5 +1,35 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 최종 자동 검증
+
+### 사용자 지시
+
+- `S3-D5-TEST`를 승인하고 무결함 `S3-D5-FIX` 생략을 확인한 뒤 `S3-V1`을 진행한다.
+
+### 반영 내용
+
+- `build/vs2022`를 삭제하고 재configure한 뒤 Debug build와 전체 CTest 135/135가 통과했다.
+- VS2022 Release build와 CTest 135/135, VS2026 Debug build와 CTest 135/135가 통과했다.
+- VS2022 `/analyze` build가 경고 없이 통과했고 aggregate `gitman_format_check`가 152개 파일에서 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- 4스레드 × 25회, 합계 100개 프로세스 동시 실행 stress를 3회 수행했다. 실패 0건, sequence 역전 0건이며 레코드 수 112,525가 매번 같았다.
+- handle 증가폭이 매번 고정된 6개이고 반복해도 누적되지 않아 실행별 누수가 없음을 확인했다.
+- Release install 결과가 `bin/gitman.exe` 한 파일(6,255,616 byte)이며 Windows 시스템 DLL 외 의존성이 없음을 확인했다.
+- 설치본의 CPU, auto, 강제 fallback과 Direct3D smoke test가 모두 종료 코드 0으로 통과했다.
+- test 전용 도우미 target이 install tree에 포함되지 않음을 확인했다.
+- 실행 파일 크기가 단계 2와 같은 이유가 `gitman_process`를 아직 exe가 링크하지 않기 때문임을 기록했다.
+- 결과를 `docs/verification/2026-08-16-stage-3.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-006~REQ-013
+- NFR-005~NFR-009, NFR-011
+
+### 다음 작업 제한
+
+- `S3-V1` 자동 완료 조건은 충족했으며 단계 3 최종 사용자 검수 대기 상태다.
+- 사용자 최종 승인 전에는 단계 4 Git 및 SVN provider를 시작하지 않는다.
+
 ## 2026-08-16 - 단계 3 `S3-D5-TEST` 마스킹 test 작성
 
 ### 사용자 지시

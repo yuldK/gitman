@@ -4,8 +4,8 @@
 
 - 작성일: 2026-08-16
 - 대상: 구현 단계 3
-- 현재 상태: `S3-P0` 계획 사용자 검수 대기
-- 현재 검수 게이트: 계획 승인
+- 현재 상태: `S3-V1` 전체 자동 검증 완료, 단계 3 최종 사용자 승인 대기
+- 현재 검수 게이트: 단계 3 최종 검수
 - 관련 요구사항: REQ-006, REQ-007, REQ-008, REQ-009~REQ-013, NFR-005~NFR-009
 - 상위 문서: `docs/plan.md` 3.4, 3.9, 8장 단계 3, `docs/decisions/ADR-003-vcs-runtime-policy.md`, `docs/decisions/ADR-004-threading-and-state-ownership.md`
 - 선행 조건: 단계 2 최종 사용자 승인 완료 (2026-08-16 사용자가 단계 3 진행을 지시함)
@@ -280,7 +280,9 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 - `S3-D4-TEST`: 도우미 명령 3개와 timeout, 취소, 손자 종료, handle 누수 test 7개 작성 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d4-test.md`에 기록했다.
 - `S3-D4-FIX`: 발견 production 결함이 없어 사용자 확인에 따라 생략 완료
 - `S3-D5-CODE`: 비밀 마스킹 규칙과 출력 및 명령줄 적용 구현 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d5-code.md`에 기록했다.
-- `S3-D5-TEST`: 마스킹 규칙과 end-to-end 적용 test 10개 작성 완료, 양 toolchain 전체 CTest 135/135 통과, 발견 production 결함 없음, 사용자 검수 대기. 결과는 `docs/verification/2026-08-16-stage-3-d5-test.md`에 기록했다.
+- `S3-D5-TEST`: 마스킹 규칙과 end-to-end 적용 test 10개 작성 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d5-test.md`에 기록했다.
+- `S3-D5-FIX`: 발견 production 결함이 없어 사용자 확인에 따라 생략 완료
+- `S3-V1`: 삭제 후 재configure를 포함한 VS2022 Debug/Release, VS2026 Debug, `/analyze`, 전체 CTest 135/135, 3회 반복, 동시 실행 stress 3회, aggregate format/style, install과 설치본 smoke 및 PE 의존성 검증 완료. 단계 3 최종 사용자 승인 대기. 결과는 `docs/verification/2026-08-16-stage-3.md`에 기록했다.
 - 범위 이동: 사용자 지시로 출력 pipe와 줄 단위 레코드가 `S3-D2`로 옮겨졌다. `S3-D3`에는 활성 code page fallback transcoder 구현과 연결이 남는다. 체크포인트 수는 17개를 유지한다.
 
 ## 8. 테스트 계획

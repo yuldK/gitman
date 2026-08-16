@@ -5,13 +5,13 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 3 프로세스 실행 계층
-- 현재 체크포인트: `S3-D5-TEST` 작성 완료, 사용자 검수 대기 (`S3-P0`와 `S3-D1`~`S3-D4` 구간, `S3-D5-CODE` 승인 완료)
-- 다음 허용 작업: 무결함 `S3-D5-FIX` 생략 확인 후 `S3-V1` 단계 3 최종 검증만 수행하고 다시 보고
+- 현재 체크포인트: `S3-V1` 전체 자동 검증 완료, 단계 3 최종 사용자 승인 대기
+- 다음 허용 작업: 단계 3 최종 승인 전에는 상태 문서 보정과 read-only 검토만 허용
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, test와 install 구성
 - 기준 문서: `docs/stage-3-plan.md`
 - 직전 단계 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-3-d5-test.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-3-d5-code.md`
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-3.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-3-d5-test.md`
 - 최근 검증 기록: `docs/verification/2026-08-16-stage-2.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 단계 2처럼 여러 체크포인트를 한 번에 자동 진행하지 않는다.
 
@@ -101,12 +101,13 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 ## 7. 아직 하지 않은 작업
 
-- 단계 3 프로세스 실행 계층 구현 (`S3-P0` 계획 승인 대기)
-- Git/SVN command 조립과 출력 파싱 (단계 4)
+- 단계 3 최종 사용자 승인
+- Git/SVN 실행 파일 탐색, command 조립과 출력 파싱 (단계 4)
 - 탐색 및 등록 (단계 5), 실제 카드 UI와 로그 UI (단계 6~7)
 - thread message API 상세 설계와 구현 (단계 6 이전 별도 승인)
+- 프로세스 실행 계층을 실행 파일에 링크하는 작업. 현재 `gitman_process`는 library와 test로만 검증됐고 단계 4에서 provider가 사용할 때 exe에 들어간다.
 
-따라서 후속 작업은 단계 3 계획의 활성 체크포인트 하나만 진행하고 다시 검수를 요청해야 한다.
+따라서 후속 작업은 단계 3 최종 승인 후 단계 4 계획부터 시작하며, 이후에도 체크포인트 하나씩 진행하고 다시 검수를 요청해야 한다.
 
 ## 8. 단계 3 영속 세션 메모리
 
@@ -114,14 +115,16 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S3-D5-TEST` |
-| 제출 내용 | 마스킹 규칙 단위 test 9개와 runner end-to-end 적용 test 1개 |
-| production code | 이번 구간 변경 없음 |
-| test code 및 fixture | `tests/secret_masking_tests.cpp`, `tests/win32_process_runner_tests.cpp`, `tests/CMakeLists.txt` |
-| 검증 | VS2022 Debug/Release와 VS2026 Debug 전체 CTest 각각 135/135, VS2022 `/analyze` 무경고, aggregate format/style, `git diff --check` 통과 |
-| 발견 결함 | 없음. 10개 test가 첫 실행에서 모두 통과했다. |
-| 승인 대기 | `S3-D5-TEST` 검수와 무결함 `S3-D5-FIX` 생략 확인 |
-| 승인 뒤 다음 작업 | `S3-V1` 단계 3 최종 검증만 허용 |
+| 계획 ID | `S3-V1` |
+| 제출 내용 | 단계 3 전체 build/test/analyze/install 검증과 최종 검증 기록 |
+| production code | D1 계약부터 D5 마스킹까지 모두 승인 완료 |
+| test code 및 fixture | D1~D5 test 승인 완료. 양 toolchain 전체 CTest 각각 135/135 |
+| bug 수정 | 모든 FIX 체크포인트는 production 결함이 없어 생략 완료 |
+| stress | 4스레드 × 25회 = 100 프로세스 동시 실행을 3회 반복. 실패 0, sequence 역전 0, handle 누적 증가 없음 |
+| install | `bin/gitman.exe` 한 파일, 6,255,616 byte, 설치본 renderer smoke 4/4 통과 |
+| 검증 | 삭제 후 재configure, VS2022 Debug/Release, `/analyze`, VS2026 Debug, 전체 suite 3회 반복, aggregate format/style, PE 의존성 검사 통과 |
+| 승인 대기 | 단계 3 최종 사용자 검수 |
+| 승인 뒤 다음 작업 | 단계 4 Git 및 SVN provider 계획과 첫 체크포인트만 허용 |
 
 ### 8.2 단계 3 진행 원장
 
@@ -141,9 +144,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S3-D4-TEST` timeout과 취소 test | 승인 완료 | 도우미 명령 3개와 test 7개, 양 toolchain 125/125 |
 | `S3-D4-FIX` bug 수정 | 생략 완료 | 발견 production 결함 없음 |
 | `S3-D5-CODE` 마스킹 production code | 승인 완료 | `docs/verification/2026-08-16-stage-3-d5-code.md` |
-| `S3-D5-TEST` 마스킹 test | 검수 대기 | test 10개, 양 toolchain 135/135 |
-| `S3-D5-FIX` bug 수정 | 생략 후보 | 발견 production 결함 없음 |
-| `S3-V1` 단계 3 최종 검증 | 시작 전 | 전체 build/test/analyze/install과 동시 실행 stress |
+| `S3-D5-TEST` 마스킹 test | 승인 완료 | test 10개, 양 toolchain 135/135 |
+| `S3-D5-FIX` bug 수정 | 생략 완료 | 발견 production 결함 없음 |
+| `S3-V1` 단계 3 최종 검증 | 자동 검증 완료 | 전체 matrix 통과, 단계 3 최종 사용자 승인 대기 |
 | `S3-V1` 단계 3 최종 검증 | 시작 전 | 전체 build/test/analyze/install과 동시 실행 stress |
 
 ### 8.3 단계 2 진행 원장 (완료)

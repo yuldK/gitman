@@ -27,6 +27,8 @@
 | 2026-08-14 | 프로젝트 목록을 고정 config가 아닌 `.verison-list` 작업공간 문서 및 연결 프로그램 대상으로 변경 | `docs/stage-2-plan.md`, 단계 8 | REQ-001, REQ-016 |
 | 2026-08-16 | `S2-D5-TEST` 승인과 무결함 fix 생략 후 단계 2 전체 검증 진행 | `docs/verification/2026-08-16-stage-2.md` | REQ-001, REQ-009~REQ-013, REQ-016 |
 | 2026-08-16 | 단계 2 승인 후 단계 3 진행. 계획·작업·테스트 중간마다 진행 보고와 검수를 요구 | `docs/stage-3-plan.md`, 단계 3 | REQ-006, REQ-008, REQ-009~REQ-013 |
+| 2026-08-16 | `S3-D2-CODE` 1차 검수에서 wait 실패 시 자식 정리와 출력 pipe의 `S3-D2` 포함을 지시 | `docs/verification/2026-08-16-stage-3-d2-code.md` | REQ-006, REQ-008 |
+| 2026-08-16 | clang-format과 수동 줄바꿈 규칙 충돌을 formatter 결과 수용으로 처리 | `docs/code_style.md` 2장 | REQ-010 |
 
 ### 1.2 단계 진행 상태
 
@@ -35,7 +37,7 @@
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
 | 단계 2: 도메인과 설정 저장소 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-2.md` |
-| 단계 3: 프로세스 실행 계층 | `S3-D5-CODE` 승인 완료, `S3-D5-TEST` 검수 대기 | `docs/verification/2026-08-16-stage-3-d5-test.md` |
+| 단계 3: 프로세스 실행 계층 | `S3-V1` 자동 검증 완료 - 단계 3 최종 검수 대기 | `docs/verification/2026-08-16-stage-3.md` |
 | 단계 4~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
@@ -445,7 +447,7 @@ gitman/
 
 ### 단계 3: 프로세스 실행 계층
 
-상태: `S3-P0` 계획과 `S3-D1`~`S3-D4` 구간, `S3-D5-CODE`를 승인받고 `S3-D5-TEST` 마스킹 test 10개를 작성했다. 남은 작업은 `S3-V1` 최종 검증이다. 단계 2와 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지한다.
+상태: 모든 체크포인트 승인과 `S3-V1` 전체 자동 검증을 완료했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 135/135, 전체 suite 3회 반복, 100개 프로세스 동시 실행 stress 3회, aggregate format/style, 단일 exe install과 설치본 smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-3.md`에 기록하며, 단계 3 최종 사용자 승인 전에는 단계 4를 시작하지 않는다. 단계 2와 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지한다.
 
 - 셸을 거치지 않는 인자 배열 실행을 구현한다.
 - 출력 스트리밍, 종료 코드, 제한 시간, 취소, 비밀 마스킹을 구현한다.

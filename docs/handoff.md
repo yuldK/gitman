@@ -5,13 +5,13 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-P0` 구현 계획 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D1-CODE` 계약 production code 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-P0` 승인 후 `S4-D1-CODE` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D1-CODE` 승인 후 `S4-D1-TEST` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: 없음 (`S4-P0`은 문서 구간)
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d1-code.md`
 - 직전 검증 기록: `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
 - 최근 검증 기록: `docs/verification/2026-08-16-stage-3.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
@@ -116,23 +116,23 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-P0` |
-| 제출 내용 | `docs/stage-4-plan.md` 단계 4 구현 계획과 설계 제안 |
-| production code | 없음. 이번 구간은 문서만 작성했다. |
-| test code 및 fixture | 없음 |
+| 계획 ID | `S4-D1-CODE` |
+| 제출 내용 | 도메인 확장, 문서 `settings` 스키마와 저장, provider/registry/probe 계약, 도구 탐색과 버전 비교, 실행 정책, 오류 분류기, `gitman_vcs` target |
+| production code | 신규 24개 파일과 기존 7개 파일 수정. 상세는 `docs/verification/2026-08-16-stage-4-d1-code.md` 4장 |
+| test code 및 fixture | 없음. 체크포인트 분리 규칙에 따라 `S4-D1-TEST`에서 작성한다. |
 | bug 수정 | 없음 |
-| 검증 | 문서 구간이므로 build와 test를 변경하지 않았다. 직전 HEAD 기준 양 toolchain 전체 CTest 139/139가 마지막 실측값이다. |
-| 1차 검수 결정 | SVN XML 미사용, SVN CLI 미설치, `authentication_required` 추가, 로캘 미강제, 문서 `settings` 도입을 사용자가 확정했고 계획서에 반영했다. |
-| 승인 대기 | 개정한 `S4-P0` 계획 검수. 남은 항목은 timeout 값, `-c gc.auto=0`, dirty 기본 차단, 체크포인트 20개 구성, 파일 배치, `settings` 키 이름이며 이견이 없으면 계획대로 진행한다. |
-| 승인 뒤 다음 작업 | `S4-D1-CODE` 한 구간만 허용 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 139/139, `/analyze` 무경고, aggregate format/style 통과. 임시 프로그램 수동 확인 69/69 |
+| 발견 결함 | 없음 |
+| 승인 대기 | `S4-D1-CODE` 코드 검수 |
+| 승인 뒤 다음 작업 | `S4-D1-TEST` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
-| `S4-P0` 계획 | 1차 검수 결정 반영 후 재제출, 검수 대기 | `docs/stage-4-plan.md` 10.1에 확정 사항 기록 |
-| `S4-D1-CODE` 계약과 도구 발견 | 시작 전 | 문서 `settings` 스키마 확장을 포함한다. 승인 전 착수 금지 |
-| `S4-D1-TEST` | 시작 전 | |
+| `S4-P0` 계획 | 승인 완료 | 1차 검수 결정을 반영해 개정. `docs/stage-4-plan.md` 10.1에 확정 사항 기록 |
+| `S4-D1-CODE` 계약과 도구 발견 | 제출, 검수 대기 | `docs/verification/2026-08-16-stage-4-d1-code.md` |
+| `S4-D1-TEST` | 시작 전 | 승인 전 착수 금지 |
 | `S4-D1-FIX` | 시작 전 | |
 | `S4-D2-CODE` Git 로컬 상태 | 시작 전 | |
 | `S4-D2-TEST` | 시작 전 | |
@@ -213,8 +213,11 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - SVN은 XML을 쓰지 않는다. `info --show-item`, 비verbose `status`, `svnversion` 조합으로 값을 얻으므로 XML 파서 dependency가 없고 ADR-002와 `vcpkg.json`은 변경하지 않는다.
 - 로캘을 강제하지 않기로 했으므로 Git/SVN 오류 메시지가 시스템 언어로 나온다. 오류 분류는 SVN `E<숫자>` 코드, libcurl 및 OpenSSH 원문 문자열, HTTP 상태 번호 같은 로캘 독립 신호만 사용해야 한다. 번역되는 문장으로 분류하면 한국어 환경에서 오분류가 발생한다.
 - 모든 Git/SVN 실행은 `active_code_page_fallback` 인코딩 모드를 쓴다. 한국어 Git 출력의 실제 인코딩 실측은 `S4-D3-TEST`에서 기록한다.
-- 프로젝트 문서에 `settings`가 추가된다. 스키마 버전은 1을 유지하고 optional이며, `S4-D1-CODE`가 단계 2의 parser와 store를 함께 수정한다. 기존 fixture 6종 회귀 확인이 필요하다.
+- 프로젝트 문서에 `settings`를 추가했다. 스키마 버전은 1을 유지하고 optional이며, `S4-D1-CODE`가 단계 2의 parser와 store를 함께 수정했다. 기존 fixture 6종 회귀 test는 `S4-D1-TEST`에서 추가한다.
 - REQ-017을 추가했다. 환경설정 화면 자체는 단계 6~7 범위다.
+- `is_absolute_windows_path`가 `application/process_request`에서 `domain/path_syntax`로 옮겨졌다. `process_request.h`가 새 헤더를 include하므로 기존 호출자는 그대로 동작한다.
+- `platform/win32/win32_vcs_file_probe.*`는 파일 위치는 계획대로지만 CMake target은 `gitman_win32_platform`이 아니라 `gitman_vcs`다. 단계 3의 `win32_process_runner`와 같은 이유로 계층 방향을 지키기 위한 선택이다.
+- 단계 4의 provider는 아직 없다. `S4-D1-CODE`는 계약과 도구 조사까지이며 Git/SVN 명령 조립은 `S4-D2-CODE` 이후다.
 - 로컬 NTFS는 속성 조회를 부모 디렉터리 메타데이터로 처리해 deny ACE로도 `GetFileAttributesW`를 실패시킬 수 없다(호스트 실측). `inaccessible` 분기는 `project_path_state_from_error` 매핑 test로 검증한다.
 - `gitman_workspace`는 Win32 platform에 링크하지 않으며 경로 해석은 `project_path_resolver` 주입으로만 사용한다. 단계 6 조립 시 `win32::make_project_path_resolver()`를 주입해야 한다.
 - Catch2 test 전체에 CTest TIMEOUT 120초가 걸려 있다. 이를 넘는 통합 test는 개별 상향이 필요하다.

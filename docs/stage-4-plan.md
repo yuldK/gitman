@@ -649,6 +649,11 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 
 `S4-D5`와 `S4-D6`은 각각 update와 switch로 크기가 크다. 반대로 체크포인트 수를 줄이길 원하면 `S4-D3`을 `S4-D2`에 합쳐 17개로 줄일 수 있다. 다만 remote 판정은 단계 4에서 가장 규칙이 많은 부분이라 분리를 권장한다.
 
+## 10.3 현재 진행 상태
+
+- `S4-P0`: 2026-08-16 사용자 승인 완료. 1차 검수에서 SVN XML 미사용, SVN CLI 미설치, `authentication_required` 추가, 로캘 미강제, 문서 `settings` 도입을 확정하고 계획서에 반영했다. 이후 "모든 VCS가 없는 환경도 상정해야 한다"는 지시를 받아 `S4-D1-CODE`에 반영했다.
+- `S4-D1-CODE`: 도메인 확장, 문서 `settings` 스키마와 저장, provider/registry/probe 계약, 도구 탐색과 버전 비교, 실행 정책, 오류 분류기와 `gitman_vcs` target 구현 완료, 사용자 검수 대기. 결과는 `docs/verification/2026-08-16-stage-4-d1-code.md`에 기록했다.
+
 ## 11. 미결정 항목
 
 - 저장소 종류 자동 판정에서 Git과 SVN 메타데이터가 동시에 발견되는 비정상 상황의 표시 방식. `vcs_hint`가 `automatic`일 때만 문제가 되며 `S4-D1-CODE`에서 확정한다.

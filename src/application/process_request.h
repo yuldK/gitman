@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/diagnostic.h"
+#include "domain/path_syntax.h"
 
 #include <chrono>
 #include <cstddef>
@@ -53,6 +54,5 @@ namespace gitman {
 
     // 요청 값만으로 판정할 수 있는 오류를 반환한다. filesystem 조회는 하지 않는다.
     [[nodiscard]] std::vector<diagnostic> validate_process_request(const process_request& request);
-    [[nodiscard]] bool is_absolute_windows_path(std::u8string_view path) noexcept;
     [[nodiscard]] std::u8string_view process_text_encoding_name(process_text_encoding encoding) noexcept;
 } // namespace gitman

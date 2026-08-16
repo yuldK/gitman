@@ -46,12 +46,18 @@ add_library(gitman_domain STATIC
     domain/diagnostic.h
     domain/operation.cpp
     domain/operation.h
+    domain/path_syntax.cpp
+    domain/path_syntax.h
     domain/process_execution.cpp
     domain/process_execution.h
     domain/project.cpp
     domain/project.h
     domain/repository_snapshot.cpp
-    domain/repository_snapshot.h)
+    domain/repository_snapshot.h
+    domain/vcs_operation.cpp
+    domain/vcs_operation.h
+    domain/vcs_tool.cpp
+    domain/vcs_tool.h)
 target_include_directories(gitman_domain PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_domain PUBLIC gitman_project_options)
 
@@ -106,6 +112,35 @@ target_include_directories(gitman_process PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_process
     PUBLIC
         gitman_domain
+    PRIVATE
+        gitman_win32_platform)
+
+# Git/SVN 고유 지식 계층이다. provider는 주입받은 `process_runner`와 `vcs_file_probe`만
+#사용하므로 OS API를 직접 호출하지 않는다. Win32 probe 구현은 단계 3의 runner와 같은
+# 이유로 platform target이 아니라 이 target에 두어 static library 순환을 피한다.
+add_library(gitman_vcs STATIC
+    application/repository_provider.cpp
+    application/repository_provider.h
+    application/vcs_file_probe.h
+    application/vcs_tool_registry.cpp
+    application/vcs_tool_registry.h
+    infrastructure/vcs_command_runner.cpp
+    infrastructure/vcs_command_runner.h
+    infrastructure/vcs_error_classifier.cpp
+    infrastructure/vcs_error_classifier.h
+    infrastructure/vcs_execution_policy.cpp
+    infrastructure/vcs_execution_policy.h
+    infrastructure/vcs_tool_discovery.cpp
+    infrastructure/vcs_tool_discovery.h
+    infrastructure/vcs_version.cpp
+    infrastructure/vcs_version.h
+    platform/win32/win32_vcs_file_probe.cpp
+    platform/win32/win32_vcs_file_probe.h)
+target_include_directories(gitman_vcs PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
+target_link_libraries(gitman_vcs
+    PUBLIC
+        gitman_domain
+        gitman_process
     PRIVATE
         gitman_win32_platform)
 

@@ -91,6 +91,28 @@ namespace gitman {
             return u8"process_cancelled";
         case diagnostic_code::process_output_truncated:
             return u8"process_output_truncated";
+        case diagnostic_code::vcs_tool_not_found:
+            return u8"vcs_tool_not_found";
+        case diagnostic_code::vcs_tool_too_old:
+            return u8"vcs_tool_too_old";
+        case diagnostic_code::vcs_tool_version_unreadable:
+            return u8"vcs_tool_version_unreadable";
+        case diagnostic_code::vcs_tool_path_invalid:
+            return u8"vcs_tool_path_invalid";
+        case diagnostic_code::vcs_command_failed:
+            return u8"vcs_command_failed";
+        case diagnostic_code::vcs_output_unparsable:
+            return u8"vcs_output_unparsable";
+        case diagnostic_code::authentication_required:
+            return u8"authentication_required";
+        case diagnostic_code::remote_unreachable:
+            return u8"remote_unreachable";
+        case diagnostic_code::repository_not_found:
+            return u8"repository_not_found";
+        case diagnostic_code::update_blocked:
+            return u8"update_blocked";
+        case diagnostic_code::switch_target_rejected:
+            return u8"switch_target_rejected";
         }
         return u8"unknown";
     }

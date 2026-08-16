@@ -52,6 +52,17 @@ namespace gitman {
         process_timed_out,
         process_cancelled,
         process_output_truncated,
+        vcs_tool_not_found,
+        vcs_tool_too_old,
+        vcs_tool_version_unreadable,
+        vcs_tool_path_invalid,
+        vcs_command_failed,
+        vcs_output_unparsable,
+        authentication_required,
+        remote_unreachable,
+        repository_not_found,
+        update_blocked,
+        switch_target_rejected,
     };
 
     struct diagnostic_source

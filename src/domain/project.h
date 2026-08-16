@@ -52,10 +52,24 @@ namespace gitman {
         std::vector<std::u8string> svn_switch_targets {};
     };
 
+    // 문서 수준 환경설정이다. `.verison-list`의 optional `settings` object에 대응하며
+    // 값이 없으면 전부 기본값(자동 탐색)이다. 후속 단계가 항목을 계속 추가한다.
+    struct workspace_settings
+    {
+        // 빈 값은 "지정하지 않음"이며 자동 탐색으로 간다. 값이 있으면 절대 경로여야
+        // 하고, 그 경로만 사용한다. 실행할 수 없어도 자동 탐색으로 물러서지 않는다.
+        std::u8string git_executable {};
+        std::u8string svn_executable {};
+
+        [[nodiscard]] bool operator==(const workspace_settings&) const noexcept = default;
+        [[nodiscard]] bool is_default() const noexcept;
+    };
+
     struct workspace_document
     {
         std::int32_t schema_version { current_workspace_schema_version };
         std::u8string document_path {};
+        workspace_settings settings {};
         std::vector<project_definition> projects {};
     };
 

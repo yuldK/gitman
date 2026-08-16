@@ -1,6 +1,11 @@
 #include "domain/project.h"
 
 namespace gitman {
+    bool workspace_settings::is_default() const noexcept
+    {
+        return git_executable.empty() && svn_executable.empty();
+    }
+
     std::optional<vcs_hint> parse_vcs_hint(const std::u8string_view value) noexcept
     {
         if (value == u8"auto")

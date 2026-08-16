@@ -82,6 +82,31 @@ namespace gitman {
                 value.erase("svn_switch_targets");
         }
 
+        // 기존 `settings` object를 template으로 삼아 알 수 없는 키를 보존한다. 문서에
+        // 없었고 값도 기본값이면 필드 자체를 만들지 않아 기존 문서 형태를 바꾸지 않는다.
+        void write_settings(json& root, const workspace_settings& settings)
+        {
+            const auto existing { root.find("settings") };
+            const bool had_settings { existing != root.end() && existing->is_object() };
+            if (had_settings == false && settings.is_default())
+            {
+                if (existing != root.end())
+                    root.erase("settings");
+                return;
+            }
+
+            json value { had_settings ? *existing : json::object() };
+            const bool had_git { value.contains("git_executable") };
+            const bool had_svn { value.contains("svn_executable") };
+
+            if (had_git || settings.git_executable.empty() == false)
+                value["git_executable"] = as_string(settings.git_executable);
+            if (had_svn || settings.svn_executable.empty() == false)
+                value["svn_executable"] = as_string(settings.svn_executable);
+
+            root["settings"] = std::move(value);
+        }
+
         json project_json(json value, const project_definition& project)
         {
             if (value.is_object() == false)
@@ -155,6 +180,7 @@ namespace gitman {
             }
 
             root["schema_version"] = document.schema_version;
+            write_settings(root, document.settings);
             root["projects"] = std::move(projects);
 
             serialized_workspace_document result {};

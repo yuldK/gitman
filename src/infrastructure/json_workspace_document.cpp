@@ -1,5 +1,7 @@
 #include "infrastructure/json_workspace_document.h"
 
+#include "domain/path_syntax.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -100,7 +102,75 @@ namespace gitman {
 
         bool is_known_top_level_field(const std::string_view field) noexcept
         {
-            return field == "schema_version" || field == "projects";
+            return field == "schema_version" || field == "settings" || field == "projects";
+        }
+
+        bool is_known_settings_field(const std::string_view field) noexcept
+        {
+            return field == "git_executable" || field == "svn_executable";
+        }
+
+        std::u8string settings_field_pointer(const std::string_view field)
+        {
+            std::u8string pointer { u8"/settings/" };
+            pointer.append(escape_json_pointer_token(field));
+            return pointer;
+        }
+
+        // `settings`는 optional이며 없으면 전부 기본값이다. 스키마 버전을 올리지 않아
+        // 이 필드를 모르는 기존 문서도 그대로 열린다.
+        workspace_settings parse_settings(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
+        {
+            workspace_settings settings {};
+            const auto source { root.find("settings") };
+            if (source == root.end() || source->is_null())
+                return settings;
+
+            if (source->is_object() == false)
+            {
+                add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings는 object여야 합니다.", document_path, u8"/settings");
+                return settings;
+            }
+
+            constexpr std::array executable_fields {
+                std::string_view { "git_executable" },
+                std::string_view { "svn_executable" },
+            };
+            for (const std::string_view field : executable_fields)
+            {
+                const auto value { source->find(field) };
+                if (value == source->end() || value->is_null())
+                    continue;
+                if (value->is_string() == false)
+                {
+                    add_diagnostic(
+                        result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 실행 파일 경로는 문자열이어야 합니다.", document_path, settings_field_pointer(field));
+                    continue;
+                }
+
+                std::u8string executable { as_utf8(value->get_ref<const std::string&>()) };
+                // 빈 값은 "지정하지 않음"이며 자동 탐색으로 간다. 값이 있으면 절대
+                // 경로여야 한다. 상대 경로는 실행 시점의 현재 디렉터리에 따라 다른
+                // 프로그램을 가리킬 수 있다.
+                if (executable.empty() == false && is_absolute_windows_path(executable) == false)
+                {
+                    add_diagnostic(result, diagnostic_code::vcs_tool_path_invalid, diagnostic_severity::error, u8"settings의 실행 파일 경로는 절대 경로여야 합니다.", document_path,
+                        settings_field_pointer(field));
+                    continue;
+                }
+                if (field == "git_executable")
+                    settings.git_executable = std::move(executable);
+                else
+                    settings.svn_executable = std::move(executable);
+            }
+
+            for (auto field = source->begin(); field != source->end(); ++field)
+            {
+                if (is_known_settings_field(field.key()))
+                    continue;
+                add_diagnostic(result, diagnostic_code::unknown_field, diagnostic_severity::warning, u8"알 수 없는 settings 필드를 보존합니다.", document_path, settings_field_pointer(field.key()));
+            }
+            return settings;
         }
 
         bool is_known_project_field(const std::string_view field) noexcept
@@ -403,6 +473,7 @@ namespace gitman {
         workspace_document document {};
         document.schema_version = *schema_version;
         document.document_path = document_path;
+        document.settings = parse_settings(root, result, document_path);
         std::unordered_set<std::u8string> project_ids {};
         for (std::size_t project_index = 0; project_index < projects->size(); ++project_index)
         {

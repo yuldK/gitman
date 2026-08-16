@@ -1,5 +1,56 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 4 `S4-D1-CODE` 계약과 도구 발견 구현
+
+### 사용자 지시
+
+- 개정한 `S4-P0` 계획을 승인하고 코드 작성을 진행한다.
+- 환경에 따라 Git이 없을 수도, SVN이 없을 수도 있다. 통합 사용 환경을 제공하는 것이 목표이므로 **모든 VCS가 없는 경우도 상정**해야 한다.
+
+### 반영 내용
+
+- `domain/vcs_tool.*`에 도구 가용성, 버전 값과 `vcs_tool_set`을 추가했다. `none_available()`로 Git과 SVN이 모두 없는 환경을 1급 상태로 표현한다.
+- `domain/repository_snapshot.*`에 `repository_availability`를 추가해 도구 부재가 오류가 아니라 상태로 표현되게 했다. 카드는 목록에 남고 동작만 비활성화된다.
+- 도구 부재 진단의 severity를 warning으로 정했다. 앱을 멈추지 않고 다른 VCS와 프로젝트 목록은 계속 사용할 수 있다.
+- `repository_provider` 계약에 `available()`을 넣어 호출자가 조회와 변경을 시도하기 전에 걸러낼 수 있게 했다.
+- `remote_sync_state::authentication_required`와 작업 트리의 진행 중 작업, `index.lock`, detached 표시를 추가했다.
+- `working_tree_summary::is_safe_for_change()`를 추가했다. `unknown` 상태도 안전으로 보지 않는다.
+- `submodule_status`, SVN 저장소 root 및 UUID, `std::optional<bool>` switched 및 mixed revision 필드를 추가했다.
+- `domain/vcs_operation.*`에 switch 후보, 거부 사유 12종, update 차단 사유 13종과 각각의 한국어 메시지를 추가했다.
+- `domain/diagnostic.*`에 VCS 관련 code 11개와 이름 매핑을 추가했다.
+- `is_absolute_windows_path`를 `application/process_request`에서 `domain/path_syntax`로 옮겼다. 문서 `settings` 검증과 프로세스 요청 검증이 같은 규칙을 쓰게 하려는 이동이며, `process_request.h`가 새 헤더를 include해 기존 호출자는 변경 없이 컴파일된다.
+- `.verison-list`에 optional `settings` object를 추가했다. 스키마 버전 1을 유지하고, 없으면 진단 없이 기본값이며, 절대 경로가 아닌 값은 `vcs_tool_path_invalid` 오류로 보고한다.
+- 저장 시 기존 `settings` object를 template으로 삼아 알 수 없는 키를 보존하고, 문서에 없었고 값도 기본값이면 필드를 만들지 않는다.
+- `application/vcs_tool_registry.*`를 값 container로 두고 탐색 로직은 infrastructure에 두어 application이 infrastructure를 참조하지 않게 했다.
+- `application/vcs_file_probe.h`로 git dir 표식 파일 확인을 계약화했다. Git에 진행 중 작업을 알려 주는 기계 판독 명령이 없기 때문이다.
+- `infrastructure/vcs_tool_discovery.*`에 `settings` → `PATH` → 기본 설치 위치 순서의 탐색을 구현했다. 후보 생성은 filesystem을 보지 않는 순수 함수다.
+- `PATH` 분해에서 따옴표를 벗기고 빈 항목과 상대 경로 항목을 버리며 ASCII 대소문자를 무시하고 중복을 제거한다.
+- 지정 경로가 상대 경로거나 없거나 `--version`이 실패하면 `path_invalid`로 보고하고 자동 탐색으로 물러서지 않게 했다.
+- `svnversion.exe`를 `svn.exe`와 같은 디렉터리에서 찾아 보조 도구로 담고, 없어도 조회를 막지 않게 했다.
+- `infrastructure/vcs_version.*`에 접두어에 의존하지 않는 버전 파서를 구현했다. `git version 2.52.0.windows.1`과 `svn, version 1.14.5 (r1922182)`를 모두 처리한다.
+- `infrastructure/vcs_execution_policy.*`에 명령 부류별 timeout 및 캡처 상한과 Git 비대화형 환경 override 7종, 공통 인자 4종, SVN `--non-interactive`를 모았다.
+- 로캘을 강제하지 않고 모든 명령에서 `active_code_page_fallback` 인코딩을 쓰도록 했다.
+- `infrastructure/vcs_error_classifier.*`를 로캘 독립 신호(SVN 오류 코드, libcurl 및 OpenSSH 원문, HTTP 상태 번호)만으로 분류하도록 구현했다. HTTP 상태는 독립 토큰이면서 `http` 문맥이 있을 때만 인정해 오탐을 막는다.
+- 어느 신호에도 맞지 않는 실패는 추측하지 않고 `command_failed`로 보고하게 했다.
+- `infrastructure/vcs_command_runner.*`로 stdout과 stderr를 분리 수집하면서 호출자 sink에도 전달하게 했다.
+- `platform/win32/win32_vcs_file_probe.*`에 파일 존재 확인과 환경 변수 읽기를 구현했다. 계층 방향을 지키려고 target은 `gitman_vcs`에 두었다.
+- 새 static library `gitman_vcs`를 추가하고 `gitman_domain`과 `gitman_process`를 PUBLIC, `gitman_win32_platform`을 PRIVATE으로 링크했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 139/139 통과했고 `/analyze`도 무경고로 통과했다.
+- 저장소 밖 임시 프로그램으로 69개 항목을 확인하고 삭제했다. 한국어 Git 출력에서도 libcurl 문자열 덕분에 `offline` 분류가 유지되는 것과, 빈 `PATH`에서 두 도구 모두 `not_found`이면서 진단이 warning뿐인 것을 확인했다.
+- 임시 프로그램의 기대값 오류 2건을 발견해 고쳤다. production 결함은 아니며 `S4-D1-TEST`에서 test로 고정한다.
+- 결과를 `docs/verification/2026-08-16-stage-4-d1-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-001, REQ-002, REQ-006, REQ-007, REQ-009~REQ-013, REQ-017
+- NFR-005, NFR-007, NFR-008, NFR-009
+
+### 다음 작업 제한
+
+- `S4-D1-CODE` 검수 전에는 `S4-D1-TEST`의 test source, fixture와 `gitman_tests` 링크를 추가하지 않는다.
+- Git 명령 조립과 출력 파서는 `S4-D2-CODE` 승인 후에만 작성한다.
+- test에서 production 결함이 발견되어도 `S4-D1-FIX` 승인 전에는 수정하지 않는다.
+
 ## 2026-08-16 - 단계 4 `S4-P0` 1차 검수 결정 반영
 
 ### 사용자 지시

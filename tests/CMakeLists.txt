@@ -8,6 +8,9 @@ add_executable(gitman_tests
     domain_model_tests.cpp
     embedded_assets_tests.cpp
     json_project_store_tests.cpp
+    process_cancellation_tests.cpp
+    process_execution_tests.cpp
+    process_request_tests.cpp
     project_path_tests.cpp
     project_schema_tests.cpp
     renderer_policy_tests.cpp
@@ -20,6 +23,7 @@ target_compile_definitions(gitman_tests
         GITMAN_TEST_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/projects")
 target_link_libraries(gitman_tests
     PRIVATE
+        gitman_process
         gitman_workspace
         gitman_win32
         Catch2::Catch2WithMain)

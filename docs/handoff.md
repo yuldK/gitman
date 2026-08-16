@@ -5,11 +5,13 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 3 프로세스 실행 계층
-- 현재 체크포인트: `S3-P0` 계획 작성 완료, 계획 사용자 검수 대기
-- 다음 허용 작업: 계획 승인 후 `S3-D1-CODE` 하나만 수행하고 다시 보고
+- 현재 체크포인트: `S3-D1-TEST` 작성 완료, 사용자 검수 대기 (`S3-P0`, `S3-D1-CODE`는 2026-08-16 승인 완료)
+- 다음 허용 작업: 무결함 `S3-D1-FIX` 생략 확인 후 `S3-D2-CODE` 하나만 수행하고 다시 보고
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, test와 install 구성
 - 기준 문서: `docs/stage-3-plan.md`
 - 직전 단계 기준 문서: `docs/stage-2-plan.md`
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-3-d1-test.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-3-d1-code.md`
 - 최근 검증 기록: `docs/verification/2026-08-16-stage-2.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 단계 2처럼 여러 체크포인트를 한 번에 자동 진행하지 않는다.
 
@@ -112,20 +114,24 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S3-P0` |
-| 제출 내용 | `docs/stage-3-plan.md` 구현 계획과 설계 제안, 단계 2 승인 상태 문서 반영 |
-| production code | 없음. 계획 승인 전에는 `src/` 아래 프로세스 관련 source를 추가하지 않는다. |
-| test code 및 fixture | 없음. 테스트 도우미 실행 파일은 `S3-D2-TEST`에서만 추가한다. |
-| 검증 | 문서 변경만 있으므로 UTF-8/CRLF 및 source style 검사로 확인 |
-| 승인 대기 | `S3-P0` 계획 검수 (특히 계획 10장의 9개 항목) |
-| 승인 뒤 다음 작업 | `S3-D1-CODE` 프로세스 값 model, 요청 검증, runner/sink 계약과 취소 primitive만 허용 |
+| 계획 ID | `S3-D1-TEST` |
+| 제출 내용 | 계약 계층 Catch2 test 24개, `gitman_tests`의 `gitman_process` 링크, 승인된 format 기준선 정렬 |
+| production code | 이번 구간 변경 없음. formatter 정렬만 적용한 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`는 의미 변경이 없다. |
+| test code 및 fixture | `tests/process_execution_tests.cpp`, `tests/process_request_tests.cpp`, `tests/process_cancellation_tests.cpp`, `tests/domain_model_tests.cpp`, `tests/CMakeLists.txt` |
+| 검증 | VS2022 Debug/Release와 VS2026 Debug 전체 CTest 각각 78/78, VS2022 `/analyze` 무경고, aggregate format/style, `git diff --check` 통과 |
+| 발견 결함 | 없음. 24개 test가 첫 실행에서 모두 통과했다. |
+| 승인 대기 | `S3-D1-TEST` 검수와 무결함 `S3-D1-FIX` 생략 확인 |
+| 승인 뒤 다음 작업 | `S3-D2-CODE` 인자 인용과 `CreateProcessW` 시작 계약만 허용 |
 
 ### 8.2 단계 3 진행 원장
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
-| `S3-P0` 계획 | 검수 대기 | 동기 실행 API, job object 취소, 줄 단위 레코드, 마스킹 규칙과 테스트 도우미 target 승인 필요 |
-| `S3-D1-CODE` ~ `S3-D5-FIX` | 시작 전 | 계획 7장 순서대로 하나씩 진행 |
+| `S3-P0` 계획 | 승인 완료 | 체크포인트 17개 유지와 활성 code page fallback의 단계 3 포함을 함께 승인 |
+| `S3-D1-CODE` 계약 production code | 승인 완료 | `docs/verification/2026-08-16-stage-3-d1-code.md` |
+| `S3-D1-TEST` 계약 test | 검수 대기 | test 24개, 양 toolchain 전체 78/78, production 결함 없음 |
+| `S3-D1-FIX` 계약 bug 수정 | 생략 후보 | 발견 production 결함 없음 |
+| `S3-D2-CODE` ~ `S3-D5-FIX` | 시작 전 | 계획 7장 순서대로 하나씩 진행 |
 | `S3-V1` 단계 3 최종 검증 | 시작 전 | 전체 build/test/analyze/install과 동시 실행 stress |
 
 ### 8.3 단계 2 진행 원장 (완료)
@@ -154,7 +160,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 - `.verison-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
 - unknown field 보존, 상대 path 기준, migration과 backup 정책은 계획대로 승인됐다.
-- 기존 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`의 aggregate clang-format 기준선 위반은 `S2-V1`에서 프로젝트 formatter로만 정렬해 해소했다. 이후 모든 build, test, 분석과 aggregate format/style 검사를 다시 통과시켰다.
+- 기존 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`의 aggregate clang-format 위반은 `S3-D1-TEST`에서 formatter 결과 수용으로 해소했다. 원인은 수동 줄바꿈 규칙과 `ColumnLimit` 200의 충돌이며, `docs/code_style.md` 2장에 formatter 우선 규칙을 명시했다.
 - 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 계속 보존한다.
 - ADR-004의 범용 메시지 구조 구현 차단 조건은 그대로 유효하다. 단계 3의 reader 스레드는 실행 하나에 종속된 내부 구현이며 이 차단 조건에 해당하지 않는다.
 - Git/SVN 실행 파일 탐색과 최소 버전 확인은 ADR-003에 따라 단계 4에서 구현한다. 현재 호스트에 SVN이 없어 단계 3 test는 실제 VCS 대신 전용 콘솔 도우미를 사용한다.

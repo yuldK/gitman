@@ -42,10 +42,7 @@ namespace gitman::win32 {
         const int output_length { WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(), input_length, nullptr, 0, nullptr, nullptr) };
 
         if (output_length == 0)
-            return GetLastError() == ERROR_NO_UNICODE_TRANSLATION
-                ? invalid_input_result<std::u8string>()
-                : system_error_result<std::u8string>()
-            ;
+            return GetLastError() == ERROR_NO_UNICODE_TRANSLATION ? invalid_input_result<std::u8string>() : system_error_result<std::u8string>();
 
         std::u8string output(static_cast<std::size_t>(output_length), u8'\0');
         const int converted { WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(), input_length, reinterpret_cast<char*>(output.data()), output_length, nullptr, nullptr) };
@@ -67,10 +64,7 @@ namespace gitman::win32 {
         const int output_length { MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input_data, input_length, nullptr, 0) };
 
         if (output_length == 0)
-            return GetLastError() == ERROR_NO_UNICODE_TRANSLATION
-                ? invalid_input_result<std::wstring>()
-                : system_error_result<std::wstring>()
-            ;
+            return GetLastError() == ERROR_NO_UNICODE_TRANSLATION ? invalid_input_result<std::wstring>() : system_error_result<std::wstring>();
 
         std::wstring output(static_cast<std::size_t>(output_length), L'\0');
         const int converted { MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input_data, input_length, output.data(), output_length) };

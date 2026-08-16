@@ -1,5 +1,65 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D1-TEST` 계약 test 작성과 format 기준선 정렬
+
+### 사용자 지시
+
+- `S3-D1-CODE`를 승인하고 `S3-D1-TEST`를 진행한다.
+- clang-format이 수동 줄바꿈을 되돌리는 3개 파일은 formatter 결과를 수용한다.
+
+### 반영 내용
+
+- `tests/process_execution_tests.cpp`에 출력 레코드 및 실행 결과 기본값, 성공 판정, 비정상 완료와 이름 매핑 test 5개를 추가했다.
+- `tests/process_request_tests.cpp`에 기본값, 어휘적 절대 경로 판정, 실행 파일과 작업 디렉터리, 인자 NUL, 환경 override, timeout 및 상한 경계와 복합 오류 test 9개를 추가했다.
+- `tests/process_cancellation_tests.cpp`에 기본 token, 통지 횟수, 취소 후 등록, 해제, registration 이동, 이동한 source, source 소멸, 동시 취소와 등록 경합 test 10개를 추가했다.
+- `tests/domain_model_tests.cpp`의 diagnostic 이름 표에 프로세스 code 6개를 추가했다.
+- `gitman_tests`에 `gitman_process`를 링크했다.
+- `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`를 clang-format 19.1.5 결과로 정렬해 aggregate `gitman_format_check`를 다시 통과시켰다. 의미 변경은 없다.
+- `docs/code_style.md` 2장에 `ColumnLimit` 200 안의 표현식은 formatter 결과가 기준이라는 규칙을 명시했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 78/78 통과했고 `/analyze`도 무경고로 통과했다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d1-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-009, REQ-010, REQ-011, REQ-012, REQ-013
+- NFR-005, NFR-006, NFR-007
+
+### 다음 작업 제한
+
+- 발견 production 결함이 없어 `S3-D1-FIX`는 사용자 확인 후 생략한다.
+- `S3-D2-CODE` 승인 전에는 `CreateProcessW` 실행 코드를 작성하지 않는다.
+- 자식 프로세스를 실행하는 test와 콘솔 도우미 실행 파일은 `S3-D2-TEST`에서만 추가한다.
+
+## 2026-08-16 - 단계 3 `S3-D1-CODE` 계약 production code 구현
+
+### 사용자 지시
+
+- `S3-P0` 계획을 승인하고 `S3-D1-CODE`를 진행한다.
+- 체크포인트는 17개를 유지하고 활성 code page fallback은 단계 3에 포함한다.
+
+### 반영 내용
+
+- `domain/process_execution.*`에 스트림, 완료 사유, 출력 레코드와 실행 결과 값을 추가했다.
+- `domain/diagnostic.*`에 프로세스 실행 관련 diagnostic code 6개와 이름 매핑을 추가했다.
+- `application/process_request.*`에 요청 값과 filesystem 조회 없는 요청 검증, 어휘적 절대 경로 판정을 추가했다.
+- 요청 검증에 NUL 문자, 중복 환경 override, 0 이하 timeout, 0 캡처 상한과 4 byte 미만 레코드 상한 규칙을 넣었다.
+- `application/process_runner.h`에 sink 직렬화와 동기 `run` 계약을 정의했다.
+- `application/process_cancellation.*`에 콜백 등록과 RAII 해제를 지원하는 취소 primitive를 추가했다.
+- `gitman_process` static library target을 추가하고 `gitman_domain`에 프로세스 값 model을 넣었다.
+- VS2022/VS2026 Debug build, 양 toolchain 전체 CTest 54/54, VS2022 `/analyze` 무경고, source style과 `git diff --check`를 통과했다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d1-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-006, REQ-009, REQ-010, REQ-011, REQ-012, REQ-013
+- NFR-005, NFR-007, NFR-009
+
+### 다음 작업 제한
+
+- `S3-D1-CODE` 검수 전에는 `S3-D1-TEST`의 test source와 `gitman_tests` 링크를 추가하지 않는다.
+- 기존 aggregate `gitman_format_check` 실패 3개 파일은 사용자가 처리 방향을 정하기 전에는 수정하지 않는다.
+- Win32 프로세스 실행 구현은 `S3-D2-CODE` 승인 후에만 작성한다.
+
 ## 2026-08-16 - 단계 2 승인과 단계 3 `S3-P0` 계획 작성
 
 ### 사용자 지시

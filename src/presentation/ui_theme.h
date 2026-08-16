@@ -33,11 +33,7 @@ namespace gitman {
 
     [[nodiscard]] constexpr ui_color make_ui_color(const std::uint8_t red, const std::uint8_t green, const std::uint8_t blue, const std::uint8_t alpha = 255) noexcept
     {
-        return static_cast<ui_color>(alpha) << 24U
-            | static_cast<ui_color>(red) << 16U
-            | static_cast<ui_color>(green) << 8U
-            | static_cast<ui_color>(blue)
-        ;
+        return static_cast<ui_color>(alpha) << 24U | static_cast<ui_color>(red) << 16U | static_cast<ui_color>(green) << 8U | static_cast<ui_color>(blue);
     }
 
     [[nodiscard]] const ui_color_palette& color_palette_for(color_theme theme) noexcept;

@@ -181,14 +181,8 @@ namespace gitman::win32 {
                 case WM_DPICHANGED: {
                     dpi_ = HIWORD(word_parameter);
                     const auto* suggested_rectangle { reinterpret_cast<const RECT*>(long_parameter) };
-                    SetWindowPos(window_
-                        , nullptr
-                        , suggested_rectangle->left
-                        , suggested_rectangle->top
-                        , suggested_rectangle->right - suggested_rectangle->left
-                        , suggested_rectangle->bottom - suggested_rectangle->top
-                        , SWP_NOACTIVATE | SWP_NOZORDER
-                    );
+                    SetWindowPos(window_, nullptr, suggested_rectangle->left, suggested_rectangle->top, suggested_rectangle->right - suggested_rectangle->left,
+                        suggested_rectangle->bottom - suggested_rectangle->top, SWP_NOACTIVATE | SWP_NOZORDER);
                     InvalidateRect(window_, nullptr, FALSE);
                     return 0;
                 }
@@ -266,10 +260,7 @@ namespace gitman::win32 {
                         return HTBOTTOM;
                 }
 
-                if (y >= 0
-                    && y < scale_for_dpi(default_caption_ui_metrics.height)
-                    && x >= 0
-                    && x < scale_for_dpi(default_caption_ui_metrics.application_icon_slot_width))
+                if (y >= 0 && y < scale_for_dpi(default_caption_ui_metrics.height) && x >= 0 && x < scale_for_dpi(default_caption_ui_metrics.application_icon_slot_width))
                     return HTSYSMENU;
                 const caption_layout layout { make_caption_layout(width, dpi_) };
                 switch (hit_test_caption(layout, x, y))

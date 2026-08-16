@@ -266,7 +266,9 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 
 ### 7.1 현재 진행 상태
 
-- `S3-P0`: 계획 작성 완료, 사용자 검수 대기
+- `S3-P0`: 2026-08-16 사용자 승인 완료. 체크포인트 17개 유지와 활성 code page fallback의 단계 3 포함을 함께 승인했다.
+- `S3-D1-CODE`: 값 model, 요청 검증, runner/sink 계약, 취소 primitive와 `gitman_process` target 구현 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-3-d1-code.md`에 기록했다.
+- `S3-D1-TEST`: 계약 test 24개 작성 완료, 양 toolchain 전체 CTest 78/78 통과, 발견 production 결함 없음, 사용자 검수 대기. 결과는 `docs/verification/2026-08-16-stage-3-d1-test.md`에 기록했다.
 
 ## 8. 테스트 계획
 
@@ -348,6 +350,19 @@ production 구현, test 작성과 bug 수정은 같은 검수 구간에서 함�
 9. `CODE` / `TEST` / `FIX` 5분할과 `S3-V1`로 구성한 17개 체크포인트 순서
 
 `S3-D5` 마스킹 구간은 다른 구간보다 작다. 사용자가 원하면 `S3-D3`의 출력 파이프라인과 하나의 구간으로 합쳐 체크포인트를 14개로 줄일 수 있다.
+
+2026-08-16 사용자 검수 결과는 다음과 같다.
+
+- 위 9개 항목을 포함한 계획을 그대로 승인했다.
+- 체크포인트는 17개를 유지하고 마스킹을 독립 구간으로 둔다.
+- 활성 code page fallback transcoder는 단계 3에서 함께 구현한다.
+
+## 12. 계획 이후 확인된 사항
+
+- 프로세스 진단은 `diagnostic_source`를 확장하지 않고 메시지와 `process_result::masked_command_line`으로 문맥을 제공한다. 11장의 확인 항목을 `S3-D1-CODE`에서 이렇게 정리했다.
+- 활성 code page fallback transcoder 인터페이스는 출력 파이프라인과 응집도가 높아 `S3-D3-CODE`에서 정의한다. 요청 값의 `process_text_encoding`은 `S3-D1-CODE`에 포함했다.
+- 강제 분할이 UTF-8 sequence를 쪼개지 않도록 레코드 크기 상한의 최소값 4 byte를 요청 검증에 추가했다.
+- 기존 aggregate `gitman_format_check`가 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`에서 실패했다. 사용자가 clang-format 결과 수용을 선택해 `S3-D1-TEST`에서 정렬하고 `docs/code_style.md` 2장에 formatter 우선 규칙을 명시했다.
 
 ## 11. 미결정 항목
 

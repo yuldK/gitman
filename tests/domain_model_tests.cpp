@@ -191,6 +191,12 @@ TEST_CASE("Diagnostics expose structured defaults and stable names", "[domain][d
         diagnostic_name_case { gitman::diagnostic_code::recovery_available, u8"recovery_available" },
         diagnostic_name_case { gitman::diagnostic_code::repository_unavailable, u8"repository_unavailable" },
         diagnostic_name_case { gitman::diagnostic_code::operation_failed, u8"operation_failed" },
+        diagnostic_name_case { gitman::diagnostic_code::invalid_process_request, u8"invalid_process_request" },
+        diagnostic_name_case { gitman::diagnostic_code::process_start_failed, u8"process_start_failed" },
+        diagnostic_name_case { gitman::diagnostic_code::process_pipe_failed, u8"process_pipe_failed" },
+        diagnostic_name_case { gitman::diagnostic_code::process_timed_out, u8"process_timed_out" },
+        diagnostic_name_case { gitman::diagnostic_code::process_cancelled, u8"process_cancelled" },
+        diagnostic_name_case { gitman::diagnostic_code::process_output_truncated, u8"process_output_truncated" },
     };
     for (const auto& diagnostic_name : diagnostic_names)
         REQUIRE(u8_equal(gitman::diagnostic_code_name(diagnostic_name.code), diagnostic_name.name));

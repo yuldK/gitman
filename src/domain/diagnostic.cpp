@@ -79,6 +79,18 @@ namespace gitman {
             return u8"repository_unavailable";
         case diagnostic_code::operation_failed:
             return u8"operation_failed";
+        case diagnostic_code::invalid_process_request:
+            return u8"invalid_process_request";
+        case diagnostic_code::process_start_failed:
+            return u8"process_start_failed";
+        case diagnostic_code::process_pipe_failed:
+            return u8"process_pipe_failed";
+        case diagnostic_code::process_timed_out:
+            return u8"process_timed_out";
+        case diagnostic_code::process_cancelled:
+            return u8"process_cancelled";
+        case diagnostic_code::process_output_truncated:
+            return u8"process_output_truncated";
         }
         return u8"unknown";
     }

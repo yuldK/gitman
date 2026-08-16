@@ -46,6 +46,8 @@ add_library(gitman_domain STATIC
     domain/diagnostic.h
     domain/operation.cpp
     domain/operation.h
+    domain/process_execution.cpp
+    domain/process_execution.h
     domain/project.cpp
     domain/project.h
     domain/repository_snapshot.cpp
@@ -80,6 +82,15 @@ target_link_libraries(gitman_workspace
     PRIVATE
         gitman_win32_platform
         nlohmann_json::nlohmann_json)
+
+add_library(gitman_process STATIC
+    application/process_cancellation.cpp
+    application/process_cancellation.h
+    application/process_request.cpp
+    application/process_request.h
+    application/process_runner.h)
+target_include_directories(gitman_process PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
+target_link_libraries(gitman_process PUBLIC gitman_domain)
 
 add_library(gitman_core STATIC
     application/application_options.cpp

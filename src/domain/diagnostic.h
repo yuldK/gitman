@@ -46,6 +46,12 @@ namespace gitman {
         recovery_available,
         repository_unavailable,
         operation_failed,
+        invalid_process_request,
+        process_start_failed,
+        process_pipe_failed,
+        process_timed_out,
+        process_cancelled,
+        process_output_truncated,
     };
 
     struct diagnostic_source

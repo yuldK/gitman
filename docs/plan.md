@@ -26,6 +26,7 @@
 | 2026-08-14 | 단계 2를 계획·production code·test code·bug 수정 체크포인트로 분리하고 매 체크포인트마다 사용자 검수를 받음 | `docs/stage-2-plan.md`, `docs/handoff.md` | REQ-001, REQ-002, REQ-004, REQ-009~REQ-012 |
 | 2026-08-14 | 프로젝트 목록을 고정 config가 아닌 `.verison-list` 작업공간 문서 및 연결 프로그램 대상으로 변경 | `docs/stage-2-plan.md`, 단계 8 | REQ-001, REQ-016 |
 | 2026-08-16 | `S2-D5-TEST` 승인과 무결함 fix 생략 후 단계 2 전체 검증 진행 | `docs/verification/2026-08-16-stage-2.md` | REQ-001, REQ-009~REQ-013, REQ-016 |
+| 2026-08-16 | 단계 2 승인 후 단계 3 진행. 계획·작업·테스트 중간마다 진행 보고와 검수를 요구 | `docs/stage-3-plan.md`, 단계 3 | REQ-006, REQ-008, REQ-009~REQ-013 |
 
 ### 1.2 단계 진행 상태
 
@@ -33,8 +34,9 @@
 | --- | --- | --- |
 | 단계 0: 결정 사항 확정 | 완료 - 검수 의견 반영 | `docs/verification/2026-08-14-stage-0.md` |
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
-| 단계 2: 도메인과 설정 저장소 | `S2-V1` 자동 검증 완료 - 단계 2 최종 검수 대기 | `docs/verification/2026-08-16-stage-2.md` |
-| 단계 3~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
+| 단계 2: 도메인과 설정 저장소 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-2.md` |
+| 단계 3: 프로세스 실행 계층 | `S3-P0` 계획 작성 완료 - 계획 검수 대기 | `docs/stage-3-plan.md` |
+| 단계 4~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
 
@@ -433,7 +435,7 @@ gitman/
 
 ### 단계 2: 도메인과 설정 저장소
 
-상태: `S2-D5-TEST` 승인과 무결함 `S2-D5-FIX` 생략 후 `S2-V1` 전체 자동 검증을 완료했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 54/54, aggregate format/style, 단일 exe install과 설치본 renderer smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-2.md`에 기록하며, 단계 2 최종 사용자 승인 전에는 단계 3을 시작하지 않는다.
+상태: 완료. `S2-V1` 전체 자동 검증 후 2026-08-16 사용자가 단계 3 진행을 지시하며 단계 2를 최종 승인했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 54/54, aggregate format/style, 단일 exe install과 설치본 renderer smoke test가 통과했다. 상세 결과는 `docs/verification/2026-08-16-stage-2.md`에 기록한다.
 
 - `std::u8string` 기반 프로젝트, 저장소 snapshot, 최신 상태, 작업, 오류 모델을 구현한다.
 - JSON 스키마 검증, 경로 정규화, 중복 검사, 원자적 저장을 구현한다.
@@ -442,6 +444,8 @@ gitman/
 완료 조건: UI 없이 설정 파일 읽기 및 저장의 단위 테스트가 통과하고 손상 시 원본을 보존한다.
 
 ### 단계 3: 프로세스 실행 계층
+
+상태: `S3-P0` 구현 계획을 `docs/stage-3-plan.md`에 작성하고 계획 검수를 대기한다. 단계 2와 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지한다.
 
 - 셸을 거치지 않는 인자 배열 실행을 구현한다.
 - 출력 스트리밍, 종료 코드, 제한 시간, 취소, 비밀 마스킹을 구현한다.

@@ -3,19 +3,17 @@
 ## 1. 현재 상태
 
 - 기준일: 2026-08-16
-- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 구현 및 자동 검증
-- 현재 단계: 단계 2 도메인과 설정 저장소
-- 현재 체크포인트: `S2-V1` 전체 자동 검증 완료, 단계 2 최종 사용자 승인 대기
-- 다음 허용 작업: 단계 2 최종 승인 전에는 상태 문서 보정과 read-only 검토만 허용
-- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, test와 install 구성
-- 단계 2 production 구현: `S2-D1-CODE`, `S2-D2-CODE`, `S2-D3-CODE`, `S2-D4-CODE`, `S2-D5-CODE` 승인 완료
-- 단계 2 test source 및 fixture: `S2-D1-TEST`~`S2-D5-TEST` 승인 완료, 각 FIX 체크포인트는 production 결함이 없어 생략 완료
-- 기준 문서: `docs/stage-2-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-2.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-2-d5-test.md`
-- 최근 검증 기록: `docs/verification/2026-08-14-stage-1.md`
+- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체 (2026-08-16 사용자 최종 승인)
+- 현재 단계: 단계 3 프로세스 실행 계층
+- 현재 체크포인트: `S3-P0` 계획 작성 완료, 계획 사용자 검수 대기
+- 다음 허용 작업: 계획 승인 후 `S3-D1-CODE` 하나만 수행하고 다시 보고
+- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, test와 install 구성
+- 기준 문서: `docs/stage-3-plan.md`
+- 직전 단계 기준 문서: `docs/stage-2-plan.md`
+- 최근 검증 기록: `docs/verification/2026-08-16-stage-2.md`
+- 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 단계 2처럼 여러 체크포인트를 한 번에 자동 진행하지 않는다.
 
-다음 작업은 이 문서, 단계 2 구현 계획과 단계 2 최종 검증 기록을 먼저 읽어야 한다. `S2-D5-TEST` 승인, 무결함 `S2-D5-FIX` 생략과 `S2-V1` 자동 검증은 완료됐다. 사용자가 단계 2를 최종 승인하기 전에는 단계 3 프로세스 실행 계층을 시작하지 않는다.
+다음 작업은 이 문서와 `docs/stage-3-plan.md`를 먼저 읽어야 한다. 단계 3에서는 범용 외부 프로세스 실행 계층만 구현하고 Git/SVN 명령 지식, scheduler, 로그 UI와 ADR-004 message component는 구현하지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -73,7 +71,8 @@ vcpkg baseline은 `b9a5010d499952121b0f1a40eb98963c37da32dc`, Codicons tag commi
 
 - 각 단계의 코드, 문서와 자동 및 수동 검증 결과를 제시한다.
 - 사용자 승인 전에는 다음 단계로 넘어가지 않는다.
-- 단계 2에서는 production code, test code와 bug 수정을 서로 다른 체크포인트로 나눈다.
+- 단계 2 이후에는 production code, test code와 bug 수정을 서로 다른 체크포인트로 나눈다. 단계 3도 같은 `CODE` / `TEST` / `FIX` 분할을 사용한다.
+- 계획 구간, 각 작업 구간과 각 테스트 구간이 끝날 때마다 무엇을 했고 다음에 무엇을 어떻게 처리할지 보고한 뒤 사용자 검수를 기다린다.
 - 각 체크포인트 종료 시 이 문서의 진행 원장을 갱신하고 사용자 승인을 기다린다.
 
 ### 단계 6 이전의 메시지 구조
@@ -100,31 +99,36 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 ## 7. 아직 하지 않은 작업
 
-- Git/SVN command 구현
-- 단계 2 최종 사용자 승인
-- 단계 3 이후의 프로세스 실행, provider, 탐색 및 실제 카드 UI
-- thread message API 상세 설계와 구현
+- 단계 3 프로세스 실행 계층 구현 (`S3-P0` 계획 승인 대기)
+- Git/SVN command 조립과 출력 파싱 (단계 4)
+- 탐색 및 등록 (단계 5), 실제 카드 UI와 로그 UI (단계 6~7)
+- thread message API 상세 설계와 구현 (단계 6 이전 별도 승인)
 
-따라서 후속 작업은 단계 2 계획의 활성 체크포인트 하나만 진행하고 다시 검수를 요청해야 한다.
+따라서 후속 작업은 단계 3 계획의 활성 체크포인트 하나만 진행하고 다시 검수를 요청해야 한다.
 
-## 8. 단계 2 영속 세션 메모리
+## 8. 단계 3 영속 세션 메모리
 
 ### 8.1 현재 체크포인트
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S2-V1` |
-| 제출 내용 | 단계 2 전체 build/test/analyze/install 및 최종 검증 기록 완료 |
-| production code | D1 도메인부터 D5 positional launch path까지 모두 승인 완료 |
-| test code 및 fixture | D1~D5 test 승인 완료, VS2022/VS2026 전체 CTest 각각 54/54 |
-| bug 수정 | 모든 FIX 체크포인트는 production 결함 후보가 없어 생략 완료 |
-| 기준선 보정 | 기존 format 위반 3개 source를 clang-format 19.1.5로만 정렬, 의미 변경 없음 |
-| install | `bin/gitman.exe` 한 파일, 6,255,616 byte, 설치본 renderer smoke 4/4 통과 |
-| 검증 | VS2022 Debug/Release, `/analyze`, VS2026 Debug, aggregate format/style, install 및 PE 의존성 검사 통과 |
-| 승인 대기 | 단계 2 최종 사용자 검수 |
-| 승인 뒤 다음 작업 | 단계 3 프로세스 실행 계층 계획 및 첫 체크포인트만 허용 |
+| 계획 ID | `S3-P0` |
+| 제출 내용 | `docs/stage-3-plan.md` 구현 계획과 설계 제안, 단계 2 승인 상태 문서 반영 |
+| production code | 없음. 계획 승인 전에는 `src/` 아래 프로세스 관련 source를 추가하지 않는다. |
+| test code 및 fixture | 없음. 테스트 도우미 실행 파일은 `S3-D2-TEST`에서만 추가한다. |
+| 검증 | 문서 변경만 있으므로 UTF-8/CRLF 및 source style 검사로 확인 |
+| 승인 대기 | `S3-P0` 계획 검수 (특히 계획 10장의 9개 항목) |
+| 승인 뒤 다음 작업 | `S3-D1-CODE` 프로세스 값 model, 요청 검증, runner/sink 계약과 취소 primitive만 허용 |
 
-### 8.2 단계 2 진행 원장
+### 8.2 단계 3 진행 원장
+
+| 체크포인트 | 상태 | 비고 |
+| --- | --- | --- |
+| `S3-P0` 계획 | 검수 대기 | 동기 실행 API, job object 취소, 줄 단위 레코드, 마스킹 규칙과 테스트 도우미 target 승인 필요 |
+| `S3-D1-CODE` ~ `S3-D5-FIX` | 시작 전 | 계획 7장 순서대로 하나씩 진행 |
+| `S3-V1` 단계 3 최종 검증 | 시작 전 | 전체 build/test/analyze/install과 동시 실행 stress |
+
+### 8.3 단계 2 진행 원장 (완료)
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
@@ -144,12 +148,14 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S2-D5-CODE` launch path production code | 승인 완료 | 사용자가 계속 진행을 지시함 |
 | `S2-D5-TEST` launch path test | 승인 완료 | test 4개, 양 toolchain 전체 54/54 통과, production 결함 없음 |
 | `S2-D5-FIX` launch contract bug 수정 | 생략 완료 | 발견 production 결함 없음 |
-| `S2-V1` 단계 2 최종 검증 | 자동 검증 완료 | 전체 matrix 통과, 단계 2 최종 사용자 승인 대기 |
+| `S2-V1` 단계 2 최종 검증 | 승인 완료 | 전체 matrix 통과 후 2026-08-16 사용자 최종 승인 |
 
-### 8.3 미해결 또는 보류 사항
+### 8.4 미해결 또는 보류 사항
 
 - `.verison-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
 - unknown field 보존, 상대 path 기준, migration과 backup 정책은 계획대로 승인됐다.
 - 기존 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`의 aggregate clang-format 기준선 위반은 `S2-V1`에서 프로젝트 formatter로만 정렬해 해소했다. 이후 모든 build, test, 분석과 aggregate format/style 검사를 다시 통과시켰다.
-- 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 단계 2 진행 승인과 별도로 보존한다.
-- ADR-004의 범용 메시지 구조 구현 차단 조건은 그대로 유효하다.
+- 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 계속 보존한다.
+- ADR-004의 범용 메시지 구조 구현 차단 조건은 그대로 유효하다. 단계 3의 reader 스레드는 실행 하나에 종속된 내부 구현이며 이 차단 조건에 해당하지 않는다.
+- Git/SVN 실행 파일 탐색과 최소 버전 확인은 ADR-003에 따라 단계 4에서 구현한다. 현재 호스트에 SVN이 없어 단계 3 test는 실제 VCS 대신 전용 콘솔 도우미를 사용한다.
+- 단계 3의 기본 timeout, 기본 캡처 상한과 로캘 강제 여부는 명령별로 결정할 사항이므로 단계 4까지 미정으로 둔다.

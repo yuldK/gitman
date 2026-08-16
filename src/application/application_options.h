@@ -10,6 +10,7 @@ namespace gitman {
     struct application_options
     {
         renderer_mode renderer { renderer_mode::automatic };
+        std::optional<std::u8string> workspace_document_path {};
         bool smoke_test { false };
         bool simulate_direct3d_failure { false };
     };

@@ -1,5 +1,28 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 2 positional launch path production code 구현
+
+### 사용자 지시
+
+- `S2-D4-TEST` 이후 남은 단계 2 작업을 확인하고 진행한다.
+- 이를 `S2-D4-TEST` 승인, 무결함 `S2-D4-FIX` 생략과 다음 체크포인트 `S2-D5-CODE` 진행 지시로 처리한다.
+
+### 반영 내용
+
+- `application_options`에 선택적인 UTF-8 `workspace_document_path`를 추가해 기존 Win32 진입 경계를 통해 보존한다.
+- 실행 파일 이름 뒤 하나의 positional `.verison-list` path를 허용하고, 두 번째 positional path는 한 창당 한 문서 계약에 따라 거부한다.
+- 확장자는 Windows 사용 방식에 맞게 ASCII 대소문자를 구분하지 않고 판정하며 다른 확장자와 backup suffix는 거부한다.
+- 미지원 `--` option은 문서 경로로 오인하지 않고 기존 command-line 오류로 유지한다.
+- parser는 path 원문을 바꾸거나 filesystem을 조회하지 않으며 실제 load, schema, backup과 recovery 판단은 project store 경계에 남긴다.
+- VS2022와 VS2026 Debug build 및 기존 전체 CTest 50/50을 통과했다.
+- 이번 체크포인트에서는 test source와 fixture를 변경하지 않았다.
+
+### 다음 작업 제한
+
+- `S2-D5-CODE`는 사용자 코드 검수 대기 상태다.
+- 사용자 승인 전에는 `S2-D5-TEST`의 launch path test를 작성하지 않는다.
+- test에서 production 결함이 발견되어도 `S2-D5-FIX` 승인 전에는 수정하지 않는다.
+
 ## 2026-08-15 - 단계 2 원자적 저장과 복구 test 작성
 
 ### 사용자 지시

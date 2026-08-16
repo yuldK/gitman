@@ -23,6 +23,16 @@ namespace {
         return project;
     }
 
+    // `repository_change_result`에는 `has_errors()`가 없다. 실행 결과는 `executed`와
+    // `succeeded`로 성패를 나타내므로 진단은 여기서 직접 본다.
+    bool has_error_diagnostic(const std::vector<gitman::diagnostic>& diagnostics) noexcept
+    {
+        for (const gitman::diagnostic& value : diagnostics)
+            if (value.severity == gitman::diagnostic_severity::error)
+                return true;
+        return false;
+    }
+
     gitman::repository_query_result query(gitman::testing::git_repository_fixture& fixture, const std::u8string_view path)
     {
         gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
@@ -55,6 +65,16 @@ namespace {
     {
         const std::u8string workspace { fixture.make_directory(u8"clones") };
         fixture.git(workspace, { u8"clone", std::u8string { remote }, std::u8string { name } });
+        return fixture.path_of(std::u8string { u8"clones\\" } + std::u8string { name });
+    }
+
+    // submodule까지 함께 받는 clone이다. Git은 기본적으로 submodule을 `file` 경로에서
+    // 받아 오지 않으므로, production 명령이 원본을 새로 clone할 필요가 없도록 준비 단계에서
+    // 미리 초기화해 둔다. 준비 명령만 그 전송을 허용한다.
+    std::u8string clone_with_submodules_of(gitman::testing::git_repository_fixture& fixture, const std::u8string_view remote, const std::u8string_view name)
+    {
+        const std::u8string workspace { fixture.make_directory(u8"clones") };
+        fixture.git(workspace, { u8"clone", u8"--recurse-submodules", std::u8string { remote }, std::u8string { name } });
         return fixture.path_of(std::u8string { u8"clones\\" } + std::u8string { name });
     }
 
@@ -395,6 +415,137 @@ TEST_CASE("A real unreachable remote is reported as offline", "[integration][git
     REQUIRE(result.snapshot.comparison == gitman::comparison_source::local);
     REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::clean);
     REQUIRE_FALSE(result.snapshot.remote_checked_at.has_value());
+}
+
+TEST_CASE("A real update fast forwards a repository that is behind", "[integration][git][update]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_published_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"behind") };
+    fixture.git(clone, { u8"reset", u8"--hard", u8"HEAD~1" });
+    REQUIRE(fixture.failures().empty());
+
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+    const gitman::repository_change_result result { provider.update(make_project(clone), {}, {}) };
+
+    REQUIRE(result.executed);
+    REQUIRE(result.succeeded);
+    REQUIRE(result.blocked_by == gitman::update_block_reason::none);
+    // 사후 재조회가 갱신된 상태를 보고한다.
+    REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
+    REQUIRE(result.snapshot.sync_state == gitman::remote_sync_state::up_to_date);
+    REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::clean);
+}
+
+TEST_CASE("A real update refuses a merge when fast forward is impossible", "[integration][git][update]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_published_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"rewritten") };
+    // 원격 이력을 다시 써서 clone의 커밋이 더 이상 조상이 아니게 만든다. 로컬이 들고
+    // 있는 tracking ref는 아직 옛 값이라 사전 검사는 통과한다.
+    const std::u8string source { fixture.path_of(u8"source") };
+    fixture.git(source, { u8"reset", u8"--hard", u8"HEAD~1" });
+    fixture.git(source, { u8"commit", u8"--allow-empty", u8"-m", u8"rewritten" });
+    fixture.git(source, { u8"push", u8"--force", u8"origin", u8"main" });
+    REQUIRE(fixture.failures().empty());
+
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+    const gitman::repository_change_result result { provider.update(make_project(clone), {}, {}) };
+
+    // 실행은 했지만 merge를 만들지 않고 실패한다. 이것이 `--ff-only`의 목적이다.
+    REQUIRE(result.executed);
+    REQUIRE_FALSE(result.succeeded);
+    REQUIRE(has_error_diagnostic(result.diagnostics));
+    // 실패해도 작업 트리는 그대로다.
+    REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::clean);
+}
+
+TEST_CASE("A real update is blocked before touching an unsafe repository", "[integration][git][update]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_published_remote(fixture) };
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+
+    const std::u8string dirty { clone_of(fixture, remote, u8"dirty") };
+    fixture.write_file(dirty, u8"a.txt", "changed\n");
+
+    const std::u8string diverged { clone_of(fixture, remote, u8"diverged") };
+    fixture.git(diverged, { u8"reset", u8"--hard", u8"HEAD~1" });
+    fixture.git(diverged, { u8"commit", u8"--allow-empty", u8"-m", u8"mine" });
+
+    const std::u8string detached { clone_of(fixture, remote, u8"detached") };
+    fixture.git(detached, { u8"checkout", u8"--detach" });
+
+    const std::u8string lonely { make_committed_repository(fixture, u8"lonely") };
+    REQUIRE(fixture.failures().empty());
+
+    const gitman::repository_change_result dirty_result { provider.update(make_project(dirty), {}, {}) };
+    REQUIRE_FALSE(dirty_result.executed);
+    REQUIRE(dirty_result.blocked_by == gitman::update_block_reason::working_tree_dirty);
+
+    const gitman::repository_change_result diverged_result { provider.update(make_project(diverged), {}, {}) };
+    REQUIRE_FALSE(diverged_result.executed);
+    REQUIRE(diverged_result.blocked_by == gitman::update_block_reason::diverged);
+
+    const gitman::repository_change_result detached_result { provider.update(make_project(detached), {}, {}) };
+    REQUIRE_FALSE(detached_result.executed);
+    REQUIRE(detached_result.blocked_by == gitman::update_block_reason::detached_head);
+
+    const gitman::repository_change_result lonely_result { provider.update(make_project(lonely), {}, {}) };
+    REQUIRE_FALSE(lonely_result.executed);
+    REQUIRE(lonely_result.blocked_by == gitman::update_block_reason::no_remote_target);
+}
+
+TEST_CASE("A real update leaves submodules alone unless asked", "[integration][git][update]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    // submodule 원본과 그것을 담은 상위 저장소를 만든다. 모두 로컬 경로다.
+    const std::u8string module_remote { fixture.make_bare_repository(u8"module-remote") };
+    const std::u8string module_source { make_committed_repository(fixture, u8"module-source") };
+    fixture.git(module_source, { u8"remote", u8"add", u8"origin", module_remote });
+    fixture.git(module_source, { u8"push", u8"-u", u8"origin", u8"main" });
+
+    const std::u8string parent_remote { fixture.make_bare_repository(u8"parent-remote") };
+    const std::u8string parent_source { make_committed_repository(fixture, u8"parent-source") };
+    fixture.git(parent_source, { u8"submodule", u8"add", module_remote, u8"vendor/모듈" });
+    fixture.git(parent_source, { u8"commit", u8"-m", u8"add submodule" });
+    fixture.git(parent_source, { u8"remote", u8"add", u8"origin", parent_remote });
+    fixture.git(parent_source, { u8"push", u8"-u", u8"origin", u8"main" });
+    REQUIRE(fixture.failures().empty());
+
+    const std::u8string clone { clone_with_submodules_of(fixture, parent_remote, u8"parent") };
+    fixture.git(parent_source, { u8"commit", u8"--allow-empty", u8"-m", u8"more" });
+    fixture.git(parent_source, { u8"push", u8"origin", u8"main" });
+    REQUIRE(fixture.failures().empty());
+
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+
+    // 기본값은 off다. submodule은 초기화되지 않은 채로 남는다.
+    const gitman::repository_change_result without { provider.update(make_project(clone), {}, {}) };
+    REQUIRE(without.executed);
+    REQUIRE(without.succeeded);
+    REQUIRE(without.snapshot.submodules.empty());
+
+    gitman::update_options options {};
+    options.update_submodules = true;
+    const gitman::repository_change_result with { provider.update(make_project(clone), options, {}) };
+
+    REQUIRE(with.executed);
+    REQUIRE(with.succeeded);
+    // 조사한 submodule이 결과에 담긴다.
+    REQUIRE(with.snapshot.submodules.size() == 1);
+    REQUIRE(with.snapshot.submodules.front().relative_path == u8"vendor/모듈");
+    // 갱신 뒤에도 작업 트리는 깨끗해야 한다.
+    REQUIRE(with.snapshot.working_tree.state == gitman::working_tree_state::clean);
 }
 
 TEST_CASE("Non ASCII text in real Git output reaches the caller unchanged", "[integration][git][encoding]")

@@ -19,6 +19,7 @@ add_executable(gitman_tests
     git_remote_query_tests.cpp
     git_repository_provider_tests.cpp
     git_status_parser_tests.cpp
+    git_update_tests.cpp
     helpers/git_repository_fixture.cpp
     helpers/git_repository_fixture.h
     helpers/vcs_test_doubles.cpp

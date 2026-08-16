@@ -76,9 +76,26 @@ namespace {
         return snapshot;
     }
 
+    bool has_diagnostic(const std::vector<gitman::diagnostic>& diagnostics, const gitman::diagnostic_code code) noexcept
+    {
+        return std::ranges::any_of(diagnostics, [code](const gitman::diagnostic& value) { return value.code == code; });
+    }
+
     bool has_diagnostic(const gitman::repository_query_result& result, const gitman::diagnostic_code code) noexcept
     {
-        return std::ranges::any_of(result.diagnostics, [code](const gitman::diagnostic& value) { return value.code == code; });
+        return has_diagnostic(result.diagnostics, code);
+    }
+
+    // `repository_change_result`에는 `has_errors()`가 없다. 조회 결과와 달리 실행 결과는
+    // `executed`와 `succeeded`로 성패를 나타내므로 여기서는 진단을 직접 본다.
+    bool has_diagnostic(const gitman::repository_change_result& result, const gitman::diagnostic_code code) noexcept
+    {
+        return has_diagnostic(result.diagnostics, code);
+    }
+
+    bool has_error_diagnostic(const gitman::repository_change_result& result) noexcept
+    {
+        return std::ranges::any_of(result.diagnostics, [](const gitman::diagnostic& value) { return value.severity == gitman::diagnostic_severity::error; });
     }
 } // namespace
 
@@ -378,6 +395,126 @@ TEST_CASE("SVN remote queries need a finished local query", "[infrastructure][sv
     const gitman::repository_query_result result { provider.query_remote(make_project(), local, {}) };
 
     REQUIRE(result.snapshot.availability == gitman::repository_availability::not_a_repository);
+    REQUIRE(runner.request_count() == 0);
+}
+
+TEST_CASE("SVN update preflight refuses unsafe working copies", "[infrastructure][svn][provider]")
+{
+    gitman::repository_snapshot clean { ready_local() };
+    REQUIRE(gitman::evaluate_svn_update_preflight(clean) == gitman::update_block_reason::none);
+
+    gitman::repository_snapshot unavailable { clean };
+    unavailable.availability = gitman::repository_availability::not_a_repository;
+    REQUIRE(gitman::evaluate_svn_update_preflight(unavailable) == gitman::update_block_reason::repository_unavailable);
+
+    gitman::repository_snapshot conflicted { clean };
+    conflicted.working_tree.state = gitman::working_tree_state::conflicted;
+    REQUIRE(gitman::evaluate_svn_update_preflight(conflicted) == gitman::update_block_reason::working_tree_conflicted);
+
+    gitman::repository_snapshot dirty { clean };
+    dirty.working_tree.state = gitman::working_tree_state::modified;
+    REQUIRE(gitman::evaluate_svn_update_preflight(dirty) == gitman::update_block_reason::working_tree_dirty);
+
+    gitman::repository_snapshot unknown { clean };
+    unknown.working_tree.state = gitman::working_tree_state::unknown;
+    REQUIRE(gitman::evaluate_svn_update_preflight(unknown) == gitman::update_block_reason::working_tree_dirty);
+
+    gitman::repository_snapshot switched { clean };
+    switched.has_switched_subtree = true;
+    REQUIRE(gitman::evaluate_svn_update_preflight(switched) == gitman::update_block_reason::switched_subtree);
+
+    gitman::repository_snapshot mixed { clean };
+    mixed.has_mixed_revision = true;
+    REQUIRE(gitman::evaluate_svn_update_preflight(mixed) == gitman::update_block_reason::mixed_revision);
+}
+
+TEST_CASE("SVN judgements that could not be made do not block updates", "[infrastructure][svn][provider]")
+{
+    gitman::repository_snapshot snapshot { ready_local() };
+    REQUIRE_FALSE(snapshot.has_switched_subtree.has_value());
+    REQUIRE_FALSE(snapshot.has_mixed_revision.has_value());
+
+    // `svnversion`이 없어 판정할 수 없다는 이유로 update를 영영 막지 않는다. 조회가 이미
+    // 그 사실을 warning으로 남긴다.
+    REQUIRE(gitman::evaluate_svn_update_preflight(snapshot) == gitman::update_block_reason::none);
+
+    // 거짓으로 판정된 경우도 통과다.
+    snapshot.has_switched_subtree = false;
+    snapshot.has_mixed_revision = false;
+    REQUIRE(gitman::evaluate_svn_update_preflight(snapshot) == gitman::update_block_reason::none);
+}
+
+TEST_CASE("A blocked SVN update builds no change command", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    push_local_responses(runner, u8"M       trunk/a.txt\n", u8"4168\n");
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
+
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.blocked_by == gitman::update_block_reason::working_tree_dirty);
+    REQUIRE(has_diagnostic(result, gitman::diagnostic_code::update_blocked));
+    // 조회 7개뿐이며 update 명령이 없다. `svnversion` 요청에는 인자가 아예 없으므로
+    // 마지막 인자만 보지 않고 목록 전체를 확인한다.
+    REQUIRE(runner.request_count() == 7);
+    for (const gitman::process_request& request : runner.requests())
+        REQUIRE(std::ranges::find(request.arguments, std::u8string { u8"update" }) == request.arguments.end());
+}
+
+TEST_CASE("A successful SVN update re-reads the working copy", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    push_local_responses(runner, {}, u8"4168\n");
+    runner.push_response({ gitman::process_completion::exited, 0, u8"Updating '.':\nAt revision 4180.\n", {} });
+    push_local_responses(runner, {}, u8"4180\n");
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
+
+    REQUIRE(result.executed);
+    REQUIRE(result.succeeded);
+    REQUIRE(result.blocked_by == gitman::update_block_reason::none);
+    // 조회 7 + update 1 + 사후 조회 7이다.
+    REQUIRE(runner.request_count() == 15);
+    REQUIRE(runner.request(7).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"update" });
+    REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
+}
+
+TEST_CASE("A failed SVN update is reported with the state after it", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    push_local_responses(runner, {}, u8"4168\n");
+    runner.push_response({ gitman::process_completion::exited, 1, {}, u8"svn: E155004: 작업 복사본이 잠겨 있습니다\n" });
+    push_local_responses(runner, u8"C       trunk/충돌.txt\n", u8"4168\n");
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
+
+    REQUIRE(result.executed);
+    REQUIRE_FALSE(result.succeeded);
+    // 실행의 성공 여부와 조회 결과는 분리해 보고한다.
+    REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::conflicted);
+    REQUIRE(has_error_diagnostic(result));
+}
+
+TEST_CASE("SVN updates do nothing when the tool is missing", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { missing_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
+
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.blocked_by == gitman::update_block_reason::tool_unavailable);
     REQUIRE(runner.request_count() == 0);
 }
 

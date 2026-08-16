@@ -122,6 +122,51 @@ TEST_CASE("Ahead behind requests compare HEAD with the tracking reference", "[in
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
+TEST_CASE("Pull requests only fast forward", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_pull_request(git_executable, working_directory, u8"origin", u8"feature/새 기능", gitman::git_submodule_recursion::none) };
+
+    // fast-forward가 불가능하면 merge를 만들지 않고 실패한다. remote와 branch를 명시해
+    // 설정에 따라 다른 대상이 당겨지지 않게 한다.
+    const std::vector<std::u8string> expected { u8"pull", u8"--ff-only", u8"--recurse-submodules=no", u8"--", u8"origin", u8"feature/새 기능" };
+    REQUIRE(command_arguments(request) == expected);
+    for (const std::u8string& argument : request.arguments)
+    {
+        REQUIRE(argument != u8"--force");
+        REQUIRE(argument != u8"-f");
+        REQUIRE(argument != u8"--rebase");
+        REQUIRE(argument != u8"--autostash");
+        REQUIRE(argument != u8"--no-ff");
+    }
+
+    // 변경 명령은 한도가 다르다.
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(request.maximum_captured_bytes_per_stream == 32u * 1024u * 1024u);
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
+TEST_CASE("Pull requests carry the submodule choice", "[infrastructure][git][command]")
+{
+    const gitman::process_request off { gitman::make_git_pull_request(git_executable, working_directory, u8"origin", u8"main", gitman::git_submodule_recursion::none) };
+    const gitman::process_request on { gitman::make_git_pull_request(git_executable, working_directory, u8"origin", u8"main", gitman::git_submodule_recursion::on_demand) };
+
+    REQUIRE(command_arguments(off)[2] == u8"--recurse-submodules=no");
+    REQUIRE(command_arguments(on)[2] == u8"--recurse-submodules=on-demand");
+}
+
+TEST_CASE("Submodule requests survey before they change anything", "[infrastructure][git][command]")
+{
+    const gitman::process_request survey { gitman::make_git_submodule_status_request(git_executable, working_directory) };
+    REQUIRE(command_arguments(survey) == std::vector<std::u8string> { u8"submodule", u8"status", u8"--recursive" });
+    // 조사는 네트워크를 쓰지 않는 로컬 조회다.
+    REQUIRE(*survey.timeout == std::chrono::milliseconds { 30000 });
+
+    const gitman::process_request update { gitman::make_git_submodule_update_request(git_executable, working_directory) };
+    REQUIRE(command_arguments(update) == std::vector<std::u8string> { u8"submodule", u8"update", u8"--init", u8"--recursive" });
+    REQUIRE(*update.timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(gitman::validate_process_request(update).empty());
+}
+
 TEST_CASE("Git local queries carry the approved execution policy", "[infrastructure][git][command]")
 {
     const gitman::process_request requests[] {

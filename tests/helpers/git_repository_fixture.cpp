@@ -60,6 +60,11 @@ namespace gitman::testing {
             full.push_back(u8"commit.gpgsign=false");
             full.push_back(u8"-c");
             full.push_back(u8"init.defaultBranch=main");
+            // 임시 디렉터리 안의 로컬 경로를 submodule 원본으로 쓴다. Git은 기본적으로
+            // `file` 전송을 submodule에 허용하지 않으므로 준비 명령에만 열어 준다.
+            // production 코드는 이 설정을 만들지 않는다.
+            full.push_back(u8"-c");
+            full.push_back(u8"protocol.file.allow=always");
             full.reserve(full.size() + arguments.size());
             for (std::u8string& argument : arguments)
                 full.push_back(std::move(argument));

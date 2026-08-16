@@ -74,12 +74,28 @@ TEST_CASE("SVN remote revision requests target the URL", "[infrastructure][svn][
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
+TEST_CASE("SVN update requests never resolve conflicts on their own", "[infrastructure][svn][command]")
+{
+    const gitman::process_request request { gitman::make_svn_update_request(svn_executable, working_directory) };
+
+    const std::vector<std::u8string> expected { u8"--non-interactive", u8"update" };
+    REQUIRE(request.arguments == expected);
+    // `--accept`를 주지 않으므로 충돌은 자동으로 해결되지 않고 그대로 남는다.
+    for (const std::u8string& argument : request.arguments)
+        REQUIRE(argument.starts_with(u8"--accept") == false);
+    // 변경 명령이라 한도가 다르다.
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(request.maximum_captured_bytes_per_stream == 32u * 1024u * 1024u);
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
 TEST_CASE("SVN requests never enable interactive prompts", "[infrastructure][svn][command]")
 {
     const gitman::process_request requests[] {
         gitman::make_svn_info_item_request(svn_executable, working_directory, gitman::svn_info_item::url),
         gitman::make_svn_status_request(svn_executable, working_directory),
         gitman::make_svn_remote_revision_request(svn_executable, working_directory, u8"https://svn.example.com/repo"),
+        gitman::make_svn_update_request(svn_executable, working_directory),
     };
 
     for (const gitman::process_request& request : requests)

@@ -337,6 +337,36 @@ TEST_CASE("Remote names are read one per line", "[infrastructure][git][parser]")
     REQUIRE(gitman::parse_git_remote_names(lines_of({ u8"", u8"   " })).empty());
 }
 
+TEST_CASE("Submodule status markers are turned into meanings", "[infrastructure][git][parser]")
+{
+    const std::vector<gitman::submodule_status> submodules {
+        gitman::parse_git_submodule_status(lines_of({
+            u8" fa95e2a150ae50dd8e2094ccc71e9ea3c80e5be1 모듈 하나 (heads/main)",
+            u8"+fdfdc34b44d8cb3770512055430fdb6b77a285e2 vendor/lib (v1.2-3-gabcdef0)",
+            u8"-0000000000000000000000000000000000000000 아직 없는 모듈",
+            u8"U1111111111111111111111111111111111111111 conflicted/module (heads/main)",
+        })),
+    };
+
+    REQUIRE(submodules.size() == 4);
+    // 공백이 든 경로를 자르지 않고 표시용 describe 접미사만 떼어 낸다.
+    REQUIRE(submodules[0].relative_path == u8"모듈 하나");
+    REQUIRE(submodules[0].revision == u8"fa95e2a150ae50dd8e2094ccc71e9ea3c80e5be1");
+    REQUIRE(submodules[0].initialized);
+    REQUIRE_FALSE(submodules[0].revision_mismatch);
+    REQUIRE_FALSE(submodules[0].conflicted);
+
+    REQUIRE(submodules[1].revision_mismatch);
+    REQUIRE(submodules[1].relative_path == u8"vendor/lib");
+    // describe가 없는 줄도 그대로 읽는다.
+    REQUIRE_FALSE(submodules[2].initialized);
+    REQUIRE(submodules[2].relative_path == u8"아직 없는 모듈");
+    REQUIRE(submodules[3].conflicted);
+
+    REQUIRE(gitman::parse_git_submodule_status({}).empty());
+    REQUIRE(gitman::parse_git_submodule_status(lines_of({ u8"짧음", u8"" })).empty());
+}
+
 TEST_CASE("Ahead behind counts are read from one line", "[infrastructure][git][parser]")
 {
     const gitman::git_ahead_behind counts { gitman::parse_git_ahead_behind(u8"3\t5") };

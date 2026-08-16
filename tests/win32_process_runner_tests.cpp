@@ -12,7 +12,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -106,6 +108,34 @@ namespace {
     private:
         std::filesystem::path root_ {};
     };
+
+    // 도우미의 `emit-bytes`에 넘길 hex 문자열을 만든다.
+    std::u8string to_hex(const std::string_view bytes)
+    {
+        constexpr std::u8string_view digits { u8"0123456789ABCDEF" };
+        std::u8string text {};
+        for (const char value : bytes)
+        {
+            const auto byte { static_cast<unsigned char>(value) };
+            text.push_back(digits[byte >> 4U]);
+            text.push_back(digits[byte & 0x0FU]);
+        }
+        return text;
+    }
+
+    // 활성 code page로 인코딩한 byte를 만든다. code page가 UTF-8이면 UTF-8 byte가 되어
+    // 같은 test가 두 환경에서 모두 의미를 갖는다.
+    std::optional<std::string> to_active_code_page(const std::wstring_view text)
+    {
+        const int size { WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr) };
+        if (size <= 0)
+            return std::nullopt;
+
+        std::string bytes(static_cast<std::size_t>(size), '\0');
+        if (WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), bytes.data(), size, nullptr, nullptr) != size)
+            return std::nullopt;
+        return bytes;
+    }
 
     struct runner_fixture
     {
@@ -329,6 +359,68 @@ TEST_CASE("Characters split across pipe reads stay intact", "[win32][process][ru
     REQUIRE(result.succeeded());
     REQUIRE(sink.records.size() == 1);
     REQUIRE(sink.records[0].text == u8"한");
+    REQUIRE_FALSE(sink.records[0].replaced_invalid_bytes);
+}
+
+TEST_CASE("Active code page output is recovered when the fallback is requested", "[win32][process][runner][encoding]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    const std::optional<std::string> encoded { to_active_code_page(L"한글 상태") };
+    REQUIRE(encoded.has_value());
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"emit-bytes", to_hex(*encoded) + u8"0A" }) };
+    request.text_encoding = gitman::process_text_encoding::active_code_page_fallback;
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+
+    REQUIRE(result.succeeded());
+    REQUIRE(sink.records.size() == 1);
+    REQUIRE(sink.records[0].text == u8"한글 상태");
+    REQUIRE_FALSE(sink.records[0].replaced_invalid_bytes);
+    // 활성 code page가 UTF-8이면 변환 없이 그대로 유효하므로 표시가 서지 않는다.
+    REQUIRE(sink.records[0].transcoded_from_active_code_page == (GetACP() != CP_UTF8));
+}
+
+TEST_CASE("Active code page output is replaced without the fallback", "[win32][process][runner][encoding]")
+{
+    if (GetACP() == CP_UTF8)
+    {
+        WARN("활성 code page가 UTF-8이어서 대체 단정을 건너뛴다.");
+        return;
+    }
+
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    const std::optional<std::string> encoded { to_active_code_page(L"한글 상태") };
+    REQUIRE(encoded.has_value());
+
+    recording_sink sink {};
+    const gitman::process_result result { fixture.runner->run(fixture.request({ u8"emit-bytes", to_hex(*encoded) + u8"0A" }), &sink, token) };
+
+    REQUIRE(result.succeeded());
+    REQUIRE(sink.records.size() == 1);
+    REQUIRE(sink.records[0].replaced_invalid_bytes);
+    REQUIRE_FALSE(sink.records[0].transcoded_from_active_code_page);
+    REQUIRE(sink.records[0].text != u8"한글 상태");
+}
+
+TEST_CASE("The fallback leaves valid UTF-8 output untouched", "[win32][process][runner][encoding]")
+{
+    const runner_fixture fixture {};
+    const gitman::process_cancellation_token token {};
+
+    recording_sink sink {};
+    gitman::process_request request { fixture.request({ u8"echo-args", u8"한글 인자" }) };
+    request.text_encoding = gitman::process_text_encoding::active_code_page_fallback;
+    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+
+    REQUIRE(result.succeeded());
+    REQUIRE(sink.records.size() == 1);
+    REQUIRE(sink.records[0].text == u8"[한글 인자]");
+    REQUIRE_FALSE(sink.records[0].transcoded_from_active_code_page);
     REQUIRE_FALSE(sink.records[0].replaced_invalid_bytes);
 }
 

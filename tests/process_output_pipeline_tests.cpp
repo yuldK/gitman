@@ -3,7 +3,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -21,9 +23,32 @@ namespace {
         std::vector<gitman::process_output_record> records {};
     };
 
+    // 파이프라인의 판정 순서를 OS 설정과 무관하게 확인하기 위한 대역이다.
+    class fake_transcoder final : public gitman::text_transcoder
+    {
+    public:
+        [[nodiscard]] std::optional<std::u8string> to_utf8(const std::u8string_view bytes) noexcept override
+        {
+            ++call_count;
+            last_input.assign(bytes);
+            if (succeeds == false)
+                return std::nullopt;
+            return std::u8string { u8"복원된 텍스트" };
+        }
+
+        std::size_t call_count {};
+        std::u8string last_input {};
+        bool succeeds { true };
+    };
+
     std::u8string normalize(const std::u8string_view input, bool& replaced)
     {
         return gitman::normalize_utf8_text(input, replaced);
+    }
+
+    std::u8string invalid_utf8_line()
+    {
+        return std::u8string { char8_t { 0xC7 }, char8_t { 0xD1 }, char8_t { 0x0A } };
     }
 } // namespace
 
@@ -177,6 +202,107 @@ TEST_CASE("Flush emits the unterminated tail once", "[infrastructure][pipeline]"
     // 두 번째 flush는 아무 것도 내보내지 않는다.
     pipeline.flush(recorder.handler());
     REQUIRE(recorder.records.size() == 1);
+}
+
+TEST_CASE("UTF-8 validation rejects the same sequences as normalization", "[infrastructure][pipeline][utf8]")
+{
+    REQUIRE(gitman::is_valid_utf8_text(u8""));
+    REQUIRE(gitman::is_valid_utf8_text(u8"plain ascii"));
+    REQUIRE(gitman::is_valid_utf8_text(u8"한글과 emoji 🙂"));
+
+    // 단독 continuation, overlong, surrogate, 범위 초과와 미완결 sequence
+    REQUIRE_FALSE(gitman::is_valid_utf8_text(std::u8string { char8_t { 0x80 } }));
+    REQUIRE_FALSE(gitman::is_valid_utf8_text(std::u8string { char8_t { 0xC0 }, char8_t { 0xAF } }));
+    REQUIRE_FALSE(gitman::is_valid_utf8_text(std::u8string { char8_t { 0xED }, char8_t { 0xA0 }, char8_t { 0x80 } }));
+    REQUIRE_FALSE(gitman::is_valid_utf8_text(std::u8string { char8_t { 0xF5 }, char8_t { 0x80 }, char8_t { 0x80 }, char8_t { 0x80 } }));
+    REQUIRE_FALSE(gitman::is_valid_utf8_text(std::u8string { char8_t { 0xED }, char8_t { 0x95 } }));
+    // CP949 `한` byte는 유효한 UTF-8이 아니다.
+    REQUIRE_FALSE(gitman::is_valid_utf8_text(std::u8string { char8_t { 0xC7 }, char8_t { 0xD1 } }));
+}
+
+TEST_CASE("Code page fallback only converts records that are not valid UTF-8", "[infrastructure][pipeline][encoding]")
+{
+    fake_transcoder transcoder {};
+    record_recorder recorder {};
+    gitman::process_output_pipeline pipeline {
+        gitman::process_stream::standard_output,
+        4096,
+        large_capture_limit,
+        gitman::process_text_encoding::active_code_page_fallback,
+        &transcoder,
+    };
+
+    pipeline.append(invalid_utf8_line(), recorder.handler());
+    REQUIRE(transcoder.call_count == 1);
+    REQUIRE(transcoder.last_input == std::u8string { char8_t { 0xC7 }, char8_t { 0xD1 } });
+    REQUIRE(recorder.records.size() == 1);
+    REQUIRE(recorder.records[0].text == u8"복원된 텍스트");
+    REQUIRE(recorder.records[0].transcoded_from_active_code_page);
+    REQUIRE_FALSE(recorder.records[0].replaced_invalid_bytes);
+
+    // 이미 유효한 UTF-8은 transcoder를 거치지 않는다.
+    pipeline.append(u8"한글 그대로\n", recorder.handler());
+    REQUIRE(transcoder.call_count == 1);
+    REQUIRE(recorder.records.size() == 2);
+    REQUIRE(recorder.records[1].text == u8"한글 그대로");
+    REQUIRE_FALSE(recorder.records[1].transcoded_from_active_code_page);
+}
+
+TEST_CASE("Failed transcoding falls back to replacement characters", "[infrastructure][pipeline][encoding]")
+{
+    fake_transcoder transcoder {};
+    transcoder.succeeds = false;
+    record_recorder recorder {};
+    gitman::process_output_pipeline pipeline {
+        gitman::process_stream::standard_output,
+        4096,
+        large_capture_limit,
+        gitman::process_text_encoding::active_code_page_fallback,
+        &transcoder,
+    };
+
+    pipeline.append(invalid_utf8_line(), recorder.handler());
+    REQUIRE(transcoder.call_count == 1);
+    REQUIRE(recorder.records.size() == 1);
+    REQUIRE(recorder.records[0].replaced_invalid_bytes);
+    REQUIRE_FALSE(recorder.records[0].transcoded_from_active_code_page);
+    REQUIRE(recorder.records[0].text == std::u8string { replacement } + std::u8string { replacement });
+}
+
+TEST_CASE("The default encoding never consults a transcoder", "[infrastructure][pipeline][encoding]")
+{
+    fake_transcoder transcoder {};
+    record_recorder recorder {};
+    gitman::process_output_pipeline pipeline {
+        gitman::process_stream::standard_output,
+        4096,
+        large_capture_limit,
+        gitman::process_text_encoding::utf8,
+        &transcoder,
+    };
+
+    pipeline.append(invalid_utf8_line(), recorder.handler());
+    REQUIRE(transcoder.call_count == 0);
+    REQUIRE(recorder.records.size() == 1);
+    REQUIRE(recorder.records[0].replaced_invalid_bytes);
+    REQUIRE_FALSE(recorder.records[0].transcoded_from_active_code_page);
+}
+
+TEST_CASE("Fallback without a transcoder still replaces invalid bytes", "[infrastructure][pipeline][encoding]")
+{
+    record_recorder recorder {};
+    gitman::process_output_pipeline pipeline {
+        gitman::process_stream::standard_output,
+        4096,
+        large_capture_limit,
+        gitman::process_text_encoding::active_code_page_fallback,
+        nullptr,
+    };
+
+    pipeline.append(invalid_utf8_line(), recorder.handler());
+    REQUIRE(recorder.records.size() == 1);
+    REQUIRE(recorder.records[0].replaced_invalid_bytes);
+    REQUIRE_FALSE(recorder.records[0].transcoded_from_active_code_page);
 }
 
 TEST_CASE("Flush reports a pending carriage return as progress", "[infrastructure][pipeline]")

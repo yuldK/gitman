@@ -24,7 +24,8 @@ add_executable(gitman_tests
     renderer_policy_tests.cpp
     ui_theme_tests.cpp
     utf8_tests.cpp
-    win32_process_runner_tests.cpp)
+    win32_process_runner_tests.cpp
+    win32_text_transcoder_tests.cpp)
 add_dependencies(gitman_tests gitman_verify_assets gitman_process_test_child)
 target_include_directories(gitman_tests PRIVATE "${GITMAN_SOURCE_DIRECTORY}")
 target_compile_definitions(gitman_tests

@@ -1,5 +1,32 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 3 `S3-D3-TEST` code page fallback test 작성
+
+### 사용자 지시
+
+- `S3-D3-CODE`를 승인하고 `S3-D3-TEST`를 진행한다.
+
+### 반영 내용
+
+- `tests/process_output_pipeline_tests.cpp`에 대역 transcoder를 넣어 판정 순서 test 6개를 추가했다. 유효하지 않은 레코드만 변환, 유효 UTF-8 보존, 변환 실패 시 U+FFFD 복귀, `utf8` 모드의 미호출과 transcoder 없음 경로를 확인한다.
+- `is_valid_utf8_text`가 `normalize_utf8_text`와 같은 기준으로 overlong, surrogate, 범위 초과와 미완결 sequence를 거부하는지 확인했다.
+- `tests/win32_text_transcoder_tests.cpp`를 추가해 빈 입력, ASCII, 해석 불가 byte와 한국어 호스트의 CP949 복원을 확인했다. 활성 code page가 949가 아니면 해당 단정을 `WARN`으로 건너뛴다.
+- `tests/win32_process_runner_tests.cpp`에 end-to-end fallback test 3개를 추가했다. 확인 문자열을 `WideCharToMultiByte(CP_ACP, ...)`로 runtime에 인코딩해 code page 949와 UTF-8 호스트 모두에서 유효한 검증이 되게 했다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 118/118 통과했고 `/analyze`도 무경고로 통과했다.
+- test 작성 중 UTF-8 한글 byte를 CP949로 해석하면 다른 문자가 된다는 기대값이 틀렸음을 확인했다. 엄격 변환이 실패하는 것이 실제 계약이며 production 수정 없이 기대값을 고쳤다.
+- 결과를 `docs/verification/2026-08-16-stage-3-d3-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-009, REQ-010, REQ-011, REQ-012, REQ-013
+- NFR-005, NFR-006
+
+### 다음 작업 제한
+
+- 발견 production 결함이 없어 `S3-D3-FIX`는 사용자 확인 후 생략한다.
+- `S3-D4-CODE` 승인 전에는 timeout과 취소 구현을 시작하지 않는다.
+- 도우미의 `sleep`과 `spawn-child` 명령은 `S3-D4-TEST`에서만 추가한다.
+
 ## 2026-08-16 - 단계 3 `S3-D3-CODE` 활성 code page fallback 구현
 
 ### 사용자 지시

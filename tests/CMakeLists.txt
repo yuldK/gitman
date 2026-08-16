@@ -14,6 +14,12 @@ add_executable(gitman_tests
     dependency_versions_tests.cpp
     domain_model_tests.cpp
     embedded_assets_tests.cpp
+    git_command_builder_tests.cpp
+    git_integration_tests.cpp
+    git_repository_provider_tests.cpp
+    git_status_parser_tests.cpp
+    helpers/git_repository_fixture.cpp
+    helpers/git_repository_fixture.h
     helpers/vcs_test_doubles.cpp
     helpers/vcs_test_doubles.h
     json_project_store_tests.cpp
@@ -41,7 +47,10 @@ target_include_directories(gitman_tests
         "${GITMAN_TEST_DIRECTORY}")
 target_compile_definitions(gitman_tests
     PRIVATE
-        GITMAN_TEST_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/projects")
+        GITMAN_TEST_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/projects"
+        # 실제 Git이 낸 출력을 그대로 저장한 fixture다. 파서가 실제 형식에서 벗어나지
+        # 않도록 고정한다.
+        GITMAN_VCS_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/vcs")
 target_link_libraries(gitman_tests
     PRIVATE
         gitman_process

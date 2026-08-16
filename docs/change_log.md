@@ -1,5 +1,39 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 4 `S4-D2-TEST` Git 로컬 조회 test 작성
+
+### 사용자 지시
+
+- `S4-D2-CODE`를 승인하고 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `tests/git_command_builder_tests.cpp`에 명령 조립 test 4개를 추가했다. `rev-parse` 인자 순서, `status` 인자, **어떤 인자에도 `-z`가 없음**, `status`만 큰 레코드 상한을 쓰는 것과 단계 3 요청 검증 통과를 단정한다.
+- `tests/git_status_parser_tests.cpp`에 파서 test 15개를 추가했다. 인용 해제 이스케이프 전종, 배치 파서, 레코드 종류별 파싱, 알 수 없는 헤더 무시, 잘못된 `branch.ab` 4종, 해석 실패 시 `unknown` 상태를 단정한다.
+- `tests/fixtures/vcs/git/`에 호스트 Git 2.52.0이 실제로 낸 `status --porcelain=v2 --branch` 출력 5종을 그대로 저장했다. rename fixture는 공백·한글·emoji가 든 경로와 TAB 구분자를 담는다.
+- 개행이 든 경로가 인용 덕분에 한 레코드로 남는 것을 test로 고정했다. `-z`를 쓰지 않기로 한 결정의 근거다.
+- `tests/git_repository_provider_tests.cpp`에 provider test 20개를 추가했다. 도구 부재, 상대 경로, 사라진 경로, 저장소 아님, bare, git dir 안, timeout, 취소, status 실패, 해석 실패와 미구현 동작에서 **요청 기록 수로 명령 미생성을 직접 단정**한다.
+- 저장소 아님 판정 test에 한국어 Git 메시지를 넣어 분류가 메시지 본문이 아니라 구조적 신호로 이뤄지는 것을 언어 독립으로 단정했다.
+- `tests/helpers/git_repository_fixture.h/.cpp`를 추가했다. 실제 `git.exe`로 임시 저장소를 만들고 소멸자에서 반드시 지운다. `HOME`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`과 커밋 저자·시각을 고정해 호스트 설정과 분리한다.
+- `tests/git_integration_tests.cpp`에 통합 test 12개를 추가했다. 정상, ahead, dirty, 충돌, 중단된 rebase, detached, 커밋 없음, bare, linked worktree, 한글·emoji 경로, 비저장소와 없는 경로, 도달 불가 remote를 실제 Git으로 확인한다. Git이 없으면 skip한다.
+- 도달 불가 remote를 등록한 저장소로 로컬 조회가 네트워크에 접근하지 않는 것을 실제 실행으로 확인했다.
+- 전체 CTest가 195에서 **246**으로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 246/246 통과했다. `/analyze`도 무경고로 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- `--untracked-files=normal`이 미추적 디렉터리를 항목 하나로 접어 보고한다는 사실을 기록했다. `untracked_count`는 파일 수가 아니라 Git이 보고한 항목 수다.
+- production source를 변경하지 않았고 `S4-D2-FIX` 후보도 발견하지 않았다.
+- 결과를 `docs/verification/2026-08-16-stage-4-d2-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-009, REQ-010, REQ-012
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D2-TEST`는 사용자 test 검수 대기 상태다.
+- 발견 production 결함이 없어 `S4-D2-FIX`는 사용자 확인 후 생략한다.
+- 승인 전에는 `S4-D3-CODE`의 remote 열거와 fetch를 작성하지 않는다.
+
 ## 2026-08-16 - 단계 4 `S4-D2-CODE` Git 로컬 조회 구현
 
 ### 사용자 지시

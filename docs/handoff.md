@@ -5,15 +5,15 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-D2-CODE` Git 로컬 조회 production code 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D2-TEST` Git 로컬 조회 test 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-D2-CODE` 승인 후 `S4-D2-TEST` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D2-TEST` 승인과 무결함 `S4-D2-FIX` 생략 확인 후 `S4-D3-CODE` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 Git 로컬 조회, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d2-code.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d1-test.md`
-- 최근 검증 기록: `docs/verification/2026-08-16-stage-4-d1-code.md`
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d2-test.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d2-code.md`
+- 최근 검증 기록: `docs/verification/2026-08-16-stage-4-d1-test.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
 다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
@@ -115,16 +115,15 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-D2-CODE` |
-| 제출 내용 | Git 명령 조립, `rev-parse` 및 porcelain v2 파서, 진행 중 작업 표식 probe, 로컬 snapshot 변환 |
-| production code | 신규 source 3쌍(`git_command_builder`, `git_status_parser`, `git_repository_provider`), 수정 3개(`repository_snapshot`, `vcs_execution_policy`, `src/CMakeLists.txt`) |
-| test code 및 fixture | 변경 없음. 전체 CTest 195 유지 |
+| 계획 ID | `S4-D2-TEST` |
+| 제출 내용 | Git 로컬 조회 test 51개(단정 384개)와 `git_repository_fixture` 도우미 |
+| production code | 변경 없음 |
+| test code 및 fixture | 신규 test source 4개, 도우미 1쌍, 실제 Git 출력 fixture 5개. 전체 CTest 195 → **246** |
 | bug 수정 | 없음 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 195/195, `/analyze` 무경고, aggregate format/style 통과, 임시 프로그램 177/177 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 246/246, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과 |
 | 발견 결함 | 없음 |
-| 승인 대기 | `S4-D2-CODE` 코드 검수 |
-| 검수에서 확인할 결정 | `-z` 미사용, `unsupported_layout` 도메인 추가, 로컬 조회의 `branch.ab` 기반 `sync_state` |
-| 승인 뒤 다음 작업 | `S4-D2-TEST` 한 구간만 허용 |
+| 승인 대기 | `S4-D2-TEST` test 검수 |
+| 승인 뒤 다음 작업 | 무결함 `S4-D2-FIX` 생략 후 `S4-D3-CODE` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
@@ -134,9 +133,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S4-D1-CODE` 계약과 도구 발견 | 승인 완료 | `docs/verification/2026-08-16-stage-4-d1-code.md` |
 | `S4-D1-TEST` | 승인 완료 | test 56개, 전체 195/195. `docs/verification/2026-08-16-stage-4-d1-test.md` |
 | `S4-D1-FIX` | 생략 완료 | 발견 production 결함 없음 |
-| `S4-D2-CODE` Git 로컬 상태 | 제출, 검수 대기 | `docs/verification/2026-08-16-stage-4-d2-code.md` |
-| `S4-D2-TEST` | 시작 전 | |
-| `S4-D2-FIX` | 시작 전 | |
+| `S4-D2-CODE` Git 로컬 상태 | 승인 완료 | `docs/verification/2026-08-16-stage-4-d2-code.md` |
+| `S4-D2-TEST` | 제출, 검수 대기 | test 51개, 전체 246/246. `docs/verification/2026-08-16-stage-4-d2-test.md` |
+| `S4-D2-FIX` | 시작 전 | 발견 production 결함이 없어 사용자 확인 후 생략 예정 |
 | `S4-D3-CODE` Git remote-first 최신 상태 | 시작 전 | |
 | `S4-D3-TEST` | 시작 전 | |
 | `S4-D3-FIX` | 시작 전 | |
@@ -225,6 +224,10 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - 로컬 조회는 `branch.ab`로 `sync_state`를 채우되 근거를 `comparison_source::local`로 남긴다. 이미 받아 둔 remote tracking ref와의 비교이며 `S4-D3`의 remote-first 판정이 덮어쓴다. `local_only`와 `remote_target_missing`은 `git remote` 결과가 필요해 `S4-D3` 범위다.
 - 작업 트리 상태는 해석하지 못한 레코드가 있거나 branch 헤더가 없으면 `unknown`이다. `is_safe_for_change()`가 `unknown`을 안전으로 보지 않으므로 보호 정책이 그대로 동작한다.
 - provider는 명령을 만들기 전에 등록 경로가 절대 경로인지와 디렉터리인지 확인한다. 따라서 test 도우미의 file probe에는 표식 파일뿐 아니라 **작업 디렉터리도 등록**해야 한다.
+- `--untracked-files=normal`은 미추적 디렉터리를 항목 하나로 접어 보고한다(`? sub dir/`). `untracked_count`는 파일 수가 아니라 Git이 보고한 항목 수다. 카드 표시 방식은 단계 6에서 정한다.
+- `tests/helpers/git_repository_fixture.*`는 실제 `git.exe`로 임시 저장소를 만든다. `HOME`, `USERPROFILE`, `XDG_CONFIG_HOME`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`과 커밋 저자·시각을 고정해 호스트 설정과 분리한다. 이렇게 하지 않으면 사용자의 `core.autocrlf`나 서명 설정에 따라 결과가 달라진다. 단계 4의 남은 통합 test도 이 도우미를 쓴다.
+- `tests/fixtures/vcs/git/*.txt`는 실제 Git 출력을 그대로 저장한 것이며 `.txt`는 style 검사 확장자 목록에 없다. porcelain v2 rename 레코드가 TAB을 포함하므로 tab 금지 검사를 적용하면 안 된다. SVN fixture도 같은 위치에 둔다.
+- test source의 여러 줄 표현식은 `gitman_source_style`의 "닫는 중괄호는 자기 줄에" 규칙과 clang-format의 200자 줄 합치기가 충돌할 수 있다. 중간 값을 지역 변수로 빼면 두 검사를 모두 만족한다.
 - test 도우미는 계획의 `helpers/fake_process_runner.*` 대신 `helpers/vcs_test_doubles.*`다. runner 대역과 file probe 대역을 함께 담기 때문이다. `gitman_tests`에 `${GITMAN_TEST_DIRECTORY}` include 경로가 추가됐다.
 - `fake_process_runner`는 받은 요청을 그대로 기록한다. 이후 구간에서 "검증 실패 시 명령을 만들지 않는다"는 REQ-007 수용 기준을 이 기록으로 단정한다.
 - 로컬 NTFS는 속성 조회를 부모 디렉터리 메타데이터로 처리해 deny ACE로도 `GetFileAttributesW`를 실패시킬 수 없다(호스트 실측). `inaccessible` 분기는 `project_path_state_from_error` 매핑 test로 검증한다.

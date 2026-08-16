@@ -654,7 +654,8 @@ fixture로 쓸 출력은 Apache Subversion 공식 문서의 출력 계약을 근
 - `S4-P0`: 2026-08-16 사용자 승인 완료. 1차 검수에서 SVN XML 미사용, SVN CLI 미설치, `authentication_required` 추가, 로캘 미강제, 문서 `settings` 도입을 확정하고 계획서에 반영했다. 이후 "모든 VCS가 없는 환경도 상정해야 한다"는 지시를 받아 `S4-D1-CODE`에 반영했다.
 - `S4-D1-CODE`: 도메인 확장, 문서 `settings` 스키마와 저장, provider/registry/probe 계약, 도구 탐색과 버전 비교, 실행 정책, 오류 분류기와 `gitman_vcs` target 구현 및 사용자 승인 완료. 결과는 `docs/verification/2026-08-16-stage-4-d1-code.md`에 기록했다.
 - `S4-D1-TEST`: 계약 계층 test 56개와 `vcs_test_doubles` 도우미 작성 완료, 사용자 승인 완료. 전체 CTest가 139에서 195로 늘었고 양 toolchain에서 195/195 통과했다. 발견 production 결함이 없어 `S4-D1-FIX`는 생략했다. 결과는 `docs/verification/2026-08-16-stage-4-d1-test.md`에 기록했다.
-- `S4-D2-CODE`: Git 명령 조립, `rev-parse` 배치 파서, porcelain v2 파서, 진행 중 작업 표식 probe와 로컬 snapshot 변환 구현 완료, 사용자 검수 대기. `status`에 `-z`를 쓰지 않기로 확정했고 bare 저장소와 git dir 안의 경로를 `unsupported_layout`으로 보고하기로 정했다. 결과는 `docs/verification/2026-08-16-stage-4-d2-code.md`에 기록했다.
+- `S4-D2-CODE`: Git 명령 조립, `rev-parse` 배치 파서, porcelain v2 파서, 진행 중 작업 표식 probe와 로컬 snapshot 변환 구현 및 사용자 승인 완료. `status`에 `-z`를 쓰지 않기로 확정했고 bare 저장소와 git dir 안의 경로를 `unsupported_layout`으로 보고하기로 정했다. 결과는 `docs/verification/2026-08-16-stage-4-d2-code.md`에 기록했다.
+- `S4-D2-TEST`: 파서와 provider test 39개, 실제 Git 통합 test 12개, `git_repository_fixture` 도우미와 실제 출력 fixture 5종 작성 완료, 사용자 검수 대기. 전체 CTest가 195에서 246으로 늘었고 양 toolchain에서 246/246 통과했다. 발견 production 결함은 없다. 결과는 `docs/verification/2026-08-16-stage-4-d2-test.md`에 기록했다.
 
 ## 11. 미결정 항목
 

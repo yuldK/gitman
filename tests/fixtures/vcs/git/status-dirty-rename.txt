@@ -1,0 +1,8 @@
+# branch.oid 5b013dbd8e0b68f60022042914048445fd0914c6
+# branch.head main
+# branch.upstream origin/main
+# branch.ab +1 -0
+1 .M N... 100644 100644 100644 5626abf0f72e58d7a153368ba57db4c673c0e171 5626abf0f72e58d7a153368ba57db4c673c0e171 a.txt
+2 R. N... 100644 100644 100644 587be6b4c3f93f93c489c0111bba5596147a26cb 587be6b4c3f93f93c489c0111bba5596147a26cb R100 한글 이름 😀.txt	renamed.txt
+? sub dir/
+? 새 파일.txt

@@ -1,0 +1,339 @@
+#include "domain/repository_snapshot.h"
+#include "infrastructure/git_status_parser.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace {
+    // fixture는 호스트의 Git 2.52.0이 실제로 낸 출력을 그대로 저장한 것이다. 파서가
+    // 실제 형식에서 벗어나지 않도록 고정한다.
+    std::vector<std::u8string> read_fixture_lines(const char* const name)
+    {
+        const std::filesystem::path path { std::filesystem::path { GITMAN_VCS_FIXTURE_DIRECTORY } / "git" / name };
+        std::ifstream stream { path, std::ios::binary };
+        REQUIRE(stream.is_open());
+
+        const std::string content { std::istreambuf_iterator<char> { stream }, std::istreambuf_iterator<char> {} };
+        REQUIRE(content.empty() == false);
+
+        // 단계 3의 파이프라인과 같은 규칙으로 나눈다. 줄 끝 문자는 레코드에 남지 않고
+        // 마지막 빈 조각은 레코드가 되지 않는다.
+        std::vector<std::u8string> lines {};
+        std::size_t begin { 0 };
+        while (begin <= content.size())
+        {
+            const std::size_t end { content.find('\n', begin) };
+            const bool final_segment { end == std::string::npos };
+            std::string_view line { final_segment ? std::string_view { content }.substr(begin) : std::string_view { content }.substr(begin, end - begin) };
+            if (line.empty() == false && line.back() == '\r')
+                line.remove_suffix(1);
+
+            if (final_segment)
+            {
+                if (line.empty() == false)
+                    lines.emplace_back(reinterpret_cast<const char8_t*>(line.data()), line.size());
+                break;
+            }
+            lines.emplace_back(reinterpret_cast<const char8_t*>(line.data()), line.size());
+            begin = end + 1;
+        }
+        return lines;
+    }
+
+    std::vector<std::u8string> lines_of(const std::vector<std::u8string_view>& values)
+    {
+        std::vector<std::u8string> lines {};
+        lines.reserve(values.size());
+        for (const std::u8string_view value : values)
+            lines.emplace_back(value);
+        return lines;
+    }
+} // namespace
+
+TEST_CASE("Quoted Git paths are unescaped", "[infrastructure][git][parser]")
+{
+    REQUIRE(gitman::unquote_git_path(u8"a.txt") == u8"a.txt");
+    REQUIRE(gitman::unquote_git_path(u8"sub dir/a b.txt") == u8"sub dir/a b.txt");
+    // `core.quotepath=false`에서 비ASCII는 인용되지 않는다.
+    REQUIRE(gitman::unquote_git_path(u8"한글 이름 😀.txt") == u8"한글 이름 😀.txt");
+
+    REQUIRE(gitman::unquote_git_path(u8"\"a b.txt\"") == u8"a b.txt");
+    REQUIRE(gitman::unquote_git_path(u8"\"a\\nb.txt\"") == u8"a\nb.txt");
+    REQUIRE(gitman::unquote_git_path(u8"\"a\\tb.txt\"") == u8"a\tb.txt");
+    REQUIRE(gitman::unquote_git_path(u8"\"a\\rb.txt\"") == u8"a\rb.txt");
+    REQUIRE(gitman::unquote_git_path(u8"\"a\\\"b\"") == u8"a\"b");
+    REQUIRE(gitman::unquote_git_path(u8"\"a\\\\b\"") == u8"a\\b");
+    // 8진 이스케이프는 byte 하나다. UTF-8 sequence는 여러 개가 이어져 복원된다.
+    REQUIRE(gitman::unquote_git_path(u8"\"\\355\\225\\234.txt\"") == u8"한.txt");
+    REQUIRE(gitman::unquote_git_path(u8"\"\\a\\b\\f\\v\"") == u8"\a\b\f\v");
+
+    // 형식이 깨진 값은 추측하지 않고 원문을 남긴다.
+    REQUIRE(gitman::unquote_git_path(u8"\"unterminated") == u8"\"unterminated");
+    REQUIRE(gitman::unquote_git_path(u8"\"a\\\"") == u8"a\\");
+    REQUIRE(gitman::unquote_git_path(u8"\"\"") == u8"");
+    REQUIRE(gitman::unquote_git_path(u8"") == u8"");
+}
+
+TEST_CASE("Repository layout output is parsed in argument order", "[infrastructure][git][parser]")
+{
+    const gitman::git_repository_layout layout {
+        gitman::parse_git_repository_layout(lines_of({ u8"C:/repo/.git", u8"false", u8"true", u8"C:/repo" })),
+    };
+    REQUIRE(layout.parsed);
+    REQUIRE(layout.git_directory == u8"C:/repo/.git");
+    REQUIRE(layout.work_tree_root == u8"C:/repo");
+    REQUIRE_FALSE(layout.bare);
+    REQUIRE(layout.inside_work_tree);
+}
+
+TEST_CASE("Bare repository layout keeps the values printed before the failure", "[infrastructure][git][parser]")
+{
+    // `--show-toplevel`이 실패해 세 줄만 남는다. 앞의 값만으로 배치를 판정한다.
+    const gitman::git_repository_layout bare {
+        gitman::parse_git_repository_layout(lines_of({ u8"C:/bare", u8"true", u8"false" })),
+    };
+    REQUIRE(bare.parsed);
+    REQUIRE(bare.bare);
+    REQUIRE_FALSE(bare.inside_work_tree);
+    REQUIRE(bare.work_tree_root.empty());
+
+    const gitman::git_repository_layout inside_git_dir {
+        gitman::parse_git_repository_layout(lines_of({ u8"C:/repo/.git", u8"false", u8"false" })),
+    };
+    REQUIRE(inside_git_dir.parsed);
+    REQUIRE_FALSE(inside_git_dir.bare);
+    REQUIRE_FALSE(inside_git_dir.inside_work_tree);
+}
+
+TEST_CASE("Incomplete layout output is not accepted", "[infrastructure][git][parser]")
+{
+    REQUIRE_FALSE(gitman::parse_git_repository_layout({}).parsed);
+    REQUIRE_FALSE(gitman::parse_git_repository_layout(lines_of({ u8"C:/repo/.git" })).parsed);
+    REQUIRE_FALSE(gitman::parse_git_repository_layout(lines_of({ u8"C:/repo/.git", u8"false" })).parsed);
+    REQUIRE_FALSE(gitman::parse_git_repository_layout(lines_of({ u8"", u8"false", u8"true" })).parsed);
+}
+
+TEST_CASE("Captured clean status is parsed", "[infrastructure][git][parser][fixture]")
+{
+    const gitman::git_status_summary status { gitman::parse_git_status_porcelain_v2(read_fixture_lines("status-clean.txt")) };
+
+    REQUIRE(status.has_branch_header);
+    REQUIRE(status.oid == u8"809c24e6087a2e27bc87e929f3b53f460d5c7520");
+    REQUIRE(status.head == u8"main");
+    REQUIRE(status.upstream == u8"origin/main");
+    REQUIRE(status.has_ahead_behind);
+    REQUIRE(status.ahead == 0);
+    REQUIRE(status.behind == 0);
+    REQUIRE(status.entries.empty());
+    REQUIRE(status.unparsable_records == 0);
+
+    const gitman::working_tree_summary summary { gitman::summarize_git_working_tree(status) };
+    REQUIRE(summary.state == gitman::working_tree_state::clean);
+    REQUIRE(summary.is_safe_for_change());
+}
+
+TEST_CASE("Captured dirty status with a rename is parsed", "[infrastructure][git][parser][fixture]")
+{
+    const gitman::git_status_summary status { gitman::parse_git_status_porcelain_v2(read_fixture_lines("status-dirty-rename.txt")) };
+
+    REQUIRE(status.has_ahead_behind);
+    REQUIRE(status.ahead == 1);
+    REQUIRE(status.behind == 0);
+    REQUIRE(status.entries.size() == 4);
+    REQUIRE(status.unparsable_records == 0);
+
+    REQUIRE(status.entries[0].kind == gitman::git_status_entry_kind::ordinary);
+    REQUIRE(status.entries[0].index_state == u8'.');
+    REQUIRE(status.entries[0].work_tree_state == u8'M');
+    REQUIRE(status.entries[0].path == u8"a.txt");
+
+    // rename 레코드는 `<새 경로><TAB><원래 경로>`다. 새 경로에 공백, 한글과 emoji가 있다.
+    REQUIRE(status.entries[1].kind == gitman::git_status_entry_kind::renamed_or_copied);
+    REQUIRE(status.entries[1].index_state == u8'R');
+    REQUIRE(status.entries[1].path == u8"한글 이름 😀.txt");
+    REQUIRE(status.entries[1].original_path == u8"renamed.txt");
+
+    // `--untracked-files=normal`은 미추적 디렉터리를 항목 하나로 접어서 보고한다.
+    REQUIRE(status.entries[2].kind == gitman::git_status_entry_kind::untracked);
+    REQUIRE(status.entries[2].path == u8"sub dir/");
+    REQUIRE(status.entries[3].path == u8"새 파일.txt");
+
+    const gitman::working_tree_summary summary { gitman::summarize_git_working_tree(status) };
+    REQUIRE(summary.state == gitman::working_tree_state::modified);
+    REQUIRE(summary.modified_count == 2);
+    REQUIRE(summary.untracked_count == 2);
+    REQUIRE(summary.conflicted_count == 0);
+    REQUIRE_FALSE(summary.is_safe_for_change());
+}
+
+TEST_CASE("Captured conflicted status is parsed", "[infrastructure][git][parser][fixture]")
+{
+    const gitman::git_status_summary status { gitman::parse_git_status_porcelain_v2(read_fixture_lines("status-conflicted.txt")) };
+
+    REQUIRE(status.entries.size() == 1);
+    REQUIRE(status.entries[0].kind == gitman::git_status_entry_kind::unmerged);
+    REQUIRE(status.entries[0].index_state == u8'U');
+    REQUIRE(status.entries[0].work_tree_state == u8'U');
+    REQUIRE(status.entries[0].path == u8"f.txt");
+    // 충돌 저장소에는 upstream 헤더가 없다.
+    REQUIRE(status.upstream.empty());
+    REQUIRE_FALSE(status.has_ahead_behind);
+
+    const gitman::working_tree_summary summary { gitman::summarize_git_working_tree(status) };
+    REQUIRE(summary.state == gitman::working_tree_state::conflicted);
+    REQUIRE(summary.conflicted_count == 1);
+    REQUIRE(summary.modified_count == 0);
+}
+
+TEST_CASE("Captured detached and unborn status are parsed", "[infrastructure][git][parser][fixture]")
+{
+    const gitman::git_status_summary detached { gitman::parse_git_status_porcelain_v2(read_fixture_lines("status-detached.txt")) };
+    REQUIRE(detached.detached);
+    REQUIRE(detached.head == u8"(detached)");
+    REQUIRE(detached.oid == u8"9177764286a3e810b8b2bc731efb21c5d2242e07");
+    REQUIRE(gitman::summarize_git_working_tree(detached).is_detached);
+
+    const gitman::git_status_summary unborn { gitman::parse_git_status_porcelain_v2(read_fixture_lines("status-unborn.txt")) };
+    REQUIRE(unborn.unborn);
+    // 커밋이 없으므로 표시할 리비전이 없다. `(initial)`을 값으로 담지 않는다.
+    REQUIRE(unborn.oid.empty());
+    REQUIRE(unborn.head == u8"main");
+    REQUIRE_FALSE(unborn.detached);
+}
+
+TEST_CASE("Status records with spaces and quoting keep their boundaries", "[infrastructure][git][parser]")
+{
+    const gitman::git_status_summary status {
+        gitman::parse_git_status_porcelain_v2(lines_of({
+            u8"# branch.oid abc",
+            u8"# branch.head main",
+            u8"1 .M N... 100644 100644 100644 5626abf 5626abf sub dir/a b.txt",
+            u8"2 C. N... 100644 100644 100644 587be6b 587be6b C75 새 이름.txt\t원래 이름.txt",
+            u8"u DU N... 100644 100644 100644 100644 df967b9 ba2906d e45c9c2 conflict dir/f.txt",
+            u8"? \"quoted\\nname.txt\"",
+            u8"! ignored.txt",
+        })),
+    };
+
+    REQUIRE(status.unparsable_records == 0);
+    REQUIRE(status.entries.size() == 5);
+    REQUIRE(status.entries[0].path == u8"sub dir/a b.txt");
+    REQUIRE(status.entries[1].kind == gitman::git_status_entry_kind::renamed_or_copied);
+    REQUIRE(status.entries[1].path == u8"새 이름.txt");
+    REQUIRE(status.entries[1].original_path == u8"원래 이름.txt");
+    REQUIRE(status.entries[2].path == u8"conflict dir/f.txt");
+    // 줄 단위 출력에서도 개행이 든 경로가 인용 덕분에 한 레코드로 남는다.
+    REQUIRE(status.entries[3].path == u8"quoted\nname.txt");
+    REQUIRE(status.entries[4].kind == gitman::git_status_entry_kind::ignored);
+
+    const gitman::working_tree_summary summary { gitman::summarize_git_working_tree(status) };
+    // 무시된 항목은 어느 수에도 들어가지 않는다.
+    REQUIRE(summary.modified_count == 2);
+    REQUIRE(summary.conflicted_count == 1);
+    REQUIRE(summary.untracked_count == 1);
+}
+
+TEST_CASE("Unchanged tracked entries are not counted", "[infrastructure][git][parser]")
+{
+    const gitman::git_status_summary status {
+        gitman::parse_git_status_porcelain_v2(lines_of({
+            u8"# branch.oid abc",
+            u8"# branch.head main",
+            u8"1 .. N... 100644 100644 100644 5626abf 5626abf unchanged.txt",
+        })),
+    };
+
+    REQUIRE(status.entries.size() == 1);
+    const gitman::working_tree_summary summary { gitman::summarize_git_working_tree(status) };
+    REQUIRE(summary.modified_count == 0);
+    REQUIRE(summary.state == gitman::working_tree_state::clean);
+}
+
+TEST_CASE("Untracked only working trees are reported as modified", "[infrastructure][git][parser]")
+{
+    const gitman::git_status_summary status {
+        gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.oid abc", u8"# branch.head main", u8"? a.txt" })),
+    };
+
+    const gitman::working_tree_summary summary { gitman::summarize_git_working_tree(status) };
+    // 카드가 둘을 구분해 표시할 수 있도록 개수는 따로 남긴다.
+    REQUIRE(summary.state == gitman::working_tree_state::modified);
+    REQUIRE(summary.modified_count == 0);
+    REQUIRE(summary.untracked_count == 1);
+    REQUIRE_FALSE(summary.is_safe_for_change());
+}
+
+TEST_CASE("Unknown branch headers do not break parsing", "[infrastructure][git][parser]")
+{
+    const gitman::git_status_summary status {
+        gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.oid abc", u8"# branch.head main", u8"# stash 3", u8"# branch.future value" })),
+    };
+
+    // Git이 헤더를 추가해도 기존 판정이 깨지지 않아야 한다.
+    REQUIRE(status.unparsable_records == 0);
+    REQUIRE(status.head == u8"main");
+    REQUIRE(gitman::summarize_git_working_tree(status).state == gitman::working_tree_state::clean);
+}
+
+TEST_CASE("Malformed ahead behind headers are ignored", "[infrastructure][git][parser]")
+{
+    REQUIRE_FALSE(gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.ab 2 -3" })).has_ahead_behind);
+    REQUIRE_FALSE(gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.ab +2" })).has_ahead_behind);
+    REQUIRE_FALSE(gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.ab +x -3" })).has_ahead_behind);
+    REQUIRE_FALSE(gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.ab +2 +3" })).has_ahead_behind);
+
+    const gitman::git_status_summary valid { gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.ab +12 -34" })) };
+    REQUIRE(valid.has_ahead_behind);
+    REQUIRE(valid.ahead == 12);
+    REQUIRE(valid.behind == 34);
+}
+
+TEST_CASE("Unreadable status output leaves the working tree unknown", "[infrastructure][git][parser]")
+{
+    const gitman::git_status_summary unknown_record {
+        gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.oid abc", u8"# branch.head main", u8"3 unknown record", u8"? a.txt" })),
+    };
+    REQUIRE(unknown_record.unparsable_records == 1);
+    REQUIRE(unknown_record.entries.size() == 1);
+
+    // 출력을 다 읽지 못한 저장소를 깨끗하다고 보고하면 보호 정책이 무력해진다.
+    const gitman::working_tree_summary summary { gitman::summarize_git_working_tree(unknown_record) };
+    REQUIRE(summary.state == gitman::working_tree_state::unknown);
+    REQUIRE(summary.untracked_count == 1);
+    REQUIRE_FALSE(summary.is_safe_for_change());
+
+    const gitman::git_status_summary short_record {
+        gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.oid abc", u8"# branch.head main", u8"1 .M N... 100644 a.txt" })),
+    };
+    REQUIRE(short_record.unparsable_records == 1);
+
+    const gitman::git_status_summary missing_path {
+        gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.oid abc", u8"# branch.head main", u8"? " })),
+    };
+    REQUIRE(missing_path.unparsable_records == 1);
+
+    const gitman::git_status_summary bad_states {
+        gitman::parse_git_status_porcelain_v2(lines_of({ u8"# branch.oid abc", u8"# branch.head main", u8"1 M N... 100644 100644 100644 5626abf 5626abf a.txt" })),
+    };
+    REQUIRE(bad_states.unparsable_records == 1);
+}
+
+TEST_CASE("Status output without branch headers is not trusted", "[infrastructure][git][parser]")
+{
+    const gitman::git_status_summary status { gitman::parse_git_status_porcelain_v2(lines_of({ u8"? a.txt" })) };
+
+    REQUIRE_FALSE(status.has_branch_header);
+    REQUIRE(status.unparsable_records == 0);
+    REQUIRE(gitman::summarize_git_working_tree(status).state == gitman::working_tree_state::unknown);
+
+    const gitman::git_status_summary empty { gitman::parse_git_status_porcelain_v2({}) };
+    REQUIRE(empty.entries.empty());
+    REQUIRE(gitman::summarize_git_working_tree(empty).state == gitman::working_tree_state::unknown);
+}

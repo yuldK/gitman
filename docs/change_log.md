@@ -1,5 +1,41 @@
 # 변경 이력
 
+## 2026-08-16 - 단계 4 `S4-D3-CODE` Git remote-first 판정 구현
+
+### 사용자 지시
+
+- `S4-D2-TEST`를 승인하고 무결함 `S4-D2-FIX` 생략을 확인한 뒤 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `infrastructure/git_command_builder.*`에 `remote`, `fetch --prune`, `rev-parse --verify --quiet`, `rev-list --left-right --count` 요청을 추가했다.
+- `fetch`에는 `--`를 붙여 remote 이름이 옵션으로 해석되지 않게 했다. 반대로 `rev-parse`에는 `--`를 쓰지 않는다. 뒤의 값을 경로로 만들어 항상 실패하기 때문이며 호스트 Git 2.52.0으로 실측해 확정했다.
+- `infrastructure/git_status_parser.*`에 `parse_git_remote_names`와 `parse_git_ahead_behind`를 추가했다.
+- `infrastructure/git_repository_provider.*`에 `select_git_remote_target` 순수 함수와 `query_remote` 본문을 구현했다. 선택 순서는 ADR-003대로 upstream → `preferred_remote` → `origin` → 유일한 remote이며, 좁혀지지 않으면 **자동으로 고르지 않고** `remote_target_missing`으로 보고한다.
+- upstream에서 remote 이름을 뗄 때 설정된 remote 중 가장 긴 접두사를 고른다. branch 이름에도 `/`가 들어갈 수 있어 첫 `/`로 자르면 `origin/feature/a/b`를 잘못 나눈다.
+- `branch.<name>.remote = .`처럼 upstream이 local branch를 가리키면 원격 비교에 쓰지 않고 나머지 규칙으로 넘어간다.
+- 지정한 `preferred_remote`가 저장소에 없으면 다음 규칙으로 진행하되 warning 진단을 남긴다. 지정한 값이 조용히 무시되면 사용자가 알 수 없다.
+- detached HEAD와 remote가 없는 저장소에서는 **네트워크를 쓰지 않는다**. 각각 `remote_target_missing`과 `local_only`다.
+- remote branch 존재 확인을 fetch **뒤**에 한다. 한 번도 fetch하지 않은 저장소에는 tracking ref가 없어 fetch 전에 확인하면 원격에 있는 branch를 없다고 오판한다. 계획 4.5의 4·5번 순서를 바꾼 것이며 판정 결과는 같다.
+- fetch 실패는 로캘 독립 신호로 `offline`, `authentication_required`, `error`를 구분한다. 실패해도 작업 트리 상태, 마지막 성공 원격 확인 시각과 직전 로컬 비교 값을 지우지 않는다.
+- 비교 대상 자체가 없다고 판정한 경우에는 이전 비교 값을 지운다. 유효하지 않은 비교를 남기면 카드가 잘못된 수를 계속 보여 준다.
+- 커밋이 하나도 없는 저장소는 `HEAD`가 없어 대칭 차이를 계산할 수 없다. fetch와 ref 확인까지만 하고 `sync_state`를 `unknown`으로 두며 값을 추측하지 않는다.
+- `tests/git_repository_provider_tests.cpp`의 "아직 구현하지 않은 동작" test에서 `query_remote` 단정만 걷어냈다. 이번 구간이 구현한 동작이라 더 이상 사실이 아니다. 새 test는 작성하지 않았다.
+- VS2022 Debug/Release와 VS2026 Debug 전체 CTest가 각각 246/246 통과했고 `/analyze`도 무경고로 통과했다.
+- 저장소 밖 임시 프로그램으로 124개 항목을 확인하고 삭제했다. 그중 11개는 실제 `git.exe`와 임시 저장소 7종(동기, ahead, behind, diverged, remote 없음, 원격 branch 없음, 도달 불가 URL)을 사용했다.
+- 도달 불가 URL의 실제 fetch 실패가 libcurl 영어 문장 덕분에 로캘과 무관하게 `offline`으로 분류되는 것을 확인했다.
+- 결과를 `docs/verification/2026-08-16-stage-4-d3-code.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-009~REQ-012
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D3-CODE`는 사용자 코드 검수 대기 상태다.
+- 승인 전에는 `S4-D3-TEST`의 대상 선택 matrix와 원격 통합 test를 작성하지 않는다.
+
 ## 2026-08-16 - 단계 4 `S4-D2-TEST` Git 로컬 조회 test 작성
 
 ### 사용자 지시

@@ -33,4 +33,20 @@ namespace gitman {
     // 인용으로 감싸므로 줄 경계가 흔들리지 않고, 로그 뷰에도 사람이 읽을 수 있는 줄로
     // 남는다. 인용 해제는 `unquote_git_path`가 담당한다.
     [[nodiscard]] process_request make_git_status_request(std::u8string_view executable, std::u8string_view working_directory);
+
+    // 설정된 remote 이름을 한 줄에 하나씩 얻는다. `-v`를 쓰지 않는 이유는 URL이 필요하지
+    // 않고, URL에 자격 증명이 들어 있으면 로그로 흘러나갈 수 있기 때문이다.
+    [[nodiscard]] process_request make_git_remote_list_request(std::u8string_view executable, std::u8string_view working_directory);
+
+    // 원격을 실제로 확인하는 유일한 조회 명령이다. `--prune`으로 지워진 remote branch의
+    // 낡은 tracking ref를 함께 정리한다.
+    [[nodiscard]] process_request make_git_fetch_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view remote);
+
+    // ref가 있는지 확인한다. 없으면 출력 없이 종료 코드만 실패이므로 메시지 언어와
+    // 무관하게 판정할 수 있다.
+    [[nodiscard]] process_request make_git_verify_reference_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view reference);
+
+    // `<ahead>\t<behind>` 한 줄을 얻는다. `HEAD`를 쓰면 branch 이름을 인자로 넘기지 않아도
+    // 되고 이름에 특수 문자가 있어도 안전하다.
+    [[nodiscard]] process_request make_git_ahead_behind_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view target_reference);
 } // namespace gitman

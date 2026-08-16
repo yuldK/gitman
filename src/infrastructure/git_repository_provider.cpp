@@ -76,6 +76,71 @@ namespace gitman {
             return remote_sync_state::up_to_date;
         }
 
+        // 원격 비교 대상을 정하지 못한 상태다. 이전 조회가 남긴 비교 값은 지운다.
+        void set_remote_target_missing(repository_snapshot& snapshot)
+        {
+            snapshot.comparison = comparison_source::none;
+            snapshot.comparison_target.clear();
+            snapshot.ahead_count = 0;
+            snapshot.behind_count = 0;
+            snapshot.sync_state = remote_sync_state::remote_target_missing;
+        }
+
+        std::u8string remote_target_missing_message(const git_remote_target_reason reason)
+        {
+            switch (reason)
+            {
+            case git_remote_target_reason::ambiguous_remote:
+                // 자동으로 고르면 사용자가 의도하지 않은 원격과 비교하게 된다.
+                return std::u8string { u8"remote가 여러 개여서 비교 대상을 자동으로 고를 수 없습니다. upstream 또는 preferred_remote를 지정하세요." };
+            case git_remote_target_reason::detached_head:
+                return std::u8string { u8"detached HEAD에는 비교할 원격 branch가 없습니다." };
+            case git_remote_target_reason::no_branch:
+                return std::u8string { u8"현재 branch 이름을 알 수 없어 비교 대상을 고르지 못했습니다." };
+            default:
+                return std::u8string { u8"비교할 원격 branch를 찾지 못했습니다." };
+            }
+        }
+
+        std::u8string make_tracking_reference(const std::u8string_view remote, const std::u8string_view branch)
+        {
+            std::u8string reference { u8"refs/remotes/" };
+            reference.append(remote);
+            reference.push_back(u8'/');
+            reference.append(branch);
+            return reference;
+        }
+
+        std::u8string make_display_name(const std::u8string_view remote, const std::u8string_view branch)
+        {
+            std::u8string name { remote };
+            name.push_back(u8'/');
+            name.append(branch);
+            return name;
+        }
+
+        // upstream 문자열에서 remote 이름을 떼어 낸다. branch 이름에도 `/`가 들어갈 수
+        // 있으므로 설정된 remote 이름 중 가장 긴 접두사를 고른다.
+        const std::u8string* find_upstream_remote(const std::vector<std::u8string>& remotes, const std::u8string_view upstream) noexcept
+        {
+            const std::u8string* match { nullptr };
+            for (const std::u8string& remote : remotes)
+            {
+                if (upstream.size() <= remote.size() + 1)
+                    continue;
+                if (upstream.starts_with(remote) == false || upstream[remote.size()] != u8'/')
+                    continue;
+                if (match == nullptr || remote.size() > match->size())
+                    match = &remote;
+            }
+            return match;
+        }
+
+        bool contains_remote(const std::vector<std::u8string>& remotes, const std::u8string_view name) noexcept
+        {
+            return std::ranges::find(remotes, name) != remotes.end();
+        }
+
         std::u8string describe_current_reference(const git_status_summary& status)
         {
             if (status.detached == false)
@@ -108,6 +173,69 @@ namespace gitman {
         markers.bisect = probe.probe(join_path(git_directory, bisect_marker)) == vcs_path_kind::file;
         markers.index_locked = probe.probe(join_path(git_directory, index_lock_marker)) == vcs_path_kind::file;
         return markers;
+    }
+
+    git_remote_target select_git_remote_target(
+        const std::vector<std::u8string>& remotes, const std::u8string_view branch, const std::u8string_view upstream, const std::u8string_view preferred_remote, const bool detached)
+    {
+        git_remote_target target {};
+        target.preferred_remote_missing = preferred_remote.empty() == false && contains_remote(remotes, preferred_remote) == false;
+        if (detached || branch.empty())
+        {
+            target.reason = detached ? git_remote_target_reason::detached_head : git_remote_target_reason::no_branch;
+            return target;
+        }
+        if (remotes.empty())
+        {
+            // remote가 하나도 없는 저장소는 `local_only`다. fetch할 곳이 없다.
+            target.reason = git_remote_target_reason::no_remote;
+            return target;
+        }
+
+        if (const std::u8string* const upstream_remote { find_upstream_remote(remotes, upstream) }; upstream_remote != nullptr)
+        {
+            // upstream이 있으면 그대로 쓴다. 사용자가 이미 정한 비교 대상이다.
+            target.resolved = true;
+            target.reason = git_remote_target_reason::upstream;
+            target.remote = *upstream_remote;
+            target.branch = upstream.substr(upstream_remote->size() + 1);
+            target.tracking_reference = make_tracking_reference(target.remote, target.branch);
+            target.display_name = std::u8string { upstream };
+            return target;
+        }
+
+        // upstream이 없거나 local branch를 가리킨다. 남은 규칙으로 remote를 고른다.
+        target.branch = branch;
+        if (target.preferred_remote_missing == false && preferred_remote.empty() == false)
+            target.reason = git_remote_target_reason::preferred_remote;
+        else if (contains_remote(remotes, u8"origin"))
+            target.reason = git_remote_target_reason::origin;
+        else if (remotes.size() == 1)
+            target.reason = git_remote_target_reason::only_remote;
+        else
+            // 후보가 여럿인데 규칙으로 좁혀지지 않으면 자동으로 고르지 않는다.
+            target.reason = git_remote_target_reason::ambiguous_remote;
+
+        switch (target.reason)
+        {
+        case git_remote_target_reason::preferred_remote:
+            target.remote = preferred_remote;
+            break;
+        case git_remote_target_reason::origin:
+            target.remote = u8"origin";
+            break;
+        case git_remote_target_reason::only_remote:
+            target.remote = remotes.front();
+            break;
+        default:
+            target.branch.clear();
+            return target;
+        }
+
+        target.resolved = true;
+        target.tracking_reference = make_tracking_reference(target.remote, target.branch);
+        target.display_name = make_display_name(target.remote, target.branch);
+        return target;
     }
 
     std::u8string_view git_working_directory(const project_definition& project) noexcept
@@ -277,14 +405,175 @@ namespace gitman {
         return result;
     }
 
-    repository_query_result git_repository_provider::query_remote(const project_definition& project, const repository_snapshot& local, const process_cancellation_token&) noexcept
+    repository_query_result git_repository_provider::query_remote(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token) noexcept
     {
-        // remote 열거, `fetch --prune`과 ahead/behind 판정은 `S4-D3-CODE` 구간이다. 아직
-        // 어떤 명령도 만들지 않으므로 직전 로컬 상태를 그대로 돌려준다.
+        try
+        {
+            return query_remote_impl(project, local, token);
+        }
+        catch (...)
+        {
+            repository_query_result result {};
+            result.snapshot = local;
+            result.snapshot.project = project.id;
+            result.snapshot.kind = repository_kind::git;
+            result.snapshot.sync_state = remote_sync_state::error;
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"원격 상태를 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    repository_query_result git_repository_provider::query_remote_impl(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token)
+    {
         repository_query_result result {};
+        // 원격 조회는 로컬 상태를 다시 만들지 않는다. 실패해도 직전 로컬 값과 마지막
+        // 성공 원격 확인 시각이 그대로 남는다.
         result.snapshot = local;
         result.snapshot.project = project.id;
         result.snapshot.kind = repository_kind::git;
+
+        if (available() == false)
+        {
+            result.snapshot.availability = repository_availability::tool_unavailable;
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::git, tool_.availability) }, project));
+            return result;
+        }
+        if (local.availability != repository_availability::ready)
+        {
+            // 로컬 조회가 저장소로 인정하지 않은 경로다. 원격을 확인할 이유가 없다.
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::repository_unavailable, diagnostic_severity::warning, std::u8string { u8"로컬 상태를 먼저 확인해야 원격 상태를 조회할 수 있습니다." }, project));
+            return result;
+        }
+
+        const std::u8string_view working_directory { git_working_directory(project) };
+        if (is_absolute_windows_path(working_directory) == false || probe_->probe(working_directory) != vcs_path_kind::directory)
+        {
+            result.snapshot.availability = repository_availability::path_unavailable;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::path_missing, diagnostic_severity::error, std::u8string { u8"프로젝트 경로를 찾을 수 없습니다." }, project));
+            return result;
+        }
+
+        if (local.working_tree.is_detached)
+        {
+            // 비교할 local branch 이름이 없다. upstream 규칙을 적용하지 않고 네트워크도
+            // 쓰지 않는다.
+            set_remote_target_missing(result.snapshot);
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::repository_unavailable, diagnostic_severity::information, std::u8string { u8"detached HEAD에는 비교할 원격 branch가 없습니다." }, project));
+            return result;
+        }
+
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        if (remote_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
+            result.snapshot.sync_state = remote_sync_state_for_failure(failure);
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, remote_result), project));
+            return result;
+        }
+
+        const std::vector<std::u8string> remotes { parse_git_remote_names(remote_result.standard_output_lines) };
+        // 로컬 조회가 `comparison_source::local`로 남긴 값이 곧 현재 branch의 upstream이다.
+        const std::u8string_view upstream { local.comparison == comparison_source::local ? std::u8string_view { local.comparison_target } : std::u8string_view {} };
+        const git_remote_target target {
+            select_git_remote_target(remotes, local.current_reference, upstream, project.preferred_remote.value_or(std::u8string {}), local.working_tree.is_detached),
+        };
+
+        if (target.preferred_remote_missing)
+            // 지정한 값이 조용히 무시되면 사용자는 다른 remote와 비교되고 있다는 사실을
+            // 알 수 없다.
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::invalid_project_field, diagnostic_severity::warning, std::u8string { u8"지정한 preferred_remote가 저장소에 없습니다." }, project));
+
+        if (target.resolved == false)
+        {
+            if (target.reason == git_remote_target_reason::no_remote)
+            {
+                // remote가 없으면 fetch하지 않는다. 비교 대상이 없는 상태와 원격 확인에
+                // 실패한 상태는 사용자가 할 일이 다르다.
+                result.snapshot.comparison = comparison_source::none;
+                result.snapshot.comparison_target.clear();
+                result.snapshot.ahead_count = 0;
+                result.snapshot.behind_count = 0;
+                result.snapshot.sync_state = remote_sync_state::local_only;
+                return result;
+            }
+
+            set_remote_target_missing(result.snapshot);
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::repository_not_found, diagnostic_severity::warning, remote_target_missing_message(target.reason), project));
+            return result;
+        }
+
+        const vcs_command_result fetch_result { run_vcs_command(*runner_, make_git_fetch_request(tool_.executable, working_directory, target.remote), token, log_) };
+        if (fetch_result.succeeded() == false)
+        {
+            // offline, 인증 필요와 그 밖의 실패를 구분한다. 판정 근거는 로캘 독립 신호뿐이며
+            // 직전 로컬 비교 값은 그대로 남겨 둔다.
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, fetch_result) };
+            result.snapshot.sync_state = remote_sync_state_for_failure(failure);
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, fetch_result), project));
+            return result;
+        }
+
+        // 원격에 실제로 닿은 시각이다. 비교 대상이 없더라도 확인 자체는 성공했다.
+        result.snapshot.remote_checked_at = std::chrono::system_clock::now();
+
+        const vcs_command_result verify_result { run_vcs_command(*runner_, make_git_verify_reference_request(tool_.executable, working_directory, target.tracking_reference), token, log_) };
+        if (verify_result.process.completion != process_completion::exited)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, verify_result) };
+            result.snapshot.sync_state = remote_sync_state_for_failure(failure);
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, verify_result), project));
+            return result;
+        }
+        if (verify_result.succeeded() == false)
+        {
+            // fetch 뒤에도 tracking ref가 없으면 원격에 같은 이름의 branch가 없다는 뜻이다.
+            // local 비교로 물러서지 않는다.
+            std::u8string message { u8"원격에 비교할 branch가 없습니다: " };
+            message.append(target.display_name);
+            set_remote_target_missing(result.snapshot);
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::repository_not_found, diagnostic_severity::warning, std::move(message), project));
+            return result;
+        }
+
+        if (local.local_revision.empty())
+        {
+            // 커밋이 하나도 없으면 `HEAD`가 없어 대칭 차이를 계산할 수 없다.
+            result.snapshot.comparison = comparison_source::remote;
+            result.snapshot.comparison_target = target.display_name;
+            result.snapshot.ahead_count = 0;
+            result.snapshot.behind_count = 0;
+            result.snapshot.sync_state = remote_sync_state::unknown;
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::vcs_output_unparsable, diagnostic_severity::information, std::u8string { u8"커밋이 없어 원격과 비교할 수 없습니다." }, project));
+            return result;
+        }
+
+        const vcs_command_result count_result { run_vcs_command(*runner_, make_git_ahead_behind_request(tool_.executable, working_directory, target.tracking_reference), token, log_) };
+        const git_ahead_behind counts { parse_git_ahead_behind(count_result.first_output_line()) };
+        if (count_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, count_result) };
+            result.snapshot.sync_state = remote_sync_state_for_failure(failure);
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, count_result), project));
+            return result;
+        }
+        if (counts.parsed == false)
+        {
+            result.snapshot.sync_state = remote_sync_state::error;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::vcs_output_unparsable, diagnostic_severity::error, std::u8string { u8"원격과의 커밋 차이를 해석하지 못했습니다." }, project));
+            return result;
+        }
+
+        result.snapshot.comparison = comparison_source::remote;
+        result.snapshot.comparison_target = target.display_name;
+        result.snapshot.ahead_count = counts.ahead;
+        result.snapshot.behind_count = counts.behind;
+        result.snapshot.sync_state = sync_state_from_counts(counts.ahead, counts.behind);
         return result;
     }
 

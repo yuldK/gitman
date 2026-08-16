@@ -33,8 +33,53 @@ namespace gitman {
     // worktree에서는 worktree 전용 디렉터리이며 표식 파일도 그곳에 있다.
     [[nodiscard]] git_in_progress_markers detect_git_in_progress_markers(const vcs_file_probe& probe, std::u8string_view git_directory);
 
-    // Git provider다. `S4-D2-CODE` 구간에서는 로컬 조회만 구현한다. 원격 판정은
-    // `S4-D3`, update는 `S4-D5`, switch는 `S4-D6` 구간에서 채운다. 아직 구현하지 않은
+    // 원격 비교 대상을 어떻게 골랐는지 나타낸다. 자동으로 고를 수 없는 경우를 구분해야
+    // 카드가 사용자에게 무엇을 해야 하는지 알려 줄 수 있다.
+    enum class git_remote_target_reason
+    {
+        // 현재 branch의 upstream을 그대로 쓴다.
+        upstream,
+        // 프로젝트가 지정한 `preferred_remote`를 골랐다.
+        preferred_remote,
+        // 관례에 따라 `origin`을 골랐다.
+        origin,
+        // remote가 하나뿐이라 그것을 골랐다.
+        only_remote,
+        // remote가 하나도 없다. 원격을 확인하지 않는다.
+        no_remote,
+        // remote가 여럿인데 규칙으로 좁혀지지 않는다. 자동으로 고르지 않는다.
+        ambiguous_remote,
+        // detached HEAD에는 비교할 branch 이름이 없다.
+        detached_head,
+        // 현재 branch 이름을 알 수 없다.
+        no_branch,
+    };
+
+    struct git_remote_target
+    {
+        bool resolved { false };
+        // 지정한 `preferred_remote`가 저장소에 없다. 다른 규칙으로 대상을 골랐더라도
+        // 사용자가 지정한 값이 무시된 사실은 알려야 한다.
+        bool preferred_remote_missing { false };
+        std::u8string remote {};
+        std::u8string branch {};
+        // `refs/remotes/<remote>/<branch>` 형태의 완전한 ref다.
+        std::u8string tracking_reference {};
+        // 사용자에게 보여 줄 `<remote>/<branch>` 이름이다.
+        std::u8string display_name {};
+        git_remote_target_reason reason { git_remote_target_reason::no_remote };
+    };
+
+    // ADR-003의 remote-first 순서를 그대로 구현한 순수 함수다. filesystem과 프로세스를
+    // 쓰지 않으므로 선택 규칙만 따로 검증할 수 있다.
+    //
+    // `upstream`이 remote를 가리키면 그대로 쓴다. `branch.<name>.remote = .`처럼 local
+    // branch를 가리키는 upstream은 원격 비교에 쓸 수 없으므로 나머지 규칙으로 넘어간다.
+    [[nodiscard]] git_remote_target select_git_remote_target(
+        const std::vector<std::u8string>& remotes, std::u8string_view branch, std::u8string_view upstream, std::u8string_view preferred_remote, bool detached);
+
+    // Git provider다. `S4-D2-CODE`가 로컬 조회를, `S4-D3-CODE`가 remote-first 판정을
+    // 구현했다. update는 `S4-D5`, switch는 `S4-D6` 구간에서 채운다. 아직 구현하지 않은
     // 동작은 어떤 process request도 만들지 않는다.
     class git_repository_provider final : public repository_provider
     {
@@ -59,6 +104,7 @@ namespace gitman {
 
     private:
         [[nodiscard]] repository_query_result query_local_impl(const project_definition& project, const process_cancellation_token& token);
+        [[nodiscard]] repository_query_result query_remote_impl(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token);
 
         vcs_tool_info tool_ {};
         process_runner* runner_ { nullptr };

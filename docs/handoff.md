@@ -5,15 +5,15 @@
 - 기준일: 2026-08-16
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-D2-TEST` Git 로컬 조회 test 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D3-CODE` Git remote-first 판정 production code 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-D2-TEST` 승인과 무결함 `S4-D2-FIX` 생략 확인 후 `S4-D3-CODE` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D3-CODE` 승인 후 `S4-D3-TEST` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 Git 로컬 조회, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d2-test.md`
-- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d2-code.md`
-- 최근 검증 기록: `docs/verification/2026-08-16-stage-4-d1-test.md`
+- 현재 검증 기록: `docs/verification/2026-08-16-stage-4-d3-code.md`
+- 직전 검증 기록: `docs/verification/2026-08-16-stage-4-d2-test.md`
+- 최근 검증 기록: `docs/verification/2026-08-16-stage-4-d2-code.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
 다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
@@ -115,15 +115,16 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-D2-TEST` |
-| 제출 내용 | Git 로컬 조회 test 51개(단정 384개)와 `git_repository_fixture` 도우미 |
-| production code | 변경 없음 |
-| test code 및 fixture | 신규 test source 4개, 도우미 1쌍, 실제 Git 출력 fixture 5개. 전체 CTest 195 → **246** |
+| 계획 ID | `S4-D3-CODE` |
+| 제출 내용 | remote 열거와 대상 선택, `fetch --prune`, ahead/behind, offline·인증 판정 |
+| production code | 수정 3쌍(`git_command_builder`, `git_status_parser`, `git_repository_provider`). 새 파일과 CMake 변경 없음 |
+| test code 및 fixture | 기존 test 1개에서 이제 사실이 아닌 `query_remote` 단정만 제거. 새 test 없음. 전체 CTest 246 유지 |
 | bug 수정 | 없음 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 246/246, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 246/246, `/analyze` 무경고, aggregate format/style 통과, 임시 프로그램 124/124 |
 | 발견 결함 | 없음 |
-| 승인 대기 | `S4-D2-TEST` test 검수 |
-| 승인 뒤 다음 작업 | 무결함 `S4-D2-FIX` 생략 후 `S4-D3-CODE` 한 구간만 허용 |
+| 승인 대기 | `S4-D3-CODE` 코드 검수 |
+| 검수에서 확인할 결정 | ref 확인을 fetch 뒤로 옮긴 순서, `fetch`의 `--`, `preferred_remote` 부재 시 계속 진행 |
+| 승인 뒤 다음 작업 | `S4-D3-TEST` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
@@ -134,9 +135,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S4-D1-TEST` | 승인 완료 | test 56개, 전체 195/195. `docs/verification/2026-08-16-stage-4-d1-test.md` |
 | `S4-D1-FIX` | 생략 완료 | 발견 production 결함 없음 |
 | `S4-D2-CODE` Git 로컬 상태 | 승인 완료 | `docs/verification/2026-08-16-stage-4-d2-code.md` |
-| `S4-D2-TEST` | 제출, 검수 대기 | test 51개, 전체 246/246. `docs/verification/2026-08-16-stage-4-d2-test.md` |
-| `S4-D2-FIX` | 시작 전 | 발견 production 결함이 없어 사용자 확인 후 생략 예정 |
-| `S4-D3-CODE` Git remote-first 최신 상태 | 시작 전 | |
+| `S4-D2-TEST` | 승인 완료 | test 51개, 전체 246/246. `docs/verification/2026-08-16-stage-4-d2-test.md` |
+| `S4-D2-FIX` | 생략 완료 | 발견 production 결함 없음 |
+| `S4-D3-CODE` Git remote-first 최신 상태 | 제출, 검수 대기 | `docs/verification/2026-08-16-stage-4-d3-code.md` |
 | `S4-D3-TEST` | 시작 전 | |
 | `S4-D3-FIX` | 시작 전 | |
 | `S4-D4-CODE` SVN 상태 | 시작 전 | |
@@ -216,7 +217,12 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - REQ-017을 추가했다. 환경설정 화면 자체는 단계 6~7 범위다.
 - `is_absolute_windows_path`가 `application/process_request`에서 `domain/path_syntax`로 옮겨졌다. `process_request.h`가 새 헤더를 include하므로 기존 호출자는 그대로 동작한다.
 - `platform/win32/win32_vcs_file_probe.*`는 파일 위치는 계획대로지만 CMake target은 `gitman_win32_platform`이 아니라 `gitman_vcs`다. 단계 3의 `win32_process_runner`와 같은 이유로 계층 방향을 지키기 위한 선택이다.
-- Git provider는 `S4-D2-CODE`에서 로컬 조회만 구현했다. `query_remote`, `query_switch_candidates`, `update`, `switch_to`는 계약을 구현하지만 본문이 비어 있고 어떤 process request도 만들지 않는다. 각각 `S4-D3`, `S4-D6`, `S4-D5`, `S4-D6` 구간에서 채운다. SVN provider는 아직 없다.
+- Git provider는 `S4-D2-CODE`의 로컬 조회와 `S4-D3-CODE`의 원격 판정까지 구현했다. `query_switch_candidates`, `update`, `switch_to`는 계약을 구현하지만 본문이 비어 있고 어떤 process request도 만들지 않는다. 각각 `S4-D6`, `S4-D5`, `S4-D6` 구간에서 채운다. SVN provider는 아직 없다.
+- `rev-parse`에는 `--`를 쓰면 안 된다. 뒤의 값을 경로로 해석해 ref 확인이 항상 실패한다. `fetch`는 `--`를 받아들이며 remote 이름을 옵션으로 오해하지 않게 붙여 두었다. 호스트 Git 2.52.0 실측이다.
+- remote branch 존재 확인은 `fetch` **뒤에** 한다. 한 번도 fetch하지 않은 저장소에는 tracking ref가 없어 앞에서 확인하면 원격에 있는 branch를 없다고 오판한다. 계획 4.5의 4·5번 순서를 바꾼 것이며 판정 결과는 같다.
+- `query_remote`는 로컬 상태를 다시 만들지 않는다. 받은 snapshot을 복사해 원격 값만 덮어쓰므로 fetch가 실패해도 작업 트리 상태, 마지막 성공 `remote_checked_at`, 직전 로컬 비교가 남는다. 반대로 `local_only`와 `remote_target_missing`으로 판정한 경우에는 이전 비교 값을 지운다.
+- detached HEAD와 remote가 없는 저장소, 대상이 모호한 저장소에서는 fetch하지 않는다. 네트워크를 쓰기 전에 판정이 끝난다.
+- 커밋이 없는 저장소는 `HEAD`가 없어 `rev-list`로 대칭 차이를 구할 수 없다. fetch와 ref 확인까지만 하고 `sync_state`는 `unknown`이다.
 - `status --porcelain=v2`에 `-z`를 쓰지 않기로 확정했다. 단계 3 파이프라인이 줄 끝 문자를 남기지 않아 NUL 구분 출력은 경계 정보를 잃고, 개행이 든 경로가 오히려 손상된다. 줄 단위 출력에서는 Git이 그런 경로를 C 인용으로 감싸며 `unquote_git_path`가 해제한다. 계획 4.4와 4.10의 `-z` 서술은 이 결정으로 대체됐다.
 - `status` 명령만 레코드 상한 64 KiB를 쓴다. rename 레코드는 한 줄에 경로 두 개를 담아 기본 8 KiB를 넘길 수 있고, 끊긴 줄은 파서가 다른 레코드로 오해한다.
 - bare 저장소와 git dir 안을 가리키는 등록 경로는 `repository_availability::unsupported_layout`이다. 지원 범위 자체는 단계 5에서 정한다. linked worktree는 추가 처리 없이 조회된다.

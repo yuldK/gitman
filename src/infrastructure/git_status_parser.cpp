@@ -19,6 +19,16 @@ namespace gitman {
             return value == u8"true";
         }
 
+        std::u8string_view trim_ascii_whitespace(std::u8string_view value) noexcept
+        {
+            constexpr std::u8string_view whitespace { u8" \t\r" };
+            while (value.empty() == false && whitespace.find(value.front()) != std::u8string_view::npos)
+                value.remove_prefix(1);
+            while (value.empty() == false && whitespace.find(value.back()) != std::u8string_view::npos)
+                value.remove_suffix(1);
+            return value;
+        }
+
         bool parse_unsigned(const std::u8string_view value, std::uint64_t& result) noexcept
         {
             if (value.empty())
@@ -254,6 +264,36 @@ namespace gitman {
             }
             result.push_back(static_cast<char8_t>(code & 0xFFu));
         }
+        return result;
+    }
+
+    std::vector<std::u8string> parse_git_remote_names(const std::vector<std::u8string>& lines)
+    {
+        std::vector<std::u8string> names {};
+        for (const std::u8string& line : lines)
+        {
+            const std::u8string_view name { trim_ascii_whitespace(line) };
+            if (name.empty())
+                continue;
+            names.emplace_back(name);
+        }
+        return names;
+    }
+
+    git_ahead_behind parse_git_ahead_behind(const std::u8string_view line)
+    {
+        git_ahead_behind result {};
+        const std::u8string_view trimmed { trim_ascii_whitespace(line) };
+        const std::size_t separator { trimmed.find_first_of(u8" \t") };
+        if (separator == std::u8string_view::npos)
+            return result;
+
+        const std::u8string_view left { trimmed.substr(0, separator) };
+        const std::u8string_view right { trim_ascii_whitespace(trimmed.substr(separator + 1)) };
+        if (parse_unsigned(left, result.ahead) == false || parse_unsigned(right, result.behind) == false)
+            return { 0, 0, false };
+
+        result.parsed = true;
         return result;
     }
 

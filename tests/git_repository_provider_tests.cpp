@@ -437,15 +437,8 @@ TEST_CASE("Operations that are not implemented yet build no request", "[infrastr
     gitman::git_repository_provider provider { available_tool(), runner, probe };
     const gitman::project_definition project { make_project() };
 
-    gitman::repository_snapshot local {};
-    local.availability = gitman::repository_availability::ready;
-    local.current_reference = u8"main";
-
-    // 원격 판정은 `S4-D3`, update는 `S4-D5`, switch와 후보 조회는 `S4-D6` 구간이다.
-    const gitman::repository_query_result remote { provider.query_remote(project, local, {}) };
-    REQUIRE(remote.snapshot.current_reference == u8"main");
-    REQUIRE(remote.snapshot.availability == gitman::repository_availability::ready);
-
+    // update는 `S4-D5`, switch와 후보 조회는 `S4-D6` 구간이다. 원격 판정은 `S4-D3-CODE`가
+    // 구현했으므로 여기서 다루지 않는다.
     const gitman::switch_candidate_result candidates { provider.query_switch_candidates(project, {}) };
     REQUIRE(candidates.candidates.empty());
     REQUIRE_FALSE(candidates.stale);

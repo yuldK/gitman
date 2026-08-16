@@ -70,8 +70,22 @@ namespace gitman {
         std::uint64_t unparsable_records { 0 };
     };
 
+    struct git_ahead_behind
+    {
+        std::uint64_t ahead { 0 };
+        std::uint64_t behind { 0 };
+        bool parsed { false };
+    };
+
     [[nodiscard]] git_repository_layout parse_git_repository_layout(const std::vector<std::u8string>& lines);
     [[nodiscard]] git_status_summary parse_git_status_porcelain_v2(const std::vector<std::u8string>& lines);
+
+    // `git remote`는 이름을 한 줄에 하나씩 낸다. 빈 줄은 버린다.
+    [[nodiscard]] std::vector<std::u8string> parse_git_remote_names(const std::vector<std::u8string>& lines);
+
+    // `rev-list --left-right --count`의 `<ahead>\t<behind>` 한 줄을 읽는다. 왼쪽이 로컬,
+    // 오른쪽이 원격이다.
+    [[nodiscard]] git_ahead_behind parse_git_ahead_behind(std::u8string_view line);
 
     // 항목을 세어 카드가 쓰는 요약으로 옮긴다. 진행 중 작업과 `index.lock`은 표식
     // 파일로만 알 수 있으므로 호출자가 따로 채운다. 해석하지 못한 레코드가 있으면

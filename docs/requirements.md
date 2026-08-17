@@ -68,6 +68,6 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 ## 6. 후속 단계로 이관한 항목
 
 - 프로젝트 목록은 고정 기본 위치 없이 여러 `.verison-list` 작업공간 문서로 둘 수 있으며, 한 프로세스 및 창은 하나의 문서를 활성화한다.
-- junction, 심볼릭 링크, Git worktree, bare repository 세부 범위는 단계 5에서 확정한다.
+- junction, 심볼릭 링크, Git worktree, bare repository 세부 범위는 단계 5에서 확정했다. linked worktree와 submodule(`.git` 파일)은 탐색 후보로 허용, bare 저장소는 표시 후 등록 제외, reparse point는 판정 없이 제외하되 목록에 표시한다. 상세는 `docs/stage-5-plan.md` 4.3~4.4다.
 - worker 동시 실행 상한과 로그 크기는 단계 6~7의 성능 측정 후 확정한다.
 - 범용 스레드 메시지 component의 API와 queue topology는 단계 6 직전 사용자 검수로 확정한다.

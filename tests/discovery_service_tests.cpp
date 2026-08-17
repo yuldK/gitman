@@ -335,6 +335,67 @@ TEST_CASE("A cancelled discovery does not enumerate at all", "[discovery][servic
     REQUIRE(enumerator.enumeration_count() == 0u);
 }
 
+namespace {
+    // 첫 번째 해석 호출에서 취소를 요청하는 해석기다. 자식 하나를 처리하는 도중에
+    // 취소가 들어온 상황을 결정적으로 만든다.
+    class cancelling_project_path_resolver final : public gitman::project_path_resolver
+    {
+    public:
+        explicit cancelling_project_path_resolver(gitman::process_cancellation_source& source) noexcept
+            : source_ { &source }
+        {}
+
+        [[nodiscard]] gitman::project_path_resolution resolve(const std::u8string_view original_path, const std::u8string_view) noexcept override
+        {
+            try
+            {
+                source_->request_cancellation();
+                return { std::u8string { original_path }, gitman::configured_path_state::available, std::nullopt };
+            }
+            catch (...)
+            {
+                return {};
+            }
+        }
+
+        [[nodiscard]] bool normalized_equal(const std::u8string_view left, const std::u8string_view right) noexcept override
+        {
+            return left == right;
+        }
+
+    private:
+        gitman::process_cancellation_source* source_ { nullptr };
+    };
+} // namespace
+
+TEST_CASE("A cancellation between children keeps the finished candidates and stops", "[discovery][service]")
+{
+    gitman::testing::fake_directory_enumerator enumerator {};
+    gitman::directory_listing listing {};
+    listing.succeeded = true;
+    listing.entries.push_back(make_entry(u8"first"));
+    listing.entries.push_back(make_entry(u8"second"));
+    listing.entries.push_back(make_entry(u8"third"));
+    enumerator.set_listing(scan_root, std::move(listing));
+
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_git_child(probe, u8"first");
+    register_git_child(probe, u8"second");
+    register_git_child(probe, u8"third");
+
+    gitman::process_cancellation_source source {};
+    cancelling_project_path_resolver resolver { source };
+    gitman::discovery_service service { enumerator, probe, resolver };
+    const gitman::discovery_result result { service.discover_children(scan_root, {}, source.token()) };
+
+    // 처리 중이던 자식은 끝까지 판정되고 다음 자식으로는 넘어가지 않는다.
+    REQUIRE_FALSE(result.completed);
+    REQUIRE(result.candidates.size() == 1u);
+    REQUIRE(result.candidates.front().directory_name == u8"first");
+    REQUIRE(result.diagnostics.size() == 1u);
+    REQUIRE(result.diagnostics.front().code == gitman::diagnostic_code::discovery_cancelled);
+}
+
 TEST_CASE("Unreadable entry names surface as a warning while discovery continues", "[discovery][service]")
 {
     gitman::testing::fake_directory_enumerator enumerator {};

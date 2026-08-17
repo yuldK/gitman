@@ -1,5 +1,34 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 5 `S5-V1` 최종 검증
+
+### 사용자 지시
+
+- 단계 5 종료까지 자동 진행 (2026-08-17 위임).
+
+### 반영 내용
+
+- `build/vs2022`를 삭제하고 preset으로 다시 configure한 뒤 전체 검증 matrix를 수행했다.
+- VS2022 Debug/Release와 VS2026 Debug의 전체 CTest가 각각 **437/437** 통과했다. `/analyze`는 무경고, 전체 suite 3회 반복 무결함이다.
+- aggregate `gitman_format_check`(248개 파일), `gitman_source_style`, `gitman_assets_checksum`, `git diff --check`가 통과했다.
+- Release install 결과가 `bin/gitman.exe` 단일 파일(6,255,616 byte, 단계 4와 동일)이며 설치본 renderer smoke test 4종이 모두 종료 코드 0이다. 실행 파일은 `gitman_discovery`를 링크하지 않으므로 크기가 그대로인 것이 맞다.
+- 보강 test 2개를 추가했다. **자식 사이 취소**가 처리 중이던 후보를 보존하고 다음 자식으로 넘어가지 않는 것과, **한글·공백·emoji 자식 이름**의 실제 filesystem 왕복이다. production source는 `S5-D3` 이후 변경하지 않았다.
+- 계획 9장의 완료 조건 15개를 대조해 검증 기록 4장에 결과를 남겼다. CTest 수는 단계 4 종료 393에서 **437**로 44개 늘었다.
+- 자식 단위 접근 실패를 관찰할 수 없는 `vcs_file_probe` 계약 한계와 네트워크 드라이브 미검증을 알려진 한계로 기록했다.
+- ADR-004 범용 메시지 구조의 단계 6 사전 설계 게이트를 검증 기록 6장에 재고지했다.
+- `docs/plan.md`, `docs/requirements.md`(6장 이관 항목 확정), `docs/handoff.md`를 최종 상태로 갱신했다.
+- 결과를 `docs/verification/2026-08-17-stage-5.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-001, REQ-004, REQ-009~REQ-013
+- NFR-005, NFR-006, NFR-009
+
+### 다음 작업 제한
+
+- 단계 5는 **사용자 최종 검수 대기** 상태다.
+- 승인 후 다음 작업은 ADR-004 범용 메시지 구조 설계안 제시다. 이 설계의 사용자 승인 전에는 message queue, dispatcher, thread bridge를 작성하지 않으며 단계 6을 시작하지 않는다.
+
 ## 2026-08-17 - 단계 5 `S5-D3` 선택 등록 구현 및 test
 
 ### 사용자 지시

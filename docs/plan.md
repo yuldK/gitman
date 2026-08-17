@@ -46,7 +46,7 @@
 | 단계 2: 도메인과 설정 저장소 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-2.md` |
 | 단계 3: 프로세스 실행 계층 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-3.md` |
 | 단계 4: Git 및 SVN provider | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-4.md` |
-| 단계 5: 탐색과 등록 | `S5-D1` 제출 - 사용자 검수 대기 | `docs/stage-5-plan.md` |
+| 단계 5: 탐색과 등록 | `S5-V1` 최종 검증 제출 - 사용자 최종 검수 대기 | `docs/verification/2026-08-17-stage-5.md` |
 | 단계 6~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
@@ -485,7 +485,7 @@ gitman/
 
 ### 단계 5: 탐색과 등록
 
-상태: `S5-P0` 승인 완료, `S5-D1`(계약·판정·열거와 test) 제출 후 사용자 검수 대기. 사용자 지시로 단계 5부터 production code와 test code를 한 검수 구간에서 함께 작성하며, 각 구간 종료 시 보고 후 중지하고 사용자가 직접 커밋한다. 상세 계획은 `docs/stage-5-plan.md`에 있다.
+상태: `S5-V1` 최종 검증 제출, 사용자 최종 검수 대기. `S5-D1`~`S5-D3`으로 표식 기반 판정, 깊이 1 열거, 탐색 실행과 선택 등록을 구현했다. 사용자 지시로 production code와 test code를 한 구간에서 작성했고 `S5-D1` 이후는 위임에 따라 자동 진행하며 체크포인트마다 커밋했다. VS2022 Debug/Release와 VS2026 Debug 전체 CTest 437/437, `/analyze` 무경고, 3회 반복, format/style, 단일 exe install과 설치본 smoke가 통과했다. 탐색과 등록은 프로세스를 만들지 않는다. 상세 결과는 `docs/verification/2026-08-17-stage-5.md`에 기록한다.
 
 - 깊이 1 자식 탐색, 저장소 루트 판정, 중복 및 링크 정책을 구현한다.
 - 후보 미리보기, 선택 등록, 저장 충돌 감지를 구현한다.

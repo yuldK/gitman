@@ -75,6 +75,7 @@ TEST_CASE("A real mixed layout is classified without any VCS executable", "[disc
     (void)directory.make_directory(u8"scan\\svn-copy\\.svn");
     (void)directory.make_directory(u8"scan\\plain");
     (void)directory.make_directory(u8"scan\\target");
+    (void)directory.make_directory(u8"scan\\한글 저장소 📁\\.svn");
     (void)directory.make_file(u8"scan\\readme.txt");
 
     if (create_junction(scan, u8"linked-junction", directory.path_of(u8"scan\\target")) == false)
@@ -83,13 +84,20 @@ TEST_CASE("A real mixed layout is classified without any VCS executable", "[disc
     const gitman::discovery_result result { discover(scan) };
     REQUIRE(result.completed);
     REQUIRE_FALSE(result.root_is_repository);
-    REQUIRE(result.candidates.size() == 4u);
+    REQUIRE(result.candidates.size() == 5u);
 
     const gitman::discovery_candidate* const svn_copy { find_candidate(result, u8"svn-copy") };
     REQUIRE(svn_copy != nullptr);
     REQUIRE(svn_copy->kind == gitman::repository_kind::subversion);
     REQUIRE(svn_copy->selectable());
     REQUIRE(svn_copy->normalized_path.empty() == false);
+
+    // 한글, 공백, emoji가 든 자식 이름의 실제 왕복이다.
+    const gitman::discovery_candidate* const korean { find_candidate(result, u8"한글 저장소 📁") };
+    REQUIRE(korean != nullptr);
+    REQUIRE(korean->kind == gitman::repository_kind::subversion);
+    REQUIRE(korean->selectable());
+    REQUIRE(korean->absolute_path.find(u8"한글 저장소 📁") != std::u8string::npos);
 
     const gitman::discovery_candidate* const junction { find_candidate(result, u8"linked-junction") };
     REQUIRE(junction != nullptr);

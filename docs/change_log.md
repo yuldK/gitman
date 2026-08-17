@@ -1,5 +1,52 @@
 # 변경 이력
 
+## 2026-08-17 - UI element 계층 도입 (`docs/ui-element-design.md`)
+
+### 사용자 지시
+
+- 모든 UI를 최상위 추상 클래스에서 상속받는 일관 API로 모듈화. hover 강조·tooltip,
+  왼쪽/오른쪽/더블 클릭 등록, 활성/비활성, drag & drop 액션 재설정 지원. 설계 초안
+  검수 후 진행 (2026-08-17 승인, 검수 항목 4건 모두 제안안 채택).
+
+### 반영 내용
+
+- **`src/presentation/ui/` 모듈(`gitman_ui` target)을 신설했다.** 최상위 추상 클래스
+  `ui_element`(arrange/draw/hit_test 계약 + 액션·tooltip·drag/drop·활성 상태 등록)와
+  `button_element`, `label_element`, `caption_element`, `toolbar_element`,
+  `card_element`, `card_list_element`, 불변 `ui_tree`, 순수 빌드 함수
+  `build_ui_tree`로 구성된다.
+- ADR-004를 지키기 위해 tree는 **snapshot마다 다시 빌드되는 불변 구조**다. logic
+  thread가 `layout_snapshot` 대신 tree를 게시하고, 액션은 상태를 바꾸지 않고
+  `logic_message` 또는 `ui_command`(dialog·창 명령, UI thread 전용)를 반환한다.
+- `interaction_controller`(input thread)가 hover, 눌림, 왼쪽/오른쪽/더블 클릭,
+  drag & drop 상태 기계를 소유하고 `interaction_snapshot`으로 게시한다. UI thread는
+  이것으로 hover 강조와 tooltip(500ms 지연, WM_TIMER 재그리기)을 그린다. 판정은
+  이벤트 timestamp만 사용해 test가 결정적이며, 더블 클릭 임계는
+  `GetDoubleClickTime()`을 주입한다.
+- caption을 통합했다. 창 버튼 3개가 일반 `button_element`이고 비클라이언트 클릭도
+  tree에 등록된 액션을 실행한다. `WM_NCHITTEST` 동기 판정(`caption_layout`)은
+  유지하고 tree 좌표와의 일치를 test로 고정했다.
+- Win32 입력 전달을 확장했다: 오른쪽 버튼, `WM_LBUTTONDBLCLK` 재해석,
+  `WM_MOUSELEAVE`(hover 해제), 이벤트 timestamp.
+- drag & drop은 API·상태 기계·ghost/drop 대상 강조까지 구현했고 화면 소비자는
+  후속 단계로 미뤘다 (검수 결정).
+- 제거: `caption_ui`, `card_list_view`, `layout_model`, `input_controller`.
+  스크롤 수학은 `presentation/list_metrics.*`로 이동했다.
+- test: `ui_element_tests`, `ui_tree_build_tests`(기존 layout test 승계 + caption
+  일치), `ui_interaction_tests`(기존 input test 승계 + hover/더블 클릭/오른쪽
+  클릭/drag/pump)를 추가했다. 전체 CTest **521/521** 통과, style/format 통과,
+  smoke 4종 통과.
+
+### 영향 요구사항
+
+- REQ-005, REQ-009~REQ-012, NFR-011~NFR-014
+
+### 다음 작업 제한
+
+- 단계 7에서 update/switch 버튼을 활성화할 때는 `build_ui_tree`에서 해당
+  `button_element`에 액션을 등록하는 방식을 쓴다.
+- drag & drop의 첫 소비자(카드 순서 변경)는 별도 검수 후 진행한다.
+
 ## 2026-08-17 - 단계 6 `S6-V1` 최종 검증
 
 ### 사용자 지시

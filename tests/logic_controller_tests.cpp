@@ -1,5 +1,5 @@
 #include "application/logic_controller.h"
-#include "presentation/layout_model.h"
+#include "presentation/list_metrics.h"
 
 #include <catch2/catch_test_macros.hpp>
 

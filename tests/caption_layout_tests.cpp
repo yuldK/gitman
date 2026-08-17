@@ -1,13 +1,13 @@
 #include "platform/win32/caption_layout.h"
-#include "presentation/caption_ui.h"
+#include "presentation/ui/caption_metrics.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("Caption button bounds scale with DPI", "[caption]")
 {
     const auto layout = gitman::win32::make_caption_layout(1000, 96);
-    REQUIRE(layout.height == gitman::default_caption_ui_metrics.height);
-    REQUIRE(layout.button_width == gitman::default_caption_ui_metrics.button_width);
+    REQUIRE(layout.height == gitman::ui::default_caption_ui_metrics.height);
+    REQUIRE(layout.button_width == gitman::ui::default_caption_ui_metrics.button_width);
     REQUIRE(layout.close_left == 954);
     REQUIRE(layout.maximize_left == 908);
     REQUIRE(layout.minimize_left == 862);

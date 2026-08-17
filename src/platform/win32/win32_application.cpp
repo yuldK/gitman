@@ -5,14 +5,15 @@
 #include "platform/win32/skia_renderer.h"
 #include "platform/win32/utf8.h"
 #include "platform/win32/win32_app_runtime.h"
-#include "presentation/caption_ui.h"
-#include "presentation/layout_model.h"
+#include "presentation/ui/caption_element.h"
+#include "presentation/ui/ui_events.h"
 
 #include <dwmapi.h>
 #include <shobjidl.h>
 #include <windowsx.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,10 +24,14 @@ namespace gitman::win32 {
         constexpr wchar_t window_class_name[] = L"Gitman.Stage1.Window";
         constexpr wchar_t window_title[] = L"Gitman";
         constexpr int direct3d_unavailable_exit_code { 77 };
-        // ADR-005의 wake 신호다. view slot의 signal callback이 게시한다.
+        // ADR-005의 wake 신호다. view slot과 interaction slot의 signal callback이
+        // 게시한다.
         constexpr UINT snapshot_wake_message { WM_APP + 1 };
-        // input thread가 요청한 파일 dialog를 UI thread에서 여는 신호다.
-        constexpr UINT open_dialog_request_message { WM_APP + 2 };
+        // input thread가 요청한 `ui::ui_command`를 UI thread에서 실행하는 신호다.
+        // wparam이 command 값이다.
+        constexpr UINT ui_command_request_message { WM_APP + 2 };
+        // tooltip 지연이 끝나는 시점에 한 번 다시 그리기 위한 timer다.
+        constexpr UINT_PTR tooltip_timer_id { 1 };
 
         // `.verison-list` 문서를 고르는 Win32 파일 dialog다. UI thread 전용이다.
         [[nodiscard]] std::optional<std::u8string> choose_workspace_document(const HWND owner)
@@ -116,7 +121,7 @@ namespace gitman::win32 {
                 // smoke test는 스레드 없이 한 frame만 그린다. 실제 앱 모드에서만
                 // runtime(스레드 4종과 채널)을 조립한다.
                 if (options_.smoke_test == false)
-                    runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, open_dialog_request_message);
+                    runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, ui_command_request_message);
                 return true;
             }
 
@@ -170,13 +175,17 @@ namespace gitman::win32 {
                 case snapshot_wake_message:
                     InvalidateRect(window_, nullptr, FALSE);
                     return 0;
-                case open_dialog_request_message:
-                    if (runtime_ != nullptr)
-                    {
-                        if (const std::optional<std::u8string> path { choose_workspace_document(window_) }; path.has_value())
-                            runtime_->post_logic(logic_message { open_document_intent { *path } });
-                    }
+                case ui_command_request_message:
+                    execute_ui_command(static_cast<ui::ui_command>(word_parameter));
                     return 0;
+                case WM_TIMER:
+                    if (word_parameter == tooltip_timer_id)
+                    {
+                        KillTimer(window_, tooltip_timer_id);
+                        InvalidateRect(window_, nullptr, FALSE);
+                        return 0;
+                    }
+                    break;
                 case WM_CLOSE:
                     // ADR-005 7.3: 스레드를 모두 정리한 뒤에 창을 파괴한다.
                     if (runtime_ != nullptr)
@@ -186,10 +195,22 @@ namespace gitman::win32 {
                     }
                     break;
                 case WM_LBUTTONDOWN:
+                case WM_LBUTTONDBLCLK:
+                    // CS_DBLCLKS가 두 번째 누름을 DBLCLK로 바꾸므로 같은 누름으로
+                    // 되돌린다. 더블 클릭 판정은 interaction controller가 한다.
                     if (runtime_ != nullptr)
                     {
                         SetCapture(window_);
-                        runtime_->post_raw_input(pointer_pressed_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), pointer_button::left });
+                        post_pointer_pressed(long_parameter, ui::pointer_button::left);
+                        return 0;
+                    }
+                    break;
+                case WM_RBUTTONDOWN:
+                case WM_RBUTTONDBLCLK:
+                    if (runtime_ != nullptr)
+                    {
+                        SetCapture(window_);
+                        post_pointer_pressed(long_parameter, ui::pointer_button::right);
                         return 0;
                     }
                     break;
@@ -197,7 +218,15 @@ namespace gitman::win32 {
                     if (runtime_ != nullptr)
                     {
                         ReleaseCapture();
-                        runtime_->post_raw_input(pointer_released_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), pointer_button::left });
+                        post_pointer_released(long_parameter, ui::pointer_button::left);
+                        return 0;
+                    }
+                    break;
+                case WM_RBUTTONUP:
+                    if (runtime_ != nullptr)
+                    {
+                        ReleaseCapture();
+                        post_pointer_released(long_parameter, ui::pointer_button::right);
                         return 0;
                     }
                     break;
@@ -207,17 +236,17 @@ namespace gitman::win32 {
                         POINT client_point { GET_X_LPARAM(long_parameter), GET_Y_LPARAM(long_parameter) };
                         ScreenToClient(window_, &client_point);
                         runtime_->post_raw_input(
-                            mouse_wheel_event { static_cast<float>(client_point.x), static_cast<float>(client_point.y), static_cast<float>(GET_WHEEL_DELTA_WPARAM(word_parameter)) });
+                            ui::mouse_wheel_event { static_cast<float>(client_point.x), static_cast<float>(client_point.y), static_cast<float>(GET_WHEEL_DELTA_WPARAM(word_parameter)) });
                         return 0;
                     }
                     break;
                 case WM_KEYDOWN:
                     if (runtime_ != nullptr)
                     {
-                        const key_code key { key_from_virtual(word_parameter) };
-                        if (key != key_code::none)
+                        const ui::key_code key { key_from_virtual(word_parameter) };
+                        if (key != ui::key_code::none)
                         {
-                            runtime_->post_raw_input(key_pressed_event { key, (GetKeyState(VK_CONTROL) & 0x8000) != 0 });
+                            runtime_->post_raw_input(ui::key_pressed_event { key, (GetKeyState(VK_CONTROL) & 0x8000) != 0 });
                             return 0;
                         }
                     }
@@ -234,7 +263,7 @@ namespace gitman::win32 {
                     break;
                 case WM_NCMOUSELEAVE:
                     tracking_non_client_mouse_ = false;
-                    update_caption_hover(caption_button_hover::none);
+                    update_caption_hover(ui::caption_button_hover::none);
                     break;
                 case WM_NCLBUTTONDOWN:
                     if (is_caption_button(word_parameter))
@@ -245,13 +274,23 @@ namespace gitman::win32 {
                         return 0;
                     break;
                 case WM_MOUSEMOVE:
-                    update_caption_hover(caption_button_hover::none);
+                    update_caption_hover(ui::caption_button_hover::none);
                     if (runtime_ != nullptr)
-                        runtime_->post_raw_input(pointer_moved_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)) });
+                    {
+                        track_client_mouse_leave();
+                        runtime_->post_raw_input(
+                            ui::pointer_moved_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), std::chrono::steady_clock::now() });
+                    }
+                    break;
+                case WM_MOUSELEAVE:
+                    // hover 강조가 창 밖에서 남지 않게 한다.
+                    tracking_client_mouse_ = false;
+                    if (runtime_ != nullptr)
+                        runtime_->post_raw_input(ui::pointer_left_event {});
                     break;
                 case WM_ACTIVATE:
                     if (LOWORD(word_parameter) == WA_INACTIVE)
-                        update_caption_hover(caption_button_hover::none);
+                        update_caption_hover(ui::caption_button_hover::none);
                     break;
                 case WM_GETMINMAXINFO:
                     update_maximized_bounds(reinterpret_cast<MINMAXINFO*>(long_parameter));
@@ -268,12 +307,12 @@ namespace gitman::win32 {
                     {
                         RECT window_rectangle {};
                         GetWindowRect(window_, &window_rectangle);
-                        show_system_menu({ window_rectangle.left, window_rectangle.top + scale_for_dpi(default_caption_ui_metrics.height) });
+                        show_system_menu({ window_rectangle.left, window_rectangle.top + scale_for_dpi(ui::default_caption_ui_metrics.height) });
                         return 0;
                     }
                     break;
                 case WM_SIZE:
-                    update_caption_hover(caption_button_hover::none);
+                    update_caption_hover(ui::caption_button_hover::none);
                     if (renderer_ != nullptr && word_parameter != SIZE_MINIMIZED)
                     {
                         std::u8string error {};
@@ -375,7 +414,7 @@ namespace gitman::win32 {
                         return HTBOTTOM;
                 }
 
-                if (y >= 0 && y < scale_for_dpi(default_caption_ui_metrics.height) && x >= 0 && x < scale_for_dpi(default_caption_ui_metrics.application_icon_slot_width))
+                if (y >= 0 && y < scale_for_dpi(ui::default_caption_ui_metrics.height) && x >= 0 && x < scale_for_dpi(ui::default_caption_ui_metrics.application_icon_slot_width))
                     return HTSYSMENU;
                 const caption_layout layout { make_caption_layout(width, dpi_) };
                 switch (hit_test_caption(layout, x, y))
@@ -399,18 +438,18 @@ namespace gitman::win32 {
                 return hit == HTMINBUTTON || hit == HTMAXBUTTON || hit == HTCLOSE;
             }
 
-            [[nodiscard]] static caption_button_hover caption_hover_from_hit(const WPARAM hit) noexcept
+            [[nodiscard]] static ui::caption_button_hover caption_hover_from_hit(const WPARAM hit) noexcept
             {
                 switch (hit)
                 {
                 case HTMINBUTTON:
-                    return caption_button_hover::minimize;
+                    return ui::caption_button_hover::minimize;
                 case HTMAXBUTTON:
-                    return caption_button_hover::maximize;
+                    return ui::caption_button_hover::maximize;
                 case HTCLOSE:
-                    return caption_button_hover::close;
+                    return ui::caption_button_hover::close;
                 default:
-                    return caption_button_hover::none;
+                    return ui::caption_button_hover::none;
                 }
             }
 
@@ -427,26 +466,101 @@ namespace gitman::win32 {
                 tracking_non_client_mouse_ = TrackMouseEvent(&tracking) != FALSE;
             }
 
-            void update_caption_hover(const caption_button_hover hover) noexcept
+            void update_caption_hover(const ui::caption_button_hover hover) noexcept
             {
                 if (hovered_caption_button_ == hover)
                     return;
                 hovered_caption_button_ = hover;
+                // caption tooltip 지연 판정의 기준 시각이다.
+                nc_hover_since_ = std::chrono::steady_clock::now();
                 InvalidateRect(window_, nullptr, FALSE);
             }
 
-            [[nodiscard]] bool execute_caption_button(const WPARAM hit) const noexcept
+            void post_pointer_pressed(const LPARAM long_parameter, const ui::pointer_button button) const noexcept
             {
+                runtime_->post_raw_input(
+                    ui::pointer_pressed_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), button, std::chrono::steady_clock::now() });
+            }
+
+            void post_pointer_released(const LPARAM long_parameter, const ui::pointer_button button) const noexcept
+            {
+                runtime_->post_raw_input(
+                    ui::pointer_released_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), button, std::chrono::steady_clock::now() });
+            }
+
+            void track_client_mouse_leave() noexcept
+            {
+                if (tracking_client_mouse_)
+                    return;
+                TRACKMOUSEEVENT tracking {
+                    static_cast<DWORD>(sizeof(TRACKMOUSEEVENT)),
+                    TME_LEAVE,
+                    window_,
+                    HOVER_DEFAULT,
+                };
+                tracking_client_mouse_ = TrackMouseEvent(&tracking) != FALSE;
+            }
+
+            void execute_ui_command(const ui::ui_command command)
+            {
+                switch (command)
+                {
+                case ui::ui_command::show_open_document_dialog:
+                    if (runtime_ != nullptr)
+                    {
+                        if (const std::optional<std::u8string> path { choose_workspace_document(window_) }; path.has_value())
+                            runtime_->post_logic(logic_message { open_document_intent { *path } });
+                    }
+                    return;
+                case ui::ui_command::window_minimize:
+                    PostMessageW(window_, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+                    return;
+                case ui::ui_command::window_toggle_maximize:
+                    PostMessageW(window_, WM_SYSCOMMAND, IsZoomed(window_) ? SC_RESTORE : SC_MAXIMIZE, 0);
+                    return;
+                case ui::ui_command::window_close:
+                    PostMessageW(window_, WM_CLOSE, 0, 0);
+                    return;
+                }
+            }
+
+            // 비클라이언트 클릭을 caption 버튼 element에 등록된 액션으로 실행한다.
+            // tree가 아직 없으면(runtime 없음, 첫 snapshot 이전) 같은 의미의 창
+            // 명령을 직접 실행한다.
+            [[nodiscard]] bool execute_caption_button(const WPARAM hit)
+            {
+                const ui::ui_element_id id { ui::caption_button_element_id(caption_hover_from_hit(hit)) };
+                if (id == ui::ui_element_id {})
+                    return false;
+
+                if (runtime_ != nullptr)
+                {
+                    if (const std::shared_ptr<const ui::ui_tree> tree { runtime_->acquire_ui_tree() }; tree != nullptr)
+                    {
+                        if (const ui::ui_element* const button { tree->find(id) }; button != nullptr)
+                        {
+                            if (const ui::ui_action* const action { button->action(ui::ui_trigger::left_click) }; action != nullptr)
+                            {
+                                const ui::rect_f bounds { button->bounds() };
+                                for (const ui::input_action& result : (*action)(ui::ui_action_context { id, bounds.x, bounds.y, false }))
+                                    if (const auto* const command { std::get_if<ui::ui_command>(&result) }; command != nullptr)
+                                        execute_ui_command(*command);
+                                return true;
+                            }
+                        }
+                    }
+                }
+
                 switch (hit)
                 {
                 case HTMINBUTTON:
-                    PostMessageW(window_, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+                    execute_ui_command(ui::ui_command::window_minimize);
                     return true;
                 case HTMAXBUTTON:
-                    PostMessageW(window_, WM_SYSCOMMAND, IsZoomed(window_) ? SC_RESTORE : SC_MAXIMIZE, 0);
+                    execute_ui_command(ui::ui_command::window_toggle_maximize);
                     return true;
                 case HTCLOSE:
-                    PostMessageW(window_, WM_CLOSE, 0, 0);
+                    execute_ui_command(ui::ui_command::window_close);
                     return true;
                 default:
                     return false;
@@ -508,22 +622,22 @@ namespace gitman::win32 {
                 return true;
             }
 
-            [[nodiscard]] static key_code key_from_virtual(const WPARAM virtual_key) noexcept
+            [[nodiscard]] static ui::key_code key_from_virtual(const WPARAM virtual_key) noexcept
             {
                 switch (virtual_key)
                 {
                 case VK_UP:
-                    return key_code::arrow_up;
+                    return ui::key_code::arrow_up;
                 case VK_DOWN:
-                    return key_code::arrow_down;
+                    return ui::key_code::arrow_down;
                 case VK_RETURN:
-                    return key_code::enter;
+                    return ui::key_code::enter;
                 case VK_F5:
-                    return key_code::f5;
+                    return ui::key_code::f5;
                 case VK_ESCAPE:
-                    return key_code::escape;
+                    return ui::key_code::escape;
                 default:
-                    return key_code::none;
+                    return ui::key_code::none;
                 }
             }
 
@@ -560,23 +674,53 @@ namespace gitman::win32 {
                 state.dpi_scale = static_cast<float>(dpi_) / 96.0F;
                 state.theme = high_contrast_enabled ? color_theme::high_contrast : color_theme::dark;
                 state.maximized = IsZoomed(window_) != FALSE;
-                state.hovered_caption_button = hovered_caption_button_;
 
-                // 앱 모드에서는 마지막 view snapshot으로 카드 목록을 그린다. layout은
-                // 이 호출 동안만 살아 있으면 된다.
-                std::shared_ptr<const view_snapshot> view {};
-                layout_snapshot layout {};
+                // 앱 모드에서는 logic이 게시한 tree와 input thread의 상호작용 상태로
+                // 그린다. tree는 shared_ptr이 이 호출 동안 수명을 보장한다.
+                std::shared_ptr<const ui::ui_tree> tree {};
                 if (runtime_ != nullptr)
                 {
-                    view = runtime_->acquire_view();
-                    if (view != nullptr)
-                    {
-                        layout = compute_layout(*view);
-                        state.application_view = view.get();
-                        state.application_layout = &layout;
-                    }
+                    tree = runtime_->acquire_ui_tree();
+                    state.interaction = runtime_->acquire_interaction();
+                    state.application_tree = tree.get();
                 }
+
+                // caption 버튼의 hover는 비클라이언트 메시지로만 도착하므로 UI thread
+                // 추적 값을 상호작용 상태에 합친다.
+                if (hovered_caption_button_ != ui::caption_button_hover::none)
+                {
+                    state.interaction.hovered = ui::caption_button_element_id(hovered_caption_button_);
+                    state.interaction.hover_started_at = nc_hover_since_;
+                }
+
+                schedule_tooltip_repaint(tree.get(), state.interaction);
                 return renderer_->render(state, error);
+            }
+
+            // hover가 tooltip 지연에 아직 도달하지 않았으면 지연이 끝나는 시점에 한 번
+            // 다시 그리도록 timer를 건다. tooltip은 렌더러가 tree로 그린다.
+            void schedule_tooltip_repaint(const ui::ui_tree* const tree, const ui::interaction_snapshot& interaction) noexcept
+            {
+                if (tree == nullptr || interaction.hover_started_at.has_value() == false)
+                {
+                    KillTimer(window_, tooltip_timer_id);
+                    return;
+                }
+                const ui::ui_element* const hovered { tree->find(interaction.hovered) };
+                if (hovered == nullptr || hovered->tooltip().empty())
+                {
+                    KillTimer(window_, tooltip_timer_id);
+                    return;
+                }
+
+                const auto elapsed { std::chrono::steady_clock::now() - *interaction.hover_started_at };
+                if (elapsed >= ui::tooltip_delay)
+                {
+                    KillTimer(window_, tooltip_timer_id);
+                    return;
+                }
+                const auto remaining { std::chrono::duration_cast<std::chrono::milliseconds>(ui::tooltip_delay - elapsed) };
+                SetTimer(window_, tooltip_timer_id, static_cast<UINT>(remaining.count() + 15), nullptr);
             }
 
             int scale_for_dpi(const int value) const noexcept
@@ -598,8 +742,10 @@ namespace gitman::win32 {
             application_options options_ {};
             HWND window_ { nullptr };
             std::uint32_t dpi_ { 96 };
-            caption_button_hover hovered_caption_button_ { caption_button_hover::none };
+            ui::caption_button_hover hovered_caption_button_ { ui::caption_button_hover::none };
+            std::chrono::steady_clock::time_point nc_hover_since_ {};
             bool tracking_non_client_mouse_ { false };
+            bool tracking_client_mouse_ { false };
             std::unique_ptr<renderer_host> renderer_ {};
             std::unique_ptr<app_runtime> runtime_ {};
         };

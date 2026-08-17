@@ -32,9 +32,7 @@ add_executable(gitman_tests
     helpers/git_repository_fixture.h
     helpers/vcs_test_doubles.cpp
     helpers/vcs_test_doubles.h
-    input_controller_tests.cpp
     json_project_store_tests.cpp
-    layout_model_tests.cpp
     logic_controller_tests.cpp
     messaging_channel_tests.cpp
     messaging_latest_slot_tests.cpp
@@ -54,7 +52,10 @@ add_executable(gitman_tests
     svn_repository_provider_tests.cpp
     switch_validation_tests.cpp
     task_scheduler_tests.cpp
+    ui_element_tests.cpp
+    ui_interaction_tests.cpp
     ui_theme_tests.cpp
+    ui_tree_build_tests.cpp
     utf8_tests.cpp
     vcs_domain_tests.cpp
     vcs_error_classifier_tests.cpp
@@ -81,6 +82,7 @@ target_link_libraries(gitman_tests
         gitman_discovery
         gitman_messaging
         gitman_process
+        gitman_ui
         gitman_vcs
         gitman_workspace
         gitman_win32

@@ -3,8 +3,9 @@
 #include "application/app_messages.h"
 #include "messaging/channel.h"
 #include "messaging/latest_slot.h"
-#include "presentation/input_controller.h"
-#include "presentation/layout_model.h"
+#include "presentation/ui/ui_events.h"
+#include "presentation/ui/ui_interaction.h"
+#include "presentation/ui/ui_tree.h"
 #include "presentation/view_snapshot.h"
 
 #include <windows.h>
@@ -26,7 +27,9 @@ namespace gitman::win32 {
     class app_runtime
     {
     public:
-        app_runtime(HWND window, UINT snapshot_message, UINT open_dialog_message);
+        // ui_command_message는 input thread가 요청한 `ui::ui_command`를 UI thread로
+        // 나르는 창 메시지다. wparam이 command 값이다.
+        app_runtime(HWND window, UINT snapshot_message, UINT ui_command_message);
         app_runtime(const app_runtime&) = delete;
         app_runtime(app_runtime&&) = delete;
         app_runtime& operator=(const app_runtime&) = delete;
@@ -38,10 +41,14 @@ namespace gitman::win32 {
         void shutdown() noexcept;
 
         // UI thread 전용 진입점들이다.
-        void post_raw_input(raw_input_event event) noexcept;
+        void post_raw_input(ui::raw_input_event event) noexcept;
         void post_logic(logic_message message) noexcept;
         // 마지막으로 게시된 view snapshot을 돌려준다. 새 것이 없으면 이전 값이다.
         [[nodiscard]] std::shared_ptr<const view_snapshot> acquire_view();
+        // 마지막으로 게시된 ui tree다. 그리기와 caption 버튼의 동기 실행이 쓴다.
+        [[nodiscard]] std::shared_ptr<const ui::ui_tree> acquire_ui_tree();
+        // input thread가 게시한 최신 상호작용 상태다. hover·tooltip 그리기가 쓴다.
+        [[nodiscard]] ui::interaction_snapshot acquire_interaction();
 
     private:
         void logic_thread_main();
@@ -54,6 +61,10 @@ namespace gitman::win32 {
         UINT snapshot_message_ { 0 };
         std::shared_ptr<const view_snapshot> current_view_ {};
         std::uint64_t seen_view_version_ { 0 };
+        std::shared_ptr<const ui::ui_tree> current_tree_ {};
+        std::uint64_t seen_tree_version_ { 0 };
+        ui::interaction_snapshot current_interaction_ {};
+        std::uint64_t seen_interaction_version_ { 0 };
         bool shut_down_ { false };
     };
 } // namespace gitman::win32

@@ -1,6 +1,6 @@
 #include "presentation/skia_smoke_view.h"
 
-#include "presentation/card_list_view.h"
+#include "presentation/ui/caption_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -8,6 +8,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <chrono>
 #include <string_view>
 
 namespace gitman {
@@ -22,34 +23,28 @@ namespace gitman {
     {
         const float scale { state.dpi_scale };
         const ui_color_palette& colors { color_palette_for(state.theme) };
-        const caption_ui caption { colors.caption };
-        const float caption_height { caption.height(scale) };
+        ui::draw_context context {
+            .canvas = canvas,
+            .codicon_typeface = codicon_typeface,
+            .ui_typeface = ui_typeface,
+            .palette = colors,
+            .scale = scale,
+            .now = std::chrono::steady_clock::now(),
+            .maximized = state.maximized,
+        };
 
-        // 앱 모드에서는 smoke 화면 대신 카드 목록을 그린다. caption은 두 모드가 같은
-        // 코드를 쓴다.
-        if (state.application_view != nullptr && state.application_layout != nullptr)
+        // 앱 모드에서는 tree가 caption을 포함한 화면 전체를 그린다.
+        if (state.application_tree != nullptr)
         {
-            draw_card_list(canvas, codicon_typeface, ui_typeface, *state.application_view, *state.application_layout, state.theme);
-            caption.draw(canvas, codicon_typeface, ui_typeface,
-                caption_ui_state {
-                    .width = state.width,
-                    .dpi_scale = state.dpi_scale,
-                    .maximized = state.maximized,
-                    .hovered_button = state.hovered_caption_button,
-                    .title = u8"Gitman",
-                });
+            state.application_tree->draw(context, state.interaction);
             return;
         }
 
+        // smoke 모드는 view snapshot이 없으므로 caption만 단독 tree로 그린다.
         canvas.clear(colors.window_background);
-        caption.draw(canvas, codicon_typeface, ui_typeface,
-            caption_ui_state {
-                .width = state.width,
-                .dpi_scale = state.dpi_scale,
-                .maximized = state.maximized,
-                .hovered_button = state.hovered_caption_button,
-                .title = u8"Gitman",
-            });
+        const ui::ui_tree caption { ui::make_caption_tree(static_cast<float>(state.width), scale, u8"Gitman") };
+        caption.draw(context, state.interaction);
+        const float caption_height { static_cast<float>(ui::default_caption_ui_metrics.height) * scale };
 
         SkPaint fill_paint {};
         fill_paint.setAntiAlias(true);

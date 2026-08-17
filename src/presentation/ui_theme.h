@@ -28,6 +28,13 @@ namespace gitman {
         ui_color primary_foreground { 0 };
         ui_color positive_accent { 0 };
         ui_color warning_accent { 0 };
+        ui_color error_accent { 0 };
+        // caption 밖의 일반 버튼(도구 막대·카드)의 hover와 눌림 표시다.
+        ui_color button_hover_background { 0 };
+        ui_color button_hover_foreground { 0 };
+        ui_color button_pressed_background { 0 };
+        ui_color tooltip_background { 0 };
+        ui_color tooltip_border { 0 };
         caption_color_palette caption {};
     };
 

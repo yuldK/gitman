@@ -8,6 +8,7 @@
 #include "platform/win32/win32_process_runner.h"
 #include "platform/win32/win32_vcs_file_probe.h"
 #include "platform/win32/workspace_document_file_system.h"
+#include "presentation/ui/build_ui_tree.h"
 
 #include <algorithm>
 #include <chrono>
@@ -24,13 +25,19 @@ namespace gitman::win32 {
             return static_cast<std::size_t>(std::min(4u, hardware == 0 ? 1u : hardware));
         }
 
-        void input_thread_main(messaging::channel<raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const layout_snapshot>>& layout_slot,
-            messaging::channel<logic_message>& logic_inbox, const HWND wake_window, const UINT dialog_message)
+        void input_thread_main(messaging::channel<ui::raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const ui::ui_tree>>& tree_slot,
+            messaging::channel<logic_message>& logic_inbox, messaging::latest_slot<ui::interaction_snapshot>& interaction_slot, const HWND wake_window, const UINT command_message)
         {
-            run_input_pump(input_inbox, layout_slot, logic_inbox, [wake_window, dialog_message] {
-                if (wake_window != nullptr)
-                    PostMessageW(wake_window, dialog_message, 0, 0);
-            });
+            // 더블 클릭 임계는 사용자의 시스템 설정을 따른다.
+            ui::interaction_config config {};
+            config.double_click_time = std::chrono::milliseconds { GetDoubleClickTime() };
+            run_ui_input_pump(
+                input_inbox, tree_slot, logic_inbox, interaction_slot,
+                [wake_window, command_message](const ui::ui_command command) {
+                    if (wake_window != nullptr)
+                        PostMessageW(wake_window, command_message, static_cast<WPARAM>(command), 0);
+                },
+                config);
         }
     } // namespace
 
@@ -45,17 +52,18 @@ namespace gitman::win32 {
         json_project_store store { file_system, *resolver };
         vcs_operation_executor executor { store, *runner, *probe, current_vcs_tool_environment() };
 
-        messaging::channel<raw_input_event> input_inbox { messaging::channel_options { 4096, messaging::overflow_policy::drop_oldest, {} } };
+        messaging::channel<ui::raw_input_event> input_inbox { messaging::channel_options { 4096, messaging::overflow_policy::drop_oldest, {} } };
         messaging::channel<logic_message> logic_inbox { messaging::channel_options { 1024, messaging::overflow_policy::reject_newest, {} } };
         messaging::latest_slot<std::shared_ptr<const view_snapshot>> view_slot {};
-        messaging::latest_slot<std::shared_ptr<const layout_snapshot>> layout_slot {};
+        messaging::latest_slot<std::shared_ptr<const ui::ui_tree>> tree_slot {};
+        messaging::latest_slot<ui::interaction_snapshot> interaction_slot {};
 
         std::unique_ptr<task_scheduler> scheduler {};
         std::thread logic_thread {};
         std::thread input_thread {};
     };
 
-    app_runtime::app_runtime(const HWND window, const UINT snapshot_message, const UINT open_dialog_message)
+    app_runtime::app_runtime(const HWND window, const UINT snapshot_message, const UINT ui_command_message)
         : assembly_ { std::make_unique<assembly>() }
         , window_ { window }
         , snapshot_message_ { snapshot_message }
@@ -64,13 +72,25 @@ namespace gitman::win32 {
         const HWND wake_window { window_ };
         const UINT wake_message { snapshot_message_ };
         if (wake_window != nullptr)
+        {
             assembly_->view_slot.set_signal_callback([wake_window, wake_message] { PostMessageW(wake_window, wake_message, 0, 0); });
+            // hover·tooltip·drag 표시가 바뀌면 다시 그린다. wake 신호는 view와 같다.
+            assembly_->interaction_slot.set_signal_callback([wake_window, wake_message] { PostMessageW(wake_window, wake_message, 0, 0); });
+        }
 
         assembly_->scheduler = std::make_unique<task_scheduler>(assembly_->executor, assembly_->logic_inbox, default_worker_count());
         assembly_->logic_thread = std::thread { &app_runtime::logic_thread_main, this };
 
         assembly& parts { *assembly_ };
-        assembly_->input_thread = std::thread { &input_thread_main, std::ref(parts.input_inbox), std::ref(parts.layout_slot), std::ref(parts.logic_inbox), wake_window, open_dialog_message };
+        assembly_->input_thread = std::thread {
+            &input_thread_main,
+            std::ref(parts.input_inbox),
+            std::ref(parts.tree_slot),
+            std::ref(parts.logic_inbox),
+            std::ref(parts.interaction_slot),
+            wake_window,
+            ui_command_message,
+        };
     }
 
     app_runtime::~app_runtime()
@@ -103,13 +123,14 @@ namespace gitman::win32 {
             if (assembly_->input_thread.joinable())
                 assembly_->input_thread.join();
             assembly_->view_slot.close();
-            assembly_->layout_slot.close();
+            assembly_->tree_slot.close();
+            assembly_->interaction_slot.close();
         }
         catch (...)
         {}
     }
 
-    void app_runtime::post_raw_input(raw_input_event event) noexcept
+    void app_runtime::post_raw_input(ui::raw_input_event event) noexcept
     {
         try
         {
@@ -140,11 +161,31 @@ namespace gitman::win32 {
         return current_view_;
     }
 
+    std::shared_ptr<const ui::ui_tree> app_runtime::acquire_ui_tree()
+    {
+        if (const auto newer { assembly_->tree_slot.take_newer(seen_tree_version_) }; newer.has_value())
+        {
+            seen_tree_version_ = newer->version;
+            current_tree_ = newer->value;
+        }
+        return current_tree_;
+    }
+
+    ui::interaction_snapshot app_runtime::acquire_interaction()
+    {
+        if (const auto newer { assembly_->interaction_slot.take_newer(seen_interaction_version_) }; newer.has_value())
+        {
+            seen_interaction_version_ = newer->version;
+            current_interaction_ = newer->value;
+        }
+        return current_interaction_;
+    }
+
     void app_runtime::publish_snapshots(logic_controller& controller)
     {
         const std::shared_ptr<const view_snapshot> view { controller.make_view_snapshot() };
         static_cast<void>(assembly_->view_slot.publish(view));
-        static_cast<void>(assembly_->layout_slot.publish(std::make_shared<const layout_snapshot>(compute_layout(*view))));
+        static_cast<void>(assembly_->tree_slot.publish(ui::build_ui_tree(*view)));
     }
 
     void app_runtime::logic_thread_main()

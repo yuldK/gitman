@@ -203,10 +203,8 @@ add_library(gitman_app STATIC
     application/task_scheduler.h
     infrastructure/vcs_operation_executor.cpp
     infrastructure/vcs_operation_executor.h
-    presentation/input_controller.cpp
-    presentation/input_controller.h
-    presentation/layout_model.cpp
-    presentation/layout_model.h
+    presentation/list_metrics.cpp
+    presentation/list_metrics.h
     presentation/status_presentation.cpp
     presentation/status_presentation.h
     presentation/view_snapshot.h)
@@ -236,6 +234,46 @@ target_link_libraries(gitman_core
         gitman_project_options
         nlohmann_json::nlohmann_json)
 
+# 승인된 UI element 계층이다 (docs/ui-element-design.md). view snapshot에서 불변
+# tree를 빌드하고 Skia로 그리며, 상호작용 상태 기계와 input pump를 담는다. Win32에
+# 의존하지 않아 어느 platform 조립에서도 재사용할 수 있다.
+add_library(gitman_ui STATIC
+    presentation/ui/build_ui_tree.cpp
+    presentation/ui/build_ui_tree.h
+    presentation/ui/button_element.cpp
+    presentation/ui/button_element.h
+    presentation/ui/caption_element.cpp
+    presentation/ui/caption_element.h
+    presentation/ui/caption_metrics.h
+    presentation/ui/card_element.cpp
+    presentation/ui/card_element.h
+    presentation/ui/card_list_element.cpp
+    presentation/ui/card_list_element.h
+    presentation/ui/draw_primitives.cpp
+    presentation/ui/draw_primitives.h
+    presentation/ui/label_element.cpp
+    presentation/ui/label_element.h
+    presentation/ui/toolbar_element.cpp
+    presentation/ui/toolbar_element.h
+    presentation/ui/ui_element.cpp
+    presentation/ui/ui_element.h
+    presentation/ui/ui_events.h
+    presentation/ui/ui_interaction.cpp
+    presentation/ui/ui_interaction.h
+    presentation/ui/ui_tree.cpp
+    presentation/ui/ui_tree.h)
+add_dependencies(gitman_ui gitman_generate_codicons gitman_verify_assets)
+target_include_directories(gitman_ui
+    PUBLIC
+        "${GITMAN_SOURCE_DIRECTORY}"
+        "${GITMAN_GENERATED_INCLUDE_DIRECTORY}")
+target_link_libraries(gitman_ui
+    PUBLIC
+        gitman_app
+        gitman_core
+        gitman_messaging
+        unofficial::skia::skia)
+
 add_library(gitman_win32 STATIC
     "${GITMAN_GENERATED_CODICONS}"
     platform/win32/cpu_skia_renderer.cpp
@@ -248,10 +286,6 @@ add_library(gitman_win32 STATIC
     platform/win32/win32_app_runtime.h
     platform/win32/win32_application.cpp
     platform/win32/win32_application.h
-    presentation/caption_ui.cpp
-    presentation/caption_ui.h
-    presentation/card_list_view.cpp
-    presentation/card_list_view.h
     presentation/skia_smoke_view.cpp
     presentation/skia_smoke_view.h)
 add_dependencies(gitman_win32 gitman_generate_codicons gitman_verify_assets)
@@ -263,6 +297,7 @@ target_link_libraries(gitman_win32
     PUBLIC
         gitman_app
         gitman_core
+        gitman_ui
         gitman_win32_platform
         unofficial::skia::skia
     PRIVATE

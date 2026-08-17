@@ -90,7 +90,16 @@ cmake --install build\vs2022 --config Release
 bin/gitman.exe
 ```
 
-Skia와 C/C++ runtime은 정적으로 연결되고 Codicons font, mapping에서 생성한 코드, Codicons license와 vcpkg 제3자 고지문은 실행 파일 resource에 들어간다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
+Skia와 C/C++ runtime은 정적으로 연결되고 Codicons font, mapping에서 생성한 코드, Codicons license, 앱 아이콘과 vcpkg 제3자 고지문은 실행 파일 resource에 들어간다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
+
+앱 아이콘은 현재 custom caption에서 사용하는 `source-control` Codicon을 기준으로 생성한다. Codicons 자산을 갱신한 뒤 아이콘도 다시 생성하려면 저장소 루트에서 다음을 실행한다.
+
+```powershell
+python .\scripts\generate_app_icon.py `
+    --font .\assets\codicons\codicon.ttf `
+    --mapping .\assets\codicons\mapping.json `
+    --output .\assets\gitman.ico
+```
 
 ## 6. Renderer 선택
 

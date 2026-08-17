@@ -2,6 +2,7 @@
 
 #include "platform/win32/caption_layout.h"
 #include "platform/win32/embedded_assets.h"
+#include "platform/win32/resources/resource_ids.h"
 #include "platform/win32/skia_renderer.h"
 #include "platform/win32/utf8.h"
 #include "platform/win32/win32_app_runtime.h"
@@ -90,7 +91,7 @@ namespace gitman::win32 {
                 window_class.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
                 window_class.lpfnWndProc = &application_window::static_window_procedure;
                 window_class.hInstance = instance_;
-                window_class.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+                window_class.hIcon = LoadIconW(instance_, MAKEINTRESOURCEW(IDI_GITMAN));
                 window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
                 window_class.lpszClassName = window_class_name;
                 window_class.hIconSm = window_class.hIcon;

@@ -16,4 +16,5 @@ CMakeLists.txt text eol=crlf
 # 공식 배포본의 checksum을 보존해야 하는 vendored 자산이다.
 /assets/codicons/** -text
 *.ttf binary
+*.ico binary
 

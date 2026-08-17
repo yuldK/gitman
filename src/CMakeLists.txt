@@ -5,6 +5,7 @@ set(gitman_resource_template "${gitman_resource_directory}/gitman.rc.in")
 set(gitman_codicons_font "${GITMAN_ASSET_DIRECTORY}/codicon.ttf")
 set(gitman_codicons_license "${GITMAN_ASSET_DIRECTORY}/LICENSE")
 set(gitman_codicons_code_license "${GITMAN_ASSET_DIRECTORY}/LICENSE-CODE")
+set(gitman_app_icon "${CMAKE_CURRENT_SOURCE_DIR}/../assets/gitman.ico")
 
 add_custom_target(gitman_verify_assets ALL
     COMMAND "${CMAKE_COMMAND}"
@@ -34,12 +35,17 @@ file(TO_CMAKE_PATH "${gitman_resource_ids_file}" GITMAN_RESOURCE_IDS_PATH)
 file(TO_CMAKE_PATH "${gitman_codicons_font}" GITMAN_CODICONS_FONT_PATH)
 file(TO_CMAKE_PATH "${gitman_codicons_license}" GITMAN_CODICONS_LICENSE_PATH)
 file(TO_CMAKE_PATH "${gitman_codicons_code_license}" GITMAN_CODICONS_LICENSE_CODE_PATH)
+file(TO_CMAKE_PATH "${gitman_app_icon}" GITMAN_APP_ICON_PATH)
 file(TO_CMAKE_PATH "${GITMAN_THIRD_PARTY_NOTICES}" GITMAN_THIRD_PARTY_NOTICES_PATH)
 configure_file(
     "${gitman_resource_template}"
     "${GITMAN_GENERATED_RESOURCE}"
     @ONLY)
-set_source_files_properties("${GITMAN_GENERATED_RESOURCE}" PROPERTIES GENERATED TRUE)
+set_source_files_properties(
+    "${GITMAN_GENERATED_RESOURCE}"
+    PROPERTIES
+        GENERATED TRUE
+        OBJECT_DEPENDS "${gitman_app_icon}")
 
 add_library(gitman_domain STATIC
     domain/diagnostic.cpp

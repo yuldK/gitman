@@ -1,5 +1,6 @@
 #pragma once
 
+#define IDI_GITMAN 105
 #define IDR_CODICONS_FONT 101
 #define IDR_CODICONS_LICENSE 102
 #define IDR_CODICONS_LICENSE_CODE 103

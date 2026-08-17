@@ -105,7 +105,7 @@ namespace {
     gitman::workspace_document make_document()
     {
         gitman::workspace_document document {};
-        document.document_path = u8"C:\\workspace\\projects.verison-list";
+        document.document_path = u8"C:\\workspace\\projects.version-list";
         return document;
     }
 
@@ -286,7 +286,7 @@ TEST_CASE("Registered candidates round trip through the real store", "[discovery
     REQUIRE(directory.available());
 
     // unknown field와 설정이 등록 저장을 거쳐도 보존되는 것을 함께 확인한다.
-    const std::u8string document_path { directory.path_of(u8"projects.verison-list") };
+    const std::u8string document_path { directory.path_of(u8"projects.version-list") };
     {
         std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary };
         stream << "{\"schema_version\":1,\"custom_field\":7,\"settings\":{\"git_executable\":\"\",\"future_key\":true},\"projects\":[]}";
@@ -337,7 +337,7 @@ TEST_CASE("A concurrent modification refuses the save and keeps the file intact"
     const gitman::testing::scoped_scan_directory directory {};
     REQUIRE(directory.available());
 
-    const std::u8string document_path { directory.path_of(u8"projects.verison-list") };
+    const std::u8string document_path { directory.path_of(u8"projects.version-list") };
     {
         std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary };
         stream << "{\"schema_version\":1,\"projects\":[]}";

@@ -33,7 +33,7 @@ namespace gitman::win32 {
         // tooltip 지연이 끝나는 시점에 한 번 다시 그리기 위한 timer다.
         constexpr UINT_PTR tooltip_timer_id { 1 };
 
-        // `.verison-list` 문서를 고르는 Win32 파일 dialog다. UI thread 전용이다.
+        // `.version-list` 문서를 고르는 Win32 파일 dialog다. UI thread 전용이다.
         [[nodiscard]] std::optional<std::u8string> choose_workspace_document(const HWND owner)
         {
             IFileOpenDialog* dialog { nullptr };
@@ -41,9 +41,9 @@ namespace gitman::win32 {
                 return std::nullopt;
 
             std::optional<std::u8string> chosen {};
-            const COMDLG_FILTERSPEC filter { L"Gitman 문서 (*.verison-list)", L"*.verison-list" };
+            const COMDLG_FILTERSPEC filter { L"Gitman 문서 (*.version-list)", L"*.version-list" };
             static_cast<void>(dialog->SetFileTypes(1, &filter));
-            static_cast<void>(dialog->SetTitle(L".verison-list 문서 열기"));
+            static_cast<void>(dialog->SetTitle(L".version-list 문서 열기"));
             if (SUCCEEDED(dialog->Show(owner)))
             {
                 IShellItem* item { nullptr };

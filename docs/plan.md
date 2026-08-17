@@ -24,7 +24,7 @@
 | 2026-08-14 | 이번 세션은 문서 인수인계만 수행하고 실제 구현은 후속 세션으로 이관 | `docs/handoff.md` | REQ-012 |
 | 2026-08-14 | ADR-001 작업을 개시하고 단계 1 범위까지만 구현 | 단계 1, `docs/verification/2026-08-14-stage-1.md` | REQ-003, REQ-005, REQ-009~REQ-013 |
 | 2026-08-14 | 단계 2를 계획·production code·test code·bug 수정 체크포인트로 분리하고 매 체크포인트마다 사용자 검수를 받음 | `docs/stage-2-plan.md`, `docs/handoff.md` | REQ-001, REQ-002, REQ-004, REQ-009~REQ-012 |
-| 2026-08-14 | 프로젝트 목록을 고정 config가 아닌 `.verison-list` 작업공간 문서 및 연결 프로그램 대상으로 변경 | `docs/stage-2-plan.md`, 단계 8 | REQ-001, REQ-016 |
+| 2026-08-14 | 프로젝트 목록을 고정 config가 아닌 `.version-list` 작업공간 문서 및 연결 프로그램 대상으로 변경 | `docs/stage-2-plan.md`, 단계 8 | REQ-001, REQ-016 |
 | 2026-08-16 | `S2-D5-TEST` 승인과 무결함 fix 생략 후 단계 2 전체 검증 진행 | `docs/verification/2026-08-16-stage-2.md` | REQ-001, REQ-009~REQ-013, REQ-016 |
 | 2026-08-16 | 단계 2 승인 후 단계 3 진행. 계획·작업·테스트 중간마다 진행 보고와 검수를 요구 | `docs/stage-3-plan.md`, 단계 3 | REQ-006, REQ-008, REQ-009~REQ-013 |
 | 2026-08-16 | `S3-D2-CODE` 1차 검수에서 wait 실패 시 자식 정리와 출력 pipe의 `S3-D2` 포함을 지시 | `docs/verification/2026-08-16-stage-3-d2-code.md` | REQ-006, REQ-008 |
@@ -58,7 +58,7 @@
 
 | 식별자 | 요구사항 | 완료 기준 |
 | --- | --- | --- |
-| REQ-001 | JSON 형식의 `.verison-list` 프로젝트 경로 목록을 읽는다. | 유효한 파일, 일부 잘못된 항목, 존재하지 않는 경로를 구분하여 표시한다. |
+| REQ-001 | JSON 형식의 `.version-list` 프로젝트 경로 목록을 읽는다. | 유효한 파일, 일부 잘못된 항목, 존재하지 않는 경로를 구분하여 표시한다. |
 | REQ-002 | 각 경로의 Git 또는 SVN 상태를 표시한다. | 저장소 종류, 현재 브랜치 또는 SVN URL, 로컬 리비전, 원격 대비 상태, 변경 파일 유무를 표시한다. |
 | REQ-003 | Windows 11 Win32 네이티브 앱에서 Skia로 GUI와 custom caption을 렌더링한다. | Direct3D 기본 및 CPU fallback에서 창 상태, DPI, 카드와 로그 영역이 정상 렌더링된다. |
 | REQ-004 | 등록 경로의 바로 아래 자식 디렉터리를 조사한다. | 깊이 1만 검사하고 발견 결과를 미리 보여 준 뒤 선택 항목을 JSON에 중복 없이 추가한다. |
@@ -73,8 +73,8 @@
 | REQ-013 | CMake로 프로젝트를 구성하고 설치한다. | CMake 4.2.0으로 configure, build, test, install 후 `${workspaceRoot}/bin/gitman.exe`가 생성된다. |
 | REQ-014 | 명시적인 상태 새로 고침 기능을 제공한다. | 전체 및 카드별 refresh 버튼으로 최신 조회를 요청하고 진행 및 완료 상태를 확인할 수 있다. |
 | REQ-015 | 입력, UI, 로직 스레드를 분리한다. | 세 스레드의 소유권을 지키고 범용 메시지 구조는 별도 설계 승인 후 구현한다. |
-| REQ-016 | `.verison-list`를 solution과 같은 작업공간 문서 및 Windows 연결 프로그램 대상으로 제공한다. | shell에서 전달된 문서를 한 창의 활성 목록으로 열고 association 등록 및 제거를 검증한다. |
-| REQ-017 | 문서 수준 환경설정을 `.verison-list`의 `settings`에 저장한다. | Git 및 SVN 실행 파일 경로를 수동으로 지정할 수 있고, 지정하지 않으면 자동 탐색하며, 저장 시 값이 보존된다. |
+| REQ-016 | `.version-list`를 solution과 같은 작업공간 문서 및 Windows 연결 프로그램 대상으로 제공한다. | shell에서 전달된 문서를 한 창의 활성 목록으로 열고 association 등록 및 제거를 검증한다. |
+| REQ-017 | 문서 수준 환경설정을 `.version-list`의 `settings`에 저장한다. | Git 및 SVN 실행 파일 경로를 수동으로 지정할 수 있고, 지정하지 않으면 자동 탐색하며, 저장 시 값이 보존된다. |
 
 ### 2.2 초기 버전에서 제외할 범위
 
@@ -520,7 +520,7 @@ gitman/
 ### 단계 8: 안정화와 배포
 
 - 장시간 실행, 종료 중 작업, 네트워크 단절, 대량 로그, 파일 변경 충돌을 시험한다.
-- `.verison-list` Windows file association의 등록, double-click 실행과 제거를 검증한다.
+- `.version-list` Windows file association의 등록, double-click 실행과 제거를 검증한다.
 - 단일 exe 의존성 라이선스, `${sourceDir}/bin` install, 설정 위치, 로그 위치를 문서화한다.
 - 설치 및 제거, 업그레이드, 설정 백업과 복구 절차를 검증한다.
 

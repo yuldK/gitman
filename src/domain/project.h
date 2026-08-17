@@ -8,7 +8,7 @@
 
 namespace gitman {
     inline constexpr std::int32_t current_workspace_schema_version { 1 };
-    inline constexpr std::u8string_view workspace_document_extension { u8".verison-list" };
+    inline constexpr std::u8string_view workspace_document_extension { u8".version-list" };
 
     struct project_id
     {
@@ -52,7 +52,7 @@ namespace gitman {
         std::vector<std::u8string> svn_switch_targets {};
     };
 
-    // 문서 수준 환경설정이다. `.verison-list`의 optional `settings` object에 대응하며
+    // 문서 수준 환경설정이다. `.version-list`의 optional `settings` object에 대응하며
     // 값이 없으면 전부 기본값(자동 탐색)이다. 후속 단계가 항목을 계속 추가한다.
     struct workspace_settings
     {

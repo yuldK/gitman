@@ -191,7 +191,7 @@ TEST_CASE("Document loads always take lane zero", "[scheduler][app]")
     gitman::operation_request load {};
     load.operation_id = 7;
     load.kind = gitman::operation_kind::load_document;
-    load.document_path = u8"C:\\work\\p.verison-list";
+    load.document_path = u8"C:\\work\\p.version-list";
     REQUIRE(scheduler.submit(std::move(load)));
     REQUIRE(executor.wait_finished(1));
     scheduler.shutdown();

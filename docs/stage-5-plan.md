@@ -33,7 +33,7 @@
 - 탐색 미리보기 dialog와 등록 UI (단계 6~7)
 - 탐색과 등록의 스레드 배치, `task_scheduler`, 진행률 표시 (단계 6~7)
 - ADR-004의 범용 message queue, dispatcher와 thread bridge (단계 6 별도 설계 승인 후)
-- `.verison-list` Windows file association 등록 (단계 8)
+- `.version-list` Windows file association 등록 (단계 8)
 - 깊이 2 이상의 재귀 탐색 (`docs/plan.md` 2.2의 제외 범위)
 - 발견 후보의 자동 등록. 선택하지 않은 후보는 어떤 경로로도 파일에 기록되지 않는다.
 - 탐색 중 Git/SVN 프로세스 실행. 판정은 표식 파일 기반이며 프로세스를 하나도 만들지 않는다 (4.2).

@@ -24,7 +24,7 @@
 #include <vector>
 
 namespace {
-    constexpr std::u8string_view fake_document_path { u8"C:/gitman-s2-d4/workspace.verison-list" };
+    constexpr std::u8string_view fake_document_path { u8"C:/gitman-s2-d4/workspace.version-list" };
     constexpr std::uint32_t injected_native_error { 0x4d2U };
 
     struct fake_file_entry
@@ -358,10 +358,10 @@ TEST_CASE("Project store creates new documents without replacement backups", "[w
     REQUIRE_FALSE(file_system.protocol_error());
     REQUIRE_FALSE(file_system.last_replace_existing());
     REQUIRE(u8_equal(file_system.last_document_path(), fake_document_path));
-    REQUIRE(u8_equal(file_system.last_backup_path(), u8"C:/gitman-s2-d4/workspace.verison-list.bak"));
+    REQUIRE(u8_equal(file_system.last_backup_path(), u8"C:/gitman-s2-d4/workspace.version-list.bak"));
     constexpr std::u8string_view expected { u8"{\r\n    \"schema_version\": 1,\r\n    \"projects\": []\r\n}\r\n" };
     REQUIRE(u8_equal(file_system.last_candidate_bytes(), expected));
-    REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.verison-list.bak"));
+    REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.version-list.bak"));
 }
 
 TEST_CASE("Project store preserves shadow fields and canonical output", "[workspace][store][save]")
@@ -408,7 +408,7 @@ TEST_CASE("Project store preserves shadow fields and canonical output", "[worksp
     REQUIRE(output->find(u8"\"display_name\"") == std::u8string::npos);
     REQUIRE(output->find(u8"\"vcs_hint\"") == std::u8string::npos);
 
-    const std::u8string* backup { file_system.file_bytes(u8"C:/gitman-s2-d4/workspace.verison-list.bak") };
+    const std::u8string* backup { file_system.file_bytes(u8"C:/gitman-s2-d4/workspace.version-list.bak") };
     REQUIRE(backup != nullptr);
     REQUIRE(u8_equal(*backup, source));
 }
@@ -537,7 +537,7 @@ TEST_CASE("Project store rejects stale exact byte revisions", "[workspace][store
     REQUIRE(find_diagnostic(saved.diagnostics, gitman::diagnostic_code::concurrent_modification) != nullptr);
     REQUIRE(file_system.atomic_commit_count() == 0);
     REQUIRE(u8_equal(*file_system.file_bytes(fake_document_path), external_source));
-    REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.verison-list.bak"));
+    REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.version-list.bak"));
 }
 
 TEST_CASE("Project store revalidates complete candidates before committing", "[workspace][store][validation]")
@@ -598,7 +598,7 @@ TEST_CASE("Project store maps injected commit failures without changing original
         REQUIRE(failure->native_error == injected_native_error);
         REQUIRE(file_system.atomic_commit_count() == 1);
         REQUIRE(u8_equal(*file_system.file_bytes(fake_document_path), source));
-        REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.verison-list.bak"));
+        REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.version-list.bak"));
     }
 }
 
@@ -662,7 +662,7 @@ TEST_CASE("Project store rejects invalid recovery backups", "[workspace][store][
 TEST_CASE("Win32 workspace storage creates replaces and detects external changes", "[workspace][store][win32]")
 {
     temporary_directory_fixture fixture {};
-    const std::filesystem::path document_path { fixture.root() / L"workspace.verison-list" };
+    const std::filesystem::path document_path { fixture.root() / L"workspace.version-list" };
     const std::u8string document_path_utf8 { document_path.u8string() };
     const std::filesystem::path backup_path { document_path.wstring() + L".bak" };
     gitman::win32::workspace_document_file_system file_system {};
@@ -712,8 +712,8 @@ TEST_CASE("Win32 workspace storage creates replaces and detects external changes
 TEST_CASE("Win32 workspace storage cleans temporary files after replace failure", "[workspace][store][win32][failure]")
 {
     temporary_directory_fixture fixture {};
-    const std::filesystem::path document_path { fixture.root() / L"locked.verison-list" };
-    const std::filesystem::path backup_path { fixture.root() / L"locked.verison-list.bak" };
+    const std::filesystem::path document_path { fixture.root() / L"locked.version-list" };
+    const std::filesystem::path backup_path { fixture.root() / L"locked.version-list.bak" };
     constexpr std::u8string_view original_bytes { u8"original" };
     constexpr std::u8string_view candidate_bytes { u8"candidate" };
     write_file_bytes(document_path, original_bytes);

@@ -14,7 +14,7 @@
 
 ## 2. 목표
 
-단계 6은 지금까지 test로만 검증된 계층들을 **실행되는 앱**으로 조립한다. ADR-005의 메시지 component를 구현하고, input·UI·logic thread와 worker pool을 연결하며, 실제 `.verison-list` 문서의 카드 목록이 Skia 창에 표시되고 refresh가 동작하는 것까지가 범위다.
+단계 6은 지금까지 test로만 검증된 계층들을 **실행되는 앱**으로 조립한다. ADR-005의 메시지 component를 구현하고, input·UI·logic thread와 worker pool을 연결하며, 실제 `.version-list` 문서의 카드 목록이 Skia 창에 표시되고 refresh가 동작하는 것까지가 범위다.
 
 - ADR-005와 일치하는 `messaging` component(`channel`, `latest_slot`)를 구현한다.
 - logic thread가 유일한 mutable `app_state`를 소유하고 view/layout snapshot을 게시한다.
@@ -24,7 +24,7 @@
 - 가로형 카드 목록을 Skia로 렌더링한다: Codicon 상태, 브랜치/URL, 리비전, 작업 트리 요약, 마지막 확인 시각, 진행 표시.
 - 전체 및 카드별 refresh 버튼이 로컬 → remote-first 순서로 실제 조회를 실행한다.
 - 이름 검색 필터와 정렬, 빈 상태와 오류 상태 표시를 제공한다.
-- 명령행 인자의 `.verison-list` 경로로 활성 문서를 열고, 없으면 빈 상태에서 Win32 파일 dialog로 연다.
+- 명령행 인자의 `.version-list` 경로로 활성 문서를 열고, 없으면 빈 상태에서 Win32 파일 dialog로 연다.
 - 실행 파일에 `gitman_messaging`, `gitman_workspace`, `gitman_process`, `gitman_vcs`, `gitman_discovery`를 링크하고 Win32 구현체(resolver, probe, enumerator, runner)를 주입 조립한다.
 - 시작·종료 시퀀스를 ADR-005의 shutdown protocol대로 구현한다.
 - 100개 이상 모의 카드의 병렬 모의 작업에서 UI/input thread가 멈추지 않는 것을 자동 test로 고정한다.
@@ -66,7 +66,7 @@
 
 ### 4.3 문서 열기
 
-- 명령행 인자에 `.verison-list` 경로가 있으면 그 문서를 활성화한다. 잘못된 경로나 손상 문서는 빈 상태 화면에 진단을 표시한다.
+- 명령행 인자에 `.version-list` 경로가 있으면 그 문서를 활성화한다. 잘못된 경로나 손상 문서는 빈 상태 화면에 진단을 표시한다.
 - 인자가 없으면 빈 상태 화면의 "문서 열기" 버튼이 Win32 파일 dialog(`IFileOpenDialog`)를 연다. dialog 호출은 platform adapter에 격리한다.
 - association 등록과 double-click 실행 검증은 단계 8이다 (REQ-016의 나머지).
 
@@ -111,7 +111,7 @@
 
 - 모든 체크포인트가 검수를 통과한다.
 - `messaging` 구현이 ADR-005의 계약과 일치한다 (API, topology, close 의미론, 통계).
-- 실제 `.verison-list` 문서를 열어 카드 목록이 표시되고 전체/카드별 refresh가 로컬과 remote-first 조회를 실행한다.
+- 실제 `.version-list` 문서를 열어 카드 목록이 표시되고 전체/카드별 refresh가 로컬과 remote-first 조회를 실행한다.
 - 상태가 Codicon, 색상, 한국어 툴팁으로 표시된다 (REQ-005, 3.2 표).
 - logic thread만 `app_state`를 변경하고 UI/input thread는 파일·프로세스 I/O를 하지 않는다 (REQ-015, NFR-009).
 - 100개 이상 모의 카드의 병렬 모의 작업에서 custom caption과 UI/input thread가 멈추지 않는다.

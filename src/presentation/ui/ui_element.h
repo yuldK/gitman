@@ -85,6 +85,8 @@ namespace gitman::ui {
     {
         ui_element_id source {};
         project_id dragged_project {};
+        // drag ghost에 표시할 이름이다. 비어 있으면 project id를 대신 쓴다.
+        std::u8string label {};
 
         [[nodiscard]] bool operator==(const drag_payload&) const = default;
     };

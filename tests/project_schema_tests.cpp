@@ -15,7 +15,7 @@
 #endif
 
 namespace {
-    constexpr std::u8string_view test_document_path { u8"E:/work/example.verison-list" };
+    constexpr std::u8string_view test_document_path { u8"E:/work/example.version-list" };
 
     bool u8_equal(const std::u8string_view left, const std::u8string_view right) noexcept
     {
@@ -68,7 +68,7 @@ namespace {
 
 TEST_CASE("Schema parser loads complete and defaulted projects", "[workspace][schema]")
 {
-    const std::u8string source { load_fixture("valid-complete.verison-list") };
+    const std::u8string source { load_fixture("valid-complete.version-list") };
     const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
 
     REQUIRE(result.document.has_value());
@@ -108,7 +108,7 @@ TEST_CASE("Schema parser loads complete and defaulted projects", "[workspace][sc
 
 TEST_CASE("Schema parser reads workspace settings and keeps unknown keys", "[workspace][schema][settings]")
 {
-    const std::u8string source { load_fixture("workspace-settings.verison-list") };
+    const std::u8string source { load_fixture("workspace-settings.version-list") };
     const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
 
     REQUIRE(result.document.has_value());
@@ -130,7 +130,7 @@ TEST_CASE("Schema parser reads workspace settings and keeps unknown keys", "[wor
 TEST_CASE("Documents without settings keep working with defaults", "[workspace][schema][settings]")
 {
     // 스키마 버전을 올리지 않았으므로 `settings`를 모르는 기존 문서도 그대로 열린다.
-    for (const std::string_view fixture : { std::string_view { "valid-complete.verison-list" }, std::string_view { "unknown-fields.verison-list" } })
+    for (const std::string_view fixture : { std::string_view { "valid-complete.version-list" }, std::string_view { "unknown-fields.version-list" } })
     {
         const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(load_fixture(fixture), test_document_path) };
         REQUIRE(result.document.has_value());
@@ -188,7 +188,7 @@ TEST_CASE("Schema parser accepts minimal and empty documents", "[workspace][sche
 
 TEST_CASE("Schema parser rejects malformed JSON and invalid roots", "[workspace][schema]")
 {
-    const std::u8string malformed_source { load_fixture("malformed.verison-list") };
+    const std::u8string malformed_source { load_fixture("malformed.version-list") };
     const gitman::workspace_document_parse_result malformed { gitman::parse_workspace_document_json(malformed_source, test_document_path) };
     REQUIRE_FALSE(malformed.document.has_value());
     REQUIRE(malformed.has_errors());
@@ -234,7 +234,7 @@ TEST_CASE("Schema parser rejects invalid document contracts", "[workspace][schem
 
 TEST_CASE("Schema parser rejects unsupported versions without changing source", "[workspace][schema]")
 {
-    const std::u8string legacy_source { load_fixture("legacy-version.verison-list") };
+    const std::u8string legacy_source { load_fixture("legacy-version.version-list") };
     const gitman::workspace_document_parse_result legacy { gitman::parse_workspace_document_json(legacy_source, test_document_path) };
     REQUIRE_FALSE(legacy.document.has_value());
     REQUIRE(find_diagnostic(legacy, gitman::diagnostic_code::unsupported_legacy_schema, u8"/schema_version") != nullptr);
@@ -246,7 +246,7 @@ TEST_CASE("Schema parser rejects unsupported versions without changing source", 
     REQUIRE(find_diagnostic(negative, gitman::diagnostic_code::unsupported_legacy_schema, u8"/schema_version") != nullptr);
     REQUIRE(u8_equal(negative.shadow.source_json, negative_source));
 
-    const std::u8string future_source { load_fixture("future-version.verison-list") };
+    const std::u8string future_source { load_fixture("future-version.version-list") };
     const gitman::workspace_document_parse_result future { gitman::parse_workspace_document_json(future_source, test_document_path) };
     REQUIRE_FALSE(future.document.has_value());
     REQUIRE(find_diagnostic(future, gitman::diagnostic_code::unsupported_future_schema, u8"/schema_version") != nullptr);
@@ -255,7 +255,7 @@ TEST_CASE("Schema parser rejects unsupported versions without changing source", 
 
 TEST_CASE("Schema parser returns valid projects from partially invalid input", "[workspace][schema]")
 {
-    const std::u8string source { load_fixture("partial-invalid.verison-list") };
+    const std::u8string source { load_fixture("partial-invalid.version-list") };
     const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
 
     REQUIRE(result.document.has_value());
@@ -321,7 +321,7 @@ TEST_CASE("Schema parser validates every project field", "[workspace][schema]")
 
 TEST_CASE("Schema parser warns about unknown fields and preserves source bytes", "[workspace][schema]")
 {
-    const std::u8string source { load_fixture("unknown-fields.verison-list") };
+    const std::u8string source { load_fixture("unknown-fields.version-list") };
     const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
 
     REQUIRE(result.document.has_value());

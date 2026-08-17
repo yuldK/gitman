@@ -44,14 +44,52 @@ namespace {
             return {};
         }
 
-        [[nodiscard]] gitman::project_store_save_result save(std::u8string_view, const gitman::workspace_document&, const gitman::workspace_revision_token&) noexcept override
+        [[nodiscard]] gitman::project_store_save_result save(const std::u8string_view document_path, const gitman::workspace_document& document, const gitman::workspace_revision_token&) noexcept override
         {
-            return {};
+            try
+            {
+                ++save_count_;
+                last_path_ = document_path;
+                saved_order_.clear();
+                for (const gitman::project_definition& project : document.projects)
+                    saved_order_.push_back(project.id.value);
+
+                gitman::project_store_save_result result {};
+                if (save_fails_)
+                {
+                    gitman::diagnostic error {};
+                    error.severity = gitman::diagnostic_severity::error;
+                    error.message = u8"저장 실패";
+                    result.diagnostics.push_back(std::move(error));
+                    return result;
+                }
+                result.revision = { make_revision_token(revision_file_state::present, std::u8string { document_path }, {}, {}, {}) };
+                return result;
+            }
+            catch (...)
+            {
+                return {};
+            }
+        }
+
+        void fail_saves() noexcept
+        {
+            save_fails_ = true;
         }
 
         [[nodiscard]] std::size_t load_count() const noexcept
         {
             return load_count_;
+        }
+
+        [[nodiscard]] std::size_t save_count() const noexcept
+        {
+            return save_count_;
+        }
+
+        [[nodiscard]] const std::vector<std::u8string>& saved_order() const noexcept
+        {
+            return saved_order_;
         }
 
         [[nodiscard]] const std::u8string& last_path() const noexcept
@@ -61,6 +99,9 @@ namespace {
 
     private:
         std::size_t load_count_ { 0 };
+        std::size_t save_count_ { 0 };
+        bool save_fails_ { false };
+        std::vector<std::u8string> saved_order_ {};
         std::u8string last_path_ {};
     };
 
@@ -99,11 +140,11 @@ TEST_CASE("The executor loads documents through the store", "[executor][app]")
     gitman::operation_request request {};
     request.operation_id = 5;
     request.kind = gitman::operation_kind::load_document;
-    request.document_path = u8"C:\\work\\p.verison-list";
+    request.document_path = u8"C:\\work\\p.version-list";
     fixture.run(request);
 
     REQUIRE(fixture.store.load_count() == 1u);
-    REQUIRE(fixture.store.last_path() == u8"C:\\work\\p.verison-list");
+    REQUIRE(fixture.store.last_path() == u8"C:\\work\\p.version-list");
     REQUIRE(fixture.emitted.size() == 1u);
     const auto* const event { std::get_if<gitman::document_loaded_event>(&fixture.emitted.front()) };
     REQUIRE(event != nullptr);
@@ -111,6 +152,70 @@ TEST_CASE("The executor loads documents through the store", "[executor][app]")
     REQUIRE(event->document.has_value());
     REQUIRE(event->document->projects.size() == 1u);
     REQUIRE(event->diagnostics.size() == 1u);
+}
+
+TEST_CASE("The executor saves documents through the store and reports the new revision", "[executor][app]")
+{
+    executor_fixture fixture {};
+    gitman::operation_request request {};
+    request.operation_id = 7;
+    request.kind = gitman::operation_kind::save_document;
+    request.document_path = u8"C:\\work\\p.version-list";
+    gitman::workspace_document document {};
+    document.document_path = request.document_path;
+    gitman::project_definition first {};
+    first.id.value = u8"beta";
+    gitman::project_definition second {};
+    second.id.value = u8"alpha";
+    document.projects.push_back(std::move(first));
+    document.projects.push_back(std::move(second));
+    request.document = { std::move(document) };
+
+    fixture.run(request);
+
+    REQUIRE(fixture.store.save_count() == 1u);
+    REQUIRE(fixture.store.last_path() == u8"C:\\work\\p.version-list");
+    REQUIRE(fixture.store.saved_order() == std::vector<std::u8string> { u8"beta", u8"alpha" });
+    REQUIRE(fixture.emitted.size() == 1u);
+    const auto* const event { std::get_if<gitman::document_saved_event>(&fixture.emitted.front()) };
+    REQUIRE(event != nullptr);
+    REQUIRE(event->operation_id == 7u);
+    REQUIRE(event->revision.has_value());
+}
+
+TEST_CASE("A failed or empty save still emits a final saved event", "[executor][app]")
+{
+    SECTION("store 실패는 진단으로 전달된다")
+    {
+        executor_fixture fixture {};
+        fixture.store.fail_saves();
+        gitman::operation_request request {};
+        request.operation_id = 8;
+        request.kind = gitman::operation_kind::save_document;
+        request.document = { gitman::workspace_document {} };
+        fixture.run(request);
+
+        const auto* const event { std::get_if<gitman::document_saved_event>(&fixture.emitted.front()) };
+        REQUIRE(event != nullptr);
+        REQUIRE(event->revision.has_value() == false);
+        REQUIRE(event->diagnostics.size() == 1u);
+        REQUIRE(event->diagnostics.front().message == u8"저장 실패");
+    }
+
+    SECTION("문서가 없는 요청은 store를 부르지 않고 오류를 보고한다")
+    {
+        executor_fixture fixture {};
+        gitman::operation_request request {};
+        request.operation_id = 9;
+        request.kind = gitman::operation_kind::save_document;
+        fixture.run(request);
+
+        REQUIRE(fixture.store.save_count() == 0u);
+        const auto* const event { std::get_if<gitman::document_saved_event>(&fixture.emitted.front()) };
+        REQUIRE(event != nullptr);
+        REQUIRE(event->revision.has_value() == false);
+        REQUIRE(event->diagnostics.empty() == false);
+    }
 }
 
 TEST_CASE("A git hinted card without tools reports tool unavailability without processes", "[executor][app]")

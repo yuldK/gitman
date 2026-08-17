@@ -151,6 +151,8 @@ namespace gitman {
                     filter_ = std::move(value.text);
                 else if constexpr (std::is_same_v<value_type, set_sort_intent>)
                     sort_ = value.key;
+                else if constexpr (std::is_same_v<value_type, reorder_card_intent>)
+                    handle_reorder_card(value);
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -169,6 +171,8 @@ namespace gitman {
                     handle_document_loaded(std::move(value));
                 else if constexpr (std::is_same_v<value_type, query_completed_event>)
                     handle_query_completed(std::move(value));
+                else if constexpr (std::is_same_v<value_type, document_saved_event>)
+                    handle_document_saved(std::move(value));
             },
             std::move(message));
     }
@@ -190,11 +194,16 @@ namespace gitman {
 
         document_path_ = intent.path;
         document_.reset();
+        revision_ = {};
         cards_.clear();
         notices_.clear();
+        save_notice_.clear();
         selected_.reset();
         scroll_offset_ = 0.0f;
         document_loading_ = true;
+        // 이전 문서의 진행 중 저장 결과는 도착해도 버린다.
+        pending_save_operation_id_ = 0;
+        save_queued_ = false;
 
         operation_request request { make_request(operation_kind::load_document, nullptr, 0) };
         request.document_path = document_path_;
@@ -213,6 +222,7 @@ namespace gitman {
             return;
 
         document_ = std::move(*event.document);
+        revision_ = event.revision;
         cards_.clear();
         cards_.reserve(document_->projects.size());
         for (const project_definition& project : document_->projects)
@@ -258,6 +268,91 @@ namespace gitman {
                 request_refresh(*card);
             }
         }
+    }
+
+    void logic_controller::handle_reorder_card(const reorder_card_intent& intent)
+    {
+        if (shutting_down_ || document_.has_value() == false || intent.id == intent.target)
+            return;
+
+        std::size_t from { cards_.size() };
+        std::size_t target { cards_.size() };
+        for (std::size_t index = 0; index < cards_.size(); ++index)
+        {
+            if (cards_[index].project.id == intent.id)
+                from = index;
+            if (cards_[index].project.id == intent.target)
+                target = index;
+        }
+        if (from == cards_.size() || target == cards_.size())
+            return;
+
+        // 꺼낸 뒤의 삽입 위치다. 앞에서 빼면 뒤 index가 하나 당겨진다.
+        std::size_t to { target + (intent.place_after ? 1u : 0u) };
+        if (from < to)
+            --to;
+        if (from == to)
+        {
+            // 위치가 그대로여도 사용자가 순서를 확정한 것이므로 문서 순서 보기로
+            // 전환한다.
+            sort_ = card_sort_key::custom;
+            return;
+        }
+
+        card_state moved { std::move(cards_[from]) };
+        cards_.erase(cards_.begin() + static_cast<std::ptrdiff_t>(from));
+        cards_.insert(cards_.begin() + static_cast<std::ptrdiff_t>(to), std::move(moved));
+
+        // 문서의 프로젝트 순서가 진실이다. 카드 순서에서 다시 만들어 저장한다.
+        document_->projects.clear();
+        document_->projects.reserve(cards_.size());
+        for (const card_state& card : cards_)
+            document_->projects.push_back(card.project);
+
+        sort_ = card_sort_key::custom;
+        request_save();
+    }
+
+    void logic_controller::handle_document_saved(document_saved_event event)
+    {
+        // 다른 문서를 연 뒤 도착한 이전 저장 결과는 버린다.
+        if (event.operation_id != pending_save_operation_id_)
+            return;
+        pending_save_operation_id_ = 0;
+
+        save_notice_.clear();
+        if (event.revision.has_value())
+            revision_ = *event.revision;
+        else
+            for (const diagnostic& value : event.diagnostics)
+                if (value.severity == diagnostic_severity::error)
+                {
+                    save_notice_ = value.message;
+                    break;
+                }
+
+        if (save_queued_)
+        {
+            save_queued_ = false;
+            request_save();
+        }
+    }
+
+    void logic_controller::request_save()
+    {
+        if (shutting_down_ || document_.has_value() == false)
+            return;
+        if (pending_save_operation_id_ != 0)
+        {
+            save_queued_ = true;
+            return;
+        }
+
+        operation_request request { make_request(operation_kind::save_document, nullptr, 0) };
+        request.document = document_;
+        request.revision = revision_;
+        pending_save_operation_id_ = request.operation_id;
+        static_cast<void>(submitter_->submit(std::move(request)));
     }
 
     void logic_controller::request_refresh(card_state& card)
@@ -314,6 +409,9 @@ namespace gitman {
         snapshot->filter_text = filter_;
         snapshot->sort = sort_;
         snapshot->notices = notices_;
+        // 저장 실패는 문서 진단보다 먼저 보인다. UI는 첫 notice만 표시한다.
+        if (save_notice_.empty() == false)
+            snapshot->notices.insert(snapshot->notices.begin(), save_notice_);
         snapshot->window_width = window_width_;
         snapshot->window_height = window_height_;
         snapshot->scale = scale_;
@@ -354,9 +452,10 @@ namespace gitman {
             snapshot->cards.push_back(std::move(model));
         }
 
+        // custom은 문서(카드) 순서를 그대로 둔다.
         if (sort_ == card_sort_key::name)
             std::sort(snapshot->cards.begin(), snapshot->cards.end(), name_before);
-        else
+        else if (sort_ == card_sort_key::status)
             std::sort(snapshot->cards.begin(), snapshot->cards.end(), status_before);
 
         if (document_loading_)

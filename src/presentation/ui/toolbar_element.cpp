@@ -28,7 +28,7 @@ namespace gitman::ui {
         add_child(std::move(refresh_all));
 
         auto open_document { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_open_document }, button_config { .glyph = codicons::icon_folder_opened }) };
-        open_document->set_tooltip(u8".verison-list 문서 열기");
+        open_document->set_tooltip(u8".version-list 문서 열기");
         open_document->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_open_document_dialog } }; });
         open_document->set_visible(show_open_button);
         open_document_ = open_document.get();

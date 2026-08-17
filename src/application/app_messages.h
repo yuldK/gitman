@@ -44,6 +44,15 @@ namespace gitman {
         card_sort_key key { card_sort_key::name };
     };
 
+    // 카드 drag & drop이 만드는 순서 변경이다. `id` 카드를 `target` 카드의 앞 또는
+    // 뒤로 옮긴다. 처리 시 정렬이 custom(문서 순서)으로 바뀌고 문서 저장이 예약된다.
+    struct reorder_card_intent
+    {
+        project_id id {};
+        project_id target {};
+        bool place_after { false };
+    };
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -65,6 +74,9 @@ namespace gitman {
     enum class operation_kind
     {
         load_document,
+        // 순서 변경 등으로 바뀐 문서를 원자적으로 다시 쓴다. load와 같은 lane에서
+        // 직렬화된다.
+        save_document,
         // 로컬 조회만 수행한다. 문서를 연 직후의 초기 표시다 (plan 5.1).
         query_local,
         // 로컬 조회 후 remote-first 원격 판정까지 수행한다. refresh 버튼의 동작이다.
@@ -80,6 +92,9 @@ namespace gitman {
         project_definition project {};
         // worker가 도구 발견에 사용할 문서 수준 설정의 사본이다.
         workspace_settings settings {};
+        // save_document 전용: 저장할 문서 내용과 낙관적 잠금의 기준 revision이다.
+        std::optional<workspace_document> document {};
+        workspace_revision_token revision {};
         process_cancellation_token token {};
     };
 
@@ -104,13 +119,21 @@ namespace gitman {
         repository_query_result result {};
     };
 
+    struct document_saved_event
+    {
+        std::uint64_t operation_id { 0 };
+        // 저장이 성공하면 다음 저장의 기준이 되는 새 revision이다.
+        std::optional<workspace_revision_token> revision {};
+        std::vector<diagnostic> diagnostics {};
+    };
+
     struct shutdown_message
     {};
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent, window_metrics_intent, scroll_intent,
-        close_intent, document_loaded_event, query_completed_event, shutdown_message>;
+    using logic_message = std::variant<open_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent, reorder_card_intent, window_metrics_intent,
+        scroll_intent, close_intent, document_loaded_event, query_completed_event, document_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

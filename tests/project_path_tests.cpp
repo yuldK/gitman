@@ -119,7 +119,7 @@ TEST_CASE("Project paths resolve relative to workspace documents", "[workspace][
     require_directories(document_directory);
     require_directories(repository);
 
-    const std::filesystem::path document_path { document_directory / L"active.verison-list" };
+    const std::filesystem::path document_path { document_directory / L"active.version-list" };
     const gitman::win32::project_path_resolution result { gitman::win32::resolve_project_path(u8"../repositories/한글 😀 공간/./child/../repo/", document_path.u8string()) };
 
     REQUIRE(result.state == gitman::configured_path_state::available);
@@ -229,7 +229,7 @@ TEST_CASE("Project paths preserve Unicode spaces and long lexical values", "[wor
         long_relative.append(u8"아주 긴 경로 😀 0123456789abcdef/");
     long_relative.append(u8"repository");
 
-    const std::filesystem::path document_path { fixture.root() / L"long-path.verison-list" };
+    const std::filesystem::path document_path { fixture.root() / L"long-path.version-list" };
     const gitman::win32::project_path_resolution result { gitman::win32::resolve_project_path(long_relative, document_path.u8string()) };
 
     REQUIRE(result.state == gitman::configured_path_state::missing);
@@ -248,7 +248,7 @@ TEST_CASE("Workspace path resolution excludes invalid and duplicate projects", "
     create_file(file);
 
     constexpr std::u8string_view source { workspace_path_source() };
-    const std::filesystem::path document_path { fixture.root() / L"workspace.verison-list" };
+    const std::filesystem::path document_path { fixture.root() / L"workspace.version-list" };
     gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, document_path.u8string()) };
     REQUIRE(result.document.has_value());
     REQUIRE(result.document->projects.size() == 5);
@@ -297,7 +297,7 @@ TEST_CASE("Workspace path resolution excludes invalid and duplicate projects", "
 
 TEST_CASE("Workspace path resolution ignores failed schema documents", "[workspace][path]")
 {
-    gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(u8"[]", u8"E:/work/invalid.verison-list") };
+    gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(u8"[]", u8"E:/work/invalid.version-list") };
     REQUIRE_FALSE(result.document.has_value());
     const std::vector<gitman::diagnostic> original_diagnostics { result.diagnostics };
 

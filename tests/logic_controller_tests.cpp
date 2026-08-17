@@ -38,7 +38,7 @@ namespace {
     {
         gitman::document_loaded_event event {};
         gitman::workspace_document document {};
-        document.document_path = u8"C:\\work\\projects.verison-list";
+        document.document_path = u8"C:\\work\\projects.version-list";
         document.projects = projects;
         event.document = { std::move(document) };
         return event;
@@ -74,10 +74,10 @@ TEST_CASE("Opening a document delegates the load and reports the loading state",
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
 
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.version-list" });
     REQUIRE(submitter.requests.size() == 1u);
     REQUIRE(submitter.requests.front().kind == gitman::operation_kind::load_document);
-    REQUIRE(submitter.requests.front().document_path == u8"C:\\work\\projects.verison-list");
+    REQUIRE(submitter.requests.front().document_path == u8"C:\\work\\projects.version-list");
 
     const auto view { controller.make_view_snapshot() };
     REQUIRE(view->empty_state == gitman::view_empty_state::document_loading);
@@ -87,7 +87,7 @@ TEST_CASE("A loaded document creates cards and queries local state for enabled p
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.version-list" });
     submitter.requests.clear();
 
     controller.handle(make_loaded_document({ make_project(u8"alpha"), make_project(u8"beta", false), make_project(u8"gamma") }));
@@ -111,7 +111,7 @@ TEST_CASE("A completed local query fills the card and outdated generations are d
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
     controller.handle(make_loaded_document({ make_project(u8"alpha") }));
 
     controller.handle(make_local_result(u8"alpha", 1u));
@@ -144,7 +144,7 @@ TEST_CASE("Refresh bumps the generation and duplicate requests merge into one fo
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
     controller.handle(make_loaded_document({ make_project(u8"alpha") }));
     controller.handle(make_local_result(u8"alpha", 1u));
     submitter.requests.clear();
@@ -173,7 +173,7 @@ TEST_CASE("Refresh all touches every enabled card", "[logic][app]")
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
     controller.handle(make_loaded_document({ make_project(u8"alpha"), make_project(u8"beta", false), make_project(u8"gamma") }));
     controller.handle(make_local_result(u8"alpha", 1u));
     controller.handle(make_local_result(u8"gamma", 1u));
@@ -189,7 +189,7 @@ TEST_CASE("Filter and sort shape the visible cards deterministically", "[logic][
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
     controller.handle(make_loaded_document({ make_project(u8"zulu"), make_project(u8"Alpha"), make_project(u8"beta") }));
     for (const std::u8string_view id : { std::u8string_view { u8"zulu" }, std::u8string_view { u8"Alpha" }, std::u8string_view { u8"beta" } })
         controller.handle(make_local_result(id, 1u));
@@ -227,7 +227,7 @@ TEST_CASE("Selection follows existing cards and clears for unknown ids", "[logic
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
     controller.handle(make_loaded_document({ make_project(u8"alpha") }));
 
     controller.handle(gitman::select_card_intent { gitman::project_id { u8"alpha" } });
@@ -242,7 +242,7 @@ TEST_CASE("Shutdown cancels outstanding work and refuses new refreshes", "[logic
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
     controller.handle(make_loaded_document({ make_project(u8"alpha") }));
     submitter.requests.clear();
 
@@ -260,7 +260,7 @@ TEST_CASE("Requests carry the document settings and the cancellation token", "[l
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
 
     gitman::document_loaded_event event { make_loaded_document({ make_project(u8"alpha") }) };
     event.document->settings.git_executable = u8"C:\\tools\\git.exe";
@@ -276,7 +276,7 @@ TEST_CASE("Document diagnostics surface as notices", "[logic][app]")
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_document_intent { u8"C:\\missing.verison-list" });
+    controller.handle(gitman::open_document_intent { u8"C:\\missing.version-list" });
 
     gitman::document_loaded_event failure {};
     gitman::diagnostic error {};
@@ -290,3 +290,105 @@ TEST_CASE("Document diagnostics surface as notices", "[logic][app]")
     REQUIRE(view->notices.size() == 1u);
     REQUIRE(view->notices.front() == u8"문서를 찾을 수 없습니다.");
 }
+
+TEST_CASE("Reordering a card rewrites document order, switches to custom sort, and saves", "[logic][app][reorder]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    controller.handle(make_loaded_document({ make_project(u8"alpha"), make_project(u8"beta"), make_project(u8"gamma") }));
+    submitter.requests.clear();
+
+    // alpha를 gamma 뒤로 옮긴다.
+    controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"gamma" }, true });
+
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE(view->sort == gitman::card_sort_key::custom);
+    REQUIRE(view->cards.size() == 3u);
+    REQUIRE(view->cards[0].id.value == u8"beta");
+    REQUIRE(view->cards[1].id.value == u8"gamma");
+    REQUIRE(view->cards[2].id.value == u8"alpha");
+
+    // 문서 저장이 새 순서로 예약된다.
+    REQUIRE(submitter.requests.size() == 1u);
+    const gitman::operation_request& request { submitter.requests.front() };
+    REQUIRE(request.kind == gitman::operation_kind::save_document);
+    REQUIRE(request.document.has_value());
+    REQUIRE(request.document->projects.size() == 3u);
+    REQUIRE(request.document->projects[0].id.value == u8"beta");
+    REQUIRE(request.document->projects[1].id.value == u8"gamma");
+    REQUIRE(request.document->projects[2].id.value == u8"alpha");
+}
+
+TEST_CASE("A drop that lands in place only switches to document order", "[logic][app][reorder]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    controller.handle(make_loaded_document({ make_project(u8"alpha"), make_project(u8"beta") }));
+    submitter.requests.clear();
+
+    // alpha를 beta 앞에 놓아도 위치가 그대로다. 저장은 없고 정렬만 문서 순서가 된다.
+    controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, false });
+
+    REQUIRE(submitter.requests.empty());
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE(view->sort == gitman::card_sort_key::custom);
+    REQUIRE(view->cards[0].id.value == u8"alpha");
+    REQUIRE(view->cards[1].id.value == u8"beta");
+}
+
+TEST_CASE("An unknown reorder participant is ignored", "[logic][app][reorder]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    controller.handle(make_loaded_document({ make_project(u8"alpha"), make_project(u8"beta") }));
+    submitter.requests.clear();
+
+    controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"ghost" }, gitman::project_id { u8"beta" }, false });
+    controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"ghost" }, false });
+
+    REQUIRE(submitter.requests.empty());
+    REQUIRE(controller.make_view_snapshot()->sort == gitman::card_sort_key::name);
+}
+
+TEST_CASE("Saves are serialized, coalesced, and report failures as a notice", "[logic][app][reorder]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    controller.handle(make_loaded_document({ make_project(u8"alpha"), make_project(u8"beta"), make_project(u8"gamma") }));
+    submitter.requests.clear();
+
+    // 첫 순서 변경이 저장을 내보내고, 진행 중의 두 번째 변경은 한 번으로 병합된다.
+    controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"gamma" }, true });
+    controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"beta" }, gitman::project_id { u8"alpha" }, true });
+    REQUIRE(submitter.requests.size() == 1u);
+
+    // 실패 응답: notice가 맨 앞에 보이고 병합된 저장이 이어서 나간다.
+    gitman::document_saved_event failed {};
+    failed.operation_id = submitter.requests.front().operation_id;
+    gitman::diagnostic error {};
+    error.severity = gitman::diagnostic_severity::error;
+    error.message = u8"문서를 저장하지 못했습니다.";
+    failed.diagnostics.push_back(std::move(error));
+    controller.handle(std::move(failed));
+
+    REQUIRE(submitter.requests.size() == 2u);
+    REQUIRE(controller.make_view_snapshot()->notices.front() == u8"문서를 저장하지 못했습니다.");
+
+    // 최신 순서가 저장 내용이다: gamma, alpha, beta.
+    const gitman::operation_request& queued { submitter.requests.back() };
+    REQUIRE(queued.document->projects[0].id.value == u8"gamma");
+    REQUIRE(queued.document->projects[1].id.value == u8"alpha");
+    REQUIRE(queued.document->projects[2].id.value == u8"beta");
+
+    // 성공 응답은 실패 notice를 지운다.
+    gitman::document_saved_event saved {};
+    saved.operation_id = queued.operation_id;
+    saved.revision = { gitman::workspace_revision_token {} };
+    controller.handle(std::move(saved));
+    REQUIRE(controller.make_view_snapshot()->notices.empty());
+}
+

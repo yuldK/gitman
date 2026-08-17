@@ -20,6 +20,9 @@ namespace gitman::ui {
 
         [[nodiscard]] const ui_element& root() const noexcept;
         [[nodiscard]] const ui_element* hit_test(float x, float y) const;
+        // 좌표에서 payload를 수락하는 가장 위의 drop 대상을 찾는다. 일반 hit test와
+        // 달리 drop 대상이 아닌 element(예: 카드 위의 버튼)를 건너뛴다.
+        [[nodiscard]] const ui_element* find_drop_target(float x, float y, const drag_payload& payload) const;
         [[nodiscard]] const ui_element* find(const ui_element_id& id) const noexcept;
         // 그리기 순서(pre-order)대로 해당 종류의 id를 모은다. 키보드 탐색이 쓴다.
         [[nodiscard]] std::vector<ui_element_id> ids_of_kind(ui_element_kind kind) const;

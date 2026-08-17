@@ -53,6 +53,11 @@ TEST_CASE("The built tree contains toolbar, cards, and their buttons", "[ui][tre
     REQUIRE(update->enabled() == false);
     REQUIRE(update->tooltip().empty() == false);
 
+    // 카드 body는 순서 변경의 drag 출발지이자 도착지다.
+    const auto* const draggable { tree->find(card_id(gitman::ui::ui_element_kind::card_body, u8"card-1")) };
+    REQUIRE(draggable->drag() != nullptr);
+    REQUIRE(draggable->drop() != nullptr);
+
     // 버튼은 카드 body 위에 그려지므로 hit에서도 이긴다.
     const auto* const refresh { tree->find(card_id(gitman::ui::ui_element_kind::card_refresh, u8"card-0")) };
     REQUIRE(tree->hit_test(refresh->bounds().x + 1.0f, refresh->bounds().y + 1.0f) == refresh);

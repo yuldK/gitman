@@ -89,8 +89,8 @@ namespace gitman::ui {
             snapshot_.drag->x = event.x;
             snapshot_.drag->y = event.y;
             snapshot_.drag->hovered_drop_target = {};
-            const ui_element* const over { tree_->hit_test(event.x, event.y) };
-            if (over != nullptr && over->enabled() && over->drop() != nullptr && over->drop()->accepts && over->drop()->accepts(snapshot_.drag->payload))
+            const ui_element* const over { tree_->find_drop_target(event.x, event.y, snapshot_.drag->payload) };
+            if (over != nullptr)
                 snapshot_.drag->hovered_drop_target = over->id();
             update_hover(event.x, event.y, event.time);
             return {};
@@ -147,8 +147,8 @@ namespace gitman::ui {
             if (event.button == pointer_button::left)
             {
                 const drag_visual drag { *snapshot_.drag };
-                const ui_element* const over { tree_->hit_test(event.x, event.y) };
-                if (over != nullptr && over->enabled() && over->drop() != nullptr && over->drop()->accepts && over->drop()->accepts(drag.payload) && over->drop()->on_drop)
+                const ui_element* const over { tree_->find_drop_target(event.x, event.y, drag.payload) };
+                if (over != nullptr && over->drop()->on_drop)
                     actions = over->drop()->on_drop(drag.payload, ui_action_context { over->id(), event.x, event.y, false });
                 snapshot_.drag.reset();
                 clear_press();

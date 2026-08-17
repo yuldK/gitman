@@ -45,7 +45,9 @@ namespace gitman {
 
     bool task_scheduler::submit(operation_request request)
     {
-        const std::size_t lane { request.kind == operation_kind::load_document ? 0 : operation_lane(request.project.id, inboxes_.size()) };
+        // 문서 단위 작업(load·save)은 0번 lane에서 서로 직렬화된다.
+        const bool document_operation { request.kind == operation_kind::load_document || request.kind == operation_kind::save_document };
+        const std::size_t lane { document_operation ? 0 : operation_lane(request.project.id, inboxes_.size()) };
         return inboxes_[lane]->post(std::move(request)) == messaging::post_result::posted;
     }
 

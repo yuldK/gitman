@@ -24,7 +24,7 @@ namespace {
 TEST_CASE("Workspace documents expose approved defaults", "[domain][project]")
 {
     REQUIRE(gitman::current_workspace_schema_version == 1);
-    REQUIRE(u8_equal(gitman::workspace_document_extension, u8".verison-list"));
+    REQUIRE(u8_equal(gitman::workspace_document_extension, u8".version-list"));
 
     const gitman::workspace_document document {};
     REQUIRE(document.schema_version == gitman::current_workspace_schema_version);

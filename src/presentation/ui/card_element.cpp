@@ -45,6 +45,31 @@ namespace gitman::ui {
         // 활성이다. 흐림 표시는 draw가 card_.enabled로 판정한다.
         set_action(ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent { { id } } } } }; });
 
+        // 카드 body는 순서 변경의 drag 출발지이자 도착지다. 제외된 카드도 문서
+        // 순서는 옮길 수 있다. lambda는 element가 소유하고 tree는 게시 후 불변이라
+        // this 캡처가 안전하다.
+        drag_source source {};
+        source.make_payload = [this](const ui_action_context& context) {
+            drag_payload payload {};
+            payload.source = context.element;
+            payload.dragged_project = card_.id;
+            payload.label = card_.display_name;
+            return payload;
+        };
+        set_drag_source(std::move(source));
+
+        drop_target target {};
+        target.accepts = [this](const drag_payload& payload) { return payload.source.kind == ui_element_kind::card_body && (payload.dragged_project == card_.id) == false; };
+        target.on_drop = [this](const drag_payload& payload, const ui_action_context& context) -> std::vector<input_action> {
+            // 대상의 위쪽 절반에 놓으면 앞으로, 아래쪽 절반이면 뒤로 삽입한다.
+            reorder_card_intent intent {};
+            intent.id = payload.dragged_project;
+            intent.target = card_.id;
+            intent.place_after = context.y >= bounds().y + bounds().height * 0.5f;
+            return { input_action { logic_message { intent } } };
+        };
+        set_drop_target(std::move(target));
+
         auto refresh { std::make_unique<button_element>(ui_element_id { ui_element_kind::card_refresh, card_.id }, button_config { .glyph = codicons::icon_refresh }) };
         refresh->set_tooltip(u8"이 카드 새로 고침");
         refresh->set_action(

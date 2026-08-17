@@ -30,6 +30,21 @@ namespace gitman::ui {
         return root_ != nullptr ? root_->hit_test(x, y) : nullptr;
     }
 
+    const ui_element* ui_tree::find_drop_target(const float x, const float y, const drag_payload& payload) const
+    {
+        // index는 그리기 순서이므로 뒤에서부터 위에 그려진 element가 먼저 걸린다.
+        for (std::size_t index = index_.size(); index > 0; --index)
+        {
+            const ui_element* const element { index_[index - 1] };
+            if (element->visible() == false || element->enabled() == false || element->bounds().contains(x, y) == false)
+                continue;
+            const drop_target* const target { element->drop() };
+            if (target != nullptr && target->accepts && target->accepts(payload))
+                return element;
+        }
+        return nullptr;
+    }
+
     const ui_element* ui_tree::find(const ui_element_id& id) const noexcept
     {
         for (const ui_element* const element : index_)
@@ -126,6 +141,7 @@ namespace gitman::ui {
 
         const SkFont font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
         const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
-        draw_text(context.canvas, drag.payload.dragged_project.value, ghost.left() + 8.0f * scale, ghost.top() + centered_text_baseline(font, ghost.height()), font, foreground);
+        const std::u8string& ghost_text { drag.payload.label.empty() ? drag.payload.dragged_project.value : drag.payload.label };
+        draw_text(context.canvas, ghost_text, ghost.left() + 8.0f * scale, ghost.top() + centered_text_baseline(font, ghost.height()), font, foreground);
     }
 } // namespace gitman::ui

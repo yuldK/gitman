@@ -21,8 +21,8 @@ namespace gitman {
     class task_scheduler final : public operation_submitter
     {
     public:
-        // `executor`와 `logic_inbox`는 scheduler보다 오래 살아 있어야 한다. 문서 load
-        // 작업은 항상 0번 worker의 lane이다.
+        // `executor`와 `logic_inbox`는 scheduler보다 오래 살아 있어야 한다. 문서 단위
+        // 작업(load·save)은 항상 0번 worker의 lane이라 서로 직렬화된다.
         task_scheduler(operation_executor& executor, messaging::channel<logic_message>& logic_inbox, std::size_t worker_count);
         ~task_scheduler() override;
 

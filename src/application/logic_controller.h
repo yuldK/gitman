@@ -44,7 +44,10 @@ namespace gitman {
         void handle_open_document(const open_document_intent& intent);
         void handle_document_loaded(document_loaded_event event);
         void handle_query_completed(query_completed_event event);
+        void handle_reorder_card(const reorder_card_intent& intent);
+        void handle_document_saved(document_saved_event event);
         void request_refresh(card_state& card);
+        void request_save();
         void begin_shutdown();
 
         [[nodiscard]] card_state* find_card(const project_id& id) noexcept;
@@ -55,8 +58,12 @@ namespace gitman {
 
         std::u8string document_path_ {};
         std::optional<workspace_document> document_ {};
+        // 마지막 load 또는 save가 확인한 문서 revision이다. save의 낙관적 잠금 기준이다.
+        workspace_revision_token revision_ {};
         std::vector<card_state> cards_ {};
         std::vector<std::u8string> notices_ {};
+        // 마지막 저장 실패의 요약이다. 성공하면 비워지고 view notices의 맨 앞에 실린다.
+        std::u8string save_notice_ {};
         std::optional<project_id> selected_ {};
         std::u8string filter_ {};
         card_sort_key sort_ { card_sort_key::name };
@@ -66,6 +73,11 @@ namespace gitman {
         float scroll_offset_ { 0.0f };
         std::uint64_t next_operation_id_ { 1 };
         bool document_loading_ { false };
+        // 저장은 한 번에 하나만 내보내고, 진행 중 들어온 변경은 한 번으로 병합한다.
+        // operation id가 0이 아니면 저장이 진행 중이며, id 비교로 다른 문서를 열기
+        // 전의 늦은 저장 결과를 구분해 버린다.
+        std::uint64_t pending_save_operation_id_ { 0 };
+        bool save_queued_ { false };
         bool shutting_down_ { false };
     };
 } // namespace gitman

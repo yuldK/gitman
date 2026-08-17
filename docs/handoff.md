@@ -9,7 +9,7 @@
 - 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다 (2026-08-17 사용자 지시). 단계 6은 사용자 위임으로 자동 진행하며 체크포인트마다 커밋했다
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
 - 다음 허용 작업: 단계 6 최종 승인(수동 checklist 확인 포함) 후 단계 7 계획(`S7-P0`)
-- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 표식 판정 및 선택 등록 전체, test와 install 구성
+- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 표식 판정 및 선택 등록 전체, test와 install 구성
 - 기준 문서: `docs/stage-6-plan.md`, `docs/decisions/ADR-005-thread-messaging.md`, `docs/thread-message-design.md`
 - 직전 단계 기준 문서: `docs/stage-5-plan.md`
 - 현재 검증 기록: `docs/verification/2026-08-17-stage-6.md` (단계 6 최종, 수동 checklist 포함)
@@ -201,7 +201,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
-| `S2-P0` 계획 | 승인 완료 | `.verison-list` 작업공간 문서 방식으로 수정 승인 |
+| `S2-P0` 계획 | 승인 완료 | `.version-list` 작업공간 문서 방식으로 수정 승인 |
 | `S2-D1-CODE` 도메인 production code | 승인 완료 | 사용자가 test 작성을 지시함 |
 | `S2-D1-TEST` 도메인 test | 승인 완료 | 사용자가 구현 진행을 지시함 |
 | `S2-D1-FIX` 도메인 bug 수정 | 생략 완료 | 발견 production 결함 없음 |
@@ -225,7 +225,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - 탐색·등록의 스레드 배치, 미리보기 dialog와 저장 충돌 후 재시도 UX는 단계 6~7에서 정한다. 단계 5의 API는 동기이며 취소는 자식 경계에서만 동작한다.
 - `.git` 파일 후보의 worktree/submodule 구분 표시는 UI 요구가 생길 때 `.git` 파일 내용 읽기 계약과 함께 추가한다.
 
-- `.verison-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
+- `.version-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
 - unknown field 보존, 상대 path 기준, migration과 backup 정책은 계획대로 승인됐다.
 - 기존 `utf8.cpp`, `win32_application.cpp`, `ui_theme.h`의 aggregate clang-format 위반은 `S3-D1-TEST`에서 formatter 결과 수용으로 해소했다. 원인은 수동 줄바꿈 규칙과 `ColumnLimit` 200의 충돌이며, `docs/code_style.md` 2장에 formatter 우선 규칙을 명시했다.
 - 단계 1의 caption 수동 검수 체크리스트 한 항목은 문서상 미확인 상태이며 계속 보존한다.

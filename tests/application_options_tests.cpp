@@ -64,7 +64,7 @@ TEST_CASE("Workspace launch path is optional", "[options][workspace]")
 
 TEST_CASE("Workspace launch paths preserve Unicode and option ordering", "[options][workspace]")
 {
-    constexpr std::u8string_view document_path { u8"E:/한글 작업 공간/활성 목록.verison-list" };
+    constexpr std::u8string_view document_path { u8"E:/한글 작업 공간/활성 목록.version-list" };
 
     const std::vector<std::u8string> path_first {
         u8"gitman.exe",
@@ -77,7 +77,7 @@ TEST_CASE("Workspace launch paths preserve Unicode and option ordering", "[optio
     REQUIRE(path_first_result.options->workspace_document_path->compare(document_path) == 0);
     REQUIRE(path_first_result.options->renderer == gitman::renderer_mode::cpu);
 
-    constexpr std::u8string_view uppercase_path { u8"E:/work/ACTIVE.VERISON-LIST" };
+    constexpr std::u8string_view uppercase_path { u8"E:/work/ACTIVE.version-list" };
     const std::vector<std::u8string> options_first {
         u8"gitman.exe",
         u8"--renderer=direct3d",
@@ -94,9 +94,9 @@ TEST_CASE("Duplicate workspace launch paths are rejected", "[options][workspace]
 {
     const std::vector<std::u8string> arguments {
         u8"gitman.exe",
-        u8"E:/work/first.verison-list",
+        u8"E:/work/first.version-list",
         u8"--renderer=cpu",
-        u8"E:/work/second.verison-list",
+        u8"E:/work/second.version-list",
     };
     REQUIRE_FALSE(gitman::parse_application_options(arguments).options.has_value());
 }
@@ -105,8 +105,8 @@ TEST_CASE("Invalid workspace launch extensions are rejected", "[options][workspa
 {
     constexpr std::array invalid_paths {
         std::u8string_view { u8"E:/work/workspace.json" },
-        std::u8string_view { u8"E:/work/workspace.verison-list.bak" },
-        std::u8string_view { u8"E:/work/workspace.verison-list " },
+        std::u8string_view { u8"E:/work/workspace.version-list.bak" },
+        std::u8string_view { u8"E:/work/workspace.version-list " },
     };
 
     for (const std::u8string_view invalid_path : invalid_paths)

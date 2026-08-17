@@ -19,7 +19,7 @@ namespace gitman::ui {
             switch (state)
             {
             case view_empty_state::no_document:
-                return u8"열린 문서가 없습니다. 오른쪽 위 버튼으로 .verison-list 문서를 여세요.";
+                return u8"열린 문서가 없습니다. 오른쪽 위 버튼으로 .version-list 문서를 여세요.";
             case view_empty_state::document_loading:
                 return u8"문서를 여는 중입니다...";
             case view_empty_state::no_projects:

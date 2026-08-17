@@ -258,6 +258,55 @@ TEST_CASE("Keyboard focus walks the visible cards", "[ui][interaction]")
     REQUIRE(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::enter }).empty());
 }
 
+TEST_CASE("Dragging a card onto another card produces a reorder intent", "[ui][interaction][drag]")
+{
+    const auto tree { make_tree(3) };
+    gitman::ui::interaction_controller controller { gitman::ui::interaction_config { 500ms, 4.0f, 6.0f } };
+    controller.set_tree(tree);
+
+    const gitman::ui::rect_f source { bounds_of(*tree, gitman::ui::ui_element_kind::card_body, u8"card-0") };
+    const gitman::ui::rect_f target { bounds_of(*tree, gitman::ui::ui_element_kind::card_body, u8"card-2") };
+
+    // 카드 body 왼쪽(버튼이 없는 곳)에서 눌러 임계 거리 밖으로 끌면 drag가 시작된다.
+    REQUIRE(controller.process(gitman::ui::pointer_pressed_event { source.x + 5.0f, source.y + 5.0f, gitman::ui::pointer_button::left, at(0) }).empty());
+    REQUIRE(controller.process(gitman::ui::pointer_moved_event { source.x + 5.0f, source.y + 25.0f, at(20) }).empty());
+    REQUIRE(controller.snapshot().drag.has_value());
+    REQUIRE(controller.snapshot().drag->payload.dragged_project.value == u8"card-0");
+
+    SECTION("아래쪽 절반에 놓으면 뒤로 삽입한다")
+    {
+        // 대상 카드의 버튼 영역 위라도 카드가 drop 대상으로 잡힌다.
+        const float drop_x { target.x + target.width - 20.0f };
+        const float drop_y { target.y + target.height - 5.0f };
+        REQUIRE(controller.process(gitman::ui::pointer_moved_event { drop_x, drop_y, at(40) }).empty());
+        REQUIRE(controller.snapshot().drag->hovered_drop_target.owner.value == u8"card-2");
+
+        const auto actions { controller.process(gitman::ui::pointer_released_event { drop_x, drop_y, gitman::ui::pointer_button::left, at(60) }) };
+        const auto* const message { as_message(actions) };
+        REQUIRE(message != nullptr);
+        const auto* const intent { std::get_if<gitman::reorder_card_intent>(message) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->id.value == u8"card-0");
+        REQUIRE(intent->target.value == u8"card-2");
+        REQUIRE(intent->place_after);
+    }
+
+    SECTION("위쪽 절반에 놓으면 앞으로 삽입한다")
+    {
+        const auto actions { controller.process(gitman::ui::pointer_released_event { target.x + 5.0f, target.y + 5.0f, gitman::ui::pointer_button::left, at(60) }) };
+        const auto* const intent { std::get_if<gitman::reorder_card_intent>(as_message(actions)) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->place_after == false);
+    }
+
+    SECTION("자기 자신 위에서는 drop 대상이 없다")
+    {
+        REQUIRE(controller.process(gitman::ui::pointer_moved_event { source.x + 5.0f, source.y + 30.0f, at(40) }).empty());
+        REQUIRE(controller.snapshot().drag->hovered_drop_target == gitman::ui::ui_element_id {});
+        REQUIRE(controller.process(gitman::ui::pointer_released_event { source.x + 5.0f, source.y + 30.0f, gitman::ui::pointer_button::left, at(60) }).empty());
+    }
+}
+
 namespace {
     struct counting_tree
     {

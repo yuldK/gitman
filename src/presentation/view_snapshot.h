@@ -14,6 +14,9 @@ namespace gitman {
     {
         name,
         status,
+        // 문서의 프로젝트 순서 그대로다. 카드 drag & drop 순서 변경이 이 모드로
+        // 전환한다.
+        custom,
     };
 
     // 렌더러가 그대로 그리는 카드 하나의 불변 표시 모델이다 (REQ-005).

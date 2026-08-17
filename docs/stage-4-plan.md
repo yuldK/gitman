@@ -343,7 +343,7 @@ tracking 생성: git switch --no-guess --create <local> --track <remote>/<branch
 
 ### 4.11 프로젝트 문서의 `settings`
 
-2026-08-16 사용자 지시로 Git과 SVN 실행 파일 경로를 수동으로 지정할 수 있게 한다. 저장 위치는 별도 설정 파일이 아니라 **프로젝트 문서(`.verison-list`)의 `settings` 속성**이다. 이후 환경설정 화면이 이 값을 읽고 쓴다.
+2026-08-16 사용자 지시로 Git과 SVN 실행 파일 경로를 수동으로 지정할 수 있게 한다. 저장 위치는 별도 설정 파일이 아니라 **프로젝트 문서(`.version-list`)의 `settings` 속성**이다. 이후 환경설정 화면이 이 값을 읽고 쓴다.
 
 ```json
 {

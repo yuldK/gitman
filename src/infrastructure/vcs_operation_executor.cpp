@@ -45,21 +45,53 @@ namespace gitman {
                 return;
             }
 
+            if (request.kind == operation_kind::save_document)
+            {
+                document_saved_event event {};
+                event.operation_id = request.operation_id;
+                if (request.document.has_value())
+                {
+                    project_store_save_result saved { store_->save(request.document_path, *request.document, request.revision) };
+                    event.revision = std::move(saved.revision);
+                    event.diagnostics = std::move(saved.diagnostics);
+                }
+                else
+                {
+                    diagnostic value {};
+                    value.code = diagnostic_code::operation_failed;
+                    value.severity = diagnostic_severity::error;
+                    value.message = u8"저장할 문서 내용이 요청에 없습니다.";
+                    event.diagnostics.push_back(std::move(value));
+                }
+                emit(std::move(event));
+                return;
+            }
+
             execute_query(request, emit);
         }
         catch (...)
         {
-            // logic의 busy 상태는 마지막 event로만 풀린다. 어떤 실패에서도 final
-            // event를 보낸다.
-            query_completed_event failure { make_query_event(request, false, true, {}) };
+            // logic의 busy·저장 대기 상태는 마지막 event로만 풀린다. 어떤 실패에서도
+            // 종류에 맞는 final event를 보낸다.
             diagnostic value {};
             value.code = diagnostic_code::operation_failed;
             value.severity = diagnostic_severity::error;
             value.message = u8"작업 실행 중 내부 오류가 발생했습니다.";
-            failure.result.diagnostics.push_back(std::move(value));
             try
             {
-                emit(std::move(failure));
+                if (request.kind == operation_kind::save_document)
+                {
+                    document_saved_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else
+                {
+                    query_completed_event failure { make_query_event(request, false, true, {}) };
+                    failure.result.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
             }
             catch (...)
             {}

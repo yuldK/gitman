@@ -216,7 +216,7 @@
 - `docs/stage-6-plan.md`를 작성했다. 단계 6 GUI와 상태 연결의 범위, 6구간 체크포인트, test 전략과 완료 조건을 담는다.
 - 체크포인트 제안: `S6-D1` messaging component → `S6-D2` 표시·상태 모델과 logic → `S6-D3` scheduler와 worker pool → `S6-D4` input thread → `S6-D5` Skia 렌더링과 앱 조립 → `S6-V1` 최종 검증. 각 구간은 코드와 test를 함께 담는다.
 - 단계 6 카드 동작 범위를 제안했다: 상태 표시와 전체/카드별 refresh까지 동작하고 update·switch·로그·탐색 dialog는 단계 7이다.
-- 문서 열기 방식을 제안했다: 명령행 인자의 `.verison-list` 경로 우선, 없으면 빈 상태 화면의 Win32 파일 dialog. association은 단계 8이다.
+- 문서 열기 방식을 제안했다: 명령행 인자의 `.version-list` 경로 우선, 없으면 빈 상태 화면의 Win32 파일 dialog. association은 단계 8이다.
 - worker 수 `min(4, hardware_concurrency)`와 전체 동시 작업 상한 초기값을 제안했다 (`docs/plan.md` 10장의 미확정 항목).
 - 단계 6에서 실행 파일이 처음으로 `gitman_messaging`·`gitman_workspace`·`gitman_process`·`gitman_vcs`·`gitman_discovery`를 링크하고 Win32 구현체를 주입 조립한다.
 - production code와 test는 변경하지 않았다. 전체 CTest 437 유지.
@@ -809,7 +809,7 @@
 - `tests/vcs_domain_tests.cpp`에 도구 값, 버전 비교, 작업 트리 안전성, snapshot 기본값과 switch 및 update 열거형 test 11개를 추가했다.
 - **모든 VCS가 없는 환경**을 전용 test로 고정했다. 두 도구 모두 `not_found`, 프로세스를 하나도 만들지 않음, 진단이 모두 warning, `none_available()` 참을 단정한다.
 - 한쪽만 없는 구성에서 나머지 도구가 계속 동작하는 것과, 조사 전 registry가 경고를 내지 않는 것도 확인했다.
-- `tests/project_schema_tests.cpp`에 `settings` parse test 3개와 `workspace-settings.verison-list` fixture를 추가했다. 기존 fixture가 그대로 열리는 회귀도 함께 단정한다.
+- `tests/project_schema_tests.cpp`에 `settings` parse test 3개와 `workspace-settings.version-list` fixture를 추가했다. 기존 fixture가 그대로 열리는 회귀도 함께 단정한다.
 - `tests/json_project_store_tests.cpp`에 `settings` 저장 test 4개를 추가했다. 알 수 없는 키 보존, 기본값 문서에 필드를 만들지 않음, 값 생성 시 기록, 상대 경로 저장 거부를 확인한다.
 - `tests/domain_model_tests.cpp`에 새 diagnostic code 11개, `authentication_required` 이름과 `workspace_settings` 기본값 단정을 추가했다.
 - `gitman_tests`에 `gitman_vcs` 링크와 `${GITMAN_TEST_DIRECTORY}` include 경로를 추가했다.
@@ -848,7 +848,7 @@
 - `domain/vcs_operation.*`에 switch 후보, 거부 사유 12종, update 차단 사유 13종과 각각의 한국어 메시지를 추가했다.
 - `domain/diagnostic.*`에 VCS 관련 code 11개와 이름 매핑을 추가했다.
 - `is_absolute_windows_path`를 `application/process_request`에서 `domain/path_syntax`로 옮겼다. 문서 `settings` 검증과 프로세스 요청 검증이 같은 규칙을 쓰게 하려는 이동이며, `process_request.h`가 새 헤더를 include해 기존 호출자는 변경 없이 컴파일된다.
-- `.verison-list`에 optional `settings` object를 추가했다. 스키마 버전 1을 유지하고, 없으면 진단 없이 기본값이며, 절대 경로가 아닌 값은 `vcs_tool_path_invalid` 오류로 보고한다.
+- `.version-list`에 optional `settings` object를 추가했다. 스키마 버전 1을 유지하고, 없으면 진단 없이 기본값이며, 절대 경로가 아닌 값은 `vcs_tool_path_invalid` 오류로 보고한다.
 - 저장 시 기존 `settings` object를 template으로 삼아 알 수 없는 키를 보존하고, 문서에 없었고 값도 기본값이면 필드를 만들지 않는다.
 - `application/vcs_tool_registry.*`를 값 container로 두고 탐색 로직은 infrastructure에 두어 application이 infrastructure를 참조하지 않게 했다.
 - `application/vcs_file_probe.h`로 git dir 표식 파일 확인을 계약화했다. Git에 진행 중 작업을 알려 주는 기계 판독 명령이 없기 때문이다.
@@ -1390,9 +1390,9 @@
 ### 반영 내용
 
 - 문서 경로가 없는 기존 시작에서 optional launch path가 비어 있는지 검증했다.
-- 한글과 공백을 포함한 `.verison-list` 원문, path와 renderer option의 전후 순서 및 대문자 확장자 허용을 검증했다.
+- 한글과 공백을 포함한 `.version-list` 원문, path와 renderer option의 전후 순서 및 대문자 확장자 허용을 검증했다.
 - option이 사이에 있어도 두 번째 positional path를 거부하는지 검증했다.
-- `.json`, `.verison-list.bak`과 trailing space suffix를 잘못된 확장자로 거부하는지 검증했다.
+- `.json`, `.version-list.bak`과 trailing space suffix를 잘못된 확장자로 거부하는지 검증했다.
 - 신규 Catch2 test 4개와 VS2022/VS2026 전체 CTest 54/54가 통과했다.
 - production source를 변경하지 않았고 `S2-D5-FIX` 후보도 발견하지 않았다.
 
@@ -1412,7 +1412,7 @@
 ### 반영 내용
 
 - `application_options`에 선택적인 UTF-8 `workspace_document_path`를 추가해 기존 Win32 진입 경계를 통해 보존한다.
-- 실행 파일 이름 뒤 하나의 positional `.verison-list` path를 허용하고, 두 번째 positional path는 한 창당 한 문서 계약에 따라 거부한다.
+- 실행 파일 이름 뒤 하나의 positional `.version-list` path를 허용하고, 두 번째 positional path는 한 창당 한 문서 계약에 따라 거부한다.
 - 확장자는 Windows 사용 방식에 맞게 ASCII 대소문자를 구분하지 않고 판정하며 다른 확장자와 backup suffix는 거부한다.
 - 미지원 `--` option은 문서 경로로 오인하지 않고 기존 command-line 오류로 유지한다.
 - parser는 path 원문을 바꾸거나 filesystem을 조회하지 않으며 실제 load, schema, backup과 recovery 판단은 project store 경계에 남긴다.
@@ -1527,7 +1527,7 @@
 - 정상, 손상, 부분 성공, 이전 및 미래 version과 unknown field fixture 6개를 추가했다.
 - schema parser 계약 test 8개와 project field 오류 matrix 12종을 추가했다.
 - unknown field의 JSON pointer escape와 입력 JSON byte의 정확한 shadow 보존을 검증했다.
-- `.verison-list` test asset도 UTF-8 무 BOM 및 CRLF 검사를 받도록 품질 도구 범위를 확장했다.
+- `.version-list` test asset도 UTF-8 무 BOM 및 CRLF 검사를 받도록 품질 도구 범위를 확장했다.
 - VS2022와 VS2026 Debug build 및 CTest 34/34를 통과했다.
 - production source를 변경하지 않았고 parser production 결함도 발견되지 않았다.
 
@@ -1545,7 +1545,7 @@
 ### 반영 내용
 
 - production 결함이 없었던 `S2-D1-FIX`를 생략하고 `S2-D2-CODE`를 진행했다.
-- schema version 1의 `.verison-list` JSON parser와 구조화 parse result를 추가했다.
+- schema version 1의 `.version-list` JSON parser와 구조화 parse result를 추가했다.
 - 문서 수준 실패, project별 부분 성공, optional 기본값, 중복 ID와 unknown field warning을 구현했다.
 - unknown field의 후속 round-trip을 위해 입력 JSON byte를 shadow에 그대로 보존했다.
 - public header에서 nlohmann/json, Win32와 Skia type을 노출하지 않았다.
@@ -1576,18 +1576,18 @@
 - `S2-D1-TEST`는 사용자 test 검수 대기 상태다.
 - 사용자 승인 전에는 `S2-D2-CODE` schema/parser 구현을 시작하지 않는다.
 
-## 2026-08-14 - `.verison-list` 작업공간 문서 결정 및 단계 2 계획 승인
+## 2026-08-14 - `.version-list` 작업공간 문서 결정 및 단계 2 계획 승인
 
 ### 사용자 지시
 
 - 프로젝트 목록은 고정 `projects.json`이 아니라 solution 및 `.code-workspace`와 같은 문서로 취급한다.
-- 확장자는 사용자 지시의 철자 그대로 `.verison-list`를 사용한다.
+- 확장자는 사용자 지시의 철자 그대로 `.version-list`를 사용한다.
 - Gitman을 해당 확장자의 Windows 연결 프로그램으로 동작하게 한다.
 - 나머지 단계 2 계획을 승인하고 추가 승인 요청 없이 첫 production code 구현을 진행한다.
 
 ### 반영 내용
 
-- 고정 기본 config 위치를 제거하고 한 창당 하나의 `.verison-list` 활성 문서로 변경했다.
+- 고정 기본 config 위치를 제거하고 한 창당 하나의 `.version-list` 활성 문서로 변경했다.
 - shell positional path로 문서를 여는 계약과 단계 8 file association 등록 및 제거 검증을 요구사항에 추가했다.
 - `S2-P0`을 승인 완료로, 현재 체크포인트를 `S2-D1-CODE`로 갱신했다.
 - UI, Win32와 JSON library에 의존하지 않는 `gitman_domain` target을 추가했다.

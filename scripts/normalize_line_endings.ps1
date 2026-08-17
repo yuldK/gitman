@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 $resolved_root = (Resolve-Path -LiteralPath $root).Path
 $utf8_without_bom = [System.Text.UTF8Encoding]::new($false, $true)
 $excluded_directories = @('.git', '.vs', 'bin', 'build', 'vcpkg_installed')
-$extensions = @('.cmake', '.cpp', '.h', '.json', '.md', '.ps1', '.rc', '.verison-list', '.xml')
+$extensions = @('.cmake', '.cpp', '.h', '.json', '.md', '.ps1', '.rc', '.version-list', '.xml')
 $special_names = @('.clang-format', '.clang-tidy', '.editorconfig', '.gitattributes', '.gitignore', 'CMakeLists.txt')
 $changed_count = 0
 

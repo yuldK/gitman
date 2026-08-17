@@ -44,7 +44,7 @@ TEST_CASE("The assembled runtime loads a real document and finishes the initial 
     const gitman::testing::scoped_scan_directory directory {};
     REQUIRE(directory.available());
     const std::u8string project_path { directory.make_directory(u8"plain-project") };
-    const std::u8string document_path { directory.path_of(u8"workspace.verison-list") };
+    const std::u8string document_path { directory.path_of(u8"workspace.version-list") };
     {
         std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary };
         std::string json { "{\"schema_version\":1,\"projects\":[{\"id\":\"plain\",\"path\":\"" };
@@ -72,6 +72,65 @@ TEST_CASE("The assembled runtime loads a real document and finishes the initial 
 
     // 종료가 스레드를 모두 join하고 멱등으로 끝난다. test가 끝나는 것 자체가 검증이다.
     runtime.shutdown();
+    runtime.shutdown();
+}
+
+TEST_CASE("A reorder intent persists the new order into the document file", "[runtime][integration]")
+{
+    const gitman::testing::scoped_scan_directory directory {};
+    REQUIRE(directory.available());
+    const std::u8string first_path { directory.make_directory(u8"one-project") };
+    const std::u8string second_path { directory.make_directory(u8"two-project") };
+    const std::u8string document_path { directory.path_of(u8"reorder.version-list") };
+    {
+        std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary };
+        std::string json { "{\"schema_version\":1,\"projects\":[" };
+        const auto append_project { [&json](const std::string& id, const std::u8string& path) {
+            std::string path_utf8 { path.begin(), path.end() };
+            for (char& value : path_utf8)
+                if (value == '\\')
+                    value = '/';
+            json += "{\"id\":\"" + id + "\",\"path\":\"" + path_utf8 + "\"}";
+        } };
+        append_project("alpha", first_path);
+        json += ',';
+        append_project("beta", second_path);
+        json += "]}";
+        stream << json;
+    }
+
+    gitman::win32::app_runtime runtime { nullptr, 0, 0 };
+    runtime.post_logic(gitman::logic_message { gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f } });
+    runtime.post_logic(gitman::logic_message { gitman::open_document_intent { document_path } });
+
+    const auto both_cards { [](const gitman::view_snapshot& value) { return value.cards.size() == 2u; } };
+    REQUIRE(wait_for_view(runtime, std::chrono::milliseconds { 15000 }, both_cards) != nullptr);
+
+    // alpha를 beta 뒤로 옮긴다. 화면 순서가 바뀌고 문서 정렬이 custom이 된다.
+    runtime.post_logic(gitman::logic_message { gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, true } });
+    const auto reordered { [](const gitman::view_snapshot& value) {
+        return value.sort == gitman::card_sort_key::custom && value.cards.size() == 2u && value.cards.front().id.value == u8"beta" && value.cards.back().id.value == u8"alpha";
+    } };
+    REQUIRE(wait_for_view(runtime, std::chrono::milliseconds { 15000 }, reordered) != nullptr);
+
+    // 실제 store가 문서를 새 순서로 다시 쓸 때까지 파일을 읽는다.
+    bool persisted { false };
+    const auto deadline { std::chrono::steady_clock::now() + std::chrono::milliseconds { 15000 } };
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        std::ifstream stream { std::filesystem::path { document_path }, std::ios::binary };
+        const std::string content { std::istreambuf_iterator<char> { stream }, std::istreambuf_iterator<char> {} };
+        const std::size_t beta_position { content.find("\"beta\"") };
+        const std::size_t alpha_position { content.find("\"alpha\"") };
+        if (beta_position != std::string::npos && alpha_position != std::string::npos && beta_position < alpha_position)
+        {
+            persisted = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds { 20 });
+    }
+    REQUIRE(persisted);
+
     runtime.shutdown();
 }
 
@@ -122,7 +181,7 @@ TEST_CASE("A hundred plus cards keep the snapshot flow alive under real load", "
             projects += ',';
         projects += "{\"id\":\"card-" + digits + "\",\"path\":\"" + path_utf8 + "\"}";
     }
-    const std::u8string document_path { directory.path_of(u8"storm.verison-list") };
+    const std::u8string document_path { directory.path_of(u8"storm.version-list") };
     {
         std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary };
         stream << "{\"schema_version\":1,\"projects\":[" << projects << "]}";

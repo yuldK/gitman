@@ -78,6 +78,29 @@ namespace {
         return fixture.path_of(std::u8string { u8"clones\\" } + std::u8string { name });
     }
 
+    // `main`과 `feature` 두 branch를 담은 bare 원격을 만든다. switch 후보가 하나 이상
+    // 필요한 test가 쓴다.
+    std::u8string make_branched_remote(gitman::testing::git_repository_fixture& fixture)
+    {
+        const std::u8string remote { fixture.make_bare_repository(u8"branched-remote") };
+        const std::u8string source { make_committed_repository(fixture, u8"branched-source") };
+        fixture.git(source, { u8"remote", u8"add", u8"origin", remote });
+        fixture.git(source, { u8"push", u8"-u", u8"origin", u8"main" });
+        fixture.git(source, { u8"switch", u8"--create", u8"feature" });
+        fixture.git(source, { u8"commit", u8"--allow-empty", u8"-m", u8"feature" });
+        fixture.git(source, { u8"push", u8"-u", u8"origin", u8"feature" });
+        fixture.git(source, { u8"switch", u8"main" });
+        return remote;
+    }
+
+    const gitman::switch_candidate* find_candidate(const gitman::switch_candidate_result& result, const std::u8string_view display_name) noexcept
+    {
+        for (const gitman::switch_candidate& candidate : result.candidates)
+            if (candidate.display_name == display_name)
+                return &candidate;
+        return nullptr;
+    }
+
     // 로컬 조회 뒤 원격 조회까지 수행한다. 실제 카드가 새로 고침에서 하는 순서다.
     gitman::repository_query_result refresh(gitman::testing::git_repository_fixture& fixture, const std::u8string_view path)
     {
@@ -589,4 +612,170 @@ TEST_CASE("Local queries of a real repository never touch the network", "[integr
     // upstream이 없으므로 로컬 조회는 원격 상태를 단정하지 않는다.
     REQUIRE(result.snapshot.sync_state == gitman::remote_sync_state::unknown);
     REQUIRE(result.diagnostics.empty());
+}
+
+TEST_CASE("A real switch dialog lists remote branches before local ones", "[integration][git][switch]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_branched_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"dialog") };
+    REQUIRE(fixture.failures().empty());
+
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+    const gitman::switch_candidate_result result { provider.query_switch_candidates(make_project(clone), {}) };
+
+    REQUIRE(result.candidates.empty() == false);
+    REQUIRE(result.candidates.front().kind == gitman::switch_candidate_kind::git_remote_branch);
+    REQUIRE(find_candidate(result, u8"origin/main") != nullptr);
+    REQUIRE(find_candidate(result, u8"origin/feature") != nullptr);
+
+    // clone이 만든 `refs/remotes/origin/HEAD`는 심볼릭 ref라 후보가 아니다.
+    REQUIRE(find_candidate(result, u8"origin/HEAD") == nullptr);
+    // clone 직후의 local `main`은 `origin/main` 후보로 도달할 수 있어 중복 항목이 없다.
+    REQUIRE(find_candidate(result, u8"main") == nullptr);
+
+    const gitman::switch_candidate* const feature { find_candidate(result, u8"origin/feature") };
+    REQUIRE(feature->requires_tracking_branch);
+    REQUIRE(feature->local_branch.empty());
+    REQUIRE_FALSE(feature->tracking_branch_confirmed);
+
+    const gitman::switch_candidate* const main_branch { find_candidate(result, u8"origin/main") };
+    REQUIRE_FALSE(main_branch->requires_tracking_branch);
+    REQUIRE(main_branch->local_branch == u8"main");
+    // fetch에 성공했으므로 오래된 목록이 아니다.
+    REQUIRE_FALSE(result.stale);
+}
+
+TEST_CASE("A real switch creates a tracking branch only after confirmation", "[integration][git][switch]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_branched_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"tracking") };
+    REQUIRE(fixture.failures().empty());
+
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+    const gitman::project_definition project { make_project(clone) };
+    const gitman::switch_candidate_result candidates { provider.query_switch_candidates(project, {}) };
+    const gitman::switch_candidate* const feature { find_candidate(candidates, u8"origin/feature") };
+    REQUIRE(feature != nullptr);
+
+    const gitman::repository_change_result unconfirmed { provider.switch_to(project, *feature, {}) };
+    REQUIRE_FALSE(unconfirmed.executed);
+    REQUIRE(unconfirmed.rejected_by == gitman::switch_rejection::tracking_branch_confirmation_required);
+    // branch가 실제로 만들어지지 않았으므로 후보가 아직 생성을 요구한다.
+    const gitman::switch_candidate_result after_refusal { provider.query_switch_candidates(project, {}) };
+    REQUIRE(find_candidate(after_refusal, u8"origin/feature")->requires_tracking_branch);
+
+    gitman::switch_candidate confirmed { *feature };
+    confirmed.tracking_branch_confirmed = true;
+    const gitman::repository_change_result created { provider.switch_to(project, confirmed, {}) };
+
+    REQUIRE(created.executed);
+    REQUIRE(created.succeeded);
+    REQUIRE_FALSE(has_error_diagnostic(created.diagnostics));
+    // 사후 재조회가 새 branch와 그 upstream을 보고한다.
+    REQUIRE(created.snapshot.current_reference == u8"feature");
+    REQUIRE(created.snapshot.comparison == gitman::comparison_source::local);
+    REQUIRE(created.snapshot.comparison_target == u8"origin/feature");
+    REQUIRE(created.snapshot.working_tree.state == gitman::working_tree_state::clean);
+}
+
+TEST_CASE("A real switch moves to an existing branch and refuses a repeat", "[integration][git][switch]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_branched_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"existing") };
+    fixture.git(clone, { u8"switch", u8"--create", u8"feature", u8"--track", u8"origin/feature" });
+    REQUIRE(fixture.failures().empty());
+
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+    const gitman::project_definition project { make_project(clone) };
+    const gitman::switch_candidate_result candidates { provider.query_switch_candidates(project, {}) };
+    const gitman::switch_candidate* const main_branch { find_candidate(candidates, u8"origin/main") };
+    REQUIRE(main_branch != nullptr);
+    REQUIRE(main_branch->local_branch == u8"main");
+
+    const gitman::repository_change_result moved { provider.switch_to(project, *main_branch, {}) };
+    REQUIRE(moved.executed);
+    REQUIRE(moved.succeeded);
+    REQUIRE(moved.snapshot.current_reference == u8"main");
+
+    // 이미 그 대상에 있으면 명령을 만들지 않는다.
+    const gitman::repository_change_result again { provider.switch_to(project, *main_branch, {}) };
+    REQUIRE_FALSE(again.executed);
+    REQUIRE(again.rejected_by == gitman::switch_rejection::already_on_target);
+}
+
+TEST_CASE("A real switch is refused before touching an unsafe repository", "[integration][git][switch]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_branched_remote(fixture) };
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+
+    // 다른 worktree가 잡고 있는 branch다. Git 자체도 이 전환을 거부한다.
+    const std::u8string held { clone_of(fixture, remote, u8"held") };
+    fixture.git(held, { u8"switch", u8"--create", u8"feature", u8"--track", u8"origin/feature" });
+    fixture.git(held, { u8"switch", u8"main" });
+    fixture.git(held, { u8"worktree", u8"add", fixture.path_of(u8"held-worktree"), u8"feature" });
+
+    const std::u8string dirty { clone_of(fixture, remote, u8"dirty-switch") };
+    fixture.write_file(dirty, u8"a.txt", "changed\n");
+    REQUIRE(fixture.failures().empty());
+
+    const gitman::project_definition held_project { make_project(held) };
+    const gitman::switch_candidate_result held_candidates { provider.query_switch_candidates(held_project, {}) };
+    const gitman::switch_candidate* const feature { find_candidate(held_candidates, u8"origin/feature") };
+    REQUIRE(feature != nullptr);
+    REQUIRE(feature->local_branch == u8"feature");
+
+    const gitman::repository_change_result in_use { provider.switch_to(held_project, *feature, {}) };
+    REQUIRE_FALSE(in_use.executed);
+    REQUIRE(in_use.rejected_by == gitman::switch_rejection::target_in_use);
+
+    const gitman::project_definition dirty_project { make_project(dirty) };
+    const gitman::switch_candidate_result dirty_candidates { provider.query_switch_candidates(dirty_project, {}) };
+    const gitman::switch_candidate* const dirty_target { find_candidate(dirty_candidates, u8"origin/feature") };
+    REQUIRE(dirty_target != nullptr);
+
+    gitman::switch_candidate confirmed { *dirty_target };
+    confirmed.tracking_branch_confirmed = true;
+    const gitman::repository_change_result unsafe { provider.switch_to(dirty_project, confirmed, {}) };
+    REQUIRE_FALSE(unsafe.executed);
+    REQUIRE(unsafe.rejected_by == gitman::switch_rejection::working_tree_unsafe);
+    // 거부된 전환은 작업 트리를 그대로 둔다.
+    REQUIRE(unsafe.snapshot.working_tree.state == gitman::working_tree_state::modified);
+}
+
+TEST_CASE("A real switch refuses a target that no reference matches", "[integration][git][switch]")
+{
+    gitman::testing::git_repository_fixture fixture {};
+    REQUIRE_GIT_AVAILABLE(fixture);
+
+    const std::u8string remote { make_branched_remote(fixture) };
+    const std::u8string clone { clone_of(fixture, remote, u8"missing-target") };
+    REQUIRE(fixture.failures().empty());
+
+    gitman::git_repository_provider provider { fixture.tool(), fixture.runner(), fixture.probe() };
+
+    gitman::switch_candidate target {};
+    target.kind = gitman::switch_candidate_kind::git_remote_branch;
+    target.display_name = u8"origin/없는 브랜치";
+    target.target = u8"refs/remotes/origin/없는 브랜치";
+    target.remote_name = u8"origin";
+    target.tracking_branch_confirmed = true;
+
+    const gitman::repository_change_result result { provider.switch_to(make_project(clone), target, {}) };
+
+    // `--no-guess`가 막기 전에 검증이 먼저 걸러 낸다.
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.rejected_by == gitman::switch_rejection::target_not_found);
+    REQUIRE(result.snapshot.current_reference == u8"main");
 }

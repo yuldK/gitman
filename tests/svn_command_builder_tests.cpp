@@ -89,13 +89,56 @@ TEST_CASE("SVN update requests never resolve conflicts on their own", "[infrastr
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
+TEST_CASE("SVN switch requests carry only the target URL", "[infrastructure][svn][command]")
+{
+    const gitman::process_request request { gitman::make_svn_switch_request(svn_executable, working_directory, u8"https://svn.example.com/repo/branches/기능") };
+
+    // `svn update`와 같이 등록한 작업 복사본 루트를 작업 디렉터리로 삼고 대상 경로
+    // 인자를 따로 만들지 않는다.
+    const std::vector<std::u8string> expected { u8"--non-interactive", u8"switch", u8"https://svn.example.com/repo/branches/기능" };
+    REQUIRE(request.arguments == expected);
+    REQUIRE(request.working_directory == working_directory);
+    for (const std::u8string& argument : request.arguments)
+    {
+        // 관계없는 저장소로의 전환과 자동 충돌 해결이 일어나지 않게 한다.
+        REQUIRE(argument != u8"--ignore-ancestry");
+        REQUIRE(argument != u8"--force");
+        REQUIRE(argument.starts_with(u8"--accept") == false);
+    }
+
+    // 전환은 변경 명령이라 한도가 다르다.
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 300000 });
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
+TEST_CASE("SVN identity requests use the remote query limits", "[infrastructure][svn][command]")
+{
+    constexpr std::u8string_view url { u8"https://svn.example.com/repo/branches/x" };
+
+    const gitman::process_request root { gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::repository_root, url) };
+    REQUIRE(root.arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--show-item", u8"repos-root-url", std::u8string { url } });
+    // 원격을 실제로 확인하므로 로컬 조회보다 넉넉한 한도를 쓴다.
+    REQUIRE(*root.timeout == std::chrono::milliseconds { 120000 });
+    REQUIRE(gitman::validate_process_request(root).empty());
+
+    const gitman::process_request uuid { gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::repository_uuid, url) };
+    REQUIRE(uuid.arguments[3] == u8"repos-uuid");
+
+    // 기존 원격 리비전 요청은 같은 조립을 쓰며 만들어 내는 명령이 달라지지 않는다.
+    const gitman::process_request revision { gitman::make_svn_remote_revision_request(svn_executable, working_directory, url) };
+    REQUIRE(revision.arguments == gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::revision, url).arguments);
+    REQUIRE(*revision.timeout == std::chrono::milliseconds { 120000 });
+}
+
 TEST_CASE("SVN requests never enable interactive prompts", "[infrastructure][svn][command]")
 {
     const gitman::process_request requests[] {
         gitman::make_svn_info_item_request(svn_executable, working_directory, gitman::svn_info_item::url),
         gitman::make_svn_status_request(svn_executable, working_directory),
         gitman::make_svn_remote_revision_request(svn_executable, working_directory, u8"https://svn.example.com/repo"),
+        gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::repository_uuid, u8"https://svn.example.com/repo"),
         gitman::make_svn_update_request(svn_executable, working_directory),
+        gitman::make_svn_switch_request(svn_executable, working_directory, u8"https://svn.example.com/repo/branches/x"),
     };
 
     for (const gitman::process_request& request : requests)

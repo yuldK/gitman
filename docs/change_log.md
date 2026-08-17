@@ -1,5 +1,42 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 4 `S4-D6-TEST` switch test 작성
+
+### 사용자 지시
+
+- `S4-D6-CODE`를 승인하고 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `tests/switch_validation_tests.cpp`를 추가했다. 검증 서비스의 규칙 test 13개다. 프로세스를 만들지 않는 순수 함수라 거부 사유와 그 우선순위를 실제 저장소 없이 전수 단정한다.
+- `tests/git_switch_tests.cpp`를 추가했다. 후보 목록 조립과 provider의 후보 조회 및 전환 test 20개다.
+- **명령 미생성을 요청 기록으로 직접 단정했다.** 빈 대상과 도구 부재는 0개, 저장소 아님은 1개, 검증 거부는 조회 5개에서 끝나며 어느 경로에도 `switch` 명령이 없다.
+- 정상 경로의 명령 수와 순서를 고정했다. Git은 8개(재조회 2 → `remote` → `for-each-ref` → `worktree list` → `switch` → 재조회 2), SVN은 18개다. Git 전환 경로에 `fetch`가 **0개**인 것도 함께 단정한다.
+- 후보 목록 규칙을 전수 고정했다. 정렬, 심볼릭 ref 제외, 여러 remote의 같은 이름, stale 표시, `/`가 든 remote 이름, 지워진 remote가 남긴 tracking ref다.
+- **local 후보 중복 제거의 양쪽 경우를 모두 단정했다.** remote 후보로 도달할 수 있으면 넣지 않고, upstream이 다른 remote를 가리키면 남긴다. 뒤의 규칙이 없으면 그 branch로 전환할 방법이 사라진다.
+- 검증 거부 사유 8종과 그 우선순위를 단정했다. 사유를 하나씩 없애면 다음 사유가 나오는 것으로 순서 자체를 고정했다.
+- 작업 트리 위험 판정 5종(dirty, 충돌, **미상**, 진행 중 작업, `index.lock`)을 전수 확인했다.
+- tracking branch는 확인 전 거부와 확인 후 승인을 쌍으로 단정하고, **확인했더라도 실제 차단 사유가 우선**하는 것을 함께 고정했다.
+- SVN은 URL 형식 14종, 허용 목록, 형식 오류 메시지, 현재 위치, 작업 복사본 상태와 저장소 대조 7종을 다룬다. **대상 값을 못 읽은 것과 값이 다른 것을 구분**하고 현재 값을 모르면 통과시키지 않는 것도 단정했다.
+- 전환 실패 분류가 로캘 독립 신호로만 이뤄지는 것을 timeout, 취소, 한국어 미분류 실패로 확인했다.
+- `tests/git_integration_tests.cpp`에 실제 Git test 5개를 추가했다. **확인 후 실제로 tracking branch를 만들어 전환하고**, 확인 전에는 branch가 만들어지지 않으며, 실제 `git worktree`가 잡은 branch와 dirty 작업 트리를 거부하는 것을 확인한다.
+- 명령 test와 파서 test를 각 파일에 추가했다. `for-each-ref` 형식, `worktree list`, `switch`의 금지 인자 6종, tracking 생성 인자 순서, `svn switch`의 금지 인자 3종과 원격 조회 한도다.
+- 전체 CTest가 338에서 **393**으로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 393/393 통과했다. `/analyze`도 무경고로 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- production source를 변경하지 않았고 `S4-D6-FIX` 후보도 발견하지 않았다.
+- 결과를 `docs/verification/2026-08-17-stage-4-d6-test.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-007, REQ-013, REQ-014
+- NFR-005~NFR-008
+
+### 다음 작업 제한
+
+- `S4-D6-TEST`는 사용자 test 검수 대기 상태다.
+- 발견 production 결함이 없어 `S4-D6-FIX`는 사용자 확인 후 생략한다.
+- 승인 전에는 `S4-V1`의 단계 4 최종 검증과 검증 문서를 작성하지 않는다.
+
 ## 2026-08-17 - 단계 4 `S4-D6-CODE` switch 구현
 
 ### 사용자 지시

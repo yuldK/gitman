@@ -5,15 +5,15 @@
 - 기준일: 2026-08-17
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
 - 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-D6-CODE` switch 구현 제출, 사용자 검수 대기
+- 현재 체크포인트: `S4-D6-TEST` switch test 제출, 사용자 검수 대기
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S4-D6-CODE` 승인 후 `S4-D6-TEST` 한 구간만 수행하고 보고 뒤 중지
+- 다음 허용 작업: `S4-D6-TEST` 승인과 무결함 `S4-D6-FIX` 생략 확인 후 `S4-V1` 한 구간만 수행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 Git 로컬 조회, test와 install 구성
 - 기준 문서: `docs/stage-4-plan.md`
 - 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-17-stage-4-d6-code.md`
-- 직전 검증 기록: `docs/verification/2026-08-17-stage-4-d5-test.md`
-- 최근 검증 기록: `docs/verification/2026-08-17-stage-4-d5-code.md`
+- 현재 검증 기록: `docs/verification/2026-08-17-stage-4-d6-test.md`
+- 직전 검증 기록: `docs/verification/2026-08-17-stage-4-d6-code.md`
+- 최근 검증 기록: `docs/verification/2026-08-17-stage-4-d5-test.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
 
 다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
@@ -115,15 +115,15 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-D6-CODE` |
-| 제출 내용 | switch 후보 조회, tracking branch 정책, SVN 허용 URL 검증, 검증 서비스와 두 provider의 실행 |
-| production code | 신규 `application/switch_validation_service.h/.cpp`, 도메인·명령·파서·provider 7쌍 수정, `src/CMakeLists.txt` 갱신 |
-| test code 및 fixture | 기존 test 2개의 "미구현" 단정을 "빈 대상 거부" 단정으로 좁힘. 새 test source 없음. 전체 CTest 338 유지 |
+| 계획 ID | `S4-D6-TEST` |
+| 제출 내용 | 검증 규칙, 후보 목록, 명령 미생성, 전환 실행과 실제 Git 통합 test |
+| production code | 변경 없음 |
+| test code 및 fixture | 신규 test source 2개와 기존 5개 보강, `tests/CMakeLists.txt` 갱신. 전체 CTest 338 → **393** |
 | bug 수정 | 없음 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 338/338, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과, 임시 프로그램 228/228 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 전체 CTest 각각 393/393, `/analyze` 무경고, 3회 반복 통과, aggregate format/style 통과 |
 | 발견 결함 | 없음 |
-| 승인 대기 | `S4-D6-CODE` 코드 검수 |
-| 승인 뒤 다음 작업 | `S4-D6-TEST` 한 구간만 허용 |
+| 승인 대기 | `S4-D6-TEST` test 검수 |
+| 승인 뒤 다음 작업 | 무결함 `S4-D6-FIX` 생략 후 `S4-V1` 한 구간만 허용 |
 
 ### 8.2 단계 4 진행 원장
 
@@ -145,9 +145,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S4-D5-CODE` update | 승인 완료 | `docs/verification/2026-08-17-stage-4-d5-code.md` |
 | `S4-D5-TEST` | 승인 완료 | test 32개, 전체 338/338. `docs/verification/2026-08-17-stage-4-d5-test.md` |
 | `S4-D5-FIX` | 생략 완료 | 발견 production 결함 없음 |
-| `S4-D6-CODE` switch | 제출, 검수 대기 | 신규 검증 서비스와 두 provider의 switch. `docs/verification/2026-08-17-stage-4-d6-code.md` |
-| `S4-D6-TEST` | 시작 전 | |
-| `S4-D6-FIX` | 시작 전 | |
+| `S4-D6-CODE` switch | 승인 완료 | 신규 검증 서비스와 두 provider의 switch. `docs/verification/2026-08-17-stage-4-d6-code.md` |
+| `S4-D6-TEST` | 제출, 검수 대기 | test 55개, 전체 393/393. `docs/verification/2026-08-17-stage-4-d6-test.md` |
+| `S4-D6-FIX` | 시작 전 | 발견 production 결함이 없어 사용자 확인 후 생략 예정 |
 | `S4-V1` 단계 4 최종 검증 | 시작 전 | |
 
 ### 8.3 단계 3 진행 원장 (완료)

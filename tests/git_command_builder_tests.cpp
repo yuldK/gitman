@@ -167,6 +167,77 @@ TEST_CASE("Submodule requests survey before they change anything", "[infrastruct
     REQUIRE(gitman::validate_process_request(update).empty());
 }
 
+TEST_CASE("Switch candidate requests read every reference at once", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_reference_list_request(git_executable, working_directory) };
+
+    // 필드 구분자는 TAB이다. ref 이름에는 TAB이 들어갈 수 없어 경계가 흔들리지 않는다.
+    // `%(symref)`는 `refs/remotes/<remote>/HEAD` 같은 항목을 이름 규칙이 아니라 값으로
+    // 골라내려고 넣었다.
+    const std::vector<std::u8string> expected {
+        u8"for-each-ref",
+        u8"--format=%(refname)%09%(objectname)%09%(upstream)%09%(HEAD)%09%(symref)",
+        u8"refs/heads",
+        u8"refs/remotes",
+    };
+    REQUIRE(command_arguments(request) == expected);
+    // 네트워크를 쓰지 않는 로컬 조회다. 후보 목록은 이미 받아 둔 ref로 만든다.
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
+TEST_CASE("Worktree requests use the machine readable form", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_worktree_list_request(git_executable, working_directory) };
+
+    REQUIRE(command_arguments(request) == std::vector<std::u8string> { u8"worktree", u8"list", u8"--porcelain" });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
+TEST_CASE("Switch requests never guess and never discard changes", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_switch_request(git_executable, working_directory, u8"feature/새 기능") };
+
+    // `--no-guess`가 고르지 않은 remote branch로의 암묵 전환을 막는다. branch 이름은
+    // 저장소에서 오므로 `--`로 끊어 옵션으로 해석되지 않게 한다.
+    const std::vector<std::u8string> expected { u8"switch", u8"--no-guess", u8"--", u8"feature/새 기능" };
+    REQUIRE(command_arguments(request) == expected);
+    for (const std::u8string& argument : request.arguments)
+    {
+        REQUIRE(argument != u8"--force");
+        REQUIRE(argument != u8"-f");
+        REQUIRE(argument != u8"--discard-changes");
+        REQUIRE(argument != u8"--merge");
+        REQUIRE(argument != u8"--detach");
+        REQUIRE(argument != u8"--guess");
+    }
+
+    // 전환은 변경 명령이라 한도가 다르다.
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 300000 });
+    REQUIRE(request.maximum_captured_bytes_per_stream == 8u * 1024u * 1024u);
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
+TEST_CASE("Tracking branch creation names the start point explicitly", "[infrastructure][git][command]")
+{
+    const gitman::process_request request { gitman::make_git_create_tracking_branch_request(git_executable, working_directory, u8"기능", u8"refs/remotes/origin/기능") };
+
+    // `--track`은 값을 `=`로만 받는 옵션이므로 뒤의 완전한 ref는 옵션 값이 아니라 시작
+    // 지점 인자다. 호스트 Git 2.52.0으로 실측한 형태다.
+    const std::vector<std::u8string> expected { u8"switch", u8"--no-guess", u8"--create", u8"기능", u8"--track", u8"--", u8"refs/remotes/origin/기능" };
+    REQUIRE(command_arguments(request) == expected);
+    for (const std::u8string& argument : request.arguments)
+    {
+        REQUIRE(argument != u8"--force");
+        REQUIRE(argument != u8"--force-create");
+        REQUIRE(argument != u8"-C");
+    }
+
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 300000 });
+    REQUIRE(gitman::validate_process_request(request).empty());
+}
+
 TEST_CASE("Git local queries carry the approved execution policy", "[infrastructure][git][command]")
 {
     const gitman::process_request requests[] {
@@ -176,6 +247,8 @@ TEST_CASE("Git local queries carry the approved execution policy", "[infrastruct
         gitman::make_git_fetch_request(git_executable, working_directory, u8"origin"),
         gitman::make_git_verify_reference_request(git_executable, working_directory, u8"refs/remotes/origin/main"),
         gitman::make_git_ahead_behind_request(git_executable, working_directory, u8"refs/remotes/origin/main"),
+        gitman::make_git_reference_list_request(git_executable, working_directory),
+        gitman::make_git_worktree_list_request(git_executable, working_directory),
     };
 
     for (const gitman::process_request& request : requests)

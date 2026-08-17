@@ -97,6 +97,47 @@ namespace {
     {
         return std::ranges::any_of(result.diagnostics, [](const gitman::diagnostic& value) { return value.severity == gitman::diagnostic_severity::error; });
     }
+
+    constexpr std::u8string_view switch_target_url { u8"https://svn.example.com/repo/branches/x" };
+
+    gitman::project_definition switch_project()
+    {
+        gitman::project_definition project { make_project() };
+        project.svn_switch_targets = { std::u8string { repository_url }, std::u8string { switch_target_url } };
+        return project;
+    }
+
+    gitman::switch_candidate url_target(const std::u8string_view url = switch_target_url)
+    {
+        gitman::switch_candidate candidate {};
+        candidate.kind = gitman::switch_candidate_kind::subversion_url;
+        candidate.display_name = url;
+        candidate.target = url;
+        return candidate;
+    }
+
+    // 현재 URL 조회의 응답이다. 검증은 이 값으로 `already_on_target`을 판정한다.
+    void push_current_url(gitman::testing::fake_process_runner& runner, const std::u8string_view url = repository_url)
+    {
+        runner.push_response({ gitman::process_completion::exited, 0, std::u8string { url } + u8"\n", {} });
+    }
+
+    // 대상 URL의 저장소 root와 UUID다. 기본값은 현재 작업 복사본과 같은 저장소다.
+    void push_identity(
+        gitman::testing::fake_process_runner& runner, const std::u8string_view root = u8"https://svn.example.com/repo", const std::u8string_view uuid = u8"8f3a1c2e-0000-0000-0000-000000000000")
+    {
+        runner.push_response({ gitman::process_completion::exited, 0, std::u8string { root } + u8"\n", {} });
+        runner.push_response({ gitman::process_completion::exited, 0, std::u8string { uuid } + u8"\n", {} });
+    }
+
+    std::size_t count_svn_commands(const gitman::testing::fake_process_runner& runner, const std::u8string_view command)
+    {
+        std::size_t count { 0 };
+        for (const gitman::process_request& request : runner.requests())
+            if (request.arguments.size() > 1 && request.arguments[1] == command)
+                ++count;
+        return count;
+    }
 } // namespace
 
 TEST_CASE("SVN queries do nothing when the tool is missing", "[infrastructure][svn][provider]")
@@ -533,6 +574,177 @@ TEST_CASE("SVN switch candidates and an empty target build no request", "[infras
     const gitman::repository_change_result switched { provider.switch_to(project, {}, {}) };
     REQUIRE_FALSE(switched.executed);
     REQUIRE(switched.rejected_by == gitman::switch_rejection::target_not_found);
+    REQUIRE(runner.request_count() == 0);
+}
+
+TEST_CASE("SVN switch candidates come only from the document", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    gitman::project_definition project { make_project() };
+    project.svn_switch_targets = { u8"https://svn.example.com/repo/trunk", u8"https://svn.example.com/repo/branches/x", u8"https://svn.example.com/repo/trunk", u8"잘못된 값" };
+
+    const gitman::switch_candidate_result result { provider.query_switch_candidates(project, {}) };
+
+    // 저장소 layout을 자동으로 가정하지 않으므로 조회할 것이 없다.
+    REQUIRE(runner.request_count() == 0);
+    REQUIRE(result.candidates.size() == 2);
+    REQUIRE(result.candidates[0].kind == gitman::switch_candidate_kind::subversion_url);
+    REQUIRE(result.candidates[0].target == u8"https://svn.example.com/repo/trunk");
+    REQUIRE(result.candidates[1].target == u8"https://svn.example.com/repo/branches/x");
+    // 허용 목록은 원격을 확인해 만든 것이 아니므로 stale이 될 수 없다.
+    REQUIRE_FALSE(result.stale);
+    REQUIRE(has_diagnostic(result.diagnostics, gitman::diagnostic_code::invalid_project_field));
+}
+
+TEST_CASE("SVN switch candidates need the tool as well", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { missing_tool(), runner, probe };
+
+    gitman::project_definition project { make_project() };
+    project.svn_switch_targets = { u8"https://svn.example.com/repo/trunk" };
+
+    const gitman::switch_candidate_result result { provider.query_switch_candidates(project, {}) };
+    REQUIRE(result.candidates.empty());
+    REQUIRE(has_diagnostic(result.diagnostics, gitman::diagnostic_code::vcs_tool_not_found));
+    REQUIRE(runner.request_count() == 0);
+}
+
+TEST_CASE("Rejected SVN switches never reach the network", "[infrastructure][svn][provider]")
+{
+    struct expectation
+    {
+        std::u8string_view name {};
+        std::u8string status {};
+        gitman::switch_candidate target {};
+        gitman::switch_rejection rejection {};
+    };
+
+    const expectation expectations[] {
+        { u8"허용 목록 밖", {}, url_target(u8"https://svn.example.com/repo/branches/y"), gitman::switch_rejection::target_not_allowed },
+        { u8"이미 대상", {}, url_target(repository_url), gitman::switch_rejection::already_on_target },
+        { u8"dirty 작업 복사본", u8"M       trunk/a.txt\n", url_target(), gitman::switch_rejection::working_tree_unsafe },
+    };
+
+    for (const expectation& value : expectations)
+    {
+        INFO(reinterpret_cast<const char*>(value.name.data()));
+        gitman::testing::fake_process_runner runner {};
+        push_local_responses(runner, value.status, u8"4168\n");
+        push_current_url(runner);
+        gitman::testing::fake_vcs_file_probe probe {};
+        register_working_directory(probe);
+        gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+        const gitman::repository_change_result result { provider.switch_to(switch_project(), value.target, {}) };
+
+        REQUIRE_FALSE(result.executed);
+        REQUIRE(result.rejected_by == value.rejection);
+        // 조회 7 + 현재 URL 1에서 끝난다. 대상 URL을 확인하는 원격 조회가 없다.
+        REQUIRE(runner.request_count() == 8);
+        REQUIRE(count_svn_commands(runner, u8"switch") == 0);
+    }
+}
+
+TEST_CASE("An SVN switch refuses a different repository", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    push_local_responses(runner, {}, u8"4168\n");
+    push_current_url(runner);
+    push_identity(runner, u8"https://svn.example.com/other");
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.switch_to(switch_project(), url_target(), {}) };
+
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.rejected_by == gitman::switch_rejection::repository_mismatch);
+    REQUIRE(runner.request_count() == 10);
+    REQUIRE(count_svn_commands(runner, u8"switch") == 0);
+    REQUIRE(has_diagnostic(result.diagnostics, gitman::diagnostic_code::switch_target_rejected));
+}
+
+TEST_CASE("An SVN switch stops when the target cannot be reached", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    push_local_responses(runner, {}, u8"4168\n");
+    push_current_url(runner);
+    runner.push_response({ gitman::process_completion::exited, 1, {}, u8"svn: E170013: URL의 저장소에 연결할 수 없습니다\n" });
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.switch_to(switch_project(), url_target(), {}) };
+
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.rejected_by == gitman::switch_rejection::target_unreachable);
+    REQUIRE(runner.request_count() == 9);
+    REQUIRE(count_svn_commands(runner, u8"switch") == 0);
+}
+
+TEST_CASE("A successful SVN switch re-reads the working copy", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    push_local_responses(runner, {}, u8"4168\n");
+    push_current_url(runner);
+    push_identity(runner);
+    runner.push_response({ gitman::process_completion::exited, 0, u8"Updating '.':\nAt revision 4180.\n", {} });
+    push_local_responses(runner, {}, u8"4180\n");
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.switch_to(switch_project(), url_target(), {}) };
+
+    REQUIRE(result.executed);
+    REQUIRE(result.succeeded);
+    REQUIRE(result.rejected_by == gitman::switch_rejection::none);
+    // 조회 7 + 현재 URL 1 + 대상 확인 2 + switch 1 + 사후 조회 7이다.
+    REQUIRE(runner.request_count() == 18);
+    REQUIRE(runner.request(10).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"switch", std::u8string { switch_target_url } });
+    REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
+}
+
+TEST_CASE("A failed SVN switch is reported with the state after it", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    push_local_responses(runner, {}, u8"4168\n");
+    push_current_url(runner);
+    push_identity(runner);
+    runner.push_response({ gitman::process_completion::exited, 1, {}, u8"svn: E155004: 작업 복사본이 잠겨 있습니다\n" });
+    push_local_responses(runner, u8"C       trunk/충돌.txt\n", u8"4168\n");
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.switch_to(switch_project(), url_target(), {}) };
+
+    // 실행 자체는 했으므로 거부가 아니다. 성공 여부와 조회 결과는 분리해 보고한다.
+    REQUIRE(result.executed);
+    REQUIRE_FALSE(result.succeeded);
+    REQUIRE(result.rejected_by == gitman::switch_rejection::none);
+    REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::conflicted);
+    REQUIRE(has_error_diagnostic(result));
+}
+
+TEST_CASE("SVN switches do nothing when the tool is missing", "[infrastructure][svn][provider]")
+{
+    gitman::testing::fake_process_runner runner {};
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { missing_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.switch_to(switch_project(), url_target(), {}) };
+
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.rejected_by == gitman::switch_rejection::tool_unavailable);
     REQUIRE(runner.request_count() == 0);
 }
 

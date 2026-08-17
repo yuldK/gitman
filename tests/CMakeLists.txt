@@ -19,6 +19,7 @@ add_executable(gitman_tests
     git_remote_query_tests.cpp
     git_repository_provider_tests.cpp
     git_status_parser_tests.cpp
+    git_switch_tests.cpp
     git_update_tests.cpp
     helpers/git_repository_fixture.cpp
     helpers/git_repository_fixture.h
@@ -37,6 +38,7 @@ add_executable(gitman_tests
     svn_integration_tests.cpp
     svn_output_parser_tests.cpp
     svn_repository_provider_tests.cpp
+    switch_validation_tests.cpp
     ui_theme_tests.cpp
     utf8_tests.cpp
     vcs_domain_tests.cpp

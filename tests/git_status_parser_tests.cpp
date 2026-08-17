@@ -399,3 +399,81 @@ TEST_CASE("Status output without branch headers is not trusted", "[infrastructur
     REQUIRE(empty.entries.empty());
     REQUIRE(gitman::summarize_git_working_tree(empty).state == gitman::working_tree_state::unknown);
 }
+
+TEST_CASE("Reference lines are split on tabs", "[infrastructure][git][parser]")
+{
+    const std::vector<std::u8string> lines {
+        u8"refs/heads/main\t0123456789abcdef0123456789abcdef01234567\trefs/remotes/origin/main\t*\t",
+        u8"refs/heads/작업\tfedcba9876543210fedcba9876543210fedcba98\t\t \t",
+        u8"refs/remotes/origin/HEAD\t0123456789abcdef0123456789abcdef01234567\t\t \trefs/remotes/origin/main",
+        u8"refs/remotes/origin/main\t0123456789abcdef0123456789abcdef01234567\t\t \t",
+    };
+    const std::vector<gitman::git_reference_entry> references { gitman::parse_git_reference_list(lines) };
+
+    REQUIRE(references.size() == 4);
+    REQUIRE(references[0].name == u8"refs/heads/main");
+    REQUIRE(references[0].object_id == u8"0123456789abcdef0123456789abcdef01234567");
+    REQUIRE(references[0].upstream == u8"refs/remotes/origin/main");
+    // `%(HEAD)`는 현재 branch에서만 `*`이고 나머지는 공백 한 칸이다.
+    REQUIRE(references[0].head);
+    REQUIRE_FALSE(references[0].symbolic());
+
+    REQUIRE(references[1].name == u8"refs/heads/작업");
+    REQUIRE(references[1].upstream.empty());
+    REQUIRE_FALSE(references[1].head);
+
+    // 심볼릭 항목은 이름이 아니라 값으로 판정한다.
+    REQUIRE(references[2].symbolic());
+    REQUIRE(references[2].symbolic_target == u8"refs/remotes/origin/main");
+    REQUIRE_FALSE(references[3].symbolic());
+}
+
+TEST_CASE("Reference lines that are not references are dropped", "[infrastructure][git][parser]")
+{
+    const std::vector<std::u8string> lines {
+        u8"쓰레기 줄",
+        u8"",
+        u8"HEAD\tabc\t\t*\t",
+        u8"refs/heads/only\tabc",
+    };
+    const std::vector<gitman::git_reference_entry> references { gitman::parse_git_reference_list(lines) };
+
+    // `refs/`로 시작하지 않는 줄은 버린다. 칸이 모자란 줄은 읽을 수 있는 값만 채운다.
+    REQUIRE(references.size() == 1);
+    REQUIRE(references[0].name == u8"refs/heads/only");
+    REQUIRE(references[0].object_id == u8"abc");
+    REQUIRE(references[0].upstream.empty());
+    REQUIRE_FALSE(references[0].head);
+    REQUIRE_FALSE(references[0].symbolic());
+}
+
+TEST_CASE("Worktree output yields only checked out branches", "[infrastructure][git][parser]")
+{
+    const std::vector<std::u8string> lines {
+        u8"worktree C:/작업 공간/repo",
+        u8"HEAD 0123456789abcdef0123456789abcdef01234567",
+        u8"branch refs/heads/main",
+        u8"",
+        u8"worktree C:/작업 공간/detached",
+        u8"HEAD 0123456789abcdef0123456789abcdef01234567",
+        u8"detached",
+        u8"",
+        u8"worktree C:/작업 공간/linked",
+        u8"HEAD fedcba9876543210fedcba9876543210fedcba98",
+        u8"branch refs/heads/feature/a",
+        u8"",
+        u8"worktree C:/작업 공간/bare",
+        u8"bare",
+    };
+    const std::vector<std::u8string> branches { gitman::parse_git_worktree_branches(lines) };
+
+    // detached worktree와 bare 항목에는 `branch` 줄이 없다.
+    REQUIRE(branches.size() == 2);
+    REQUIRE(branches[0] == u8"main");
+    // `/`가 든 branch 이름도 그대로 남는다.
+    REQUIRE(branches[1] == u8"feature/a");
+
+    REQUIRE(gitman::parse_git_worktree_branches({}).empty());
+    const std::vector<std::u8string> incomplete { u8"branch " };
+    REQUIRE(gitman::parse_git_worktree_branches(incomplete).empty());
+}

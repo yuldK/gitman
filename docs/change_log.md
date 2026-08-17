@@ -1,5 +1,35 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 4 `S4-V1` 최종 검증
+
+### 사용자 지시
+
+- `S4-D6-TEST`를 승인하고 무결함 `S4-D6-FIX` 생략을 확인한 뒤 다음 구간을 진행한다.
+
+### 반영 내용
+
+- `build/vs2022`를 삭제하고 preset으로 다시 configure한 뒤 전체 검증 matrix를 수행했다.
+- VS2022 Debug/Release와 VS2026 Debug의 전체 CTest가 각각 **393/393** 통과했다. VS2022 `/analyze`는 무경고로 통과했다.
+- aggregate `gitman_format_check`, `gitman_source_style`, `gitman_assets_checksum`, `git diff --check`와 `git diff --cached --check`가 통과했다.
+- 전체 suite를 `--repeat until-fail:3`으로 3회 반복해 flakiness가 없음을 확인했다.
+- Release install 결과가 `bin/gitman.exe` 단일 파일임을 확인했다. 크기 6,255,616 byte, PE 의존성은 Windows 시스템 DLL 9개뿐이며 VC runtime과 프로젝트 DLL이 없다. 설치본 renderer smoke test 4종이 모두 종료 코드 0이다.
+- **7개 저장소 동시 조회 stress를 3회 수행했다.** 실제 `git.exe`로 만든 동기·behind·ahead·dirty·detached·remote 없음·없는 경로 저장소를 4개 스레드에서 조회했고, 회차마다 조회 56회에서 기대값 불일치 0, switch 후보 합계 88로 동일했다. 프로세스 handle은 71로 유지되어 실행별 누수가 없다.
+- 계획 9장의 완료 조건 14개를 하나씩 대조해 검증 기록 7장에 결과를 남겼다.
+- CTest 수가 단계 3 종료 및 감사 수정 시점의 139개에서 **393개**로 254개 늘었다. 태그별로 `[git]` 136개, `[svn]` 49개, `[switch]` 38개, `[update]` 21개, `[integration]` 29개다.
+- 실제 `svn.exe` 실행 경로가 미검증으로 남는다는 사실과 실제 환경 연결 시 확인할 네 가지를 검증 기록 9장에 명시했다.
+- 결과를 `docs/verification/2026-08-17-stage-4.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006~REQ-014, REQ-017
+- NFR-005~NFR-009, NFR-011
+
+### 다음 작업 제한
+
+- 단계 4는 **사용자 최종 검수 대기** 상태다.
+- 승인 전에는 단계 5의 탐색 및 등록을 시작하지 않는다.
+- ADR-004의 범용 메시지 구조는 단계 6 구현 전 별도 설계 승인을 받아야 한다. 이 차단 조건은 그대로 유효하다.
+
 ## 2026-08-17 - 단계 4 `S4-D6-TEST` switch test 작성
 
 ### 사용자 지시

@@ -1,5 +1,30 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 6 `S6-D3` scheduler와 worker pool 구현 및 test
+
+### 사용자 지시
+
+- 단계 6 종료까지 자동 진행 (2026-08-17 위임).
+
+### 반영 내용
+
+- `application/task_scheduler.*`를 추가했다. worker별 MPSC inbox와 안정 hash lane 배정으로 같은 카드는 FIFO 직렬, 다른 카드는 병렬이다(ADR-005의 MPMC 없는 분배). 문서 load는 0번 lane, 전체 동시 상한은 worker 수다.
+- `application/operation_executor.h` 경계로 scheduler의 스레드 정책과 VCS 실행을 분리해 scheduler를 프로세스 없이 검증한다.
+- `infrastructure/vcs_operation_executor.*`를 추가했다. store 경유 문서 load, settings 기준 도구 조사 cache, hint·단계 5 표식 기반 provider 선택, refresh의 로컬→원격 2단 event이며 어떤 실패에서도 final event를 보낸다.
+- event 유실 방지: 가득 찬 logic inbox에는 사본으로 재시도하고 닫힌 inbox로 가는 event만 버린다(ADR-005 7.3).
+- test 11개: 단일 worker의 접수 순서와 peak 동시 1, **다른 lane의 실제 병렬(peak 2)**, event 도달, shutdown 거부·멱등, 도구 없는 조회의 프로세스 0개, 표식 기반 provider 선택, refresh 2단 event, cache.
+- 전체 CTest가 490에서 **501**로 늘었고 세 구성 각각 501/501, Debug 3회 반복, `/analyze` 무경고, format/style 통과. C4702와 formatter 위반을 같은 구간에서 해소했다.
+- 결과를 `docs/verification/2026-08-17-stage-6-d3.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-006, REQ-009~REQ-015
+- NFR-005~NFR-009
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S6-D4`부터 계속 자동 진행한다.
+
 ## 2026-08-17 - 단계 6 `S6-D2` 표시·상태 모델과 logic 구현 및 test
 
 ### 사용자 지시

@@ -198,6 +198,11 @@ add_library(gitman_app STATIC
     application/app_messages.h
     application/logic_controller.cpp
     application/logic_controller.h
+    application/operation_executor.h
+    application/task_scheduler.cpp
+    application/task_scheduler.h
+    infrastructure/vcs_operation_executor.cpp
+    infrastructure/vcs_operation_executor.h
     presentation/layout_model.cpp
     presentation/layout_model.h
     presentation/status_presentation.cpp
@@ -206,7 +211,9 @@ add_library(gitman_app STATIC
 target_include_directories(gitman_app PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_app
     PUBLIC
+        gitman_discovery
         gitman_domain
+        gitman_messaging
         gitman_process
         gitman_vcs
         gitman_workspace)

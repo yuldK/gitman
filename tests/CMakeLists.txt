@@ -51,11 +51,13 @@ add_executable(gitman_tests
     svn_output_parser_tests.cpp
     svn_repository_provider_tests.cpp
     switch_validation_tests.cpp
+    task_scheduler_tests.cpp
     ui_theme_tests.cpp
     utf8_tests.cpp
     vcs_domain_tests.cpp
     vcs_error_classifier_tests.cpp
     vcs_execution_policy_tests.cpp
+    vcs_operation_executor_tests.cpp
     vcs_tool_discovery_tests.cpp
     vcs_version_tests.cpp
     win32_process_runner_tests.cpp

@@ -9,6 +9,7 @@
 #include "presentation/ui/ui_events.h"
 
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <shobjidl.h>
 #include <windowsx.h>
 
@@ -99,7 +100,10 @@ namespace gitman::win32 {
                     return false;
                 }
 
-                window_ = CreateWindowExW(WS_EX_APPWINDOW, window_class_name, window_title, initial_window_style, CW_USEDEFAULT, CW_USEDEFAULT, 960, 640, nullptr, nullptr, instance_, this);
+                window_ = CreateWindowExW(
+                    WS_EX_APPWINDOW | WS_EX_ACCEPTFILES, window_class_name, window_title, initial_window_style, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 720, nullptr, nullptr, instance_, this
+                );
+
                 if (window_ == nullptr)
                 {
                     error = u8"Failed to create the Win32 window.";
@@ -177,6 +181,9 @@ namespace gitman::win32 {
                     return 0;
                 case ui_command_request_message:
                     execute_ui_command(static_cast<ui::ui_command>(word_parameter));
+                    return 0;
+                case WM_DROPFILES:
+                    open_dropped_workspace_document(reinterpret_cast<HDROP>(word_parameter));
                     return 0;
                 case WM_TIMER:
                     if (word_parameter == tooltip_timer_id)
@@ -499,6 +506,51 @@ namespace gitman::win32 {
                     HOVER_DEFAULT,
                 };
                 tracking_client_mouse_ = TrackMouseEvent(&tracking) != FALSE;
+            }
+
+            void open_dropped_workspace_document(const HDROP dropped_files) noexcept
+            {
+                struct drop_finish_guard
+                {
+                    HDROP value { nullptr };
+
+                    ~drop_finish_guard()
+                    {
+                        DragFinish(value);
+                    }
+                };
+
+                const drop_finish_guard finish { dropped_files };
+                if (runtime_ == nullptr)
+                    return;
+
+                try
+                {
+                    const UINT file_count { DragQueryFileW(dropped_files, 0xFFFFFFFFU, nullptr, 0) };
+                    for (UINT index = 0; index < file_count; ++index)
+                    {
+                        const UINT path_length { DragQueryFileW(dropped_files, index, nullptr, 0) };
+                        if (path_length == 0)
+                            continue;
+
+                        std::wstring path(static_cast<std::size_t>(path_length) + 1, L'\0');
+                        if (DragQueryFileW(dropped_files, index, path.data(), path_length + 1) == 0)
+                            continue;
+                        path.resize(path_length);
+
+                        auto converted { utf16_to_utf8(path) };
+                        if (converted.value.has_value() == false || has_workspace_document_extension(*converted.value) == false)
+                            continue;
+
+                        runtime_->post_logic(logic_message { open_document_intent { std::move(*converted.value) } });
+                        return;
+                    }
+                }
+                catch (...)
+                {
+                    // WndProc 경계를 예외가 넘어가지 않게 한다. 메모리가 부족하면 drop을
+                    // 무시하고 현재 문서를 그대로 유지한다.
+                }
             }
 
             void execute_ui_command(const ui::ui_command command)

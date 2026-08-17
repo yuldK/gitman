@@ -91,7 +91,8 @@ TEST_CASE("A reorder intent persists the new order into the document file", "[ru
                 if (value == '\\')
                     value = '/';
             json += "{\"id\":\"" + id + "\",\"path\":\"" + path_utf8 + "\"}";
-        } };
+        }
+        };
         append_project("alpha", first_path);
         json += ',';
         append_project("beta", second_path);
@@ -110,7 +111,8 @@ TEST_CASE("A reorder intent persists the new order into the document file", "[ru
     runtime.post_logic(gitman::logic_message { gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, true } });
     const auto reordered { [](const gitman::view_snapshot& value) {
         return value.sort == gitman::card_sort_key::custom && value.cards.size() == 2u && value.cards.front().id.value == u8"beta" && value.cards.back().id.value == u8"alpha";
-    } };
+    }
+    };
     REQUIRE(wait_for_view(runtime, std::chrono::milliseconds { 15000 }, reordered) != nullptr);
 
     // 실제 store가 문서를 새 순서로 다시 쓸 때까지 파일을 읽는다.

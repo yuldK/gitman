@@ -90,6 +90,13 @@ namespace gitman {
         return text;
     }
 
+    std::u8string_view revision_display_text(const repository_kind kind, const std::u8string_view revision) noexcept
+    {
+        if (kind == repository_kind::git && revision.size() > displayed_git_revision_length)
+            return revision.substr(0, displayed_git_revision_length);
+        return revision;
+    }
+
     std::u8string_view card_view_state_name(const card_view_state state) noexcept
     {
         switch (state)

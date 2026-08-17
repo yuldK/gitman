@@ -88,29 +88,29 @@ namespace gitman::ui {
             return;
 
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
-        const SkFont font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+        const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
         const std::u8string& text { hovered->tooltip() };
         const float text_width { font.measureText(text.data(), text.size(), SkTextEncoding::kUTF8) };
-        const float padding { 6.0f * scale };
+        const float padding { 5.0f * scale };
         const float box_width { text_width + padding * 2.0f };
-        const float box_height { 24.0f * scale };
+        const float box_height { 22.0f * scale };
         const rect_f window { root_->bounds() };
         const rect_f anchor { hovered->bounds() };
 
         // 기본은 대상 아래이고, 창을 벗어나면 위로 뒤집고 좌우는 창 안으로 민다.
         float box_x { anchor.x };
-        float box_y { anchor.y + anchor.height + 4.0f * scale };
+        float box_y { anchor.y + anchor.height + 3.0f * scale };
         if (box_y + box_height > window.y + window.height)
-            box_y = anchor.y - box_height - 4.0f * scale;
+            box_y = anchor.y - box_height - 3.0f * scale;
         box_x = std::clamp(box_x, window.x, std::max(window.x, window.x + window.width - box_width));
 
         const SkRect box { SkRect::MakeXYWH(box_x, box_y, box_width, box_height) };
         const SkPaint background { solid_paint(context.palette.tooltip_background) };
-        context.canvas.drawRRect(SkRRect::MakeRectXY(box, 3.0f * scale, 3.0f * scale), background);
+        context.canvas.drawRRect(SkRRect::MakeRectXY(box, 2.0f * scale, 2.0f * scale), background);
         SkPaint border { solid_paint(context.palette.tooltip_border) };
         border.setStyle(SkPaint::kStroke_Style);
         border.setStrokeWidth(1.0f * scale);
-        context.canvas.drawRRect(SkRRect::MakeRectXY(box, 3.0f * scale, 3.0f * scale), border);
+        context.canvas.drawRRect(SkRRect::MakeRectXY(box, 2.0f * scale, 2.0f * scale), border);
         const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
         draw_text(context.canvas, text, box_x + padding, box_y + centered_text_baseline(font, box_height), font, foreground);
     }
@@ -125,23 +125,23 @@ namespace gitman::ui {
             const rect_f target_bounds { target->bounds() };
             SkPaint highlight { solid_paint(context.palette.positive_accent) };
             highlight.setStyle(SkPaint::kStroke_Style);
-            highlight.setStrokeWidth(2.0f * scale);
-            context.canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(target_bounds.x, target_bounds.y, target_bounds.width, target_bounds.height), 4.0f * scale, 4.0f * scale), highlight);
+            highlight.setStrokeWidth(1.0f * scale);
+            context.canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(target_bounds.x, target_bounds.y, target_bounds.width, target_bounds.height), 3.0f * scale, 3.0f * scale), highlight);
         }
 
         // 포인터를 따라다니는 ghost다. 원본 element의 축소 표시로 충분하다.
-        const SkRect ghost { SkRect::MakeXYWH(drag.x + 12.0f * scale, drag.y + 12.0f * scale, 120.0f * scale, 28.0f * scale) };
+        const SkRect ghost { SkRect::MakeXYWH(drag.x + 10.0f * scale, drag.y + 10.0f * scale, 112.0f * scale, 24.0f * scale) };
         SkPaint fill { solid_paint(context.palette.surface_background) };
         fill.setAlphaf(0.85f);
-        context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 4.0f * scale, 4.0f * scale), fill);
+        context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), fill);
         SkPaint border { solid_paint(context.palette.positive_accent) };
         border.setStyle(SkPaint::kStroke_Style);
-        border.setStrokeWidth(1.5f * scale);
-        context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 4.0f * scale, 4.0f * scale), border);
+        border.setStrokeWidth(1.0f * scale);
+        context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), border);
 
-        const SkFont font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+        const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
         const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
         const std::u8string& ghost_text { drag.payload.label.empty() ? drag.payload.dragged_project.value : drag.payload.label };
-        draw_text(context.canvas, ghost_text, ghost.left() + 8.0f * scale, ghost.top() + centered_text_baseline(font, ghost.height()), font, foreground);
+        draw_text(context.canvas, ghost_text, ghost.left() + 7.0f * scale, ghost.top() + centered_text_baseline(font, ghost.height()), font, foreground);
     }
 } // namespace gitman::ui

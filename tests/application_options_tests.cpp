@@ -118,3 +118,11 @@ TEST_CASE("Invalid workspace launch extensions are rejected", "[options][workspa
         REQUIRE_FALSE(gitman::parse_application_options(arguments).options.has_value());
     }
 }
+
+TEST_CASE("Workspace extension matching is shared by launch and file drop", "[options][workspace]")
+{
+    REQUIRE(gitman::has_workspace_document_extension(u8"E:/work/project.version-list"));
+    REQUIRE(gitman::has_workspace_document_extension(u8"E:/work/project.VERSION-LIST"));
+    REQUIRE_FALSE(gitman::has_workspace_document_extension(u8"E:/work/project.version-list.bak"));
+    REQUIRE_FALSE(gitman::has_workspace_document_extension(u8"version-list"));
+}

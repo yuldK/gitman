@@ -57,6 +57,17 @@ TEST_CASE("Working tree summaries collapse to readable Korean text", "[presentat
     REQUIRE(gitman::working_tree_summary_text(summary) == u8"변경 2 · 미추적 5 · 충돌 1 · 진행 중 작업 있음 · detached HEAD");
 }
 
+TEST_CASE("Git revisions are shortened only for display", "[presentation][app]")
+{
+    constexpr std::u8string_view sha256 { u8"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" };
+    REQUIRE(gitman::revision_display_text(gitman::repository_kind::git, sha256) == u8"0123456");
+
+    // 표시 계층은 값의 형식을 검증하지 않고 길이만 줄인다.
+    REQUIRE(gitman::revision_display_text(gitman::repository_kind::git, u8"not-a-hash") == u8"not-a-h");
+    REQUIRE(gitman::revision_display_text(gitman::repository_kind::git, u8"abc123") == u8"abc123");
+    REQUIRE(gitman::revision_display_text(gitman::repository_kind::subversion, u8"123456789") == u8"123456789");
+}
+
 TEST_CASE("Card view state names stay stable", "[presentation][app]")
 {
     REQUIRE(u8_equal(gitman::card_view_state_name(gitman::card_view_state::loading), u8"loading"));

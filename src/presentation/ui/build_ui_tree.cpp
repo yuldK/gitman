@@ -62,7 +62,7 @@ namespace gitman::ui {
 
                 label_config empty_config {};
                 empty_config.text = std::u8string { empty_state_text(view.empty_state) };
-                empty_config.font_size = 15.0f;
+                empty_config.font_size = 13.0f;
                 auto empty_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::empty_state }, std::move(empty_config)) };
                 empty_label->set_visible(view.empty_state != view_empty_state::none);
                 empty_label_ = empty_label.get();
@@ -83,10 +83,11 @@ namespace gitman::ui {
                 const float list_top { caption_height + toolbar_height };
                 caption_->arrange({ { 0.0f, 0.0f, context.slot.width, caption_height }, scale });
                 toolbar_->arrange({ { 0.0f, caption_height, context.slot.width, toolbar_height }, scale });
-                notice_->arrange({ { layout_margin * scale, list_top, context.slot.width - layout_margin * 2.0f * scale, 22.0f * scale }, scale });
+                notice_->arrange({ { layout_margin * scale, list_top, context.slot.width - layout_margin * 2.0f * scale, 20.0f * scale }, scale });
                 card_list_->arrange({ { 0.0f, list_top, context.slot.width, context.slot.height - list_top }, scale, context.scroll_offset });
-                const float empty_top { caption_height + (context.slot.height - caption_height) / 2.0f - 12.0f * scale };
-                const rect_f empty_slot { layout_margin * scale * 2.0f, empty_top, context.slot.width - layout_margin * 4.0f * scale, 24.0f * scale };
+                const float empty_height { 22.0f * scale };
+                const float empty_top { list_top + (context.slot.height - list_top - empty_height) / 2.0f };
+                const rect_f empty_slot { layout_margin * scale * 2.0f, empty_top, context.slot.width - layout_margin * 4.0f * scale, empty_height };
                 empty_label_->arrange({ empty_slot, scale });
             }
 

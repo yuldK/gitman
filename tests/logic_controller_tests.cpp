@@ -392,3 +392,21 @@ TEST_CASE("Saves are serialized, coalesced, and report failures as a notice", "[
     REQUIRE(controller.make_view_snapshot()->notices.empty());
 }
 
+TEST_CASE("Card snapshots retain full Git revisions for display-time abbreviation", "[logic][app]")
+{
+    constexpr std::u8string_view full_revision { u8"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" };
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    controller.handle(make_loaded_document({ make_project(u8"alpha") }));
+
+    gitman::query_completed_event result { make_local_result(u8"alpha", 1u) };
+    result.result.snapshot.local_revision = full_revision;
+    controller.handle(std::move(result));
+
+    const auto view { controller.make_view_snapshot() };
+    const gitman::card_view_model* const card { find_card(*view, u8"alpha") };
+    REQUIRE(card != nullptr);
+    REQUIRE(card->revision == full_revision);
+    REQUIRE(gitman::revision_display_text(card->kind, card->revision) == u8"0123456");
+}

@@ -5,6 +5,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace gitman {
     struct application_options
@@ -21,5 +22,7 @@ namespace gitman {
         std::u8string error {};
     };
 
+    // 명령줄, 파일 선택기, shell drag & drop이 같은 확장자 규칙을 쓴다.
+    [[nodiscard]] bool has_workspace_document_extension(std::u8string_view path) noexcept;
     [[nodiscard]] application_options_result parse_application_options(std::span<const std::u8string> arguments);
 } // namespace gitman

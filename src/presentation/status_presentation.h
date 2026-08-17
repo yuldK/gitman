@@ -2,6 +2,7 @@
 
 #include "domain/repository_snapshot.h"
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 
@@ -36,6 +37,12 @@ namespace gitman {
 
     // 카드에 표시할 작업 트리 요약이다. 깨끗하면 빈 문자열이다.
     [[nodiscard]] std::u8string working_tree_summary_text(const working_tree_summary& summary);
+
+    inline constexpr std::size_t displayed_git_revision_length { 7 };
+
+    // 저장된 revision은 그대로 두고 카드에 그릴 때만 Git object id를 줄인다. 해시
+    // 형식이나 길이를 검증하지 않으며 SVN의 숫자 revision은 그대로 표시한다.
+    [[nodiscard]] std::u8string_view revision_display_text(repository_kind kind, std::u8string_view revision) noexcept;
 
     [[nodiscard]] std::u8string_view card_view_state_name(card_view_state state) noexcept;
 } // namespace gitman

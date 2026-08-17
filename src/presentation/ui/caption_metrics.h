@@ -6,14 +6,14 @@ namespace gitman::ui {
     // 수 있다.
     struct caption_ui_metrics
     {
-        int height { 40 };
-        int button_width { 46 };
-        int application_icon_slot_width { 46 };
-        int title_left_padding { 16 };
-        int title_icon_gap { 10 };
-        int title_font_size { 15 };
-        int application_icon_size { 18 };
-        int button_icon_size { 15 };
+        int height { 36 };
+        int button_width { 42 };
+        int application_icon_slot_width { 40 };
+        int title_left_padding { 14 };
+        int title_icon_gap { 6 };
+        int title_font_size { 14 };
+        int application_icon_size { 16 };
+        int button_icon_size { 14 };
     };
 
     inline constexpr caption_ui_metrics default_caption_ui_metrics {};

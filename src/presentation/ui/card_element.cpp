@@ -117,32 +117,32 @@ namespace gitman::ui {
         SkPaint card_paint { solid_paint(context.palette.surface_background) };
         if (card_.enabled == false)
             card_paint.setAlphaf(0.5f);
-        context.canvas.drawRRect(SkRRect::MakeRectXY(body, 6.0f * scale, 6.0f * scale), card_paint);
+        context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), card_paint);
         if (card_.selected)
         {
             SkPaint border { solid_paint(context.palette.positive_accent) };
             border.setStyle(SkPaint::kStroke_Style);
-            border.setStrokeWidth(2.0f * scale);
-            context.canvas.drawRRect(SkRRect::MakeRectXY(body, 6.0f * scale, 6.0f * scale), border);
+            border.setStrokeWidth(1.0f * scale);
+            context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), border);
         }
 
-        const SkFont title_font { sk_ref_sp(context.ui_typeface), 15.0f * scale };
-        const SkFont body_font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+        const SkFont title_font { sk_ref_sp(context.ui_typeface), 14.0f * scale };
+        const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
         const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
         SkPaint dim_foreground { solid_paint(context.palette.primary_foreground) };
         dim_foreground.setAlphaf(0.6f);
 
-        const float padding { 10.0f * scale };
-        const float text_x { box.x + 32.0f * scale };
-        const float line_1 { box.y + padding + 12.0f * scale };
-        const float line_2 { line_1 + 18.0f * scale };
-        const float line_3 { line_2 + 16.0f * scale };
+        const float padding { 8.0f * scale };
+        const float text_x { box.x + 28.0f * scale };
+        const float line_1 { box.y + padding + 11.0f * scale };
+        const float line_2 { line_1 + 16.0f * scale };
+        const float line_3 { line_2 + 14.0f * scale };
 
         // 상태 아이콘: 진행 중이면 sync, 아니면 상태 글리프다.
         if (context.codicon_typeface != nullptr)
         {
-            const rect_f icon_slot { box.x + padding, box.y + padding, 18.0f * scale, 18.0f * scale };
-            const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 16.0f * scale };
+            const rect_f icon_slot { box.x + padding, box.y + padding, 16.0f * scale, 16.0f * scale };
+            const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 14.0f * scale };
             const SkPaint icon_paint { solid_paint(state_accent(context.palette, card_.state)) };
             const char32_t glyph { card_.busy ? codicons::icon_sync : codicon_for_name(card_.status.codicon) };
             draw_centered_glyph(context.canvas, glyph, icon_slot, icon_font, icon_paint);
@@ -159,7 +159,7 @@ namespace gitman::ui {
         {
             if (detail.empty() == false)
                 detail.append(u8" @ ");
-            detail.append(card_.revision);
+            detail.append(revision_display_text(card_.kind, card_.revision));
         }
         if (card_.status.tooltip.empty() == false)
         {

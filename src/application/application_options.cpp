@@ -13,18 +13,19 @@ namespace gitman {
             return value;
         }
 
-        bool has_workspace_document_extension(const std::u8string_view path) noexcept
-        {
-            if (path.size() < workspace_document_extension.size())
-                return false;
-
-            const std::size_t extension_offset { path.size() - workspace_document_extension.size() };
-            for (std::size_t index = 0; index < workspace_document_extension.size(); ++index)
-                if (ascii_lower(path[extension_offset + index]) != workspace_document_extension[index])
-                    return false;
-            return true;
-        }
     } // namespace
+
+    bool has_workspace_document_extension(const std::u8string_view path) noexcept
+    {
+        if (path.size() < workspace_document_extension.size())
+            return false;
+
+        const std::size_t extension_offset { path.size() - workspace_document_extension.size() };
+        for (std::size_t index = 0; index < workspace_document_extension.size(); ++index)
+            if (ascii_lower(path[extension_offset + index]) != workspace_document_extension[index])
+                return false;
+        return true;
+    }
 
     application_options_result parse_application_options(const std::span<const std::u8string> arguments)
     {

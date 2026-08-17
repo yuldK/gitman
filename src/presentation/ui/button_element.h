@@ -16,8 +16,8 @@ namespace gitman::ui {
         char32_t glyph { 0 };
         // 0이 아니면 최대화된 창에서 이 글리프를 대신 그린다 (복원 아이콘).
         char32_t maximized_glyph { 0 };
-        float icon_size { 16.0f };
-        float corner_radius { 4.0f };
+        float icon_size { 14.0f };
+        float corner_radius { 2.0f };
         button_visual_role role { button_visual_role::toolbar };
     };
 

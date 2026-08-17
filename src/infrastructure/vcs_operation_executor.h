@@ -1,7 +1,9 @@
 #pragma once
 
+#include "application/directory_enumerator.h"
 #include "application/operation_executor.h"
 #include "application/process_runner.h"
+#include "application/project_path_resolver.h"
 #include "application/project_store.h"
 #include "application/vcs_file_probe.h"
 #include "domain/vcs_tool.h"
@@ -19,6 +21,10 @@ namespace gitman {
     {
     public:
         vcs_operation_executor(project_store& store, process_runner& runner, const vcs_file_probe& probe, vcs_tool_environment environment) noexcept;
+        // `generate_document`까지 지원하는 조립이다. 열거와 경로 해석 계약이 없는
+        // 기존 조립(테스트 포함)은 위 생성자를 그대로 쓴다.
+        vcs_operation_executor(project_store& store, process_runner& runner, const vcs_file_probe& probe, const directory_enumerator& enumerator, project_path_resolver& resolver,
+            vcs_tool_environment environment) noexcept;
 
         void execute(const operation_request& request, const std::function<void(logic_message)>& emit) noexcept override;
 
@@ -26,10 +32,13 @@ namespace gitman {
         [[nodiscard]] vcs_tool_set tools_for(const workspace_settings& settings, const process_cancellation_token& token);
         [[nodiscard]] repository_kind decide_kind(const project_definition& project) const;
         void execute_query(const operation_request& request, const std::function<void(logic_message)>& emit);
+        void execute_generate_document(const operation_request& request, const std::function<void(logic_message)>& emit);
 
         project_store* store_ { nullptr };
         process_runner* runner_ { nullptr };
         const vcs_file_probe* probe_ { nullptr };
+        const directory_enumerator* enumerator_ { nullptr };
+        project_path_resolver* resolver_ { nullptr };
         vcs_tool_environment environment_ {};
 
         // settings가 같으면 도구 재조사를 하지 않는다. 매 조회마다 `--version`을

@@ -14,7 +14,7 @@
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button)
+    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy)
         : ui_element { ui_element_id { ui_element_kind::toolbar } }
     {
         auto document_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::toolbar_document_path }, label_config { .text = std::move(document_text) }) };
@@ -33,6 +33,13 @@ namespace gitman::ui {
         open_document->set_visible(show_open_button);
         open_document_ = open_document.get();
         add_child(std::move(open_document));
+
+        auto generate_document { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_generate_document }, button_config { .glyph = codicons::icon_new_file }) };
+        generate_document->set_tooltip(generation_busy ? std::u8string { u8".version-list 생성 중" } : std::u8string { u8"하위 폴더 저장소로 .version-list 만들기" });
+        generate_document->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_generate_document_dialog } }; });
+        generate_document->set_enabled(generation_busy == false);
+        generate_document_ = generate_document.get();
+        add_child(std::move(generate_document));
     }
 
     void toolbar_element::arrange(const arrange_context& context)
@@ -45,9 +52,12 @@ namespace gitman::ui {
         const float button_y { context.slot.y + (context.slot.height - button) / 2.0f };
         const float refresh_x { context.slot.x + context.slot.width - margin - button };
         refresh_all_->arrange({ { refresh_x, button_y, button, button }, scale });
-        open_document_->arrange({ { refresh_x - margin - button, button_y, button, button }, scale });
+        const float open_x { refresh_x - margin - button };
+        open_document_->arrange({ { open_x, button_y, button, button }, scale });
+        const float generate_x { (open_document_->visible() ? open_x : refresh_x) - margin - button };
+        generate_document_->arrange({ { generate_x, button_y, button, button }, scale });
 
-        const float label_width { refresh_x - margin * 2.0f - (open_document_->visible() ? margin + button : 0.0f) };
+        const float label_width { generate_x - margin * 2.0f };
         document_label_->arrange({ { context.slot.x + margin, context.slot.y, label_width, context.slot.height }, scale });
     }
 

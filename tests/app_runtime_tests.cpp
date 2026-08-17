@@ -85,13 +85,12 @@ TEST_CASE("A reorder intent persists the new order into the document file", "[ru
     {
         std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary };
         std::string json { "{\"schema_version\":1,\"projects\":[" };
-        const auto append_project { [&json](const std::string& id, const std::u8string& path) {
+        const auto append_project = [&json](const std::string& id, const std::u8string& path) {
             std::string path_utf8 { path.begin(), path.end() };
             for (char& value : path_utf8)
                 if (value == '\\')
                     value = '/';
             json += "{\"id\":\"" + id + "\",\"path\":\"" + path_utf8 + "\"}";
-        }
         };
         append_project("alpha", first_path);
         json += ',';
@@ -109,9 +108,8 @@ TEST_CASE("A reorder intent persists the new order into the document file", "[ru
 
     // alpha를 beta 뒤로 옮긴다. 화면 순서가 바뀌고 문서 정렬이 custom이 된다.
     runtime.post_logic(gitman::logic_message { gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, true } });
-    const auto reordered { [](const gitman::view_snapshot& value) {
+    const auto reordered = [](const gitman::view_snapshot& value) {
         return value.sort == gitman::card_sort_key::custom && value.cards.size() == 2u && value.cards.front().id.value == u8"beta" && value.cards.back().id.value == u8"alpha";
-    }
     };
     REQUIRE(wait_for_view(runtime, std::chrono::milliseconds { 15000 }, reordered) != nullptr);
 

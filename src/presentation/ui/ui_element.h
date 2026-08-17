@@ -43,6 +43,7 @@ namespace gitman::ui {
         toolbar_document_path,
         toolbar_refresh_all,
         toolbar_open_document,
+        toolbar_generate_document,
         notice,
         card_list,
         card_body,

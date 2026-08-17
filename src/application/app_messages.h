@@ -20,6 +20,14 @@ namespace gitman {
         std::u8string path {};
     };
 
+    // 지정한 폴더의 깊이 1 하위 디렉터리에서 저장소를 찾아 새 `.version-list` 문서를
+    // 만들라는 의도다. UI thread의 생성 dialog가 만든다.
+    struct generate_document_intent
+    {
+        std::u8string scan_root {};
+        std::u8string document_path {};
+    };
+
     struct refresh_all_intent
     {};
 
@@ -74,6 +82,9 @@ namespace gitman {
     enum class operation_kind
     {
         load_document,
+        // 깊이 1 저장소 탐색 결과로 새 `.version-list` 문서를 만든다. load·save와
+        // 같은 lane에서 직렬화된다.
+        generate_document,
         // 순서 변경 등으로 바뀐 문서를 원자적으로 다시 쓴다. load와 같은 lane에서
         // 직렬화된다.
         save_document,
@@ -89,6 +100,8 @@ namespace gitman {
         std::uint64_t generation { 0 };
         operation_kind kind { operation_kind::query_local };
         std::u8string document_path {};
+        // generate_document 전용: 저장소를 찾을 스캔 루트다.
+        std::u8string scan_root {};
         project_definition project {};
         // worker가 도구 발견에 사용할 문서 수준 설정의 사본이다.
         workspace_settings settings {};
@@ -104,6 +117,16 @@ namespace gitman {
         std::uint64_t operation_id { 0 };
         std::optional<workspace_document> document {};
         workspace_revision_token revision {};
+        std::vector<diagnostic> diagnostics {};
+    };
+
+    struct document_generated_event
+    {
+        std::uint64_t operation_id { 0 };
+        std::u8string document_path {};
+        // 성공 시에만 값이 있다. 생성된 문서와 다음 저장의 기준 revision이다.
+        std::optional<workspace_document> document {};
+        std::optional<workspace_revision_token> revision {};
         std::vector<diagnostic> diagnostics {};
     };
 
@@ -132,8 +155,8 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent, reorder_card_intent, window_metrics_intent,
-        scroll_intent, close_intent, document_loaded_event, query_completed_event, document_saved_event, shutdown_message>;
+    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
+        reorder_card_intent, window_metrics_intent, scroll_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

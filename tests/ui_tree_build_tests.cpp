@@ -76,6 +76,25 @@ TEST_CASE("The open document button appears only without a document", "[ui][tree
     REQUIRE(tree->find({ gitman::ui::ui_element_kind::empty_state })->visible());
 }
 
+TEST_CASE("The generate document button stays visible and follows the busy state", "[ui][tree]")
+{
+    // 문서가 열려 있어도 새 문서 생성은 가능해야 하므로 버튼이 항상 보인다.
+    const auto tree { gitman::ui::build_ui_tree(make_view(2)) };
+    const auto* const button { tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document }) };
+    REQUIRE(button != nullptr);
+    REQUIRE(button->visible());
+    REQUIRE(button->enabled());
+    REQUIRE(button->action(gitman::ui::ui_trigger::left_click) != nullptr);
+
+    // 생성이 진행 중이면 비활성이고 사유 tooltip을 가진다.
+    gitman::view_snapshot busy_view { make_view(2) };
+    busy_view.document_generating = true;
+    const auto busy_tree { gitman::ui::build_ui_tree(busy_view) };
+    const auto* const busy_button { busy_tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document }) };
+    REQUIRE(busy_button->enabled() == false);
+    REQUIRE(busy_button->tooltip().empty() == false);
+}
+
 TEST_CASE("Only cards near the viewport become elements", "[ui][tree]")
 {
     const auto tree { gitman::ui::build_ui_tree(make_view(300)) };

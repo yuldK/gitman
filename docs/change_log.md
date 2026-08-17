@@ -1,5 +1,57 @@
 # 변경 이력
 
+## 2026-08-18 - `.version-list` 생성 기능 (깊이 1 저장소 탐색 → 새 문서)
+
+### 사용자 지시
+
+- 특정 경로의 깊이 1 하위 폴더에서 저장소를 확인해 `.version-list`를 만드는 기능.
+  생성 이름 입력과 경로 지정이 있는 팝업 UI 제공 (2026-08-18).
+
+### 반영 내용
+
+- **toolbar에 생성 버튼(`new-file` codicon)을 추가했다.** 클릭하면
+  `ui_command::show_generate_document_dialog`로 UI thread가 모달 팝업을 연다.
+  팝업은 이름 텍스트 박스(표준 EDIT, IME 지원), 폴더 경로와 `IFileOpenDialog`
+  폴더 선택(`FOS_PICKFOLDERS`), 생성·취소 버튼을 담고 앱 dark theme 색으로
+  owner-draw한다. 폴더를 고르면 빈 이름을 폴더 이름으로 미리 채운다. Enter가
+  생성, Esc가 취소다.
+- **생성은 기존 탐색·등록 계층의 조합이다.** 새
+  `version_list_generation_service`가 (1) 출력 경로 부재를 `project_store::load`의
+  missing revision으로 확인하고 (2) `discovery_service::discover_children`으로
+  깊이 1 후보를 모은 뒤 (3) `project_registration_service::register_candidates`로
+  검증·유일 id 부여·원자적 저장까지 위임한다. 확인과 저장 사이에 파일이 생겨도
+  missing revision의 낙관적 잠금이 충돌로 거른다.
+- 메시지 흐름: dialog가 `generate_document_intent { scan_root, document_path }`를
+  logic에 보내고, `operation_kind::generate_document`가 load·save와 같은 0번
+  lane에서 실행되어 `document_generated_event`로 보고한다. 성공하면 생성된
+  문서를 곧바로 열고(카드 로컬 조회 시작), 실패는 현재 문서를 유지한 채 진단을
+  notice로 알린다. 진행 중에는 toolbar 생성 버튼이 비활성이고
+  (`view_snapshot::document_generating`), 늦은 결과는 operation id로 버린다.
+- 정책: 기존 문서는 덮어쓰지 않는다(`generation_output_exists`). 하위에서
+  저장소를 못 찾으면 빈 문서를 만들지 않고 경고한다
+  (`generation_no_repositories`, 스캔 루트 자체가 저장소면 상위 폴더 안내).
+- 부수 수정: executor의 최상위 예외 경로가 `load_document`·`generate_document`
+  실패에도 종류에 맞는 final event를 보내도록 분기를 추가했다 (기존에는 load
+  실패가 `query_completed_event`로 잘못 나갔다). 문서 채택 시 이전 문서의 저장
+  대기 상태(`pending_save_operation_id_`)를 함께 정리한다.
+- test 12개 추가: 생성 service 단위(잘못된 요청, 덮어쓰기 거부, 후보 수집·정렬,
+  저장소 없음, 취소)와 실제 디스크 round-trip 통합, logic의 위임·중복 차단·채택·
+  실패 notice·늦은 결과 폐기, toolbar 버튼 표시·비활성, 클릭 → ui_command 변환.
+  전체 CTest **544/544** 통과, clang-format·source style 검사 통과. main에 남아
+  있던 format 위반(`win32_application.cpp`, test 2개 파일)도 formatter 적용으로
+  함께 해소했다.
+
+### 영향 요구사항
+
+- REQ-004, REQ-005, NFR-011~NFR-014
+
+### 다음 작업 제한
+
+- 팝업은 Win32 자체 창이다. 앱 내부 overlay로 옮기려면 텍스트 입력 element와
+  `WM_CHAR`/IME 경로가 먼저 필요하다 (ui-element-design 4장의 후속 항목).
+- 탐색 후보를 미리 보여 주고 선택 등록하는 dialog(단계 7)는 별도 작업이다. 이
+  기능은 선택 없이 발견된 저장소 전부를 문서에 넣는다.
+
 ## 2026-08-18 - 카드 drag & drop 순서 변경 (drag & drop 첫 소비자)
 
 ### 사용자 지시

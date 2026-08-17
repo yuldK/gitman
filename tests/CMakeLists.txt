@@ -63,6 +63,7 @@ add_executable(gitman_tests
     vcs_operation_executor_tests.cpp
     vcs_tool_discovery_tests.cpp
     vcs_version_tests.cpp
+    version_list_generation_tests.cpp
     win32_process_runner_tests.cpp
     win32_text_transcoder_tests.cpp)
 add_dependencies(gitman_tests gitman_verify_assets gitman_process_test_child)

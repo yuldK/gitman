@@ -66,6 +66,8 @@ namespace gitman {
         float window_height { 0.0f };
         float scale { 1.0f };
         float scroll_offset { 0.0f };
+        // `.version-list` 생성이 진행 중이다. toolbar 생성 버튼을 비활성화한다.
+        bool document_generating { false };
         bool shutting_down { false };
     };
 } // namespace gitman

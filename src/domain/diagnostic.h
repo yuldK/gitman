@@ -67,6 +67,10 @@ namespace gitman {
         discovery_child_skipped,
         discovery_cancelled,
         registration_candidate_rejected,
+        generation_request_invalid,
+        generation_output_exists,
+        generation_no_repositories,
+        generation_failed,
     };
 
     struct diagnostic_source

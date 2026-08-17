@@ -184,6 +184,8 @@ add_library(gitman_discovery STATIC
     application/discovery_service.h
     application/project_registration_service.cpp
     application/project_registration_service.h
+    application/version_list_generation_service.cpp
+    application/version_list_generation_service.h
     domain/discovery.cpp
     domain/discovery.h
     platform/win32/win32_directory_enumerator.cpp
@@ -288,6 +290,8 @@ add_library(gitman_win32 STATIC
     platform/win32/embedded_assets.h
     platform/win32/skia_renderer.cpp
     platform/win32/skia_renderer.h
+    platform/win32/version_list_generation_dialog.cpp
+    platform/win32/version_list_generation_dialog.h
     platform/win32/win32_app_runtime.cpp
     platform/win32/win32_app_runtime.h
     platform/win32/win32_application.cpp

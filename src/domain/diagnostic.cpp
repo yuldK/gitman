@@ -121,6 +121,14 @@ namespace gitman {
             return u8"discovery_cancelled";
         case diagnostic_code::registration_candidate_rejected:
             return u8"registration_candidate_rejected";
+        case diagnostic_code::generation_request_invalid:
+            return u8"generation_request_invalid";
+        case diagnostic_code::generation_output_exists:
+            return u8"generation_output_exists";
+        case diagnostic_code::generation_no_repositories:
+            return u8"generation_no_repositories";
+        case diagnostic_code::generation_failed:
+            return u8"generation_failed";
         }
         return u8"unknown";
     }

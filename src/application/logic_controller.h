@@ -42,10 +42,13 @@ namespace gitman {
         };
 
         void handle_open_document(const open_document_intent& intent);
+        void handle_generate_document(const generate_document_intent& intent);
         void handle_document_loaded(document_loaded_event event);
+        void handle_document_generated(document_generated_event event);
         void handle_query_completed(query_completed_event event);
         void handle_reorder_card(const reorder_card_intent& intent);
         void handle_document_saved(document_saved_event event);
+        void install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics);
         void request_refresh(card_state& card);
         void request_save();
         void begin_shutdown();
@@ -73,6 +76,9 @@ namespace gitman {
         float scroll_offset_ { 0.0f };
         std::uint64_t next_operation_id_ { 1 };
         bool document_loading_ { false };
+        // 생성은 한 번에 하나만 진행한다. id가 0이 아니면 진행 중이며, id 비교로
+        // 다른 문서를 연 뒤 도착한 늦은 생성 결과를 구분해 버린다.
+        std::uint64_t pending_generation_operation_id_ { 0 };
         // 저장은 한 번에 하나만 내보내고, 진행 중 들어온 변경은 한 번으로 병합한다.
         // operation id가 0이 아니면 저장이 진행 중이며, id 비교로 다른 문서를 열기
         // 전의 늦은 저장 결과를 구분해 버린다.

@@ -1,6 +1,8 @@
 #include "infrastructure/vcs_operation_executor.h"
 
 #include "application/discovery_service.h"
+#include "application/project_registration_service.h"
+#include "application/version_list_generation_service.h"
 #include "domain/discovery.h"
 #include "infrastructure/git_repository_provider.h"
 #include "infrastructure/svn_repository_provider.h"
@@ -29,6 +31,16 @@ namespace gitman {
         , environment_ { std::move(environment) }
     {}
 
+    vcs_operation_executor::vcs_operation_executor(
+        project_store& store, process_runner& runner, const vcs_file_probe& probe, const directory_enumerator& enumerator, project_path_resolver& resolver, vcs_tool_environment environment) noexcept
+        : store_ { &store }
+        , runner_ { &runner }
+        , probe_ { &probe }
+        , enumerator_ { &enumerator }
+        , resolver_ { &resolver }
+        , environment_ { std::move(environment) }
+    {}
+
     void vcs_operation_executor::execute(const operation_request& request, const std::function<void(logic_message)>& emit) noexcept
     {
         try
@@ -42,6 +54,12 @@ namespace gitman {
                 event.revision = loaded.revision;
                 event.diagnostics = std::move(loaded.diagnostics);
                 emit(std::move(event));
+                return;
+            }
+
+            if (request.kind == operation_kind::generate_document)
+            {
+                execute_generate_document(request, emit);
                 return;
             }
 
@@ -86,6 +104,21 @@ namespace gitman {
                     failure.diagnostics.push_back(std::move(value));
                     emit(std::move(failure));
                 }
+                else if (request.kind == operation_kind::load_document)
+                {
+                    document_loaded_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::generate_document)
+                {
+                    document_generated_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.document_path = request.document_path;
+                    failure.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
                 else
                 {
                     query_completed_event failure { make_query_event(request, false, true, {}) };
@@ -96,6 +129,33 @@ namespace gitman {
             catch (...)
             {}
         }
+    }
+
+    void vcs_operation_executor::execute_generate_document(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        document_generated_event event {};
+        event.operation_id = request.operation_id;
+        event.document_path = request.document_path;
+
+        if (enumerator_ == nullptr || resolver_ == nullptr)
+        {
+            diagnostic value {};
+            value.code = diagnostic_code::generation_failed;
+            value.severity = diagnostic_severity::error;
+            value.message = u8"이 조립은 .version-list 생성을 지원하지 않습니다.";
+            event.diagnostics.push_back(std::move(value));
+            emit(std::move(event));
+            return;
+        }
+
+        discovery_service discovery { *enumerator_, *probe_, *resolver_ };
+        project_registration_service registration { *store_, *resolver_ };
+        version_list_generation_service generator { discovery, registration, *store_ };
+        version_list_generation_result generated { generator.generate(request.scan_root, request.document_path, request.token) };
+        event.document = std::move(generated.document);
+        event.revision = std::move(generated.revision);
+        event.diagnostics = std::move(generated.diagnostics);
+        emit(std::move(event));
     }
 
     void vcs_operation_executor::execute_query(const operation_request& request, const std::function<void(logic_message)>& emit)

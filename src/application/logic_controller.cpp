@@ -128,6 +128,8 @@ namespace gitman {
                 using value_type = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<value_type, open_document_intent>)
                     handle_open_document(value);
+                else if constexpr (std::is_same_v<value_type, generate_document_intent>)
+                    handle_generate_document(value);
                 else if constexpr (std::is_same_v<value_type, refresh_all_intent>)
                 {
                     for (card_state& card : cards_)
@@ -169,6 +171,8 @@ namespace gitman {
                     begin_shutdown();
                 else if constexpr (std::is_same_v<value_type, document_loaded_event>)
                     handle_document_loaded(std::move(value));
+                else if constexpr (std::is_same_v<value_type, document_generated_event>)
+                    handle_document_generated(std::move(value));
                 else if constexpr (std::is_same_v<value_type, query_completed_event>)
                     handle_query_completed(std::move(value));
                 else if constexpr (std::is_same_v<value_type, document_saved_event>)
@@ -201,28 +205,84 @@ namespace gitman {
         selected_.reset();
         scroll_offset_ = 0.0f;
         document_loading_ = true;
-        // 이전 문서의 진행 중 저장 결과는 도착해도 버린다.
+        // 이전 문서의 진행 중 저장·생성 결과는 도착해도 버린다.
         pending_save_operation_id_ = 0;
         save_queued_ = false;
+        pending_generation_operation_id_ = 0;
 
         operation_request request { make_request(operation_kind::load_document, nullptr, 0) };
         request.document_path = document_path_;
         static_cast<void>(submitter_->submit(std::move(request)));
     }
 
+    void logic_controller::handle_generate_document(const generate_document_intent& intent)
+    {
+        // 생성은 현재 문서를 건드리지 않고 worker에서 진행되므로 화면은 그대로 둔다.
+        if (shutting_down_ || pending_generation_operation_id_ != 0)
+            return;
+
+        operation_request request { make_request(operation_kind::generate_document, nullptr, 0) };
+        request.document_path = intent.document_path;
+        request.scan_root = intent.scan_root;
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+        pending_generation_operation_id_ = operation_id;
+    }
+
     void logic_controller::handle_document_loaded(document_loaded_event event)
     {
         document_loading_ = false;
+        if (event.document.has_value() == false)
+        {
+            notices_.clear();
+            for (const diagnostic& value : event.diagnostics)
+                if (value.severity != diagnostic_severity::information)
+                    notices_.push_back(value.message);
+            return;
+        }
+
+        install_document(std::move(*event.document), std::move(event.revision), std::move(event.diagnostics));
+    }
+
+    void logic_controller::handle_document_generated(document_generated_event event)
+    {
+        // 다른 문서를 연 뒤 도착한 이전 생성 결과는 현재 상태에 적용하지 않는다.
+        if (event.operation_id != pending_generation_operation_id_)
+            return;
+        pending_generation_operation_id_ = 0;
+
+        if (event.document.has_value() == false || event.revision.has_value() == false)
+        {
+            // 실패는 현재 문서를 유지한 채 진단만 알린다.
+            notices_.clear();
+            for (const diagnostic& value : event.diagnostics)
+                if (value.severity != diagnostic_severity::information)
+                    notices_.push_back(value.message);
+            return;
+        }
+
+        // 생성된 문서를 곧바로 연다. 이전 문서의 진행 중 결과가 새 문서에 적용되지
+        // 않도록 열기와 같은 규칙으로 대기 상태를 정리한다.
+        document_path_ = std::move(event.document_path);
+        document_loading_ = false;
+        pending_save_operation_id_ = 0;
+        save_queued_ = false;
+        install_document(std::move(*event.document), std::move(*event.revision), std::move(event.diagnostics));
+    }
+
+    void logic_controller::install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics)
+    {
         notices_.clear();
-        for (const diagnostic& value : event.diagnostics)
+        for (const diagnostic& value : diagnostics)
             if (value.severity != diagnostic_severity::information)
                 notices_.push_back(value.message);
 
-        if (event.document.has_value() == false)
-            return;
-
-        document_ = std::move(*event.document);
-        revision_ = event.revision;
+        save_notice_.clear();
+        selected_.reset();
+        scroll_offset_ = 0.0f;
+        document_ = std::move(document);
+        revision_ = std::move(revision);
         cards_.clear();
         cards_.reserve(document_->projects.size());
         for (const project_definition& project : document_->projects)
@@ -416,6 +476,7 @@ namespace gitman {
         snapshot->window_height = window_height_;
         snapshot->scale = scale_;
         snapshot->scroll_offset = scroll_offset_;
+        snapshot->document_generating = pending_generation_operation_id_ != 0;
         snapshot->shutting_down = shutting_down_;
 
         for (const card_state& card : cards_)

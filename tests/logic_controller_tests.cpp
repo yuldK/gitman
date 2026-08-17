@@ -392,6 +392,104 @@ TEST_CASE("Saves are serialized, coalesced, and report failures as a notice", "[
     REQUIRE(controller.make_view_snapshot()->notices.empty());
 }
 
+TEST_CASE("A generate intent delegates the generation once and reports the busy state", "[logic][app][generation]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+
+    controller.handle(gitman::generate_document_intent { u8"C:\\scan", u8"C:\\scan\\new.version-list" });
+    REQUIRE(submitter.requests.size() == 1u);
+    REQUIRE(submitter.requests.front().kind == gitman::operation_kind::generate_document);
+    REQUIRE(submitter.requests.front().scan_root == u8"C:\\scan");
+    REQUIRE(submitter.requests.front().document_path == u8"C:\\scan\\new.version-list");
+    REQUIRE(controller.make_view_snapshot()->document_generating);
+
+    // 진행 중에 온 두 번째 생성 요청은 무시된다.
+    controller.handle(gitman::generate_document_intent { u8"C:\\other", u8"C:\\other\\o.version-list" });
+    REQUIRE(submitter.requests.size() == 1u);
+}
+
+TEST_CASE("A generated document is adopted and its cards query local state", "[logic][app][generation]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::generate_document_intent { u8"C:\\scan", u8"C:\\scan\\new.version-list" });
+    const std::uint64_t operation_id { submitter.requests.front().operation_id };
+    submitter.requests.clear();
+
+    gitman::document_generated_event event {};
+    event.operation_id = operation_id;
+    event.document_path = u8"C:\\scan\\new.version-list";
+    gitman::workspace_document document {};
+    document.document_path = u8"C:\\scan\\new.version-list";
+    document.projects = { make_project(u8"alpha"), make_project(u8"beta") };
+    event.document = { std::move(document) };
+    event.revision = { gitman::workspace_revision_token {} };
+    controller.handle(std::move(event));
+
+    // 생성된 문서가 곧바로 열리고 활성 카드의 로컬 조회가 나간다.
+    REQUIRE(submitter.requests.size() == 2u);
+    for (const gitman::operation_request& request : submitter.requests)
+        REQUIRE(request.kind == gitman::operation_kind::query_local);
+
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE_FALSE(view->document_generating);
+    REQUIRE(view->document_path == u8"C:\\scan\\new.version-list");
+    REQUIRE(view->cards.size() == 2u);
+}
+
+TEST_CASE("A failed generation keeps the current document and surfaces the diagnostics", "[logic][app][generation]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    controller.handle(make_loaded_document({ make_project(u8"alpha") }));
+    controller.handle(gitman::generate_document_intent { u8"C:\\scan", u8"C:\\scan\\new.version-list" });
+    const std::uint64_t operation_id { submitter.requests.back().operation_id };
+
+    gitman::document_generated_event failure {};
+    failure.operation_id = operation_id;
+    failure.document_path = u8"C:\\scan\\new.version-list";
+    gitman::diagnostic warning {};
+    warning.severity = gitman::diagnostic_severity::warning;
+    warning.message = u8"하위 폴더에서 저장소를 찾지 못해 문서를 만들지 않았습니다.";
+    failure.diagnostics.push_back(std::move(warning));
+    controller.handle(std::move(failure));
+
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE_FALSE(view->document_generating);
+    REQUIRE(view->document_path == u8"C:\\work\\p.version-list");
+    REQUIRE(view->cards.size() == 1u);
+    REQUIRE(view->notices.front() == u8"하위 폴더에서 저장소를 찾지 못해 문서를 만들지 않았습니다.");
+}
+
+TEST_CASE("A late generation result after opening another document is discarded", "[logic][app][generation]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::generate_document_intent { u8"C:\\scan", u8"C:\\scan\\new.version-list" });
+    const std::uint64_t operation_id { submitter.requests.front().operation_id };
+
+    // 결과가 오기 전에 다른 문서를 열면 생성 대기가 풀리고 늦은 결과는 버려진다.
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    REQUIRE_FALSE(controller.make_view_snapshot()->document_generating);
+
+    gitman::document_generated_event late {};
+    late.operation_id = operation_id;
+    late.document_path = u8"C:\\scan\\new.version-list";
+    gitman::workspace_document document {};
+    document.document_path = u8"C:\\scan\\new.version-list";
+    document.projects = { make_project(u8"alpha") };
+    late.document = { std::move(document) };
+    late.revision = { gitman::workspace_revision_token {} };
+    controller.handle(std::move(late));
+
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE(view->document_path == u8"C:\\work\\p.version-list");
+    REQUIRE(view->cards.empty());
+    REQUIRE(view->empty_state == gitman::view_empty_state::document_loading);
+}
+
 TEST_CASE("Card snapshots retain full Git revisions for display-time abbreviation", "[logic][app]")
 {
     constexpr std::u8string_view full_revision { u8"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" };

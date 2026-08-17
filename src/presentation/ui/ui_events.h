@@ -75,6 +75,7 @@ namespace gitman::ui {
     enum class ui_command
     {
         show_open_document_dialog,
+        show_generate_document_dialog,
         window_minimize,
         window_toggle_maximize,
         window_close,

@@ -73,7 +73,7 @@ logic_thread:  view_snapshot ──build_ui_tree()──> ui_tree (불변, share
 ui_element (abstract)                     ── 최상위 추상 클래스
 ├── ui_container                          ── 자식 소유 + 배치 위임
 │   ├── caption_element                   ── caption 막대 (아이콘, 제목, 창 버튼 3개 포함)
-│   ├── toolbar_element                   ── 문서 경로 + 전체 새로 고침 + 문서 열기
+│   ├── toolbar_element                   ── 문서 경로 + 전체 새로 고침 + 문서 생성 + 문서 열기
 │   ├── card_element                      ── 카드 1장 (상태 아이콘, 텍스트, 버튼 3개 포함)
 │   └── card_list_element                 ── 스크롤 영역, 화면에 걸친 card_element만 생성
 ├── button_element                        ── 아이콘 버튼: hover 강조, tooltip, 클릭, 활성/비활성

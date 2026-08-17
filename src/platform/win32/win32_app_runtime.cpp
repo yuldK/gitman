@@ -5,6 +5,7 @@
 #include "infrastructure/json_project_store.h"
 #include "infrastructure/vcs_operation_executor.h"
 #include "platform/win32/project_file_system.h"
+#include "platform/win32/win32_directory_enumerator.h"
 #include "platform/win32/win32_process_runner.h"
 #include "platform/win32/win32_vcs_file_probe.h"
 #include "platform/win32/workspace_document_file_system.h"
@@ -49,8 +50,9 @@ namespace gitman::win32 {
         std::unique_ptr<project_path_resolver> resolver { make_project_path_resolver() };
         std::unique_ptr<process_runner> runner { make_process_runner() };
         std::unique_ptr<vcs_file_probe> probe { make_vcs_file_probe() };
+        std::unique_ptr<directory_enumerator> enumerator { make_directory_enumerator() };
         json_project_store store { file_system, *resolver };
-        vcs_operation_executor executor { store, *runner, *probe, current_vcs_tool_environment() };
+        vcs_operation_executor executor { store, *runner, *probe, *enumerator, *resolver, current_vcs_tool_environment() };
 
         messaging::channel<ui::raw_input_event> input_inbox { messaging::channel_options { 4096, messaging::overflow_policy::drop_oldest, {} } };
         messaging::channel<logic_message> logic_inbox { messaging::channel_options { 1024, messaging::overflow_policy::reject_newest, {} } };

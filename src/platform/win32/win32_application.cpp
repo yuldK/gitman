@@ -5,6 +5,7 @@
 #include "platform/win32/resources/resource_ids.h"
 #include "platform/win32/skia_renderer.h"
 #include "platform/win32/utf8.h"
+#include "platform/win32/version_list_generation_dialog.h"
 #include "platform/win32/win32_app_runtime.h"
 #include "presentation/ui/caption_element.h"
 #include "presentation/ui/ui_events.h"
@@ -102,8 +103,7 @@ namespace gitman::win32 {
                 }
 
                 window_ = CreateWindowExW(
-                    WS_EX_APPWINDOW | WS_EX_ACCEPTFILES, window_class_name, window_title, initial_window_style, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 720, nullptr, nullptr, instance_, this
-                );
+                    WS_EX_APPWINDOW | WS_EX_ACCEPTFILES, window_class_name, window_title, initial_window_style, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 720, nullptr, nullptr, instance_, this);
 
                 if (window_ == nullptr)
                 {
@@ -563,6 +563,13 @@ namespace gitman::win32 {
                     {
                         if (const std::optional<std::u8string> path { choose_workspace_document(window_) }; path.has_value())
                             runtime_->post_logic(logic_message { open_document_intent { *path } });
+                    }
+                    return;
+                case ui::ui_command::show_generate_document_dialog:
+                    if (runtime_ != nullptr)
+                    {
+                        if (const std::optional<generate_document_intent> intent { show_version_list_generation_dialog(window_) }; intent.has_value())
+                            runtime_->post_logic(logic_message { *intent });
                     }
                     return;
                 case ui::ui_command::window_minimize:

@@ -44,7 +44,7 @@ namespace gitman::ui {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
 
                 std::u8string document_text { view.document_path.empty() ? std::u8string { u8"문서 없음" } : view.document_path };
-                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), view.empty_state == view_empty_state::no_document) };
+                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), view.empty_state == view_empty_state::no_document, view.document_generating) };
                 toolbar_ = toolbar.get();
                 add_child(std::move(toolbar));
 

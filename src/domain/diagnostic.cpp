@@ -119,6 +119,8 @@ namespace gitman {
             return u8"discovery_child_skipped";
         case diagnostic_code::discovery_cancelled:
             return u8"discovery_cancelled";
+        case diagnostic_code::registration_candidate_rejected:
+            return u8"registration_candidate_rejected";
         }
         return u8"unknown";
     }

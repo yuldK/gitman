@@ -166,6 +166,8 @@ add_library(gitman_discovery STATIC
     application/directory_enumerator.h
     application/discovery_service.cpp
     application/discovery_service.h
+    application/project_registration_service.cpp
+    application/project_registration_service.h
     domain/discovery.cpp
     domain/discovery.h
     platform/win32/win32_directory_enumerator.cpp

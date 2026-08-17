@@ -66,6 +66,7 @@ namespace gitman {
         discovery_root_unavailable,
         discovery_child_skipped,
         discovery_cancelled,
+        registration_candidate_rejected,
     };
 
     struct diagnostic_source

@@ -1,5 +1,33 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 5 `S5-D3` 선택 등록 구현 및 test
+
+### 사용자 지시
+
+- 단계 5 종료까지 자동 진행 (2026-08-17 위임).
+
+### 반영 내용
+
+- `application/project_registration_service.h/.cpp`를 추가했다. 선택 재검증, id 생성, `project_definition` 변환, 문서 갱신과 revision 전달이다.
+- **부분 등록은 없다.** 빈 선택, 제외 후보, 종류 미판정, 상대 경로, 문서와의 중복, 선택 목록 안의 중복 중 하나라도 있으면 저장을 호출하지 않고 전체를 거부한다. fake store의 저장 호출 수 0으로 단정했다.
+- 정규화 값은 등록 시점에 다시 해석한다. 탐색 시점 값으로 중복 검사를 통과시키지 않는다.
+- id는 디렉터리 이름 그대로, 충돌 시 `-2`부터 숫자 접미사다. `make_unique_registration_id`를 순수 함수로 분리해 접미사 재충돌과 한글 이름을 직접 test한다.
+- 저장 충돌 감지는 단계 2 store의 revision token 비교를 그대로 사용한다. 실제 store 통합 test에서 외부 수정 후의 등록이 `concurrent_modification`으로 거부되고 **외부 수정본이 원문 그대로 남는 것**을 확인했다.
+- 실제 round-trip test에서 등록 저장 후에도 unknown field와 `settings`의 알 수 없는 키가 보존되는 것을 확인했다.
+- `diagnostic_code`에 `registration_candidate_rejected`를 추가했다.
+- 전체 CTest가 428에서 **436**으로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 436/436 통과했다. `/analyze` 무경고, Debug 3회 반복 통과, format/style 통과. production 결함은 없다.
+- 결과를 `docs/verification/2026-08-17-stage-5-d3.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-001, REQ-004, REQ-010, REQ-012, REQ-013
+- NFR-005, NFR-006, NFR-009
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S5-V1` 최종 검증까지 자동 진행한다.
+- 단계 5 전체에 대한 사용자 검수는 `S5-V1` 보고에서 받는다.
+
 ## 2026-08-17 - 단계 5 `S5-D2` 탐색 실행 구현 및 test
 
 ### 사용자 지시

@@ -37,6 +37,7 @@ add_executable(gitman_tests
     process_output_pipeline_tests.cpp
     process_request_tests.cpp
     project_path_tests.cpp
+    project_registration_tests.cpp
     project_schema_tests.cpp
     renderer_policy_tests.cpp
     secret_masking_tests.cpp

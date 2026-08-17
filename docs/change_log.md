@@ -1,5 +1,31 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 6 `S6-D2` 표시·상태 모델과 logic 구현 및 test
+
+### 사용자 지시
+
+- 단계 6 종료까지 자동 진행 (2026-08-17 위임).
+
+### 반영 내용
+
+- 새 static library `gitman_app`을 추가했다. `logic_controller`, `app_messages`(intent·operation·`logic_message` variant·`operation_submitter` 계약), `view_snapshot`/`card_view_model`, `status_presentation`(plan 3.2 Codicon 표와 한국어 툴팁), `layout_model`(layout 상수·`compute_layout`·`hit_test`)이다. Win32에 링크하지 않는다.
+- 문서 load도 worker에 위임한다. logic thread는 blocking 파일 I/O 금지이므로(plan 3.8) `open_document`는 작업 제출로 끝난다.
+- 초기 표시는 활성 카드의 로컬 조회만이고 remote-first 판정은 refresh에서 수행한다 (plan 5.1). refresh worker는 로컬·원격 결과를 두 event로 순서대로 보고한다.
+- generation 정책을 logic 한곳에 모았다. 오래된 세대와 삭제 카드의 event 폐기, 실행 중 중복 refresh의 병합 후 1회 재실행을 test로 고정했다.
+- layout을 view snapshot의 순수 함수로 두어 렌더러와 input thread의 hit test가 항상 일치하게 했다. 화면에 걸치는 카드만 hit 영역을 만든다.
+- 종료 intent가 취소 token을 전파하고 이후 refresh를 거부하는 것을 test로 고정했다.
+- 전체 CTest가 471에서 **490**으로 늘었고 세 구성 각각 490/490, `/analyze` 무경고, Debug 3회 반복, format/style 통과. production 결함 없음, style 위반 2건은 명명 함수로 해소.
+- 결과를 `docs/verification/2026-08-17-stage-6-d2.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-002, REQ-005, REQ-009~REQ-012, REQ-014, REQ-015
+- NFR-005, NFR-006, NFR-009
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S6-D3`부터 계속 자동 진행한다.
+
 ## 2026-08-17 - 단계 6 `S6-D1` messaging component 구현 및 test
 
 ### 사용자 지시

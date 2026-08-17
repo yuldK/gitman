@@ -32,6 +32,8 @@ add_executable(gitman_tests
     helpers/vcs_test_doubles.cpp
     helpers/vcs_test_doubles.h
     json_project_store_tests.cpp
+    layout_model_tests.cpp
+    logic_controller_tests.cpp
     messaging_channel_tests.cpp
     messaging_latest_slot_tests.cpp
     process_cancellation_tests.cpp
@@ -43,6 +45,7 @@ add_executable(gitman_tests
     project_schema_tests.cpp
     renderer_policy_tests.cpp
     secret_masking_tests.cpp
+    status_presentation_tests.cpp
     svn_command_builder_tests.cpp
     svn_integration_tests.cpp
     svn_output_parser_tests.cpp
@@ -70,6 +73,7 @@ target_compile_definitions(gitman_tests
         GITMAN_VCS_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/vcs")
 target_link_libraries(gitman_tests
     PRIVATE
+        gitman_app
         gitman_discovery
         gitman_messaging
         gitman_process

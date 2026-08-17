@@ -191,6 +191,26 @@ target_link_libraries(gitman_discovery
     PRIVATE
         gitman_win32_platform)
 
+# 단계 6의 앱 상태와 표시 모델 계층이다. logic thread가 소유하는 상태, view/layout
+# snapshot과 상태 표시 매핑을 담는다. 파일·프로세스 I/O는 하지 않고 worker에
+# 위임하므로 Win32에 링크하지 않는다.
+add_library(gitman_app STATIC
+    application/app_messages.h
+    application/logic_controller.cpp
+    application/logic_controller.h
+    presentation/layout_model.cpp
+    presentation/layout_model.h
+    presentation/status_presentation.cpp
+    presentation/status_presentation.h
+    presentation/view_snapshot.h)
+target_include_directories(gitman_app PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
+target_link_libraries(gitman_app
+    PUBLIC
+        gitman_domain
+        gitman_process
+        gitman_vcs
+        gitman_workspace)
+
 add_library(gitman_core STATIC
     application/application_options.cpp
     application/application_options.h

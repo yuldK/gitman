@@ -49,7 +49,7 @@
 | 단계 4: Git 및 SVN provider | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-4.md` |
 | 단계 5: 탐색과 등록 | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-5.md` |
 | 단계 6 사전: 메시지 구조 설계 | 승인 완료 - 2026-08-17, ADR-005로 기록 | `docs/decisions/ADR-005-thread-messaging.md` |
-| 단계 6: GUI와 상태 연결 | `S6-P0` 계획 제출 - 사용자 검수 대기 | `docs/stage-6-plan.md` |
+| 단계 6: GUI와 상태 연결 | `S6-V1` 최종 검증 제출 - 사용자 최종 검수 대기 (수동 checklist 포함) | `docs/verification/2026-08-17-stage-6.md` |
 | 단계 7~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
@@ -497,7 +497,7 @@ gitman/
 
 ### 단계 6: GUI와 상태 연결
 
-상태: `S6-P0` 구현 계획을 제출하고 사용자 검수를 기다린다. 사전 차단 조건인 범용 메시지 구조 설계는 2026-08-17 사용자가 승인해 ADR-005로 기록했다. 상세 계획은 `docs/stage-6-plan.md`에 있다.
+상태: `S6-V1` 최종 검증 제출, 사용자 최종 검수 대기. ADR-005의 messaging component, 표시 모델과 logic controller, scheduler·worker pool, input thread, Skia 카드 화면과 앱 조립을 구현했다. 세 구성 CTest 511/511, ASan 실계측, 120개 카드 heartbeat stress, `/analyze` 무경고, 단일 exe install과 smoke가 통과했다. 창 기반 수동 검증 checklist 9항목은 `docs/verification/2026-08-17-stage-6.md` 5장에 있다.
 
 - 단계 시작 전에 범용 메시지 구조의 API, queue topology, failure와 shutdown 설계안을 사용자에게 제시하고 승인을 받는다.
 - 승인 전에는 message queue, dispatcher, thread bridge 구현을 시작하지 않는다.

@@ -5,18 +5,18 @@
 - 기준일: 2026-08-17
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인), 단계 4 전체, 단계 5 전체 (2026-08-17 사용자가 다음 구간 진행을 지시하며 최종 승인)
 - 현재 단계: 단계 6 GUI와 상태 연결
-- 현재 체크포인트: `S6-P0` 계획 제출, **사용자 계획 검수 대기**. 메시지 구조 설계는 승인되어 ADR-005로 기록됐다
-- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다 (2026-08-17 사용자 지시). 체크포인트마다 기존 로그 관례로 커밋한다
+- 현재 체크포인트: `S6-V1` 최종 검증 제출, **단계 6 최종 사용자 검수 대기** (수동 checklist 포함)
+- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다 (2026-08-17 사용자 지시). 단계 6은 사용자 위임으로 자동 진행하며 체크포인트마다 커밋했다
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S6-P0` 계획 승인 후 `S6-D1`(messaging component 구현과 test) 한 구간만 진행하고 보고 뒤 중지
+- 다음 허용 작업: 단계 6 최종 승인(수동 checklist 확인 포함) 후 단계 7 계획(`S7-P0`)
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 표식 판정 및 선택 등록 전체, test와 install 구성
 - 기준 문서: `docs/stage-6-plan.md`, `docs/decisions/ADR-005-thread-messaging.md`, `docs/thread-message-design.md`
 - 직전 단계 기준 문서: `docs/stage-5-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-17-stage-5.md` (단계 5 최종)
-- 직전 검증 기록: `docs/verification/2026-08-17-stage-5-d3.md`
+- 현재 검증 기록: `docs/verification/2026-08-17-stage-6.md` (단계 6 최종, 수동 checklist 포함)
+- 직전 검증 기록: `docs/verification/2026-08-17-stage-6-d5.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다. **단계 5부터 production code와 test code 작성은 한 검수 구간에서 함께 진행한다** (2026-08-17 지시).
 
-다음 작업은 이 문서와 `docs/stage-6-plan.md`, ADR-005를 먼저 읽어야 한다. 단계 6에서는 messaging component, 스레드 조립, 카드 표시와 refresh까지만 구현하고 update·switch·탐색 dialog와 로그 뷰(단계 7), association(단계 8)은 구현하지 않는다. messaging 구현은 ADR-005의 계약과 일치해야 한다.
+다음 작업은 이 문서와 `docs/verification/2026-08-17-stage-6.md`를 먼저 읽어야 한다. 단계 6은 messaging component, 스레드 조립, 카드 표시와 refresh까지 구현을 마쳤고 최종 검수(수동 checklist 포함)를 기다린다. update·switch·탐색 dialog와 로그 뷰는 단계 7, association은 단계 8이다.
 
 ## 2. 확정된 기술 기준선
 
@@ -117,14 +117,14 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S6-D1` |
-| 제출 내용 | ADR-005 messaging component(`channel`, `latest_slot`, envelope)와 계약 test 17개, `/fsanitize=address` ASan target |
-| production code | `src/messaging/*.h` 3개, `gitman_messaging` INTERFACE target |
-| test code 및 fixture | messaging test 17개 + ASan 중복 17개. 전체 CTest 437 → **471** |
-| bug 수정 | production 결함 없음. test style 1건과 ASan 구성 3건을 같은 구간에서 해소 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 각각 471/471, Release ASan 17/17 실계측, Debug 3회 반복, `/analyze` 무경고, format/style 통과 |
-| 승인 대기 | 사용자 위임으로 단계 6 종료까지 자동 진행 중 |
-| 승인 뒤 다음 작업 | `S6-D2` |
+| 계획 ID | `S6-V1` |
+| 제출 내용 | 단계 6 전체 검증: 재configure matrix, 120개 카드 heartbeat stress, ASan, 설치본 smoke와 수동 검증 checklist |
+| production code | `S6-D5` 이후 변경 없음 |
+| test code 및 fixture | stress 1개 추가. 전체 CTest 510 → **511** (단계 5 종료 437에서 +74) |
+| bug 수정 | 없음 |
+| 검증 | 세 구성 511/511, 3회 반복, ASan 17/17, `/analyze` 무경고, format/style, 단일 exe(6,807,552 byte) install과 smoke 4종 |
+| 승인 대기 | **단계 6 최종 검수**. `docs/verification/2026-08-17-stage-6.md` 5장의 수동 checklist 9항목 확인 필요 |
+| 승인 뒤 다음 작업 | 단계 7 계획(`S7-P0`) |
 
 ### 8.1.1 단계 6 진행 원장
 
@@ -136,7 +136,8 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S6-D2` 표시·상태 모델과 logic | 완료, 커밋됨 | test 16개, 전체 490/490. `docs/verification/2026-08-17-stage-6-d2.md` |
 | `S6-D3` scheduler와 worker pool | 완료, 커밋됨 | test 11개, 전체 501/501. 실제 병렬성과 lane 직렬화 검증. `docs/verification/2026-08-17-stage-6-d3.md` |
 | `S6-D4` input thread | 완료, 커밋됨 | test 7개, 전체 508/508. `docs/verification/2026-08-17-stage-6-d4.md` |
-| `S6-D5` UI 렌더링과 앱 조립 | 완료 | 조립 test 2개, 전체 510/510. 실행 파일이 전 계층을 링크. `docs/verification/2026-08-17-stage-6-d5.md` |
+| `S6-D5` UI 렌더링과 앱 조립 | 완료, 커밋됨 | 조립 test 2개, 전체 510/510. 실행 파일이 전 계층을 링크. `docs/verification/2026-08-17-stage-6-d5.md` |
+| `S6-V1` 단계 6 최종 검증 | 제출, 검수 대기 | 전체 matrix와 120 카드 stress 통과. 수동 checklist 9항목. `docs/verification/2026-08-17-stage-6.md` |
 
 ### 8.2 단계 5 진행 원장
 

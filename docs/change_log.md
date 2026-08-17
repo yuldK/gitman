@@ -1,5 +1,32 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 6 `S6-V1` 최종 검증
+
+### 사용자 지시
+
+- 단계 6 종료까지 자동 진행 (2026-08-17 위임).
+
+### 반영 내용
+
+- `build/vs2022`를 삭제하고 preset으로 다시 configure한 뒤 전체 검증 matrix를 수행했다.
+- VS2022 Debug/Release와 VS2026 Debug의 전체 CTest가 각각 **511/511** 통과했다. Debug 3회 반복 무결함, Release ASan 17/17 실계측, `/analyze` 무경고, format/style(288개 파일) 통과.
+- **120개 카드 heartbeat stress test를 추가했다.** 실제 provider가 카드 120개를 병렬 조회하는 동안 select·scroll intent가 계속 처리되고 snapshot 흐름이 유지되며 전 카드가 판정을 마친다. ADR-004의 "100개 이상 모의 카드" 검증 항목을 자동 test로 고정한 것이다.
+- Release install이 `bin/gitman.exe` 단일 파일(6,807,552 byte)이며 설치본 renderer smoke 4종이 모두 종료 코드 0이다.
+- 계획 6장의 완료 조건 10개를 대조해 검증 기록 3장에 결과를 남겼다. CTest 수는 단계 5 종료 437에서 **511**로 74개 늘었다.
+- 창 기반 수동 검증 checklist 9항목(문서 열기, 카드 표시, refresh, 선택·키보드·스크롤, caption, DPI, 비활성 버튼, 종료)을 검증 기록 5장에 제시했다.
+- `docs/plan.md`, `docs/requirements.md`, `docs/handoff.md`를 최종 상태로 갱신했다.
+- 결과를 `docs/verification/2026-08-17-stage-6.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-001~REQ-003, REQ-005, REQ-009~REQ-016
+- NFR-005~NFR-009, NFR-011~NFR-014
+
+### 다음 작업 제한
+
+- 단계 6은 **사용자 최종 검수 대기** 상태다. 수동 checklist 확인이 포함된다.
+- 승인 후 다음 작업은 단계 7(작업 UI와 로그) 계획 `S7-P0`이다.
+
 ## 2026-08-17 - 단계 6 `S6-D5` UI 렌더링과 앱 조립 및 test
 
 ### 사용자 지시

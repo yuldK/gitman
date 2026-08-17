@@ -1,5 +1,43 @@
 # 변경 이력
 
+## 2026-08-18 - 카드 drag & drop 순서 변경 (drag & drop 첫 소비자)
+
+### 사용자 지시
+
+- UI element 계층의 drag & drop 소비자까지 구현 (2026-08-18).
+
+### 반영 내용
+
+- **카드 body가 drag 출발지이자 도착지가 됐다.** 카드를 끌어 다른 카드의 위쪽
+  절반에 놓으면 앞으로, 아래쪽 절반이면 뒤로 삽입된다. 대상 카드의 버튼 영역에
+  놓아도 카드가 drop 대상으로 잡히도록 `ui_tree::find_drop_target`(drop 대상만
+  걸리는 hit test)를 추가했다. drag ghost는 카드 표시 이름을 보여 준다.
+- `reorder_card_intent { id, target, place_after }`를 추가했다. logic이 카드와
+  문서의 프로젝트 순서를 함께 바꾸고 정렬을 `card_sort_key::custom`(문서 순서)으로
+  전환한다. 제자리 drop도 custom 정렬 전환으로 간주한다.
+- **순서가 문서 파일에 저장된다.** `operation_kind::save_document`가
+  `project_store::save`(원자적 쓰기 + revision 낙관적 잠금)를 worker에서 호출하고
+  `document_saved_event`로 결과를 보고한다. load·save는 scheduler의 0번 lane에서
+  직렬화된다. 저장은 한 번에 하나만 나가고 진행 중 변경은 한 번으로 병합되며,
+  다른 문서를 연 뒤 도착한 늦은 저장 결과는 operation id로 버린다.
+- 저장 실패는 진단 message를 view notices의 맨 앞에 표시하고 다음 성공이 지운다.
+- test 11개 추가: logic 재정렬·병합·실패 notice, executor save 경로, UI drag →
+  intent 변환(위/아래 절반, 자기 자신 제외), 실제 파일에 새 순서가 저장되는
+  runtime 통합 test. 전체 CTest **539/539** 통과 (문서 생성 기능 test 포함).
+- 부수: `version_list_generation_dialog.cpp`의 style 검사 위반(여러 줄 brace 닫힘)
+  을 재구성으로 해소했다.
+
+### 영향 요구사항
+
+- REQ-005, REQ-009~REQ-012, NFR-011~NFR-014
+
+### 다음 작업 제한
+
+- 정렬을 name/status로 되돌리는 UI는 아직 없다(`set_sort_intent`만 존재). 정렬
+  전환 UI를 붙일 때 custom(문서 순서) 항목을 함께 노출한다.
+- drag 중 목록 가장자리 자동 스크롤은 미구현이다. 필요해지면 interaction
+  controller에 스크롤 intent 방출을 더한다.
+
 ## 2026-08-17 - UI element 계층 도입 (`docs/ui-element-design.md`)
 
 ### 사용자 지시

@@ -1,10 +1,11 @@
 # UI element 계층 설계 초안
 
 상태: **승인·구현 완료** (2026-08-17) — 검수 항목 4건 모두 제안안대로 확정.
-tree는 logic thread가 빌드·게시, drag & drop은 API·상태 기계·시각 표시까지
-(소비자는 후속), caption은 이번에 통합, `input_action`은 `ui_command`를 포함한
-variant로 일반화한다. 구현 결과와 세부 조정은 8장과 `docs/change_log.md`
-2026-08-17 항목을 참고한다.
+tree는 logic thread가 빌드·게시, drag & drop은 API·상태 기계·시각 표시까지,
+caption은 이번에 통합, `input_action`은 `ui_command`를 포함한 variant로
+일반화한다. 구현 결과와 세부 조정은 8장과 `docs/change_log.md` 2026-08-17 항목을
+참고한다. drag & drop의 첫 소비자(카드 순서 변경과 문서 저장)는 2026-08-18에
+구현됐다 (`change_log.md` 해당 항목).
 
 ## 1. 목표와 범위
 

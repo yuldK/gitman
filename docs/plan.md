@@ -46,8 +46,9 @@
 | 단계 2: 도메인과 설정 저장소 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-2.md` |
 | 단계 3: 프로세스 실행 계층 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-3.md` |
 | 단계 4: Git 및 SVN provider | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-4.md` |
-| 단계 5: 탐색과 등록 | `S5-V1` 최종 검증 제출 - 사용자 최종 검수 대기 | `docs/verification/2026-08-17-stage-5.md` |
-| 단계 6~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
+| 단계 5: 탐색과 등록 | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-5.md` |
+| 단계 6 사전: 메시지 구조 설계 | `MSG-P0` 설계안 제출 - 사용자 검수 대기 | `docs/thread-message-design.md` |
+| 단계 6~8 | 시작 전 (ADR-004 설계 승인이 단계 6 차단 조건) | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
 
@@ -485,7 +486,7 @@ gitman/
 
 ### 단계 5: 탐색과 등록
 
-상태: `S5-V1` 최종 검증 제출, 사용자 최종 검수 대기. `S5-D1`~`S5-D3`으로 표식 기반 판정, 깊이 1 열거, 탐색 실행과 선택 등록을 구현했다. 사용자 지시로 production code와 test code를 한 구간에서 작성했고 `S5-D1` 이후는 위임에 따라 자동 진행하며 체크포인트마다 커밋했다. VS2022 Debug/Release와 VS2026 Debug 전체 CTest 437/437, `/analyze` 무경고, 3회 반복, format/style, 단일 exe install과 설치본 smoke가 통과했다. 탐색과 등록은 프로세스를 만들지 않는다. 상세 결과는 `docs/verification/2026-08-17-stage-5.md`에 기록한다.
+상태: 완료. 2026-08-17 사용자가 다음 구간 진행을 지시하며 단계 5를 최종 승인했다. `S5-D1`~`S5-D3`으로 표식 기반 판정, 깊이 1 열거, 탐색 실행과 선택 등록을 구현했고, VS2022 Debug/Release와 VS2026 Debug 전체 CTest 437/437, `/analyze` 무경고, 3회 반복, format/style, 단일 exe install과 설치본 smoke가 통과했다. 탐색과 등록은 프로세스를 만들지 않는다. 상세 결과는 `docs/verification/2026-08-17-stage-5.md`에 기록한다.
 
 - 깊이 1 자식 탐색, 저장소 루트 판정, 중복 및 링크 정책을 구현한다.
 - 후보 미리보기, 선택 등록, 저장 충돌 감지를 구현한다.
@@ -493,6 +494,8 @@ gitman/
 완료 조건: 접근 거부나 느린 경로가 전체 탐색을 중단하지 않고, 선택하지 않은 후보는 파일에 기록되지 않는다.
 
 ### 단계 6: GUI와 상태 연결
+
+상태: 시작 전. 사전 차단 조건인 범용 메시지 구조 설계안(`MSG-P0`)을 `docs/thread-message-design.md`로 제출하고 사용자 검수를 기다린다. 승인 시 ADR-005로 기록한 뒤 `S6-P0` 계획을 시작한다.
 
 - 단계 시작 전에 범용 메시지 구조의 API, queue topology, failure와 shutdown 설계안을 사용자에게 제시하고 승인을 받는다.
 - 승인 전에는 message queue, dispatcher, thread bridge 구현을 시작하지 않는다.

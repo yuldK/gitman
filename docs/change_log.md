@@ -1,5 +1,32 @@
 # 변경 이력
 
+## 2026-08-17 - 범용 메시지 구조 설계안 `MSG-P0` 제출
+
+### 사용자 지시
+
+- 다음 구간을 진행한다. 진행 원칙에 따라 이 지시로 `S5-V1`과 단계 5 전체를 최종 승인한 것으로 기록한다.
+
+### 반영 내용
+
+- ADR-004의 단계 6 차단 조건에 따라 범용 스레드 메시지 구조 설계안 `docs/thread-message-design.md`를 작성했다. ADR-004가 요구한 11개 항목(API, envelope, topology, backpressure, 취소·shutdown, test 전략 등)을 모두 다룬다.
+- 핵심 제안: consumer 스레드당 하나의 **MPSC FIFO `channel<T>`** 와 snapshot 병합용 **`latest_slot<T>`** 두 primitive, "스레드당 inbox 하나" topology, 비블로킹 `post()`와 signal callback 기반 wake-up(Win32 연동은 adapter의 `PostMessageW`), envelope 최소화(correlation·generation은 payload와 응용층), `close()` 기반 shutdown protocol, worker 분배는 MPMC 없이 scheduler 지정 inbox.
+- late result와 dedup은 메시지 계층이 아니라 응용층 정책(generation 검사, lane 병합)임을 명시하고 ADR-004의 검증 항목과 연결했다.
+- test 전략: 단일 스레드 계약 test(완전 결정적), producer별 부분 순서만 단정하는 다중 스레드 test, stress와 3회 반복, MSVC ASan job 추가 제안. **TSan은 MSVC 미지원**이므로 단일 consumer 설계와 stress 반복으로 완화하고 한계를 명시했다.
+- library 구성: 최상위 namespace `messaging`, `src/messaging/` 신규 target, gitman의 어떤 target에도 의존하지 않는 분리.
+- production code와 test는 변경하지 않았다. 전체 CTest 437 유지.
+- `docs/plan.md`, `docs/requirements.md`, `docs/handoff.md`를 갱신했다.
+
+### 영향 요구사항
+
+- REQ-015, REQ-012
+- NFR-009, NFR-014
+
+### 다음 작업 제한
+
+- `MSG-P0`은 사용자 설계 검수 대기 상태다. 특히 `docs/thread-message-design.md` 12장의 검수 요청 항목 8개에 대한 결정이 필요하다.
+- **설계 승인 전에는 message queue, dispatcher, thread bridge를 구현하지 않는다** (ADR-004 차단 조건).
+- 승인 후에는 ADR-005 기록과 `S6-P0` 단계 6 계획을 진행한다.
+
 ## 2026-08-17 - 단계 5 `S5-V1` 최종 검증
 
 ### 사용자 지시

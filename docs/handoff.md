@@ -117,21 +117,22 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S6-P0` |
-| 제출 내용 | ADR-005(승인된 메시지 구조 결정)와 단계 6 구현 계획 `docs/stage-6-plan.md` (범위, 체크포인트 6구간, 동시 상한 초기값, 문서 열기 방식) |
-| production code | 변경 없음 |
-| test code 및 fixture | 변경 없음. 전체 CTest **437** 유지 |
-| bug 수정 | 없음 |
-| 검증 | 문서 작업만 수행 |
-| 승인 대기 | **`S6-P0` 계획 검수**. 특히 `docs/stage-6-plan.md` 7.1의 확정 필요 사항 5개 |
-| 승인 뒤 다음 작업 | `S6-D1` messaging component 구현과 test 한 구간만 허용 |
+| 계획 ID | `S6-D1` |
+| 제출 내용 | ADR-005 messaging component(`channel`, `latest_slot`, envelope)와 계약 test 17개, `/fsanitize=address` ASan target |
+| production code | `src/messaging/*.h` 3개, `gitman_messaging` INTERFACE target |
+| test code 및 fixture | messaging test 17개 + ASan 중복 17개. 전체 CTest 437 → **471** |
+| bug 수정 | production 결함 없음. test style 1건과 ASan 구성 3건을 같은 구간에서 해소 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 각각 471/471, Release ASan 17/17 실계측, Debug 3회 반복, `/analyze` 무경고, format/style 통과 |
+| 승인 대기 | 사용자 위임으로 단계 6 종료까지 자동 진행 중 |
+| 승인 뒤 다음 작업 | `S6-D2` |
 
 ### 8.1.1 단계 6 진행 원장
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
 | `MSG-P0` 메시지 구조 설계 | 승인 완료, ADR-005 기록 | `docs/thread-message-design.md`, `docs/decisions/ADR-005-thread-messaging.md` |
-| `S6-P0` 계획 | 제출, 검수 대기 | `docs/stage-6-plan.md`. 7.1의 확정 필요 사항 5개 포함 |
+| `S6-P0` 계획 | 승인 완료, 커밋됨 | 7.1의 확정 필요 사항 5개를 제안대로 확정. 2026-08-17 사용자가 단계 6 종료까지 자동 진행과 커밋을 위임 |
+| `S6-D1` messaging component | 완료 | test 17개(+ASan 17), 전체 471/471. `docs/verification/2026-08-17-stage-6-d1.md` |
 
 ### 8.2 단계 5 진행 원장
 

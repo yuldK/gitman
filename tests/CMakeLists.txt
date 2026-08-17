@@ -32,6 +32,8 @@ add_executable(gitman_tests
     helpers/vcs_test_doubles.cpp
     helpers/vcs_test_doubles.h
     json_project_store_tests.cpp
+    messaging_channel_tests.cpp
+    messaging_latest_slot_tests.cpp
     process_cancellation_tests.cpp
     process_execution_tests.cpp
     process_output_pipeline_tests.cpp
@@ -69,12 +71,45 @@ target_compile_definitions(gitman_tests
 target_link_libraries(gitman_tests
     PRIVATE
         gitman_discovery
+        gitman_messaging
         gitman_process
         gitman_vcs
         gitman_workspace
         gitman_win32
         Catch2::Catch2WithMain)
 gitman_disable_automatic_windows_manifest(gitman_tests)
+
+# ADR-005의 ASan 검증이다. messaging은 header-only라 이 실행 파일만
+# /fsanitize=address로 컴파일해도 component 전체가 검사된다. Debug 구성의 /RTC1과
+# ASan이 충돌하므로 Debug가 아닌 구성에서만 ASan을 켠다. 검증은 Release로 실행한다.
+add_executable(gitman_messaging_asan_tests
+    messaging_channel_tests.cpp
+    messaging_latest_slot_tests.cpp)
+target_link_libraries(gitman_messaging_asan_tests
+    PRIVATE
+        gitman_messaging
+        gitman_project_options
+        Catch2::Catch2WithMain)
+# ASAN 보고에 기호가 필요해 이 target만 Release에서도 debug 정보를 켠다 (C5072).
+# vcpkg의 Catch2는 ASan 없이 빌드되어 STL 컨테이너 주석이 꺼져 있으므로(LNK2038)
+# 이 target도 컨테이너 주석을 끄고 heap 검사만 사용한다.
+target_compile_options(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/fsanitize=address;/Zi>")
+target_compile_definitions(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:_DISABLE_STRING_ANNOTATION;_DISABLE_VECTOR_ANNOTATION>")
+target_link_options(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/INCREMENTAL:NO;/DEBUG>")
+gitman_disable_automatic_windows_manifest(gitman_messaging_asan_tests)
+# 최신 MSVC의 ASan runtime은 항상 동적 DLL이라 실행 파일 옆에 있어야 한다. 경로는
+# configure 시점의 컴파일러(cl.exe) 디렉터리에서 해석해 따옴표 문제를 피한다.
+get_filename_component(GITMAN_MSVC_BIN_DIRECTORY "${CMAKE_CXX_COMPILER}" DIRECTORY)
+if (EXISTS "${GITMAN_MSVC_BIN_DIRECTORY}/clang_rt.asan_dynamic-x86_64.dll")
+    add_custom_command(TARGET gitman_messaging_asan_tests POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${GITMAN_MSVC_BIN_DIRECTORY}/clang_rt.asan_dynamic-x86_64.dll"
+            "$<TARGET_FILE_DIR:gitman_messaging_asan_tests>"
+        VERBATIM)
+else ()
+    message(WARNING "clang_rt.asan_dynamic-x86_64.dll을 찾지 못했습니다. asan test 실행에 PATH 구성이 필요할 수 있습니다.")
+endif ()
+catch_discover_tests(gitman_messaging_asan_tests TEST_PREFIX "asan: " PROPERTIES TIMEOUT 120 LABELS "asan")
 # hang 유형의 회귀가 CI에서 무기한 대기 대신 실패로 드러나도록 모든 Catch2 test에
 # timeout을 부여한다. 가장 긴 통합 test 기준으로 여유를 둔 값이다.
 catch_discover_tests(gitman_tests PROPERTIES TIMEOUT 120)

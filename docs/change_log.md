@@ -1,5 +1,31 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 6 `S6-D1` messaging component 구현 및 test
+
+### 사용자 지시
+
+- `S6-P0`을 승인하고 진행한다. 단계 중 커밋도 위임한다.
+
+### 반영 내용
+
+- ADR-005의 `messaging::channel<T>`(MPSC FIFO)와 `messaging::latest_slot<T>`(최신값 병합)를 header-only INTERFACE target `gitman_messaging`으로 구현했다. 어떤 gitman target에도 의존하지 않는다.
+- channel: 비블로킹 `post`, `try_receive`/`receive_wait`/`drain`, `close` 의미론(닫힌 뒤 post 거부·잔여 소비 가능), 비어 있다 채워질 때와 close의 signal callback, 통계, 주입 시계, debug consumer thread ownership assert.
+- latest_slot: 덮어쓰기 게시와 `take_newer`, **미소비 batch당 1회 signal**로 연속 게시가 wake 하나로 병합된다.
+- 계약 test 17개: FIFO·sequence·고정 시계, overflow 2정책과 sequence 구멍, close 의미론, signal 시점, drain 상한, move-only payload, receive_wait 3경로, 다중 producer 부분 순서, close 경합의 무유실, stress(8 producer × 20000).
+- 같은 test를 `/fsanitize=address`로 빌드해 실행하는 `gitman_messaging_asan_tests`를 추가했다. Debug의 `/RTC1` 충돌 때문에 비Debug 구성에서만 계측하고, C5072에 따라 `/Zi`·`/DEBUG`를 켜고, vcpkg Catch2와의 STL 컨테이너 주석 불일치(LNK2038)는 주석 비활성으로, ASan 동적 runtime DLL은 cl.exe 디렉터리에서 복사로 해소했다.
+- 전체 CTest가 437에서 **471**로 늘었고 VS2022 Debug/Release·VS2026 Debug 각각 471/471, Release ASan 17/17 실계측 통과. `/analyze` 무경고, Debug 3회 반복, format/style 통과.
+- test lambda의 닫는 중괄호 style 위반 1건을 도우미 함수로 대체해 해소했다. production 결함은 없다.
+- 결과를 `docs/verification/2026-08-17-stage-6-d1.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-009, REQ-010, REQ-012, REQ-015
+- NFR-009, NFR-014
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S6-D2`부터 `S6-V1`까지 자동 진행하며 체크포인트마다 커밋한다.
+
 ## 2026-08-17 - ADR-005 메시지 구조 확정과 단계 6 계획 `S6-P0` 수립
 
 ### 사용자 지시

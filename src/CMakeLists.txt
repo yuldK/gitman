@@ -158,6 +158,16 @@ target_link_libraries(gitman_vcs
     PRIVATE
         gitman_win32_platform)
 
+# ADR-005의 범용 스레드 메시지 component다. 어떤 gitman target에도 의존하지 않고
+# 표준 라이브러리만 사용하며, template 중심이라 header-only INTERFACE target이다.
+# src/messaging 디렉터리를 다른 프로젝트에 복사해도 그대로 컴파일되는 것이 분리
+# 기준이다.
+add_library(gitman_messaging INTERFACE
+    messaging/channel.h
+    messaging/envelope.h
+    messaging/latest_slot.h)
+target_include_directories(gitman_messaging INTERFACE "${GITMAN_SOURCE_DIRECTORY}")
+
 # 탐색·등록 계층이다. 표식 판정은 순수 함수이고 filesystem 접근은 주입 계약 뒤에
 # 있다. Win32 열거 구현은 단계 3의 runner, 단계 4의 probe와 같은 이유로 platform
 # target이 아니라 이 target에 두어 계층 방향을 지킨다. 탐색은 프로세스를 만들지

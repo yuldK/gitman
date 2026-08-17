@@ -34,6 +34,8 @@
 | 2026-08-16 | SVN CLI 미설치 유지, SVN XML 처리 대신 명령 연결만 수행 | `docs/stage-4-plan.md` 4.6, 8.4 | REQ-002, REQ-006, REQ-007 |
 | 2026-08-16 | 로캘을 강제하지 않고 시스템 로캘의 한국어 출력을 그대로 표시. 인코딩은 앱이 감당 | `docs/stage-4-plan.md` 4.3, 4.10 | REQ-008, REQ-011 |
 | 2026-08-16 | Git/SVN 실행 파일 경로의 수동 지정을 환경설정에서 제공하고 값은 프로젝트 문서 `settings`에 저장 | 3.7, `docs/stage-4-plan.md` 4.11 | REQ-001, REQ-017 |
+| 2026-08-17 | `S5-P0` 진행 지시로 단계 4를 최종 승인하고 단계 5 계획 수립 | `docs/stage-5-plan.md`, 단계 5 | REQ-001, REQ-004, REQ-012 |
+| 2026-08-17 | `S5-P0` 승인. 단계 5부터 production code와 test code 작성을 한 검수 구간으로 통합 | `docs/stage-5-plan.md` 7장·10.0 | REQ-004, REQ-012 |
 
 ### 1.2 단계 진행 상태
 
@@ -43,8 +45,9 @@
 | 단계 1: 빌드 및 품질 기준선 | 구현 완료 - 단계 2 진행 승인 | `docs/verification/2026-08-14-stage-1.md` |
 | 단계 2: 도메인과 설정 저장소 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-2.md` |
 | 단계 3: 프로세스 실행 계층 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-3.md` |
-| 단계 4: Git 및 SVN provider | `S4-P0` 계획 제출 - 사용자 검수 대기 | `docs/stage-4-plan.md` |
-| 단계 5~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
+| 단계 4: Git 및 SVN provider | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-4.md` |
+| 단계 5: 탐색과 등록 | `S5-D1` 제출 - 사용자 검수 대기 | `docs/stage-5-plan.md` |
+| 단계 6~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
 
@@ -472,7 +475,7 @@ gitman/
 
 ### 단계 4: Git 및 SVN provider
 
-상태: `S4-P0` 구현 계획을 제출하고 사용자 검수를 기다린다. 단계 2·3과 같이 `CODE`, `TEST`, `FIX` 체크포인트를 분리하고 각 구간 종료 시 보고 후 중지하며 사용자가 직접 커밋한다. 상세 계획은 `docs/stage-4-plan.md`에 있다.
+상태: 완료. 모든 체크포인트 승인과 `S4-V1` 전체 자동 검증을 마쳤고 2026-08-17 사용자가 `S5-P0` 진행을 지시하며 단계 4를 최종 승인했다. VS2022 Debug/Release와 `/analyze`, VS2026 Debug, 양 toolchain CTest 393/393, 3회 반복, 동시 조회 stress 3회, aggregate format/style, 단일 exe install이 통과했다. 실제 `svn.exe` 실행 경로는 미검증으로 남으며 단계 8에서 다룬다. 상세 결과는 `docs/verification/2026-08-17-stage-4.md`에 기록한다.
 
 - 로컬 상태 조회와 기계 판독 파서를 먼저 구현한다.
 - remote-first 최신 상태, optional submodule 갱신, remote-first switch 후보, dialog 검증과 전환을 순서대로 구현한다.
@@ -481,6 +484,8 @@ gitman/
 완료 조건: Git/SVN의 정상, dirty, conflict, no-upstream, detached, offline, 인증 필요, SVN switched 및 mixed-revision 사례가 공통 상태로 변환된다.
 
 ### 단계 5: 탐색과 등록
+
+상태: `S5-P0` 승인 완료, `S5-D1`(계약·판정·열거와 test) 제출 후 사용자 검수 대기. 사용자 지시로 단계 5부터 production code와 test code를 한 검수 구간에서 함께 작성하며, 각 구간 종료 시 보고 후 중지하고 사용자가 직접 커밋한다. 상세 계획은 `docs/stage-5-plan.md`에 있다.
 
 - 깊이 1 자식 탐색, 저장소 루트 판정, 중복 및 링크 정책을 구현한다.
 - 후보 미리보기, 선택 등록, 저장 충돌 감지를 구현한다.

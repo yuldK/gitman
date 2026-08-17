@@ -1,5 +1,66 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 5 `S5-D1` 탐색 계약·판정과 열거 구현 및 test
+
+### 사용자 지시
+
+- `S5-P0`을 승인하고 진행한다. 단계 5부터는 production code와 test code 작성을 한 검수 구간으로 같이 진행한다.
+
+### 반영 내용
+
+- `docs/stage-5-plan.md` 7장의 체크포인트를 `S5-P0`, `S5-D1`~`S5-D3`, `S5-V1`의 5개로 개정하고 10.0에 검수 결과를 기록했다. `CODE`/`TEST` 분리와 별도 `FIX` 체크포인트를 두지 않으며, 검수에서 발견된 결함은 해당 구간의 재제출로 처리한다.
+- `domain/discovery.h/.cpp`를 추가했다. 후보·결과 값 type, 제외 사유 7종과 **표식 판정 순수 함수** `classify_discovery_markers`다. 판정 순서는 확인 실패 → 메타데이터 충돌 → `.git` 디렉터리 → `.git` 파일 → `.svn` → bare 휴리스틱 → 비저장소다.
+- bare 휴리스틱은 `HEAD`+`objects`+`refs` 세 표식이 모두 있을 때만 인정하고 kind는 `git`으로 남긴다. 목록에 "Git bare 저장소라서 제외"라는 정보가 필요하기 때문이다.
+- 후보 정렬 `discovery_candidate_before`를 추가했다. 이름 ASCII 대소문자 무시 → code unit → 절대 경로 순서로 filesystem 열거 순서와 무관하게 결정적이다.
+- `application/directory_enumerator.h`를 추가했다. 깊이 1 열거 계약이며 항목마다 디렉터리·reparse point 여부를 담는다. UTF-8로 표현할 수 없는 이름은 조용히 버리지 않고 `unreadable_name_count`로 남긴다.
+- `platform/win32/win32_directory_enumerator.h/.cpp`를 추가했다. `FindFirstFileExW` 기반이며 `\\?\` 확장 접두어로 `MAX_PATH` 초과 경로를 지원한다. 상대 경로는 OS 호출 없이 거부하고, 패턴 불일치(`ERROR_FILE_NOT_FOUND`)는 빈 목록으로, 반복 중간 실패는 실패로 보고한다.
+- 새 static library `gitman_discovery`를 추가했다. `gitman_domain`·`gitman_vcs`·`gitman_workspace` PUBLIC, `gitman_win32_platform` PRIVATE이며 실행 파일에는 링크하지 않는다.
+- `tests/discovery_domain_tests.cpp`(11개)와 `tests/directory_enumerator_tests.cpp`(8개), `tests/helpers/discovery_test_doubles.*`(fake enumerator)를 추가했다. bare 진부분집합 7종 전수, 충돌·우선순위, 정렬 동률의 양방향, 실제 filesystem의 비ASCII 이름과 실패 경로를 고정한다.
+- 전체 CTest가 393에서 **412**로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 412/412 통과했다. `/analyze` 무경고, Debug 3회 반복 통과, `gitman_format_check` 238개 파일 통과.
+- 개발 중 formatter 위반 1건(`find_handle` 생성자 초기화 목록)을 formatter 결과 수용으로 해소했다. production 결함은 발견하지 않았다.
+- 결과를 `docs/verification/2026-08-17-stage-5-d1.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-004, REQ-009, REQ-010, REQ-012, REQ-013
+- NFR-005, NFR-006, NFR-009
+
+### 다음 작업 제한
+
+- `S5-D1`은 사용자 검수 대기 상태다.
+- 승인 전에는 `S5-D2`의 `discovery_service` 탐색 실행과 junction 통합 test를 작성하지 않는다.
+
+## 2026-08-17 - 단계 5 `S5-P0` 구현 계획 수립
+
+### 사용자 지시
+
+- `S5-P0`을 진행한다. 진행 원칙에 따라 이 지시로 `S4-V1`과 단계 4 전체를 최종 승인한 것으로 기록한다.
+
+### 반영 내용
+
+- `docs/stage-5-plan.md`를 작성했다. 단계 5 탐색과 등록의 범위, 설계 제안, 11개 체크포인트와 test 전략을 담는다.
+- 탐색은 **프로세스를 만들지 않는 표식 기반 판정**으로 제안했다. `.git` 디렉터리/파일, `.svn` 디렉터리, bare 휴리스틱(`HEAD`+`objects`+`refs`)으로 종류를 정하고, 정확한 상태 판정은 등록 후 단계 4 provider가 담당한다.
+- `docs/requirements.md` 6장이 단계 5로 이관한 링크·worktree·bare 세부 범위의 확정안을 제안했다. linked worktree와 submodule(`.git` 파일)은 후보 허용, bare는 표시 후 제외, reparse point는 판정 없이 제외하되 목록에 표시한다.
+- 중복 판정은 단계 2 `project_path_resolver`, 저장은 단계 2 `project_store`와 revision token을 그대로 주입받아 재사용한다. 새 정규화·저장 장치를 만들지 않는다.
+- 등록 규칙을 제안했다. id는 디렉터리 이름과 중복 시 숫자 접미사, 경로는 절대 경로, `vcs_hint`는 판정 종류, 부적격 후보가 섞인 선택 목록은 부분 등록 없이 전체 거부한다.
+- 새 계약은 깊이 1 열거의 `directory_enumerator` 하나이며 Win32 구현은 새 static library `gitman_discovery`에 둔다. 표식 확인은 단계 4의 `vcs_file_probe`, 취소는 단계 3의 `process_cancellation_token`을 재사용한다.
+- 판정이 표식 기반이므로 SVN 경로도 `svn.exe` 없이 통합 검증이 가능하다는 test 전략을 기록했다.
+- 체크포인트는 `S5-P0`, `S5-D1`(계약·판정) / `S5-D2`(탐색 실행) / `S5-D3`(선택 등록)의 `CODE`/`TEST`/`FIX` 3분할과 `S5-V1`로 총 11개다.
+- `S5-V1` 종료 보고에서 ADR-004 범용 메시지 구조의 단계 6 사전 설계 게이트를 다시 알리도록 계획에 명시했다.
+- `docs/plan.md`의 지시 이력과 단계 상태, `docs/requirements.md`의 문서 상태, `docs/handoff.md`의 현재 체크포인트와 진행 원장을 갱신했다.
+- production code와 test는 변경하지 않았다.
+
+### 영향 요구사항
+
+- REQ-001, REQ-004, REQ-012, REQ-016
+- NFR-005, NFR-006, NFR-009
+
+### 다음 작업 제한
+
+- `S5-P0`은 사용자 계획 검수 대기 상태다. 특히 `docs/stage-5-plan.md` 10.1의 확정 필요 사항 8개에 대한 결정이 필요하다.
+- 승인 전에는 `S5-D1-CODE`의 도메인 모델, `directory_enumerator` 계약과 판정 규칙을 작성하지 않는다.
+- ADR-004의 범용 메시지 구조는 단계 6 구현 전 별도 설계 승인을 받아야 한다. 이 차단 조건은 그대로 유효하다.
+
 ## 2026-08-17 - 단계 4 `S4-V1` 최종 검증
 
 ### 사용자 지시

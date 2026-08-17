@@ -3,20 +3,19 @@
 ## 1. 현재 상태
 
 - 기준일: 2026-08-17
-- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인)
-- 현재 단계: 단계 4 Git 및 SVN provider
-- 현재 체크포인트: `S4-V1` 최종 검증 제출, **단계 4 최종 사용자 검수 대기**
+- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인), 단계 4 전체 (2026-08-17 사용자가 `S5-P0` 진행을 지시하며 최종 승인)
+- 현재 단계: 단계 5 탐색과 등록
+- 현재 체크포인트: `S5-D1` 계약·판정 구현과 test 제출, **사용자 검수 대기**
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: 단계 4 최종 승인 후 단계 5 계획(`S5-P0`)부터 시작하고 보고 뒤 중지
-- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, test와 install 구성
-- 기준 문서: `docs/stage-4-plan.md`
-- 직전 단계 기준 문서: `docs/stage-3-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-17-stage-4.md` (단계 4 최종)
-- 직전 검증 기록: `docs/verification/2026-08-17-stage-4-d6-test.md`
-- 최근 검증 기록: `docs/verification/2026-08-17-stage-4-d6-code.md`
-- 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다.
+- 다음 허용 작업: `S5-D1` 승인 후 `S5-D2` 한 구간만 진행하고 보고 뒤 중지
+- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 탐색 도메인 모델과 표식 판정 및 깊이 1 열거, test와 install 구성
+- 기준 문서: `docs/stage-5-plan.md`
+- 직전 단계 기준 문서: `docs/stage-4-plan.md`
+- 현재 검증 기록: `docs/verification/2026-08-17-stage-5-d1.md`
+- 직전 검증 기록: `docs/verification/2026-08-17-stage-4.md` (단계 4 최종)
+- 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다. **단계 5부터 production code와 test code 작성은 한 검수 구간에서 함께 진행한다** (2026-08-17 지시).
 
-다음 작업은 이 문서와 `docs/stage-4-plan.md`를 먼저 읽어야 한다. 단계 4에서는 Git/SVN 도구 발견, 명령 조립, 기계 판독 파서, 공통 snapshot 변환, update와 switch 검증 및 실행만 구현하고 탐색·등록(단계 5), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다.
+다음 작업은 이 문서와 `docs/stage-5-plan.md`를 먼저 읽어야 한다. 단계 5에서는 깊이 1 자식 탐색, 표식 기반 저장소 판정, 링크·중복 정책, 후보 미리보기 데이터, 선택 등록과 저장 충돌 감지만 구현하고 미리보기 dialog UI(단계 6~7), 카드와 로그 UI(단계 6~7), scheduler와 ADR-004 message component는 구현하지 않는다. 탐색은 프로세스를 만들지 않는다.
 
 ## 2. 확정된 기술 기준선
 
@@ -102,31 +101,38 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 ## 7. 아직 하지 않은 작업
 
-- 탐색 및 등록 (단계 5), 실제 카드 UI와 로그 UI (단계 6~7)
+- 탐색 및 등록 구현 (단계 5, `S5-P0` 계획 검수 대기), 미리보기 dialog와 실제 카드 UI 및 로그 UI (단계 6~7)
 - thread message API 상세 설계와 구현 (단계 6 이전 별도 승인)
 - `gitman_process`와 `gitman_vcs`를 실행 파일에 링크하는 조립 작업. 두 library는 test로만 검증되며 exe 링크는 단계 6의 app 조립에서 이뤄진다.
 - 실제 `svn.exe` 실행 경로 검증 (단계 8). 단계 4는 명령 조립, 파서와 검증 규칙까지만 보장한다.
 - 실제 네트워크 원격과 인증이 필요한 Git 동작 검증 (단계 8). 단계 4의 통합 test는 로컬 경로 원격만 사용한다.
 
-따라서 후속 작업은 단계 4 최종 승인 후 단계 5 계획(`S5-P0`)부터 시작하며, 이후에도 체크포인트 하나씩 진행하고 다시 검수를 요청해야 한다.
+따라서 후속 작업은 `S5-P0` 계획 승인 후 `S5-D1-CODE`부터 시작하며, 이후에도 체크포인트 하나씩 진행하고 다시 검수를 요청해야 한다.
 
-## 8. 단계 4 영속 세션 메모리
+## 8. 단계 5 영속 세션 메모리
 
 ### 8.1 현재 체크포인트
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S4-V1` |
-| 제출 내용 | 단계 4 전체 build/test/analyze/format/install 검증, 동시 조회 stress와 최종 검증 문서 |
-| production code | 변경 없음 |
-| test code 및 fixture | 변경 없음. 전체 CTest **393** |
-| bug 수정 | 없음 |
-| 검증 | 재configure 후 VS2022 Debug/Release, VS2026 Debug 각각 393/393, `/analyze` 무경고, 3회 반복 통과, format/style 통과, 단일 exe install 확인, 동시 조회 stress 3회 |
+| 계획 ID | `S5-D1` |
+| 제출 내용 | 탐색 도메인 모델과 표식 판정 순수 함수, `directory_enumerator` 계약과 Win32 구현, `gitman_discovery` target, 판정·정렬·열거 test 19개와 fake enumerator 도우미 |
+| production code | `domain/discovery.*`, `application/directory_enumerator.h`, `platform/win32/win32_directory_enumerator.*`, `src/CMakeLists.txt` |
+| test code 및 fixture | test 19개와 `helpers/discovery_test_doubles.*`. 전체 CTest 393 → **412** |
+| bug 수정 | production 결함 없음. formatter 위반 1건을 같은 구간에서 formatter 결과 수용으로 해소 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 각각 412/412, Debug 3회 반복 통과, `/analyze` 무경고, format/style 통과, CRLF·무 BOM 확인 |
 | 발견 결함 | 없음 |
-| 승인 대기 | **단계 4 최종 검수** |
-| 승인 뒤 다음 작업 | 단계 5 계획(`S5-P0`) 한 구간만 허용 |
+| 승인 대기 | **`S5-D1` 검수** |
+| 승인 뒤 다음 작업 | `S5-D2` 한 구간만 허용 |
 
-### 8.2 단계 4 진행 원장
+### 8.2 단계 5 진행 원장
+
+| 체크포인트 | 상태 | 비고 |
+| --- | --- | --- |
+| `S5-P0` 계획 | 승인 완료 | 10.1의 확정 필요 사항 8개와 10.2의 5개를 제안대로 확정. 코드·test 통합 진행 지시를 반영해 체크포인트를 5개로 개정 |
+| `S5-D1` 계약과 판정, 열거 | 제출, 검수 대기 | test 19개, 전체 412/412. `docs/verification/2026-08-17-stage-5-d1.md` |
+
+### 8.3 단계 4 진행 원장 (완료)
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
@@ -149,9 +155,9 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S4-D6-CODE` switch | 승인 완료 | 신규 검증 서비스와 두 provider의 switch. `docs/verification/2026-08-17-stage-4-d6-code.md` |
 | `S4-D6-TEST` | 승인 완료 | test 55개, 전체 393/393. `docs/verification/2026-08-17-stage-4-d6-test.md` |
 | `S4-D6-FIX` | 생략 완료 | 발견 production 결함 없음 |
-| `S4-V1` 단계 4 최종 검증 | 제출, 검수 대기 | 전체 matrix와 동시 조회 stress 통과. `docs/verification/2026-08-17-stage-4.md` |
+| `S4-V1` 단계 4 최종 검증 | 승인 완료 | 전체 matrix와 동시 조회 stress 통과. 2026-08-17 사용자가 `S5-P0` 진행을 지시하며 단계 4를 최종 승인. `docs/verification/2026-08-17-stage-4.md` |
 
-### 8.3 단계 3 진행 원장 (완료)
+### 8.4 단계 3 진행 원장 (완료)
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
@@ -174,7 +180,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S3-V1` 단계 3 최종 검증 | 승인 완료 | 전체 matrix 통과 후 2026-08-16 사용자 최종 승인 |
 | 단계 2·3 독립 감사 및 결함 수정 | 완료 | 사용자 지시. `docs/verification/2026-08-16-stage-2-3-audit-fix.md`, 양 toolchain CTest 139/139 |
 
-### 8.4 단계 2 진행 원장 (완료)
+### 8.5 단계 2 진행 원장 (완료)
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
@@ -196,7 +202,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S2-D5-FIX` launch contract bug 수정 | 생략 완료 | 발견 production 결함 없음 |
 | `S2-V1` 단계 2 최종 검증 | 승인 완료 | 전체 matrix 통과 후 2026-08-16 사용자 최종 승인 |
 
-### 8.5 미해결 또는 보류 사항
+### 8.6 미해결 또는 보류 사항
 
 - `.verison-list`는 user-owned 작업공간 문서이며 한 프로세스 및 창에서 하나를 활성화한다. 실제 Windows association 등록은 단계 8에 구현한다.
 - unknown field 보존, 상대 path 기준, migration과 backup 정책은 계획대로 승인됐다.

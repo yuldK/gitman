@@ -12,6 +12,8 @@ add_executable(gitman_tests
     caption_layout_tests.cpp
     command_line_builder_tests.cpp
     dependency_versions_tests.cpp
+    directory_enumerator_tests.cpp
+    discovery_domain_tests.cpp
     domain_model_tests.cpp
     embedded_assets_tests.cpp
     git_command_builder_tests.cpp
@@ -21,6 +23,8 @@ add_executable(gitman_tests
     git_status_parser_tests.cpp
     git_switch_tests.cpp
     git_update_tests.cpp
+    helpers/discovery_test_doubles.cpp
+    helpers/discovery_test_doubles.h
     helpers/git_repository_fixture.cpp
     helpers/git_repository_fixture.h
     helpers/vcs_test_doubles.cpp
@@ -61,6 +65,7 @@ target_compile_definitions(gitman_tests
         GITMAN_VCS_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/vcs")
 target_link_libraries(gitman_tests
     PRIVATE
+        gitman_discovery
         gitman_process
         gitman_vcs
         gitman_workspace

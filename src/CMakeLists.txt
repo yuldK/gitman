@@ -158,6 +158,25 @@ target_link_libraries(gitman_vcs
     PRIVATE
         gitman_win32_platform)
 
+# 탐색·등록 계층이다. 표식 판정은 순수 함수이고 filesystem 접근은 주입 계약 뒤에
+# 있다. Win32 열거 구현은 단계 3의 runner, 단계 4의 probe와 같은 이유로 platform
+# target이 아니라 이 target에 두어 계층 방향을 지킨다. 탐색은 프로세스를 만들지
+# 않지만 `vcs_file_probe`와 취소 token 계약을 위해 gitman_vcs를 링크한다.
+add_library(gitman_discovery STATIC
+    application/directory_enumerator.h
+    domain/discovery.cpp
+    domain/discovery.h
+    platform/win32/win32_directory_enumerator.cpp
+    platform/win32/win32_directory_enumerator.h)
+target_include_directories(gitman_discovery PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
+target_link_libraries(gitman_discovery
+    PUBLIC
+        gitman_domain
+        gitman_vcs
+        gitman_workspace
+    PRIVATE
+        gitman_win32_platform)
+
 add_library(gitman_core STATIC
     application/application_options.cpp
     application/application_options.h

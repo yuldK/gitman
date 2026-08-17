@@ -5,9 +5,9 @@
 - 기준일: 2026-08-17
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인), 단계 4 전체 (2026-08-17 사용자가 `S5-P0` 진행을 지시하며 최종 승인)
 - 현재 단계: 단계 5 탐색과 등록
-- 현재 체크포인트: `S5-D1` 계약·판정 구현과 test 제출, **사용자 검수 대기**
+- 현재 체크포인트: `S5-D2` 탐색 실행 완료. 2026-08-17 사용자 지시로 **단계 5 종료(`S5-V1`)까지 자동 진행하며 체크포인트마다 커밋**한다
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S5-D1` 승인 후 `S5-D2` 한 구간만 진행하고 보고 뒤 중지
+- 다음 허용 작업: `S5-D3` 선택 등록, 이어서 `S5-V1` 최종 검증까지. 단계 5 전체에 대한 사용자 검수는 `S5-V1` 보고에서 받는다
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 탐색 도메인 모델과 표식 판정 및 깊이 1 열거, test와 install 구성
 - 기준 문서: `docs/stage-5-plan.md`
 - 직전 단계 기준 문서: `docs/stage-4-plan.md`
@@ -115,22 +115,23 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `S5-D1` |
-| 제출 내용 | 탐색 도메인 모델과 표식 판정 순수 함수, `directory_enumerator` 계약과 Win32 구현, `gitman_discovery` target, 판정·정렬·열거 test 19개와 fake enumerator 도우미 |
-| production code | `domain/discovery.*`, `application/directory_enumerator.h`, `platform/win32/win32_directory_enumerator.*`, `src/CMakeLists.txt` |
-| test code 및 fixture | test 19개와 `helpers/discovery_test_doubles.*`. 전체 CTest 393 → **412** |
-| bug 수정 | production 결함 없음. formatter 위반 1건을 같은 구간에서 formatter 결과 수용으로 해소 |
-| 검증 | VS2022 Debug/Release, VS2026 Debug 각각 412/412, Debug 3회 반복 통과, `/analyze` 무경고, format/style 통과, CRLF·무 BOM 확인 |
+| 계획 ID | `S5-D2` |
+| 제출 내용 | `discovery_service` 탐색 실행(루트 검증, 열거, 판정 적용, 중복 표시, 취소, 진단)과 fake 시나리오 11개·실제 환경 통합 5개 |
+| production code | `application/discovery_service.*`, `domain/diagnostic.*`(탐색 진단 code 3종), `src/CMakeLists.txt` |
+| test code 및 fixture | test 16개, `scoped_scan_directory` 공용 도우미. 전체 CTest 412 → **428** |
+| bug 수정 | production 결함 없음. style 위반 1건(여러 줄 중괄호 초기화)을 같은 구간에서 해소 |
+| 검증 | VS2022 Debug/Release, VS2026 Debug 각각 428/428, Debug 3회 반복 통과, `/analyze` 무경고, format/style 통과 |
 | 발견 결함 | 없음 |
-| 승인 대기 | **`S5-D1` 검수** |
-| 승인 뒤 다음 작업 | `S5-D2` 한 구간만 허용 |
+| 승인 대기 | 사용자 위임으로 `S5-V1`까지 자동 진행 중. 최종 검수는 단계 5 전체에 대해 수행 |
+| 승인 뒤 다음 작업 | `S5-D3` |
 
 ### 8.2 단계 5 진행 원장
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
 | `S5-P0` 계획 | 승인 완료 | 10.1의 확정 필요 사항 8개와 10.2의 5개를 제안대로 확정. 코드·test 통합 진행 지시를 반영해 체크포인트를 5개로 개정 |
-| `S5-D1` 계약과 판정, 열거 | 제출, 검수 대기 | test 19개, 전체 412/412. `docs/verification/2026-08-17-stage-5-d1.md` |
+| `S5-D1` 계약과 판정, 열거 | 완료, 커밋됨 | test 19개, 전체 412/412. 2026-08-17 사용자가 커밋과 단계 5 종료까지의 자동 진행을 지시. `docs/verification/2026-08-17-stage-5-d1.md` |
+| `S5-D2` 탐색 실행 | 완료 | test 16개, 전체 428/428. junction 포함 실제 환경 검증. `docs/verification/2026-08-17-stage-5-d2.md` |
 
 ### 8.3 단계 4 진행 원장 (완료)
 

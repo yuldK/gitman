@@ -63,6 +63,9 @@ namespace gitman {
         repository_not_found,
         update_blocked,
         switch_target_rejected,
+        discovery_root_unavailable,
+        discovery_child_skipped,
+        discovery_cancelled,
     };
 
     struct diagnostic_source

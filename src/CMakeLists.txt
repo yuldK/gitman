@@ -164,6 +164,8 @@ target_link_libraries(gitman_vcs
 # 않지만 `vcs_file_probe`와 취소 token 계약을 위해 gitman_vcs를 링크한다.
 add_library(gitman_discovery STATIC
     application/directory_enumerator.h
+    application/discovery_service.cpp
+    application/discovery_service.h
     domain/discovery.cpp
     domain/discovery.h
     platform/win32/win32_directory_enumerator.cpp

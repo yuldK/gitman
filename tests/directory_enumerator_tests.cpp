@@ -3,82 +3,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <chrono>
-#include <cstddef>
-#include <filesystem>
-#include <fstream>
 #include <string>
 #include <string_view>
 
 namespace {
-    // 실제 filesystem 열거 test 전용 임시 디렉터리다. 실패한 test에서도 남지 않도록
-    // 소멸자에서 지운다.
-    class scoped_test_directory
-    {
-    public:
-        scoped_test_directory()
-        {
-            std::error_code error {};
-            const std::filesystem::path base { std::filesystem::temp_directory_path(error) };
-            if (static_cast<bool>(error))
-                return;
-
-            const auto token { std::chrono::steady_clock::now().time_since_epoch().count() };
-            for (std::size_t attempt = 0; attempt < 100; ++attempt)
-            {
-                error.clear();
-                const std::filesystem::path candidate { base / (L"gitman-enumerator-tests-" + std::to_wstring(token) + L"-" + std::to_wstring(attempt)) };
-                if (std::filesystem::create_directory(candidate, error))
-                {
-                    root_ = candidate;
-                    break;
-                }
-            }
-        }
-
-        scoped_test_directory(const scoped_test_directory&) = delete;
-        scoped_test_directory(scoped_test_directory&&) = delete;
-        scoped_test_directory& operator=(const scoped_test_directory&) = delete;
-        scoped_test_directory& operator=(scoped_test_directory&&) = delete;
-
-        ~scoped_test_directory()
-        {
-            if (root_.empty())
-                return;
-
-            std::error_code error {};
-            std::filesystem::remove_all(root_, error);
-        }
-
-        [[nodiscard]] bool available() const noexcept
-        {
-            return root_.empty() == false;
-        }
-
-        [[nodiscard]] std::u8string root() const
-        {
-            return root_.u8string();
-        }
-
-        [[nodiscard]] std::u8string make_directory(const std::u8string_view relative) const
-        {
-            const std::filesystem::path path { root_ / std::filesystem::path { std::u8string { relative } } };
-            std::error_code error {};
-            std::filesystem::create_directories(path, error);
-            return path.u8string();
-        }
-
-        [[nodiscard]] std::u8string make_file(const std::u8string_view relative) const
-        {
-            const std::filesystem::path path { root_ / std::filesystem::path { std::u8string { relative } } };
-            std::ofstream stream { path, std::ios::binary };
-            stream << "gitman enumerator test";
-            return path.u8string();
-        }
-
-    private:
-        std::filesystem::path root_ {};
-    };
+    using scoped_test_directory = gitman::testing::scoped_scan_directory;
 
     const gitman::directory_entry* find_entry(const gitman::directory_listing& listing, const std::u8string_view name)
     {

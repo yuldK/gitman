@@ -1,5 +1,37 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 5 `S5-D2` 탐색 실행 구현 및 test
+
+### 사용자 지시
+
+- `S5-D1`을 기존 로그와 유사한 메시지로 커밋하고, 단계 5가 끝날 때까지 자동으로 진행한다.
+
+### 반영 내용
+
+- `S5-P0`과 `S5-D1`을 기존 커밋 관례(`feat: 단계 N ...`)로 나눠 커밋했다.
+- `application/discovery_service.h/.cpp`를 추가했다. 루트 검증, 깊이 1 열거, 표식 판정 적용, 중복 표시, 자식 경계 취소와 구조화 진단이다.
+- **service는 `process_runner`를 받지 않는다.** 의존성이 열거·probe·해석기뿐이라 계약 수준에서 프로세스 실행이 불가능하며, 계획 9장의 "탐색은 프로세스를 만들지 않는다" 완료 조건이 구조로 보장된다.
+- reparse point 자식은 표식을 확인하지 않고 제외한다. 대상이 실제 저장소여도 판정하지 않는 것을 test로 고정했다.
+- 중복 표시(`already_registered`)는 선택 가능한 후보에만 씌운다. 이미 제외된 후보의 사유를 덮으면 실제 원인이 가려진다. 비활성 프로젝트와의 중복도 같은 사유로 본다.
+- 루트 자체 판정 `root_is_repository`는 작업 복사본과 bare 저장소를 모두 참으로 본다.
+- 현재 `vcs_file_probe` 계약은 접근 실패를 구분하지 않아 자식 하나의 `probe_failed`를 켤 수 없다. 판정 규칙의 `inaccessible` 분기는 계약 확장을 위해 유지하고 한계를 header 주석과 검증 기록에 남겼다.
+- `diagnostic_code`에 `discovery_root_unavailable`, `discovery_child_skipped`, `discovery_cancelled`를 추가했다.
+- fake 기반 시나리오 test 11개와 실제 환경 통합 test 5개를 추가했다. 통합 test는 실제 `.svn` 표식(svn.exe 불필요), `git worktree add`가 만든 `.git` 파일, `git init --bare`, **`mklink /J`로 만든 실제 junction**, 구분자가 다른 표기의 실제 중복 감지, 자식 300개 완주를 다룬다.
+- `scoped_scan_directory` 공용 임시 디렉터리 도우미를 추가하고 열거 test가 함께 쓰도록 정리했다.
+- 전체 CTest가 412에서 **428**로 늘었고 VS2022 Debug/Release와 VS2026 Debug에서 각각 428/428 통과했다. `/analyze` 무경고, Debug 3회 반복 통과, format/style 통과.
+- 개발 중 style 위반 1건(여러 줄 중괄호 초기화의 닫는 중괄호 위치)을 한 줄 표현과 formatter 수용으로 해소했다. production 결함은 없다.
+- 결과를 `docs/verification/2026-08-17-stage-5-d2.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-004, REQ-009, REQ-010, REQ-012, REQ-013
+- NFR-005, NFR-006, NFR-009
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S5-D3` 선택 등록과 `S5-V1` 최종 검증까지 자동 진행한다.
+- 단계 5 전체에 대한 사용자 검수는 `S5-V1` 보고에서 받는다.
+
 ## 2026-08-17 - 단계 5 `S5-D1` 탐색 계약·판정과 열거 구현 및 test
 
 ### 사용자 지시

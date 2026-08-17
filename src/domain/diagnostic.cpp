@@ -113,6 +113,12 @@ namespace gitman {
             return u8"update_blocked";
         case diagnostic_code::switch_target_rejected:
             return u8"switch_target_rejected";
+        case diagnostic_code::discovery_root_unavailable:
+            return u8"discovery_root_unavailable";
+        case diagnostic_code::discovery_child_skipped:
+            return u8"discovery_child_skipped";
+        case diagnostic_code::discovery_cancelled:
+            return u8"discovery_cancelled";
         }
         return u8"unknown";
     }

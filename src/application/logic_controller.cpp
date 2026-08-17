@@ -159,7 +159,7 @@ namespace gitman {
                 }
                 else if constexpr (std::is_same_v<value_type, scroll_intent>)
                 {
-                    const float viewport { window_height_ / scale_ - layout_toolbar_height };
+                    const float viewport { window_height_ / scale_ - layout_caption_height - layout_toolbar_height };
                     const float content { card_list_content_height(cards_.size(), 1.0f) };
                     scroll_offset_ = clamp_scroll_offset(scroll_offset_ + value.delta, content, viewport);
                 }

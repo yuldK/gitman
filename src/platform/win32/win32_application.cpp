@@ -4,14 +4,18 @@
 #include "platform/win32/embedded_assets.h"
 #include "platform/win32/skia_renderer.h"
 #include "platform/win32/utf8.h"
+#include "platform/win32/win32_app_runtime.h"
 #include "presentation/caption_ui.h"
+#include "presentation/layout_model.h"
 
 #include <dwmapi.h>
+#include <shobjidl.h>
 #include <windowsx.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace gitman::win32 {
@@ -19,6 +23,41 @@ namespace gitman::win32 {
         constexpr wchar_t window_class_name[] = L"Gitman.Stage1.Window";
         constexpr wchar_t window_title[] = L"Gitman";
         constexpr int direct3d_unavailable_exit_code { 77 };
+        // ADR-005의 wake 신호다. view slot의 signal callback이 게시한다.
+        constexpr UINT snapshot_wake_message { WM_APP + 1 };
+        // input thread가 요청한 파일 dialog를 UI thread에서 여는 신호다.
+        constexpr UINT open_dialog_request_message { WM_APP + 2 };
+
+        // `.verison-list` 문서를 고르는 Win32 파일 dialog다. UI thread 전용이다.
+        [[nodiscard]] std::optional<std::u8string> choose_workspace_document(const HWND owner)
+        {
+            IFileOpenDialog* dialog { nullptr };
+            if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))) || dialog == nullptr)
+                return std::nullopt;
+
+            std::optional<std::u8string> chosen {};
+            const COMDLG_FILTERSPEC filter { L"Gitman 문서 (*.verison-list)", L"*.verison-list" };
+            static_cast<void>(dialog->SetFileTypes(1, &filter));
+            static_cast<void>(dialog->SetTitle(L".verison-list 문서 열기"));
+            if (SUCCEEDED(dialog->Show(owner)))
+            {
+                IShellItem* item { nullptr };
+                if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr)
+                {
+                    PWSTR path { nullptr };
+                    if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path != nullptr)
+                    {
+                        auto converted { utf16_to_utf8(path) };
+                        if (converted.value.has_value())
+                            chosen = { std::move(*converted.value) };
+                        CoTaskMemFree(path);
+                    }
+                    item->Release();
+                }
+            }
+            dialog->Release();
+            return chosen;
+        }
         constexpr DWORD initial_window_style { WS_OVERLAPPEDWINDOW };
         constexpr DWORD retained_window_styles {
             WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
@@ -71,7 +110,14 @@ namespace gitman::win32 {
                 apply_dwm_frame();
                 dpi_ = GetDpiForWindow(window_);
                 renderer_ = renderer_host::create(window_, options_.renderer, options_.simulate_direct3d_failure, error);
-                return renderer_ != nullptr;
+                if (renderer_ == nullptr)
+                    return false;
+
+                // smoke test는 스레드 없이 한 frame만 그린다. 실제 앱 모드에서만
+                // runtime(스레드 4종과 채널)을 조립한다.
+                if (options_.smoke_test == false)
+                    runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, open_dialog_request_message);
+                return true;
             }
 
             [[nodiscard]] int run()
@@ -81,6 +127,10 @@ namespace gitman::win32 {
                     std::u8string error {};
                     return render_one_frame(error) ? 0 : 1;
                 }
+
+                post_window_metrics();
+                if (options_.workspace_document_path.has_value())
+                    runtime_->post_logic(logic_message { open_document_intent { *options_.workspace_document_path } });
 
                 ShowWindow(window_, SW_SHOWDEFAULT);
                 UpdateWindow(window_);
@@ -117,6 +167,61 @@ namespace gitman::win32 {
             {
                 switch (message)
                 {
+                case snapshot_wake_message:
+                    InvalidateRect(window_, nullptr, FALSE);
+                    return 0;
+                case open_dialog_request_message:
+                    if (runtime_ != nullptr)
+                    {
+                        if (const std::optional<std::u8string> path { choose_workspace_document(window_) }; path.has_value())
+                            runtime_->post_logic(logic_message { open_document_intent { *path } });
+                    }
+                    return 0;
+                case WM_CLOSE:
+                    // ADR-005 7.3: 스레드를 모두 정리한 뒤에 창을 파괴한다.
+                    if (runtime_ != nullptr)
+                    {
+                        runtime_->shutdown();
+                        runtime_.reset();
+                    }
+                    break;
+                case WM_LBUTTONDOWN:
+                    if (runtime_ != nullptr)
+                    {
+                        SetCapture(window_);
+                        runtime_->post_raw_input(pointer_pressed_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), pointer_button::left });
+                        return 0;
+                    }
+                    break;
+                case WM_LBUTTONUP:
+                    if (runtime_ != nullptr)
+                    {
+                        ReleaseCapture();
+                        runtime_->post_raw_input(pointer_released_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), pointer_button::left });
+                        return 0;
+                    }
+                    break;
+                case WM_MOUSEWHEEL:
+                    if (runtime_ != nullptr)
+                    {
+                        POINT client_point { GET_X_LPARAM(long_parameter), GET_Y_LPARAM(long_parameter) };
+                        ScreenToClient(window_, &client_point);
+                        runtime_->post_raw_input(
+                            mouse_wheel_event { static_cast<float>(client_point.x), static_cast<float>(client_point.y), static_cast<float>(GET_WHEEL_DELTA_WPARAM(word_parameter)) });
+                        return 0;
+                    }
+                    break;
+                case WM_KEYDOWN:
+                    if (runtime_ != nullptr)
+                    {
+                        const key_code key { key_from_virtual(word_parameter) };
+                        if (key != key_code::none)
+                        {
+                            runtime_->post_raw_input(key_pressed_event { key, (GetKeyState(VK_CONTROL) & 0x8000) != 0 });
+                            return 0;
+                        }
+                    }
+                    break;
                 case WM_NCCALCSIZE:
                     if (word_parameter != 0)
                         return 0;
@@ -141,6 +246,8 @@ namespace gitman::win32 {
                     break;
                 case WM_MOUSEMOVE:
                     update_caption_hover(caption_button_hover::none);
+                    if (runtime_ != nullptr)
+                        runtime_->post_raw_input(pointer_moved_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)) });
                     break;
                 case WM_ACTIVATE:
                     if (LOWORD(word_parameter) == WA_INACTIVE)
@@ -175,6 +282,7 @@ namespace gitman::win32 {
                             report_runtime_error(error);
                             PostQuitMessage(1);
                         }
+                        post_window_metrics();
                         InvalidateRect(window_, nullptr, FALSE);
                     }
                     return 0;
@@ -183,6 +291,7 @@ namespace gitman::win32 {
                     const auto* suggested_rectangle { reinterpret_cast<const RECT*>(long_parameter) };
                     SetWindowPos(window_, nullptr, suggested_rectangle->left, suggested_rectangle->top, suggested_rectangle->right - suggested_rectangle->left,
                         suggested_rectangle->bottom - suggested_rectangle->top, SWP_NOACTIVATE | SWP_NOZORDER);
+                    post_window_metrics();
                     InvalidateRect(window_, nullptr, FALSE);
                     return 0;
                 }
@@ -212,6 +321,12 @@ namespace gitman::win32 {
                     return 0;
                 }
                 case WM_DESTROY:
+                    // WM_CLOSE를 거치지 않은 파괴 경로에서도 스레드를 먼저 정리한다.
+                    if (runtime_ != nullptr)
+                    {
+                        runtime_->shutdown();
+                        runtime_.reset();
+                    }
                     renderer_.reset();
                     PostQuitMessage(0);
                     return 0;
@@ -393,6 +508,39 @@ namespace gitman::win32 {
                 return true;
             }
 
+            [[nodiscard]] static key_code key_from_virtual(const WPARAM virtual_key) noexcept
+            {
+                switch (virtual_key)
+                {
+                case VK_UP:
+                    return key_code::arrow_up;
+                case VK_DOWN:
+                    return key_code::arrow_down;
+                case VK_RETURN:
+                    return key_code::enter;
+                case VK_F5:
+                    return key_code::f5;
+                case VK_ESCAPE:
+                    return key_code::escape;
+                default:
+                    return key_code::none;
+                }
+            }
+
+            void post_window_metrics() const noexcept
+            {
+                if (runtime_ == nullptr)
+                    return;
+                RECT client_rectangle {};
+                if (GetClientRect(window_, &client_rectangle) == FALSE)
+                    return;
+                window_metrics_intent metrics {};
+                metrics.width = static_cast<float>(client_rectangle.right - client_rectangle.left);
+                metrics.height = static_cast<float>(client_rectangle.bottom - client_rectangle.top);
+                metrics.scale = static_cast<float>(dpi_) / 96.0f;
+                runtime_->post_logic(logic_message { metrics });
+            }
+
             [[nodiscard]] bool render_one_frame(std::u8string& error)
             {
                 RECT client_rectangle {};
@@ -413,6 +561,21 @@ namespace gitman::win32 {
                 state.theme = high_contrast_enabled ? color_theme::high_contrast : color_theme::dark;
                 state.maximized = IsZoomed(window_) != FALSE;
                 state.hovered_caption_button = hovered_caption_button_;
+
+                // 앱 모드에서는 마지막 view snapshot으로 카드 목록을 그린다. layout은
+                // 이 호출 동안만 살아 있으면 된다.
+                std::shared_ptr<const view_snapshot> view {};
+                layout_snapshot layout {};
+                if (runtime_ != nullptr)
+                {
+                    view = runtime_->acquire_view();
+                    if (view != nullptr)
+                    {
+                        layout = compute_layout(*view);
+                        state.application_view = view.get();
+                        state.application_layout = &layout;
+                    }
+                }
                 return renderer_->render(state, error);
             }
 
@@ -438,6 +601,7 @@ namespace gitman::win32 {
             caption_button_hover hovered_caption_button_ { caption_button_hover::none };
             bool tracking_non_client_mouse_ { false };
             std::unique_ptr<renderer_host> renderer_ {};
+            std::unique_ptr<app_runtime> runtime_ {};
         };
 
         void show_startup_error(const std::u8string& error, const bool smoke_test)

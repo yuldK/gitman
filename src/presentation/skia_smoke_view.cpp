@@ -1,5 +1,7 @@
 #include "presentation/skia_smoke_view.h"
 
+#include "presentation/card_list_view.h"
+
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
 #include "include/core/SkPaint.h"
@@ -22,6 +24,22 @@ namespace gitman {
         const ui_color_palette& colors { color_palette_for(state.theme) };
         const caption_ui caption { colors.caption };
         const float caption_height { caption.height(scale) };
+
+        // 앱 모드에서는 smoke 화면 대신 카드 목록을 그린다. caption은 두 모드가 같은
+        // 코드를 쓴다.
+        if (state.application_view != nullptr && state.application_layout != nullptr)
+        {
+            draw_card_list(canvas, codicon_typeface, ui_typeface, *state.application_view, *state.application_layout, state.theme);
+            caption.draw(canvas, codicon_typeface, ui_typeface,
+                caption_ui_state {
+                    .width = state.width,
+                    .dpi_scale = state.dpi_scale,
+                    .maximized = state.maximized,
+                    .hovered_button = state.hovered_caption_button,
+                    .title = u8"Gitman",
+                });
+            return;
+        }
 
         canvas.clear(colors.window_background);
         caption.draw(canvas, codicon_typeface, ui_typeface,

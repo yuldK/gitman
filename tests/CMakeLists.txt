@@ -8,6 +8,7 @@ gitman_disable_automatic_windows_manifest(gitman_process_test_child)
 
 add_executable(gitman_tests
     "${GITMAN_GENERATED_RESOURCE}"
+    app_runtime_tests.cpp
     application_options_tests.cpp
     caption_layout_tests.cpp
     command_line_builder_tests.cpp

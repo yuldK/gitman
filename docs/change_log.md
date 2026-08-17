@@ -1,5 +1,32 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 6 `S6-D5` UI 렌더링과 앱 조립 및 test
+
+### 사용자 지시
+
+- 단계 6 종료까지 자동 진행 (2026-08-17 위임).
+
+### 반영 내용
+
+- `presentation/card_list_view.*`를 추가했다. view/layout snapshot만 읽어 toolbar, 카드(상태 글리프와 한국어 툴팁, 참조·리비전·작업 트리 요약), 활성 refresh와 비활성 update·switch 버튼, 빈 상태 5종, 진단 notice를 그린다.
+- `smoke_view_state`에 앱 모드 포인터를 더해 renderer 배관을 바꾸지 않고 카드 화면으로 분기한다. caption은 두 모드가 같은 코드를 쓴다.
+- layout에 custom caption 높이(40 논리px)를 반영했다.
+- `platform/win32/win32_app_runtime.*`를 추가했다. Win32 구현체 주입, 채널·slot, logic thread(배치 처리 후 snapshot 게시), input thread, worker `min(4, hardware_concurrency)`의 scheduler와 ADR-005 7.3 순서의 shutdown을 한 곳에서 소유한다.
+- `win32_application.cpp`에 앱 모드를 통합했다. `WM_APP` wake와 dialog marshal, 입력 메시지의 raw event 게시, 창 크기·DPI intent, `IFileOpenDialog` 문서 열기, `WM_CLOSE`/`WM_DESTROY`의 스레드 정리, 명령행 문서 열기다. smoke test 경로는 스레드를 만들지 않아 기존 smoke 4종이 그대로 유효하다.
+- 실행 파일이 처음으로 messaging·workspace·process·vcs·discovery·app 전 계층을 링크한다. install 결과는 단일 exe(6,807,552 byte)로 유지된다.
+- 창 없는 조립 통합 test 2개: 실제 문서 열기부터 실제 provider의 초기 조회까지 end-to-end 왕복과, 빈 조립의 초기 snapshot·멱등 shutdown이다.
+- 전체 CTest가 508에서 **510**으로 늘었고 세 구성 각각 510/510, Debug 3회 반복, `/analyze` 무경고, format/style, 설치본 smoke 통과.
+- 결과를 `docs/verification/2026-08-17-stage-6-d5.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-001~REQ-003, REQ-005, REQ-009~REQ-016
+- NFR-005~NFR-009, NFR-011~NFR-013
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S6-V1` 최종 검증까지 자동 진행한다.
+
 ## 2026-08-17 - 단계 6 `S6-D4` input thread 구현 및 test
 
 ### 사용자 지시

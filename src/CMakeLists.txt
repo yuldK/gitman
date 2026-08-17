@@ -244,10 +244,14 @@ add_library(gitman_win32 STATIC
     platform/win32/embedded_assets.h
     platform/win32/skia_renderer.cpp
     platform/win32/skia_renderer.h
+    platform/win32/win32_app_runtime.cpp
+    platform/win32/win32_app_runtime.h
     platform/win32/win32_application.cpp
     platform/win32/win32_application.h
     presentation/caption_ui.cpp
     presentation/caption_ui.h
+    presentation/card_list_view.cpp
+    presentation/card_list_view.h
     presentation/skia_smoke_view.cpp
     presentation/skia_smoke_view.h)
 add_dependencies(gitman_win32 gitman_generate_codicons gitman_verify_assets)
@@ -257,6 +261,7 @@ target_include_directories(gitman_win32
         "${GITMAN_GENERATED_INCLUDE_DIRECTORY}")
 target_link_libraries(gitman_win32
     PUBLIC
+        gitman_app
         gitman_core
         gitman_win32_platform
         unofficial::skia::skia

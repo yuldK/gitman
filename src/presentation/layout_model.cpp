@@ -33,14 +33,17 @@ namespace gitman {
         layout.content_height = card_list_content_height(view.cards.size(), view.scale);
 
         const float scale { view.scale };
+        const float caption_height { layout_caption_height * scale };
         const float toolbar_height { layout_toolbar_height * scale };
         const float margin { layout_margin * scale };
         const float button { layout_button_size * scale };
-        const float viewport_height { view.window_height - toolbar_height };
+        const float list_top { caption_height + toolbar_height };
+        const float viewport_height { view.window_height - list_top };
         layout.scroll_offset = clamp_scroll_offset(view.scroll_offset * scale, layout.content_height, viewport_height);
 
-        // toolbar: 전체 refresh와, 문서가 없을 때의 열기 버튼.
-        const float button_y { (toolbar_height - button) / 2.0f };
+        // toolbar: caption 바로 아래 줄이며 전체 refresh와, 문서가 없을 때의 열기
+        // 버튼을 담는다.
+        const float button_y { caption_height + (toolbar_height - button) / 2.0f };
         layout.areas.push_back({ hit_target_kind::toolbar_refresh_all, {}, { view.window_width - margin - button, button_y, button, button } });
         if (view.empty_state == view_empty_state::no_document)
             layout.areas.push_back({ hit_target_kind::toolbar_open_document, {}, { view.window_width - margin - button * 2.0f - margin, button_y, button, button } });
@@ -50,8 +53,8 @@ namespace gitman {
         const float card_width { view.window_width - margin * 2.0f };
         for (std::size_t index = 0; index < view.cards.size(); ++index)
         {
-            const float top { toolbar_height + margin + static_cast<float>(index) * (card_height + card_gap) - layout.scroll_offset };
-            if (top + card_height < toolbar_height || top > view.window_height)
+            const float top { list_top + margin + static_cast<float>(index) * (card_height + card_gap) - layout.scroll_offset };
+            if (top + card_height < list_top || top > view.window_height)
                 continue;
 
             const card_view_model& card { view.cards[index] };

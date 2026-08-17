@@ -203,6 +203,8 @@ add_library(gitman_app STATIC
     application/task_scheduler.h
     infrastructure/vcs_operation_executor.cpp
     infrastructure/vcs_operation_executor.h
+    presentation/input_controller.cpp
+    presentation/input_controller.h
     presentation/layout_model.cpp
     presentation/layout_model.h
     presentation/status_presentation.cpp

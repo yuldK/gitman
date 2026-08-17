@@ -31,6 +31,7 @@ add_executable(gitman_tests
     helpers/git_repository_fixture.h
     helpers/vcs_test_doubles.cpp
     helpers/vcs_test_doubles.h
+    input_controller_tests.cpp
     json_project_store_tests.cpp
     layout_model_tests.cpp
     logic_controller_tests.cpp

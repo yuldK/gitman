@@ -134,7 +134,8 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S6-P0` 계획 | 승인 완료, 커밋됨 | 7.1의 확정 필요 사항 5개를 제안대로 확정. 2026-08-17 사용자가 단계 6 종료까지 자동 진행과 커밋을 위임 |
 | `S6-D1` messaging component | 완료, 커밋됨 | test 17개(+ASan 17), 전체 471/471. `docs/verification/2026-08-17-stage-6-d1.md` |
 | `S6-D2` 표시·상태 모델과 logic | 완료, 커밋됨 | test 16개, 전체 490/490. `docs/verification/2026-08-17-stage-6-d2.md` |
-| `S6-D3` scheduler와 worker pool | 완료 | test 11개, 전체 501/501. 실제 병렬성과 lane 직렬화 검증. `docs/verification/2026-08-17-stage-6-d3.md` |
+| `S6-D3` scheduler와 worker pool | 완료, 커밋됨 | test 11개, 전체 501/501. 실제 병렬성과 lane 직렬화 검증. `docs/verification/2026-08-17-stage-6-d3.md` |
+| `S6-D4` input thread | 완료 | test 7개, 전체 508/508. `docs/verification/2026-08-17-stage-6-d4.md` |
 
 ### 8.2 단계 5 진행 원장
 

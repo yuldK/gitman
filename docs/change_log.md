@@ -1,5 +1,31 @@
 # 변경 이력
 
+## 2026-08-17 - 단계 6 `S6-D4` input thread 구현 및 test
+
+### 사용자 지시
+
+- 단계 6 종료까지 자동 진행 (2026-08-17 위임).
+
+### 반영 내용
+
+- `presentation/input_controller.*`를 추가했다. `raw_input_event` variant(포인터·휠·키), hit test 기반 intent 변환, input thread 소비 루프 `run_input_pump`다.
+- 클릭은 같은 대상 위의 누름과 뗌으로 판정하고, 벗어난 release는 아무 intent도 만들지 않는다.
+- 파일 dialog는 UI thread 전용이라 `input_action`이 logic 메시지와 dialog 요청을 구분한다. Win32 연결은 `S6-D5`가 담당한다.
+- 키보드 초점(화살표·Enter·F5·Escape)은 input의 지역 상태이고 선택의 진실은 logic이 소유한다. 초점 이동은 layout의 보이는 카드 순서를 따른다.
+- pump는 처리 직전 최신 layout으로 갱신하고, intent를 사본 재시도로 유실 없이 전달하며, 채널 close로 종료한다.
+- test 7개: 클릭 해석 4종, 벗어난 release, 비활성 버튼, dialog 요청, 휠 변환, 키보드 순회, 실제 스레드 pump 왕복.
+- 전체 CTest가 501에서 **508**로 늘었고 세 구성 각각 508/508, Debug 3회 반복, `/analyze` 무경고, format/style 통과.
+- 결과를 `docs/verification/2026-08-17-stage-6-d4.md`에 기록했다.
+
+### 영향 요구사항
+
+- REQ-003, REQ-005, REQ-009~REQ-012, REQ-014, REQ-015
+- NFR-005, NFR-006, NFR-009
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S6-D5`부터 계속 자동 진행한다.
+
 ## 2026-08-17 - 단계 6 `S6-D3` scheduler와 worker pool 구현 및 test
 
 ### 사용자 지시

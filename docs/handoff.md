@@ -4,19 +4,19 @@
 
 - 기준일: 2026-08-17
 - 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인), 단계 4 전체, 단계 5 전체 (2026-08-17 사용자가 다음 구간 진행을 지시하며 최종 승인)
-- 현재 단계: 단계 6 사전 — ADR-004 범용 메시지 구조 설계 검수
-- 현재 체크포인트: `MSG-P0` 설계안 제출, **사용자 설계 검수 대기**
-- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다 (2026-08-17 사용자 지시). 단계 5는 사용자 위임으로 자동 진행하며 체크포인트마다 커밋했다
+- 현재 단계: 단계 6 GUI와 상태 연결
+- 현재 체크포인트: `S6-P0` 계획 제출, **사용자 계획 검수 대기**. 메시지 구조 설계는 승인되어 ADR-005로 기록됐다
+- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다 (2026-08-17 사용자 지시). 체크포인트마다 기존 로그 관례로 커밋한다
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `MSG-P0` 설계 승인 후 ADR-005 기록과 단계 6 계획(`S6-P0`). **설계 승인 전에는 message queue, dispatcher, thread bridge를 구현하지 않는다**
+- 다음 허용 작업: `S6-P0` 계획 승인 후 `S6-D1`(messaging component 구현과 test) 한 구간만 진행하고 보고 뒤 중지
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.verison-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 표식 판정 및 선택 등록 전체, test와 install 구성
-- 기준 문서: `docs/thread-message-design.md` (`MSG-P0` 설계안)
+- 기준 문서: `docs/stage-6-plan.md`, `docs/decisions/ADR-005-thread-messaging.md`, `docs/thread-message-design.md`
 - 직전 단계 기준 문서: `docs/stage-5-plan.md`
 - 현재 검증 기록: `docs/verification/2026-08-17-stage-5.md` (단계 5 최종)
 - 직전 검증 기록: `docs/verification/2026-08-17-stage-5-d3.md`
 - 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다. **단계 5부터 production code와 test code 작성은 한 검수 구간에서 함께 진행한다** (2026-08-17 지시).
 
-다음 작업은 이 문서와 `docs/thread-message-design.md`를 먼저 읽어야 한다. 현재 구간은 코드 작성이 아니라 **설계 검수**다. `MSG-P0` 설계안이 승인되면 그 내용을 ADR-005로 기록하고, 이후 `S6-P0` 계획에서 단계 6(메시지 component 구현, GUI와 상태 연결)의 체크포인트를 정한다. 설계 승인 전에는 message queue, dispatcher, thread bridge를 작성하지 않는다.
+다음 작업은 이 문서와 `docs/stage-6-plan.md`, ADR-005를 먼저 읽어야 한다. 단계 6에서는 messaging component, 스레드 조립, 카드 표시와 refresh까지만 구현하고 update·switch·탐색 dialog와 로그 뷰(단계 7), association(단계 8)은 구현하지 않는다. messaging 구현은 ADR-005의 계약과 일치해야 한다.
 
 ## 2. 확정된 기술 기준선
 
@@ -117,15 +117,21 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 항목 | 상태 |
 | --- | --- |
-| 계획 ID | `MSG-P0` |
-| 제출 내용 | 범용 스레드 메시지 구조 설계안 `docs/thread-message-design.md`. ADR-004의 요구 항목 11개(API·envelope·topology·backpressure·shutdown·test 전략 등)를 모두 다룬다 |
+| 계획 ID | `S6-P0` |
+| 제출 내용 | ADR-005(승인된 메시지 구조 결정)와 단계 6 구현 계획 `docs/stage-6-plan.md` (범위, 체크포인트 6구간, 동시 상한 초기값, 문서 열기 방식) |
 | production code | 변경 없음 |
 | test code 및 fixture | 변경 없음. 전체 CTest **437** 유지 |
 | bug 수정 | 없음 |
 | 검증 | 문서 작업만 수행 |
-| 발견 결함 | 없음 |
-| 승인 대기 | **`MSG-P0` 설계 검수**. 특히 `docs/thread-message-design.md` 12장의 검수 요청 항목 8개 |
-| 승인 뒤 다음 작업 | ADR-005 기록과 `S6-P0` 단계 6 계획 |
+| 승인 대기 | **`S6-P0` 계획 검수**. 특히 `docs/stage-6-plan.md` 7.1의 확정 필요 사항 5개 |
+| 승인 뒤 다음 작업 | `S6-D1` messaging component 구현과 test 한 구간만 허용 |
+
+### 8.1.1 단계 6 진행 원장
+
+| 체크포인트 | 상태 | 비고 |
+| --- | --- | --- |
+| `MSG-P0` 메시지 구조 설계 | 승인 완료, ADR-005 기록 | `docs/thread-message-design.md`, `docs/decisions/ADR-005-thread-messaging.md` |
+| `S6-P0` 계획 | 제출, 검수 대기 | `docs/stage-6-plan.md`. 7.1의 확정 필요 사항 5개 포함 |
 
 ### 8.2 단계 5 진행 원장
 
@@ -136,7 +142,6 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S5-D2` 탐색 실행 | 완료, 커밋됨 | test 16개, 전체 428/428. junction 포함 실제 환경 검증. `docs/verification/2026-08-17-stage-5-d2.md` |
 | `S5-D3` 선택 등록 | 완료, 커밋됨 | test 8개, 전체 436/436. 실제 store round-trip과 저장 충돌 검증. `docs/verification/2026-08-17-stage-5-d3.md` |
 | `S5-V1` 단계 5 최종 검증 | 승인 완료, 커밋됨 | 전체 matrix와 설치본 smoke 통과. 2026-08-17 사용자가 다음 구간 진행을 지시하며 단계 5를 최종 승인. `docs/verification/2026-08-17-stage-5.md` |
-| `MSG-P0` 메시지 구조 설계 | 제출, 검수 대기 | 단계 6 차단 조건. `docs/thread-message-design.md` |
 
 ### 8.3 단계 4 진행 원장 (완료)
 

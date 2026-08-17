@@ -1,5 +1,32 @@
 # 변경 이력
 
+## 2026-08-17 - ADR-005 메시지 구조 확정과 단계 6 계획 `S6-P0` 수립
+
+### 사용자 지시
+
+- 다음 구간을 진행한다. 진행 원칙에 따라 이 지시로 `MSG-P0` 설계안을 승인한 것으로 기록한다.
+
+### 반영 내용
+
+- 승인된 메시지 구조 결정을 `docs/decisions/ADR-005-thread-messaging.md`로 기록했다. ADR-004의 구현 차단 조건이 해소됐다.
+- `docs/stage-6-plan.md`를 작성했다. 단계 6 GUI와 상태 연결의 범위, 6구간 체크포인트, test 전략과 완료 조건을 담는다.
+- 체크포인트 제안: `S6-D1` messaging component → `S6-D2` 표시·상태 모델과 logic → `S6-D3` scheduler와 worker pool → `S6-D4` input thread → `S6-D5` Skia 렌더링과 앱 조립 → `S6-V1` 최종 검증. 각 구간은 코드와 test를 함께 담는다.
+- 단계 6 카드 동작 범위를 제안했다: 상태 표시와 전체/카드별 refresh까지 동작하고 update·switch·로그·탐색 dialog는 단계 7이다.
+- 문서 열기 방식을 제안했다: 명령행 인자의 `.verison-list` 경로 우선, 없으면 빈 상태 화면의 Win32 파일 dialog. association은 단계 8이다.
+- worker 수 `min(4, hardware_concurrency)`와 전체 동시 작업 상한 초기값을 제안했다 (`docs/plan.md` 10장의 미확정 항목).
+- 단계 6에서 실행 파일이 처음으로 `gitman_messaging`·`gitman_workspace`·`gitman_process`·`gitman_vcs`·`gitman_discovery`를 링크하고 Win32 구현체를 주입 조립한다.
+- production code와 test는 변경하지 않았다. 전체 CTest 437 유지.
+
+### 영향 요구사항
+
+- REQ-002, REQ-003, REQ-005, REQ-012~REQ-016
+- NFR-009, NFR-012~NFR-014
+
+### 다음 작업 제한
+
+- `S6-P0`은 사용자 계획 검수 대기 상태다. 특히 `docs/stage-6-plan.md` 7.1의 확정 필요 사항 5개에 대한 결정이 필요하다.
+- 승인 전에는 `S6-D1`의 messaging component를 작성하지 않는다.
+
 ## 2026-08-17 - 범용 메시지 구조 설계안 `MSG-P0` 제출
 
 ### 사용자 지시

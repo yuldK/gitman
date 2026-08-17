@@ -36,6 +36,7 @@
 | 2026-08-16 | Git/SVN 실행 파일 경로의 수동 지정을 환경설정에서 제공하고 값은 프로젝트 문서 `settings`에 저장 | 3.7, `docs/stage-4-plan.md` 4.11 | REQ-001, REQ-017 |
 | 2026-08-17 | `S5-P0` 진행 지시로 단계 4를 최종 승인하고 단계 5 계획 수립 | `docs/stage-5-plan.md`, 단계 5 | REQ-001, REQ-004, REQ-012 |
 | 2026-08-17 | `S5-P0` 승인. 단계 5부터 production code와 test code 작성을 한 검수 구간으로 통합 | `docs/stage-5-plan.md` 7장·10.0 | REQ-004, REQ-012 |
+| 2026-08-17 | 단계 5 최종 승인과 `MSG-P0` 범용 메시지 구조 설계 승인 | `docs/decisions/ADR-005-thread-messaging.md`, `docs/stage-6-plan.md` | REQ-012, REQ-015 |
 
 ### 1.2 단계 진행 상태
 
@@ -47,8 +48,9 @@
 | 단계 3: 프로세스 실행 계층 | 완료 - 2026-08-16 사용자 최종 승인 | `docs/verification/2026-08-16-stage-3.md` |
 | 단계 4: Git 및 SVN provider | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-4.md` |
 | 단계 5: 탐색과 등록 | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-5.md` |
-| 단계 6 사전: 메시지 구조 설계 | `MSG-P0` 설계안 제출 - 사용자 검수 대기 | `docs/thread-message-design.md` |
-| 단계 6~8 | 시작 전 (ADR-004 설계 승인이 단계 6 차단 조건) | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
+| 단계 6 사전: 메시지 구조 설계 | 승인 완료 - 2026-08-17, ADR-005로 기록 | `docs/decisions/ADR-005-thread-messaging.md` |
+| 단계 6: GUI와 상태 연결 | `S6-P0` 계획 제출 - 사용자 검수 대기 | `docs/stage-6-plan.md` |
+| 단계 7~8 | 시작 전 | `docs/handoff.md`에 따라 한 체크포인트씩 진행 |
 
 ## 2. 목표와 범위
 
@@ -495,7 +497,7 @@ gitman/
 
 ### 단계 6: GUI와 상태 연결
 
-상태: 시작 전. 사전 차단 조건인 범용 메시지 구조 설계안(`MSG-P0`)을 `docs/thread-message-design.md`로 제출하고 사용자 검수를 기다린다. 승인 시 ADR-005로 기록한 뒤 `S6-P0` 계획을 시작한다.
+상태: `S6-P0` 구현 계획을 제출하고 사용자 검수를 기다린다. 사전 차단 조건인 범용 메시지 구조 설계는 2026-08-17 사용자가 승인해 ADR-005로 기록했다. 상세 계획은 `docs/stage-6-plan.md`에 있다.
 
 - 단계 시작 전에 범용 메시지 구조의 API, queue topology, failure와 shutdown 설계안을 사용자에게 제시하고 승인을 받는다.
 - 승인 전에는 message queue, dispatcher, thread bridge 구현을 시작하지 않는다.

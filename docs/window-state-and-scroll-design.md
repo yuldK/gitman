@@ -246,7 +246,51 @@ constexpr int resize_corner_thickness { 10 };
 - 스크롤 막대는 목록 위아래에서 `layout_scrollbar_vertical_inset`(논리 6px)만큼
   띄운다.
 
-## 9. 후속 작업
+## 9. CMake target 정리
+
+솔루션에 프로젝트가 31개(우리 target 19개 + CTest dashboard·VS 기본 target) 생겨
+규모에 비해 과도했다. 실제 빌드에 필요한 것만 남긴다.
+
+### 9.1 무엇을 줄였나
+
+| 이전 | 이후 |
+| --- | --- |
+| static library 10개 (`gitman_domain`·`gitman_workspace`·`gitman_vcs` …) | `gitman_lib` 하나 |
+| INTERFACE library에 header를 나열해 생긴 `gitman_messaging` 프로젝트 | 소스 없는 INTERFACE로 되돌려 프로젝트 없음 |
+| custom target `gitman_generate_codicons` | 라이브러리 소스에 생성 header를 넣어 target 없이 순서 보장 |
+| custom target `gitman_verify_assets` | 라이브러리의 `PRE_BUILD` 명령 |
+| `gitman_format`·`gitman_format_check` 항상 생성 | `GITMAN_BUILD_TOOLING=ON`일 때만 |
+| `include(CTest)`가 만든 Continuous·Experimental·Nightly·NightlyMemoryCheck | `enable_testing()`으로 교체해 사라짐 |
+| test target 항상 생성 | `GITMAN_BUILD_TESTS=ON`일 때만 (기본 OFF) |
+
+기본 구성은 `gitman`, `gitman_lib`와 VS 기본 target(ALL_BUILD·ZERO_CHECK·INSTALL)
+뿐이다. test를 켜면 `gitman_tests`, `gitman_process_test_child`,
+`gitman_messaging_asan_tests`와 `RUN_TESTS`가 더해진다.
+
+### 9.2 계층은 어떻게 지키나
+
+target 경계로 계층을 강제하던 부분이 사라진다. 대신
+
+- 디렉터리 구조(`domain` → `application` → `infrastructure` → `presentation` →
+  `platform`)가 계층을 그대로 나타내고, `source_group(TREE ...)`로 IDE에서도 같은
+  구조로 보인다.
+- `add_library` 소스 목록을 계층별로 묶고 각 묶음에 규칙을 주석으로 남겼다.
+- 계층 위반(예: domain이 Win32 API를 부르는 것)은 코드 리뷰와 test에서 잡는다.
+
+빌드 시간·링크 순서 문제는 오히려 줄어든다 (static library 순환 회피용 예외가
+필요 없어진다).
+
+### 9.3 사용법
+
+```bat
+cmake --preset vs2022              :: 앱만: gitman, gitman_lib
+cmake --preset vs2022-tests        :: test·도구 target 포함 (별도 솔루션)
+ctest --preset vs2022-tests-debug
+```
+
+`vs2022-tests`는 binary directory가 달라 앱 전용 솔루션과 나란히 유지된다.
+
+## 10. 후속 작업
 
 - Page Up/Down, Home/End
 - 문서 전환 시점의 배치 저장 (1.4)

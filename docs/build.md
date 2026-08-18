@@ -43,23 +43,37 @@ Visual Studio 2026 Developer PowerShell은 자체 vcpkg 경로를 환경 변수�
 
 ## 3. Configure, build와 test
 
-### Visual Studio 2022
+### 3.1 앱 빌드 (기본)
+
+기본 preset은 실제 실행 파일에 필요한 target만 만든다. 솔루션에는 `gitman`(실행
+파일), `gitman_lib`(앱 코드 전체)와 Visual Studio 기본 target만 보인다.
 
 ```powershell
 cmake --preset vs2022
 cmake --build --preset vs2022-debug
-ctest --preset vs2022-debug
 cmake --build --preset vs2022-release
-ctest --preset vs2022-release
 ```
 
-### Visual Studio 2026
+Visual Studio 2026은 `vs2026`, `vs2026-debug`, `vs2026-release`를 같은 방식으로
+사용한다.
+
+### 3.2 Test 빌드
+
+test target과 CTest 등록은 `GITMAN_BUILD_TESTS`가 켜져 있을 때만 만들어진다. 전용
+preset이 별도 binary directory(`build/vs2022-tests`)에 test 솔루션을 만들어 앱 전용
+솔루션과 나란히 유지된다.
 
 ```powershell
-cmake --preset vs2026
-cmake --build --preset vs2026-debug
-ctest --preset vs2026-debug
+cmake --preset vs2022-tests
+cmake --build --preset vs2022-tests-debug
+ctest --preset vs2022-tests-debug
+cmake --build --preset vs2022-tests-release
+ctest --preset vs2022-tests-release
 ```
+
+기존 build directory에 직접 켜려면 `-DGITMAN_BUILD_TESTS=ON`을 준다. 개발 도구
+target(`gitman_format`, `gitman_format_check`)은 `-DGITMAN_BUILD_TOOLING=ON`이며
+test preset은 두 flag를 모두 켠다.
 
 각 generator는 전용 overlay triplet을 사용한다. VS2022는 v143, VS2026은 v145로 dependency와 애플리케이션을 같은 ABI에서 정적으로 빌드한다.
 
@@ -68,7 +82,13 @@ ctest --preset vs2026-debug
 ```powershell
 cmake --preset vs2022-analysis
 cmake --build --preset vs2022-analysis
-cmake --build build\vs2022 --target gitman_format_check --config Debug
+cmake --build build\vs2022-tests --target gitman_format_check --config Debug
+```
+
+포맷·style 검사는 CMake target 없이 스크립트로도 바로 실행할 수 있다.
+
+```powershell
+scripts\check_source_style.ps1 -root .
 ```
 
 `gitman_format_check`는 [`docs/code_style.md`](code_style.md)의 자동화 가능한 항목을 검사한다. clang-format은 Allman 중괄호, namespace 내부 1단계 들여쓰기, 짧은 제어문 본문의 한 줄 배치 방지 및 가능한 중괄호 제거, 조건 연산자의 새 줄 시작, 생성자 초기화 목록의 새 줄 쉼표, `template<...>` 선언과 함수 signature 분리, 중괄호 초기화 형식을 적용한다. source style 검사는 UTF-8 무 BOM, CRLF, tab 및 줄 끝 공백, C++ type과 namespace의 `snake_case`, template/signature의 같은 줄 배치와 여러 줄 표현식의 마지막 닫는 기호가 독립된 줄에 있지 않은 경우를 실패로 보고한다. 부정 연산자 지양은 코드 리뷰 기준이다.

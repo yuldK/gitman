@@ -27,8 +27,8 @@ namespace gitman {
             return value;
         }
 
-        // gitman_core의 `has_workspace_document_extension`과 같은 규칙이다. 이 계층은
-        // gitman_core에 링크하지 않으므로 도메인 상수로 직접 판정한다.
+        // platform 계층의 `has_workspace_document_extension`과 같은 규칙이다. 이
+        // 계층은 Win32에 의존하지 않으므로 도메인 상수로 직접 판정한다.
         bool ends_with_document_extension(const std::u8string_view path) noexcept
         {
             if (path.size() <= workspace_document_extension.size())

@@ -66,7 +66,7 @@ add_executable(gitman_tests
     version_list_generation_tests.cpp
     win32_process_runner_tests.cpp
     win32_text_transcoder_tests.cpp)
-add_dependencies(gitman_tests gitman_verify_assets gitman_process_test_child)
+add_dependencies(gitman_tests gitman_process_test_child)
 target_include_directories(gitman_tests
     PRIVATE
         "${GITMAN_SOURCE_DIRECTORY}"
@@ -79,14 +79,7 @@ target_compile_definitions(gitman_tests
         GITMAN_VCS_FIXTURE_DIRECTORY="${GITMAN_TEST_DIRECTORY}/fixtures/vcs")
 target_link_libraries(gitman_tests
     PRIVATE
-        gitman_app
-        gitman_discovery
-        gitman_messaging
-        gitman_process
-        gitman_ui
-        gitman_vcs
-        gitman_workspace
-        gitman_win32
+        gitman_lib
         Catch2::Catch2WithMain)
 gitman_disable_automatic_windows_manifest(gitman_tests)
 
@@ -96,9 +89,10 @@ gitman_disable_automatic_windows_manifest(gitman_tests)
 add_executable(gitman_messaging_asan_tests
     messaging_channel_tests.cpp
     messaging_latest_slot_tests.cpp)
+# messaging은 header-only라 라이브러리를 링크하지 않고 include 경로만 있으면 된다.
+target_include_directories(gitman_messaging_asan_tests PRIVATE "${GITMAN_SOURCE_DIRECTORY}")
 target_link_libraries(gitman_messaging_asan_tests
     PRIVATE
-        gitman_messaging
         gitman_project_options
         Catch2::Catch2WithMain)
 # ASAN 보고에 기호가 필요해 이 target만 Release에서도 debug 정보를 켠다 (C5072).

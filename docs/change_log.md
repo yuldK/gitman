@@ -1,5 +1,49 @@
 # 변경 이력
 
+## 2026-08-18 - CMake target 정리 (솔루션 축소, test는 flag로 분리)
+
+### 사용자 지시
+
+- CMake가 만드는 프로젝트가 과도하다(19개쯤). 실제 빌드에 필요한 것만 프로젝트로
+  포함하고, 테스트용 플래그를 넣으면 테스트 솔루션이 나오게 한다. (2026-08-18)
+
+### 반영 내용
+
+- **static library 10개를 `gitman_lib` 하나로 합쳤다.** 계층은 디렉터리 구조와
+  소스 목록의 묶음·주석으로 유지하고, `source_group(TREE ...)`로 IDE에서도 같은
+  구조로 보이게 했다. target 경계로 강제하던 계층 규칙은 코드 리뷰와 test가 맡는다.
+- **custom target을 없앴다.** Codicons 생성은 생성 header를 라이브러리 소스에 넣어
+  순서를 보장하고, 자산 checksum 검증은 라이브러리의 `PRE_BUILD` 명령으로 옮겼다.
+  `gitman_messaging`은 소스 없는 INTERFACE target으로 되돌려 프로젝트가 생기지
+  않는다.
+- **`include(CTest)`를 `enable_testing()`으로 바꿨다.** Continuous·Experimental·
+  Nightly·NightlyMemoryCheck dashboard target이 사라진다.
+- **test와 개발 도구를 flag 뒤로 뺐다.** `GITMAN_BUILD_TESTS`(기본 OFF)와
+  `GITMAN_BUILD_TOOLING`(기본 OFF)이다. preset에 `vs2022-tests`·`vs2026-tests`를
+  추가해 test 솔루션을 별도 binary directory로 만든다. test preset도 이 configure
+  preset을 가리킨다.
+- 결과: 기본 솔루션은 `gitman`, `gitman_lib`와 VS 기본 target 3개뿐이다 (31개 →
+  5개). test를 켜면 test target 3개와 `RUN_TESTS`가 더해진다.
+
+### 영향 요구사항
+
+- NFR-001, NFR-002 (빌드 구성)
+
+### 검증
+
+- `cmake --preset vs2022` 실제 configure 성공. 솔루션 프로젝트가 **31개 → 5개**로
+  줄었다 (`gitman`, `gitman_lib`, ALL_BUILD, ZERO_CHECK, INSTALL).
+- `cmake --build build/vs2022 --config Debug` **빌드·링크 성공** (경고 0).
+  `gitman_lib.lib`와 `gitman.exe`가 만들어졌다. 이번 세션에서 쌓인 UI·스크롤·
+  창 배치 변경도 이 빌드로 함께 컴파일·링크가 확인됐다.
+- test·도구 flag를 켠 configure도 확인했다: 위 5개 + `gitman_tests`,
+  `gitman_process_test_child`, `gitman_messaging_asan_tests`, `RUN_TESTS`,
+  `gitman_format`, `gitman_format_check` = 11개.
+
+### 다음 작업 제한
+
+- **사용자 검수 대기**다. test 실행은 검수 뒤에 한다.
+
 ## 2026-08-18 - 스크롤 막대 여백 · 상단 막대와 카드 구분
 
 ### 사용자 지시

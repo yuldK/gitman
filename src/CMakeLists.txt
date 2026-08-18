@@ -7,13 +7,8 @@ set(gitman_codicons_license "${GITMAN_ASSET_DIRECTORY}/LICENSE")
 set(gitman_codicons_code_license "${GITMAN_ASSET_DIRECTORY}/LICENSE-CODE")
 set(gitman_app_icon "${CMAKE_CURRENT_SOURCE_DIR}/../assets/gitman.ico")
 
-add_custom_target(gitman_verify_assets ALL
-    COMMAND "${CMAKE_COMMAND}"
-        "-DASSET_DIRECTORY=${GITMAN_ASSET_DIRECTORY}"
-        -P "${GITMAN_CMAKE_DIRECTORY}/verify_codicons.cmake"
-    COMMENT "Verifying Codicons checksums"
-    VERBATIM)
-
+# Codicons C++ 매핑은 파일 하나를 만드는 custom command다. 결과 header를 라이브러리
+# 소스에 넣어 두면 빌드 순서가 저절로 맞으므로 별도 target을 두지 않는다.
 add_custom_command(
     OUTPUT "${GITMAN_GENERATED_CODICONS}"
     COMMAND "${CMAKE_COMMAND}"
@@ -25,7 +20,6 @@ add_custom_command(
         "${GITMAN_CMAKE_DIRECTORY}/generate_codicons.cmake"
     COMMENT "Generating the Codicons C++ mapping"
     VERBATIM)
-add_custom_target(gitman_generate_codicons DEPENDS "${GITMAN_GENERATED_CODICONS}")
 
 include("${GITMAN_CMAKE_DIRECTORY}/generate_notices.cmake")
 gitman_generate_third_party_notices("${GITMAN_THIRD_PARTY_NOTICES}")
@@ -47,9 +41,17 @@ set_source_files_properties(
         GENERATED TRUE
         OBJECT_DEPENDS "${gitman_app_icon}")
 
-add_library(gitman_domain STATIC
+# 앱 코드 전체가 하나의 static library다. 계층(domain → application →
+# infrastructure → presentation → platform)은 디렉터리 구조와 코드 리뷰로 지키며,
+# target 경계로는 나누지 않는다. 프로젝트 규모에 비해 target이 지나치게 많아지는
+# 것을 피하기 위한 결정이다 (docs/window-state-and-scroll-design.md 10장).
+add_library(gitman_lib STATIC
+    "${GITMAN_GENERATED_CODICONS}"
+    # 도메인: 순수 규칙과 값 타입이다. 다른 계층에 의존하지 않는다.
     domain/diagnostic.cpp
     domain/diagnostic.h
+    domain/discovery.cpp
+    domain/discovery.h
     domain/operation.cpp
     domain/operation.h
     domain/path_syntax.cpp
@@ -63,81 +65,59 @@ add_library(gitman_domain STATIC
     domain/vcs_operation.cpp
     domain/vcs_operation.h
     domain/vcs_tool.cpp
-    domain/vcs_tool.h)
-target_include_directories(gitman_domain PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_domain PUBLIC gitman_project_options)
+    domain/vcs_tool.h
 
-add_library(gitman_win32_platform STATIC
-    platform/win32/project_file_system.cpp
-    platform/win32/project_file_system.h
-    platform/win32/utf8.cpp
-    platform/win32/utf8.h
-    platform/win32/workspace_document_file_system.cpp
-    platform/win32/workspace_document_file_system.h)
-target_include_directories(gitman_win32_platform PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_win32_platform PUBLIC gitman_domain)
-
-# 경로 해석은 `project_path_resolver` 계약으로만 사용하므로 workspace 계층은 Win32
-# platform에 링크하지 않는다. 구현체 주입은 호출자(테스트와 후속 app 조립)가 한다.
-add_library(gitman_workspace STATIC
-    application/project_path_resolver.h
-    application/project_store.cpp
-    application/project_store.h
-    application/workspace_document_file_system.h
-    infrastructure/json_project_store.cpp
-    infrastructure/json_project_store.h
-    infrastructure/json_workspace_document.cpp
-    infrastructure/json_workspace_document.h
-    infrastructure/workspace_document_paths.cpp
-    infrastructure/workspace_document_paths.h)
-target_include_directories(gitman_workspace PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_workspace
-    PUBLIC
-        gitman_domain
-    PRIVATE
-        nlohmann_json::nlohmann_json)
-
-add_library(gitman_process STATIC
+    # application: 상태 소유와 계약(interface)이다. OS API를 직접 부르지 않는다.
+    application/app_messages.h
+    application/application_options.cpp
+    application/application_options.h
+    application/directory_enumerator.h
+    application/discovery_service.cpp
+    application/discovery_service.h
+    application/logic_controller.cpp
+    application/logic_controller.h
+    application/operation_executor.h
     application/process_cancellation.cpp
     application/process_cancellation.h
     application/process_request.cpp
     application/process_request.h
     application/process_runner.h
-    application/text_transcoder.h
-    infrastructure/command_line_builder.cpp
-    infrastructure/command_line_builder.h
-    infrastructure/process_output_pipeline.cpp
-    infrastructure/process_output_pipeline.h
-    infrastructure/secret_masking.cpp
-    infrastructure/secret_masking.h
-    platform/win32/win32_process_runner.cpp
-    platform/win32/win32_process_runner.h
-    platform/win32/win32_text_transcoder.cpp
-    platform/win32/win32_text_transcoder.h)
-target_include_directories(gitman_process PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_process
-    PUBLIC
-        gitman_domain
-    PRIVATE
-        gitman_win32_platform)
-
-# Git/SVN 고유 지식 계층이다. provider는 주입받은 `process_runner`와 `vcs_file_probe`만
-#사용하므로 OS API를 직접 호출하지 않는다. Win32 probe 구현은 단계 3의 runner와 같은
-# 이유로 platform target이 아니라 이 target에 두어 static library 순환을 피한다.
-add_library(gitman_vcs STATIC
+    application/project_path_resolver.h
+    application/project_registration_service.cpp
+    application/project_registration_service.h
+    application/project_store.cpp
+    application/project_store.h
     application/repository_provider.cpp
     application/repository_provider.h
     application/switch_validation_service.cpp
     application/switch_validation_service.h
+    application/task_scheduler.cpp
+    application/task_scheduler.h
+    application/text_transcoder.h
     application/vcs_file_probe.h
     application/vcs_tool_registry.cpp
     application/vcs_tool_registry.h
+    application/version_list_generation_service.cpp
+    application/version_list_generation_service.h
+    application/workspace_document_file_system.h
+
+    # infrastructure: application 계약의 구현이다 (JSON, VCS, 프로세스).
+    infrastructure/command_line_builder.cpp
+    infrastructure/command_line_builder.h
     infrastructure/git_command_builder.cpp
     infrastructure/git_command_builder.h
     infrastructure/git_repository_provider.cpp
     infrastructure/git_repository_provider.h
     infrastructure/git_status_parser.cpp
     infrastructure/git_status_parser.h
+    infrastructure/json_project_store.cpp
+    infrastructure/json_project_store.h
+    infrastructure/json_workspace_document.cpp
+    infrastructure/json_workspace_document.h
+    infrastructure/process_output_pipeline.cpp
+    infrastructure/process_output_pipeline.h
+    infrastructure/secret_masking.cpp
+    infrastructure/secret_masking.h
     infrastructure/svn_command_builder.cpp
     infrastructure/svn_command_builder.h
     infrastructure/svn_output_parser.cpp
@@ -150,102 +130,21 @@ add_library(gitman_vcs STATIC
     infrastructure/vcs_error_classifier.h
     infrastructure/vcs_execution_policy.cpp
     infrastructure/vcs_execution_policy.h
+    infrastructure/vcs_operation_executor.cpp
+    infrastructure/vcs_operation_executor.h
     infrastructure/vcs_tool_discovery.cpp
     infrastructure/vcs_tool_discovery.h
     infrastructure/vcs_version.cpp
     infrastructure/vcs_version.h
-    platform/win32/win32_vcs_file_probe.cpp
-    platform/win32/win32_vcs_file_probe.h)
-target_include_directories(gitman_vcs PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_vcs
-    PUBLIC
-        gitman_domain
-        gitman_process
-    PRIVATE
-        gitman_win32_platform)
+    infrastructure/workspace_document_paths.cpp
+    infrastructure/workspace_document_paths.h
 
-# ADR-005의 범용 스레드 메시지 component다. 어떤 gitman target에도 의존하지 않고
-# 표준 라이브러리만 사용하며, template 중심이라 header-only INTERFACE target이다.
-# src/messaging 디렉터리를 다른 프로젝트에 복사해도 그대로 컴파일되는 것이 분리
-# 기준이다.
-add_library(gitman_messaging INTERFACE
+    # messaging: 스레드 경계 채널이다 (ADR-005). header-only component다.
     messaging/channel.h
     messaging/envelope.h
-    messaging/latest_slot.h)
-target_include_directories(gitman_messaging INTERFACE "${GITMAN_SOURCE_DIRECTORY}")
+    messaging/latest_slot.h
 
-# 탐색·등록 계층이다. 표식 판정은 순수 함수이고 filesystem 접근은 주입 계약 뒤에
-# 있다. Win32 열거 구현은 단계 3의 runner, 단계 4의 probe와 같은 이유로 platform
-# target이 아니라 이 target에 두어 계층 방향을 지킨다. 탐색은 프로세스를 만들지
-# 않지만 `vcs_file_probe`와 취소 token 계약을 위해 gitman_vcs를 링크한다.
-add_library(gitman_discovery STATIC
-    application/directory_enumerator.h
-    application/discovery_service.cpp
-    application/discovery_service.h
-    application/project_registration_service.cpp
-    application/project_registration_service.h
-    application/version_list_generation_service.cpp
-    application/version_list_generation_service.h
-    domain/discovery.cpp
-    domain/discovery.h
-    platform/win32/win32_directory_enumerator.cpp
-    platform/win32/win32_directory_enumerator.h)
-target_include_directories(gitman_discovery PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_discovery
-    PUBLIC
-        gitman_domain
-        gitman_vcs
-        gitman_workspace
-    PRIVATE
-        gitman_win32_platform)
-
-# 단계 6의 앱 상태와 표시 모델 계층이다. logic thread가 소유하는 상태, view/layout
-# snapshot과 상태 표시 매핑을 담는다. 파일·프로세스 I/O는 하지 않고 worker에
-# 위임하므로 Win32에 링크하지 않는다.
-add_library(gitman_app STATIC
-    application/app_messages.h
-    application/logic_controller.cpp
-    application/logic_controller.h
-    application/operation_executor.h
-    application/task_scheduler.cpp
-    application/task_scheduler.h
-    infrastructure/vcs_operation_executor.cpp
-    infrastructure/vcs_operation_executor.h
-    presentation/list_metrics.cpp
-    presentation/list_metrics.h
-    presentation/status_presentation.cpp
-    presentation/status_presentation.h
-    presentation/view_snapshot.h)
-target_include_directories(gitman_app PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_app
-    PUBLIC
-        gitman_discovery
-        gitman_domain
-        gitman_messaging
-        gitman_process
-        gitman_vcs
-        gitman_workspace)
-
-add_library(gitman_core STATIC
-    application/application_options.cpp
-    application/application_options.h
-    platform/win32/caption_layout.cpp
-    platform/win32/caption_layout.h
-    presentation/renderer_policy.cpp
-    presentation/renderer_policy.h
-    presentation/ui_theme.cpp
-    presentation/ui_theme.h)
-target_include_directories(gitman_core PUBLIC "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_core
-    PUBLIC
-        gitman_domain
-        gitman_project_options
-        nlohmann_json::nlohmann_json)
-
-# 승인된 UI element 계층이다 (docs/ui-element-design.md). view snapshot에서 불변
-# tree를 빌드하고 Skia로 그리며, 상호작용 상태 기계와 input pump를 담는다. Win32에
-# 의존하지 않아 어느 platform 조립에서도 재사용할 수 있다.
-add_library(gitman_ui STATIC
+    # presentation/ui: view snapshot을 그리는 UI element 계층이다.
     presentation/ui/build_ui_tree.cpp
     presentation/ui/build_ui_tree.h
     presentation/ui/button_element.cpp
@@ -271,66 +170,89 @@ add_library(gitman_ui STATIC
     presentation/ui/ui_interaction.cpp
     presentation/ui/ui_interaction.h
     presentation/ui/ui_tree.cpp
-    presentation/ui/ui_tree.h)
-add_dependencies(gitman_ui gitman_generate_codicons gitman_verify_assets)
-target_include_directories(gitman_ui
-    PUBLIC
-        "${GITMAN_SOURCE_DIRECTORY}"
-        "${GITMAN_GENERATED_INCLUDE_DIRECTORY}")
-target_link_libraries(gitman_ui
-    PUBLIC
-        gitman_app
-        gitman_core
-        gitman_messaging
-        unofficial::skia::skia)
+    presentation/ui/ui_tree.h
 
-add_library(gitman_win32 STATIC
-    "${GITMAN_GENERATED_CODICONS}"
+    # presentation: 표시 모델과 theme이다.
+    presentation/list_metrics.cpp
+    presentation/list_metrics.h
+    presentation/renderer_policy.cpp
+    presentation/renderer_policy.h
+    presentation/skia_smoke_view.cpp
+    presentation/skia_smoke_view.h
+    presentation/status_presentation.cpp
+    presentation/status_presentation.h
+    presentation/ui_theme.cpp
+    presentation/ui_theme.h
+    presentation/view_snapshot.h
+
+    # platform/win32: Win32와 Skia 조립이다. 실행 파일만 이 계층을 쓴다.
+    platform/win32/caption_layout.cpp
+    platform/win32/caption_layout.h
     platform/win32/cpu_skia_renderer.cpp
     platform/win32/direct3d_skia_renderer.cpp
     platform/win32/embedded_assets.cpp
     platform/win32/embedded_assets.h
+    platform/win32/project_file_system.cpp
+    platform/win32/project_file_system.h
     platform/win32/skia_renderer.cpp
     platform/win32/skia_renderer.h
+    platform/win32/utf8.cpp
+    platform/win32/utf8.h
     platform/win32/version_list_generation_dialog.cpp
     platform/win32/version_list_generation_dialog.h
     platform/win32/win32_app_runtime.cpp
     platform/win32/win32_app_runtime.h
     platform/win32/win32_application.cpp
     platform/win32/win32_application.h
-    presentation/skia_smoke_view.cpp
-    presentation/skia_smoke_view.h)
-add_dependencies(gitman_win32 gitman_generate_codicons gitman_verify_assets)
-target_include_directories(gitman_win32
+    platform/win32/win32_directory_enumerator.cpp
+    platform/win32/win32_directory_enumerator.h
+    platform/win32/win32_process_runner.cpp
+    platform/win32/win32_process_runner.h
+    platform/win32/win32_text_transcoder.cpp
+    platform/win32/win32_text_transcoder.h
+    platform/win32/win32_vcs_file_probe.cpp
+    platform/win32/win32_vcs_file_probe.h
+    platform/win32/workspace_document_file_system.cpp
+    platform/win32/workspace_document_file_system.h)
+target_include_directories(gitman_lib
     PUBLIC
         "${GITMAN_SOURCE_DIRECTORY}"
         "${GITMAN_GENERATED_INCLUDE_DIRECTORY}")
-target_link_libraries(gitman_win32
+target_link_libraries(gitman_lib
     PUBLIC
-        gitman_app
-        gitman_core
-        gitman_ui
-        gitman_win32_platform
+        gitman_project_options
+        nlohmann_json::nlohmann_json
         unofficial::skia::skia
-    PRIVATE
         d3d12
         dwrite
         dwmapi
         dxgi
         gdi32
+        ole32
+        shell32
         user32)
+
+# 자산 checksum 검증은 빌드마다 한 번 실행한다. 별도 target 대신 라이브러리의
+# 빌드 전 단계에 붙여 솔루션 구성 요소를 늘리지 않는다.
+add_custom_command(TARGET gitman_lib PRE_BUILD
+    COMMAND "${CMAKE_COMMAND}"
+        "-DASSET_DIRECTORY=${GITMAN_ASSET_DIRECTORY}"
+        -P "${GITMAN_CMAKE_DIRECTORY}/verify_codicons.cmake"
+    COMMENT "Verifying Codicons checksums"
+    VERBATIM)
+
+# IDE에서 디렉터리 구조를 그대로 보여 준다. target을 합쳐도 계층은 눈에 보인다.
+# 생성 파일은 source tree 밖에 있으므로 따로 묶는다.
+get_target_property(gitman_lib_sources gitman_lib SOURCES)
+list(REMOVE_ITEM gitman_lib_sources "${GITMAN_GENERATED_CODICONS}")
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "src" FILES ${gitman_lib_sources})
+source_group("generated" FILES "${GITMAN_GENERATED_CODICONS}")
 
 add_executable(gitman WIN32
     "${GITMAN_GENERATED_RESOURCE}"
     platform/win32/main.cpp
     "${gitman_resource_ids_file}")
-add_dependencies(gitman gitman_verify_assets)
-target_include_directories(gitman PRIVATE "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman
-    PRIVATE
-        gitman_win32
-        ole32
-        shell32)
+target_link_libraries(gitman PRIVATE gitman_lib)
 gitman_disable_automatic_windows_manifest(gitman)
 
 install(TARGETS gitman RUNTIME DESTINATION .)

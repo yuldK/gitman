@@ -2,10 +2,10 @@
 
 ## 1. 문서 상태
 
-- 기준일: 2026-08-17
-- 대상 단계: 단계 0~6
-- 상태: 단계 0~5 완료, 단계 6 최종 검증(`S6-V1`) 사용자 검수 대기 (수동 checklist 포함)
-- 상위 계획: `docs/plan.md`, `docs/stage-6-plan.md`
+- 기준일: 2026-08-19
+- 대상 단계: 단계 0~7
+- 상태: 단계 0~6 완료 (2026-08-18 사용자가 단계 7 개시를 지시하며 단계 6을 최종 승인), 단계 7 구현 완료·최종 검증 진행
+- 상위 계획: `docs/plan.md`, `docs/stage-7-plan.md`
 
 이 문서는 단계별 구현과 검수에서 사용하는 요구사항 기준선이다. 요구사항의 추가, 변경, 폐기는 `docs/change_log.md`에 사유와 영향 범위를 기록한다.
 
@@ -69,5 +69,5 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 
 - 프로젝트 목록은 고정 기본 위치 없이 여러 `.version-list` 작업공간 문서로 둘 수 있으며, 한 프로세스 및 창은 하나의 문서를 활성화한다.
 - junction, 심볼릭 링크, Git worktree, bare repository 세부 범위는 단계 5에서 확정했다. linked worktree와 submodule(`.git` 파일)은 탐색 후보로 허용, bare 저장소는 표시 후 등록 제외, reparse point는 판정 없이 제외하되 목록에 표시한다. 상세는 `docs/stage-5-plan.md` 4.3~4.4다.
-- worker 동시 실행 상한과 로그 크기는 단계 6~7의 성능 측정 후 확정한다.
-- 범용 스레드 메시지 component의 API와 queue topology는 단계 6 직전 사용자 검수로 확정한다.
+- worker 동시 실행 상한은 단계 6에서 `min(4, hardware_concurrency)`로, 카드별 로그 상한은 단계 7에서 1,000 record로 확정했다.
+- 범용 스레드 메시지 component의 API와 queue topology는 단계 6 직전 사용자 검수로 확정했다 (ADR-005).

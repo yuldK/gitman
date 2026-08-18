@@ -51,7 +51,7 @@
 | 단계 5: 탐색과 등록 | 완료 - 2026-08-17 사용자 최종 승인 | `docs/verification/2026-08-17-stage-5.md` |
 | 단계 6 사전: 메시지 구조 설계 | 승인 완료 - 2026-08-17, ADR-005로 기록 | `docs/decisions/ADR-005-thread-messaging.md` |
 | 단계 6: GUI와 상태 연결 | 완료 - 2026-08-18 사용자가 단계 7 개시를 지시하며 최종 승인 | `docs/verification/2026-08-17-stage-6.md` |
-| 단계 7: 작업 UI와 로그 | 진행 중 - `S7-P0` 계획 수립, 사용자 위임으로 자동 진행 | `docs/stage-7-plan.md` |
+| 단계 7: 작업 UI와 로그 | 구현 완료 - `S7-V1` 최종 검증 후 사용자 보고 | `docs/verification/2026-08-19-stage-7.md` |
 | 단계 8 | 시작 전 | `docs/handoff.md`에 따라 진행 |
 
 ## 2. 목표와 범위
@@ -511,6 +511,8 @@ gitman/
 완료 조건: 승인된 메시지 ADR과 구현이 일치하고, 100개 이상의 모의 카드에서 custom caption과 UI/input thread가 멈추지 않으며 logic thread만 app state를 변경한다.
 
 ### 단계 7: 작업 UI와 로그
+
+상태: 구현 완료. `S7-D1`~`S7-D4`로 카드별 로그 ring buffer(카드당 1,000 record)와 event 배관, 선택 카드 전용 하단 로그 뷰(필터·복사·지우기·자동 스크롤), update 실행 UI(submodule option overlay, 카드 단위 취소, 자동 refresh 연쇄), switch dialog(remote-first group, 이중 검증, tracking branch 2단계 확인)를 구현했다. 병렬 로그 격리는 실제 worker pool stress로 고정했다. 상세는 `docs/stage-7-plan.md`와 `docs/verification/2026-08-19-stage-7.md`에 기록한다.
 
 - 갱신과 switch dialog 유효성 검사, 진행, 취소, 오류 및 결과 표시를 연결한다.
 - remote-first branch group과 submodule update option을 연결한다.

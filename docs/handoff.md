@@ -2,21 +2,20 @@
 
 ## 1. 현재 상태
 
-- 기준일: 2026-08-18
-- 완료 단계: 단계 0~5 전체, 단계 6 전체 (2026-08-18 사용자가 단계 7 개시를 지시하며 최종 승인). 단계 6 이후의 UI element 계층, 카드 drag & drop, `.version-list` 생성, 창 배치 저장, 스크롤 UI, CMake 구성 정리도 같은 지시로 승인됐다
-- 현재 단계: 단계 7 작업 UI와 로그
-- 현재 체크포인트: `S7-P0` 계획 수립 완료, `S7-D1`부터 자동 진행
-- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다. **단계 7은 사용자가 커밋까지의 자동 진행을 위임했다** (2026-08-18 지시). 체크포인트마다 검증 문서를 남기고 커밋한다
+- 기준일: 2026-08-19
+- 완료 단계: 단계 0~6 전체 (2026-08-18 사용자가 단계 7 개시를 지시하며 단계 6을 최종 승인), **단계 7 구현·검증 완료** (사용자 위임 자동 진행, 완료 보고 제출)
+- 현재 단계: 단계 7 완료 보고 제출, 단계 8(안정화와 배포) 시작 전
+- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다. 단계 7은 사용자가 커밋까지의 자동 진행을 위임했고 (2026-08-18 지시) 체크포인트마다 검증 문서를 남기고 커밋했다
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: 단계 7 체크포인트 순차 진행 (`S7-D1` → `S7-D2` → `S7-D3` → `S7-D4` → `S7-V1`) 후 완료 보고
-- 실제 구현: CMake, vcpkg manifest, Win32/Skia 앱 (custom caption, 카드 목록, refresh, 문서 열기·생성, drag & drop 순서 변경, 창 배치 저장), embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 표식 판정 및 선택 등록 전체, messaging component와 3-thread 조립, test와 install 구성
+- 다음 허용 작업: 단계 7 완료 보고에 대한 사용자 확인 후 단계 8 계획(`S8-P0`)
+- 실제 구현: CMake, vcpkg manifest, Win32/Skia 앱 (custom caption, 카드 목록, refresh, 문서 열기·생성, drag & drop 순서 변경, 창 배치 저장), embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 등록, messaging component와 3-thread 조립, **카드별 로그와 하단 로그 뷰, update 실행 UI(submodule option·취소), switch dialog(remote-first·이중 검증·tracking 확인)**, test와 install 구성
 - 기준 문서: `docs/stage-7-plan.md`, `docs/ui-element-design.md`, `docs/decisions/ADR-005-thread-messaging.md`
 - 직전 단계 기준 문서: `docs/stage-6-plan.md`
-- 현재 검증 기록: 단계 7 진행 중 (`docs/verification/2026-08-18-stage-7-*.md`)
+- 현재 검증 기록: `docs/verification/2026-08-19-stage-7.md` (단계 7 최종)
 - 직전 검증 기록: `docs/verification/2026-08-17-stage-6.md`
 - 테스트 실행 방식: CMake 구성 정리(2026-08-18)로 test는 `vs2022-tests`·`vs2026-tests` preset의 별도 binary directory에서 빌드·실행한다 (`GITMAN_BUILD_TESTS=ON`)
 
-다음 작업은 이 문서와 `docs/stage-7-plan.md`를 먼저 읽어야 한다. update·switch 실행 UI, 카드별 로그와 하단 로그 뷰가 단계 7이며, association과 실제 SVN·네트워크 검증은 단계 8이다.
+다음 작업은 이 문서와 `docs/verification/2026-08-19-stage-7.md`를 먼저 읽어야 한다. association 등록, 실제 `svn.exe`·네트워크 원격·인증 검증, 장시간·안정화 시험은 단계 8이다.
 
 ## 2. 확정된 기술 기준선
 
@@ -113,7 +112,22 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 ## 8. 단계 5 영속 세션 메모리
 
-### 8.1 현재 체크포인트
+### 8.0 단계 7 진행 원장 (완료)
+
+| 체크포인트 | 상태 | 비고 |
+| --- | --- | --- |
+| `S7-P0` 계획 | 수립·커밋 | 사용자 위임으로 검수 없이 진행. `docs/stage-7-plan.md` |
+| `S7-D1` 로그 model과 변경 작업 배관 | 완료, 커밋됨 | test 19개, 전체 563/563. `docs/verification/2026-08-18-stage-7-d1.md` |
+| `S7-D2` 하단 로그 뷰 | 완료, 커밋됨 | test 9개, 전체 572/572. `docs/verification/2026-08-18-stage-7-d2.md` |
+| `S7-D3` update 실행 UI | 완료, 커밋됨 | test 5개, 전체 577/577. 실제 Git update end-to-end 포함. `docs/verification/2026-08-19-stage-7-d3.md` |
+| `S7-D4` switch dialog | 완료, 커밋됨 | test 7개, 전체 584/584. 실제 Git switch end-to-end 포함. `docs/verification/2026-08-19-stage-7-d4.md` |
+| `S7-V1` 단계 7 최종 검증 | 완료 | 병렬 로그 격리 stress 추가(585), 전체 matrix. `docs/verification/2026-08-19-stage-7.md` |
+
+단계 7에서 이월된 항목: 로그 pane의 시각적 스크롤 막대, progress record 접기,
+환경설정 화면(Git/SVN 경로 편집 UI), 탐색 후보 선택 등록 dialog. SVN 실측은
+단계 8이다.
+
+### 8.1 단계 6 체크포인트 (완료)
 
 | 항목 | 상태 |
 | --- | --- |

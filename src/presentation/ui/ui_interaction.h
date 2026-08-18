@@ -46,6 +46,12 @@ namespace gitman::ui {
         std::shared_ptr<const ui_tree> tree_ {};
         interaction_snapshot snapshot_ {};
 
+        // 스크롤 막대처럼 누른 채 끄는 대상이다. 값이 있으면 포인터 이동이 클릭·
+        // 카드 drag 대신 이 element로 간다. 좌표는 마지막으로 보낸 위치다.
+        ui_element_id pointer_drag_id_ {};
+        float pointer_drag_x_ { 0.0f };
+        float pointer_drag_y_ { 0.0f };
+
         // 클릭은 같은 대상 위의 누름과 뗌이다. 비활성 element는 누름부터 무시한다.
         ui_element_id pressed_id_ {};
         pointer_button pressed_button_ { pointer_button::none };

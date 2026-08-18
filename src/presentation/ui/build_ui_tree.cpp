@@ -44,13 +44,15 @@ namespace gitman::ui {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
 
                 std::u8string document_text { view.document_path.empty() ? std::u8string { u8"문서 없음" } : view.document_path };
-                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), view.empty_state == view_empty_state::no_document, view.document_generating) };
+                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), view.empty_state == view_empty_state::no_document, view.document_generating, view.relative_paths) };
                 toolbar_ = toolbar.get();
                 add_child(std::move(toolbar));
 
                 label_config notice_config {};
                 notice_config.text = view.notices.empty() ? std::u8string {} : view.notices.front();
                 notice_config.color = label_color_role::error;
+                notice_config.background = label_background_role::notice;
+                notice_config.padding = layout_margin;
                 auto notice { std::make_unique<label_element>(ui_element_id { ui_element_kind::notice }, std::move(notice_config)) };
                 notice->set_visible(view.notices.empty() == false);
                 notice_ = notice.get();
@@ -86,7 +88,8 @@ namespace gitman::ui {
                 caption_->arrange({ { 0.0f, 0.0f, context.slot.width, caption_height }, scale });
                 toolbar_->arrange({ { 0.0f, caption_height, context.slot.width, toolbar_height }, scale });
                 const float notice_top { caption_height + toolbar_height };
-                notice_->arrange({ { layout_margin * scale, notice_top, context.slot.width - layout_margin * 2.0f * scale, layout_notice_height * scale }, scale });
+                // 배너는 막대처럼 창 폭을 가득 채운다. 바탕색이 카드와 구분을 만든다.
+                notice_->arrange({ { 0.0f, notice_top, context.slot.width, layout_notice_height * scale }, scale });
                 card_list_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale, context.scroll_offset });
                 const float empty_height { 22.0f * scale };
                 const float empty_top { layout.content_top + (layout.viewport_height - empty_height) / 2.0f };

@@ -15,9 +15,19 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace gitman::ui {
     namespace {
+        // 상태 줄의 조각 하나다. 배경이 0이면 배경 없이 글자만 그린다.
+        struct card_chip
+        {
+            char32_t glyph { 0 };
+            std::u8string text {};
+            ui_color background { 0 };
+            ui_color foreground { 0 };
+        };
+
         ui_color state_accent(const ui_color_palette& palette, const card_view_state state) noexcept
         {
             switch (state)
@@ -95,17 +105,30 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        // 카드 오른쪽 끝에 버튼 3개를 세로 중앙 정렬로 둔다.
+        // 카드 오른쪽 끝에 버튼 3개를 세로 중앙 정렬로 둔다. 창이 좁아 글자가 들어갈
+        // 최소 폭도 남지 않으면 오른쪽 버튼부터 숨긴다.
         const float margin { layout_margin * scale };
         const float gap { layout_card_gap * scale };
         const float button { layout_button_size * scale };
         const float buttons_y { context.slot.y + (context.slot.height - button) / 2.0f };
-        float button_x { context.slot.x + context.slot.width - margin - button };
-        switch_->arrange({ { button_x, buttons_y, button, button }, scale });
-        button_x -= button + gap;
-        update_->arrange({ { button_x, buttons_y, button, button }, scale });
-        button_x -= button + gap;
-        refresh_->arrange({ { button_x, buttons_y, button, button }, scale });
+        const float minimum_right { context.slot.x + (layout_card_text_left + layout_card_minimum_text) * scale };
+
+        float next_x { context.slot.x + context.slot.width - margin - button };
+        const auto place = [&](ui_element* const element) {
+            if (next_x < minimum_right)
+            {
+                element->set_visible(false);
+                return;
+            }
+            element->set_visible(true);
+            element->arrange({ { next_x, buttons_y, button, button }, scale });
+            next_x -= button + gap;
+        };
+
+        place(switch_);
+        place(update_);
+        place(refresh_);
+        text_limit_ = next_x + button;
     }
 
     void card_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -133,10 +156,10 @@ namespace gitman::ui {
         dim_foreground.setAlphaf(0.6f);
 
         const float padding { 8.0f * scale };
-        const float text_x { box.x + 28.0f * scale };
+        const float text_x { box.x + layout_card_text_left * scale };
         const float line_1 { box.y + padding + 11.0f * scale };
         const float line_2 { line_1 + 16.0f * scale };
-        const float line_3 { line_2 + 14.0f * scale };
+        const float line_3_top { line_2 + 5.0f * scale };
 
         // 상태 아이콘: 진행 중이면 sync, 아니면 상태 글리프다.
         if (context.codicon_typeface != nullptr)
@@ -148,33 +171,81 @@ namespace gitman::ui {
             draw_centered_glyph(context.canvas, glyph, icon_slot, icon_font, icon_paint);
         }
 
-        draw_text(context.canvas, card_.display_name, text_x, line_1, title_font, foreground);
-        draw_text(context.canvas, card_.path, text_x, line_2, body_font, dim_foreground);
+        // 글자가 버튼을 침범하지 않도록 arrange가 정한 한계 안에서만 그린다.
+        const float text_width { text_limit_ - text_x };
+        static_cast<void>(draw_text_within(context.canvas, card_.display_name, text_x, line_1, text_width, title_font, foreground));
+        static_cast<void>(draw_text_within(context.canvas, card_.path, text_x, line_2, text_width, body_font, dim_foreground));
 
-        // 세 번째 줄: 참조(브랜치/URL), 리비전, 상태 툴팁과 작업 트리 요약.
-        std::u8string detail {};
-        if (card_.reference.empty() == false)
-            detail.append(card_.reference);
-        if (card_.revision.empty() == false)
-        {
-            if (detail.empty() == false)
-                detail.append(u8" @ ");
-            detail.append(revision_display_text(card_.kind, card_.revision));
-        }
-        if (card_.status.tooltip.empty() == false)
-        {
-            if (detail.empty() == false)
-                detail.append(u8" · ");
-            detail.append(card_.status.tooltip);
-        }
-        if (card_.working_tree_text.empty() == false)
-        {
-            if (detail.empty() == false)
-                detail.append(u8" · ");
-            detail.append(card_.working_tree_text);
-        }
-        draw_text(context.canvas, detail, text_x, line_3, body_font, dim_foreground);
+        // 세 번째 줄은 조각(chip)으로 그린다. 브랜치·리비전·상태·작업 트리를 같은
+        // 폰트의 한 줄로 이어 붙이면 구분이 되지 않는다는 지적을 반영한 것이다.
+        draw_status_row(context, { text_x, line_3_top, text_width, layout_card_status_height * scale });
 
         draw_children(context, interaction);
+    }
+
+    void card_element::draw_status_row(draw_context& context, const rect_f& row) const
+    {
+        if (row.width <= 0.0f || row.height <= 0.0f)
+            return;
+
+        const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+        const ui_color accent { state_accent(context.palette, card_.state) };
+        const ui_color neutral { context.palette.primary_foreground };
+
+        std::vector<card_chip> chips {};
+        if (card_.reference.empty() == false)
+        {
+            // SVN의 참조는 URL이라 branch 아이콘 대신 link 아이콘을 쓴다.
+            const char32_t glyph { card_.kind == repository_kind::subversion ? codicons::icon_link : codicons::icon_git_branch };
+            chips.push_back({ glyph, card_.reference, with_alpha(neutral, 0.12f), neutral });
+        }
+        if (card_.revision.empty() == false)
+            chips.push_back({ codicons::icon_git_commit, std::u8string { revision_display_text(card_.kind, card_.revision) }, with_alpha(neutral, 0.12f), with_alpha(neutral, 0.75f) });
+        if (card_.status.tooltip.empty() == false)
+            chips.push_back({ codicon_for_name(card_.status.codicon), card_.status.tooltip, with_alpha(accent, 0.18f), accent });
+        if (card_.working_tree_text.empty() == false)
+        {
+            const ui_color tree_color { context.palette.warning_accent };
+            chips.push_back({ codicons::icon_edit, card_.working_tree_text, with_alpha(tree_color, 0.18f), tree_color });
+        }
+
+        const SkFont chip_font { sk_ref_sp(context.ui_typeface), 10.5f * scale };
+        const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 10.0f * scale };
+        const float padding { 5.0f * scale };
+        const float icon_width { context.codicon_typeface != nullptr ? 11.0f * scale : 0.0f };
+        const float gap { 4.0f * scale };
+        const float radius { 3.0f * scale };
+
+        float left { row.x };
+        const float limit { row.x + row.width };
+        for (const card_chip& chip : chips)
+        {
+            const float fixed { padding * 2.0f + (icon_width > 0.0f && chip.glyph != 0 ? icon_width + gap * 0.5f : 0.0f) };
+            const float available { limit - left - fixed };
+            // 글자가 한 자도 들어가지 않는 조각은 그리지 않는다. 뒤 조각도 마찬가지다.
+            const std::u8string text { elide_text(chip.text, available, chip_font) };
+            if (text.empty())
+                break;
+
+            const float text_width { measure_text(text, chip_font) };
+            const float width { text_width + fixed };
+            const SkRect box { SkRect::MakeXYWH(left, row.y, width, row.height) };
+            if (chip.background != 0)
+                context.canvas.drawRRect(SkRRect::MakeRectXY(box, radius, radius), solid_paint(chip.background));
+
+            const SkPaint foreground { solid_paint(chip.foreground) };
+            float text_left { left + padding };
+            if (icon_width > 0.0f && chip.glyph != 0)
+            {
+                const rect_f icon_slot { left + padding, row.y, icon_width, row.height };
+                draw_centered_glyph(context.canvas, chip.glyph, icon_slot, icon_font, foreground);
+                text_left += icon_width + gap * 0.5f;
+            }
+            draw_text(context.canvas, text, text_left, row.y + centered_text_baseline(chip_font, row.height), chip_font, foreground);
+
+            left += width + gap;
+            if (left >= limit)
+                break;
+        }
     }
 } // namespace gitman::ui

@@ -110,7 +110,9 @@ namespace gitman::ui {
             draw_centered_glyph(context.canvas, codicons::icon_source_control, icon_slot, icon_font, foreground);
             title_left = box.x + static_cast<float>(metrics_.application_icon_slot_width + metrics_.title_icon_gap) * scale;
         }
-        draw_text(context.canvas, title_, title_left, box.y + centered_text_baseline(title_font, box.height), title_font, foreground);
+        // 제목이 창 버튼을 침범하지 않도록 버튼 왼쪽까지만 그린다.
+        const float title_limit { minimize_->bounds().x - static_cast<float>(metrics_.title_icon_gap) * scale - title_left };
+        static_cast<void>(draw_text_within(context.canvas, title_, title_left, box.y + centered_text_baseline(title_font, box.height), title_limit, title_font, foreground));
 
         draw_children(context, interaction);
     }

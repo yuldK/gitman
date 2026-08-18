@@ -3,12 +3,12 @@
 #include "presentation/list_metrics.h"
 #include "presentation/ui/card_element.h"
 #include "presentation/ui/draw_primitives.h"
+#include "presentation/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
-#include "include/core/SkPaint.h"
-#include "include/core/SkRRect.h"
 #include "include/core/SkRect.h"
 
+#include <algorithm>
 #include <memory>
 
 namespace gitman::ui {
@@ -43,6 +43,12 @@ namespace gitman::ui {
             card->set_visible(inside);
             add_child(std::move(card));
         }
+
+        // 막대는 카드보다 뒤에 둔다. 위에 그려지고 hit test에서도 먼저 걸린다.
+        auto scrollbar { std::make_unique<scrollbar_element>(content, layout.viewport_height, scroll, scale) };
+        scrollbar->set_visible(content > layout.viewport_height);
+        scrollbar_ = scrollbar.get();
+        add_child(std::move(scrollbar));
     }
 
     void card_list_element::arrange(const arrange_context& context)
@@ -54,14 +60,25 @@ namespace gitman::ui {
         scroll_ = clamp_scroll_offset(context.scroll_offset * scale, content_height_, context.slot.height);
         const float margin { layout_margin * scale };
         const float card_height { layout_card_height * scale };
-        const float card_width { context.slot.width - margin * 2.0f };
+        const float hit_width { layout_scrollbar_hit_width * scale };
+        const float inset { layout_scrollbar_right_inset * scale };
+        // 막대가 보이면 그만큼 카드를 좁혀 클릭 영역이 겹치지 않게 한다.
+        const float reserved { scrollbar_->visible() ? std::max(0.0f, hit_width + inset - margin) : 0.0f };
+        const float card_width { context.slot.width - margin * 2.0f - reserved };
 
         const std::span<const std::unique_ptr<ui_element>> cards { children() };
-        for (std::size_t child = 0; child < cards.size(); ++child)
+        for (std::size_t child = 0; child < visible_indices_.size() && child < cards.size(); ++child)
         {
             const float top { context.slot.y + card_content_top(visible_indices_[child], scale) - scroll_ };
             cards[child]->arrange({ { context.slot.x + margin, top, card_width, card_height }, scale });
         }
+
+        // 막대는 목록 오른쪽 안쪽에 세로로 가득 찬다. 창 가장자리의 크기 조절
+        // 테두리와 겹치지 않도록 들여놓는다.
+        const float track_left { context.slot.x + context.slot.width - inset - hit_width };
+        const float vertical_inset { layout_scrollbar_vertical_inset * scale };
+        const float track_height { std::max(0.0f, context.slot.height - vertical_inset * 2.0f) };
+        scrollbar_->arrange({ { track_left, context.slot.y + vertical_inset, hit_width, track_height }, scale });
     }
 
     void card_list_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -69,40 +86,22 @@ namespace gitman::ui {
         const rect_f box { bounds() };
 
         // 스크롤로 목록 위아래를 넘어가는 카드가 toolbar나 caption 위에 그려지지
-        // 않도록 자기 영역으로 자른다.
+        // 않도록 자기 영역으로 자른다. 스크롤 막대도 이 안에 있다.
         context.canvas.save();
         context.canvas.clipRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height));
         draw_children(context, interaction);
+
+        // 카드가 상단 막대와 같은 색이라 스크롤되어 들어가면 경계가 사라진다.
+        // 내용이 위로 밀려 있을 때만 그림자를 드리워 아래로 지나간다는 것을 보인다.
+        if (scroll_ > 0.0f)
+        {
+            const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+            const float height { layout_content_shadow_height * scale };
+            // 막 스크롤을 시작한 구간에서는 그림자도 옅게 시작한다.
+            const float ratio { scroll_ < height ? scroll_ / height : 1.0f };
+            draw_downward_shadow(context.canvas, { box.x, box.y, box.width, height }, context.palette.content_shadow, layout_content_shadow_strength * ratio);
+        }
         context.canvas.restore();
-
-        draw_scroll_indicator(context);
-    }
-
-    void card_list_element::draw_scroll_indicator(draw_context& context) const
-    {
-        const float scale { context.scale > 0.0f ? context.scale : 1.0f };
-        const rect_f box { bounds() };
-        const float scrollable { content_height_ - box.height };
-        if (scrollable <= 0.0f || box.height <= 0.0f)
-            return;
-
-        const float width { layout_scrollbar_width * scale };
-        const float inset { (layout_margin * scale - width) / 2.0f };
-        const float track_top { box.y + inset };
-        const float track_height { box.height - inset * 2.0f };
-        if (track_height <= 0.0f)
-            return;
-
-        float thumb_height { track_height * (box.height / content_height_) };
-        const float minimum { layout_scrollbar_minimum_thumb * scale };
-        if (thumb_height < minimum)
-            thumb_height = minimum > track_height ? track_height : minimum;
-        const float thumb_top { track_top + (track_height - thumb_height) * (scroll_ / scrollable) };
-
-        SkPaint thumb { solid_paint(context.palette.primary_foreground) };
-        thumb.setAlphaf(0.28f);
-        const SkRect shape { SkRect::MakeXYWH(box.x + box.width - inset - width, thumb_top, width, thumb_height) };
-        context.canvas.drawRRect(SkRRect::MakeRectXY(shape, width * 0.5f, width * 0.5f), thumb);
     }
 
     const ui_element* card_list_element::hit_test(const float x, const float y) const

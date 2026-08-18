@@ -181,7 +181,7 @@ namespace gitman {
 
         bool is_known_settings_field(const std::string_view field) noexcept
         {
-            return field == "git_executable" || field == "svn_executable";
+            return field == "git_executable" || field == "svn_executable" || field == "show_relative_paths";
         }
 
         std::u8string settings_field_pointer(const std::string_view field)
@@ -236,6 +236,18 @@ namespace gitman {
                     settings.git_executable = std::move(executable);
                 else
                     settings.svn_executable = std::move(executable);
+            }
+
+            const auto relative_paths { source->find("show_relative_paths") };
+            if (relative_paths != source->end() && relative_paths->is_null() == false)
+            {
+                if (relative_paths->is_boolean())
+                    settings.show_relative_paths = relative_paths->get<bool>();
+                else
+                {
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 show_relative_paths는 boolean이어야 합니다.", document_path,
+                        settings_field_pointer("show_relative_paths"));
+                }
             }
 
             for (auto field = source->begin(); field != source->end(); ++field)

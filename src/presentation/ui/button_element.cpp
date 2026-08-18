@@ -54,18 +54,25 @@ namespace gitman::ui {
         const bool pressed { enabled() && interaction.pressed == id() };
 
         const rect_f box { bounds() };
-        if (hovered || pressed)
+        if (hovered || pressed || config_.active)
         {
             const SkRect background { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
             const float radius { config_.corner_radius * scale };
-            const SkPaint fill { solid_paint(pressed ? colors.pressed_background : colors.hover_background) };
+            // 켜진 토글은 hover보다 진하게 남아 있어 상태를 계속 알린다.
+            ui_color fill_color { pressed ? colors.pressed_background : colors.hover_background };
+            if (config_.active && pressed == false && hovered == false)
+                fill_color = with_alpha(context.palette.positive_accent, 0.22f);
+            const SkPaint fill { solid_paint(fill_color) };
             context.canvas.drawRRect(SkRRect::MakeRectXY(background, radius, radius), fill);
         }
 
         if (context.codicon_typeface == nullptr)
             return;
 
-        SkPaint icon_paint { solid_paint(hovered || pressed ? colors.hover_foreground : colors.foreground) };
+        ui_color icon_color { hovered || pressed ? colors.hover_foreground : colors.foreground };
+        if (config_.active && hovered == false && pressed == false)
+            icon_color = context.palette.positive_accent;
+        SkPaint icon_paint { solid_paint(icon_color) };
         if (enabled() == false)
             icon_paint.setAlphaf(0.3f);
         const char32_t glyph { context.maximized && config_.maximized_glyph != 0 ? config_.maximized_glyph : config_.glyph };

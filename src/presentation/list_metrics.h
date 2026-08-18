@@ -14,8 +14,24 @@ namespace gitman {
     inline constexpr float layout_card_gap { 6.0f };
     inline constexpr float layout_margin { 10.0f };
     inline constexpr float layout_button_size { 28.0f };
-    // 스크롤 표시 thumb의 너비와 최소 길이다. 카드 오른쪽 여백 안에 그린다.
-    inline constexpr float layout_scrollbar_width { 4.0f };
+    // 카드 텍스트가 시작하는 왼쪽 여백(상태 아이콘 자리)과, 버튼을 숨기기 전에
+    // 지켜 주는 최소 텍스트 폭이다.
+    inline constexpr float layout_card_text_left { 28.0f };
+    inline constexpr float layout_card_minimum_text { 72.0f };
+    // 카드 세 번째 줄(상태 조각)의 높이다.
+    inline constexpr float layout_card_status_height { 16.0f };
+    // 상단 막대(도구 막대·배너) 아래에 드리우는 그림자의 높이와 진하기다. 스크롤된
+    // 카드가 막대 아래로 지나갈 때만 나타난다.
+    inline constexpr float layout_content_shadow_height { 8.0f };
+    inline constexpr float layout_content_shadow_strength { 0.45f };
+    // 스크롤 막대의 치수다. 보이는 막대는 `width`이고, 잡기 쉽도록 클릭·끌기를 받는
+    // hit 영역은 `hit_width`로 더 넓다. `right_inset`은 창 오른쪽 가장자리의 크기
+    // 조절 테두리와 겹치지 않도록 안쪽으로 들여놓는 거리다.
+    inline constexpr float layout_scrollbar_width { 8.0f };
+    inline constexpr float layout_scrollbar_hit_width { 16.0f };
+    inline constexpr float layout_scrollbar_right_inset { 6.0f };
+    // 막대가 목록 위아래 끝에 붙지 않도록 두는 여백이다.
+    inline constexpr float layout_scrollbar_vertical_inset { 6.0f };
     inline constexpr float layout_scrollbar_minimum_thumb { 24.0f };
 
     // 카드 목록이 차지하는 영역이다. tree 빌드, 카드 목록 element와 logic의 스크롤

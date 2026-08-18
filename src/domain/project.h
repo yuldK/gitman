@@ -60,6 +60,9 @@ namespace gitman {
         // 하고, 그 경로만 사용한다. 실행할 수 없어도 자동 탐색으로 물러서지 않는다.
         std::u8string git_executable {};
         std::u8string svn_executable {};
+        // 카드의 경로를 문서가 있는 폴더 기준 상대 경로로 표시한다. toolbar 토글이
+        // 바꾸고 문서에 남는다.
+        bool show_relative_paths { false };
 
         [[nodiscard]] bool operator==(const workspace_settings&) const noexcept = default;
         [[nodiscard]] bool is_default() const noexcept;

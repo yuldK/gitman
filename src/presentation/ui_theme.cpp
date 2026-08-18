@@ -14,6 +14,8 @@ namespace gitman {
             .button_pressed_background = make_ui_color(255, 255, 255, 45),
             .tooltip_background = make_ui_color(37, 37, 38),
             .tooltip_border = make_ui_color(90, 90, 92),
+            .content_shadow = make_ui_color(0, 0, 0),
+            .notice_background = make_ui_color(66, 36, 39),
             .caption = {
                 .background = make_ui_color(37, 37, 38),
                 .foreground = make_ui_color(255, 255, 255),
@@ -36,6 +38,8 @@ namespace gitman {
             .button_pressed_background = make_ui_color(255, 255, 255),
             .tooltip_background = make_ui_color(0, 0, 0),
             .tooltip_border = make_ui_color(255, 255, 255),
+            .content_shadow = make_ui_color(255, 255, 255),
+            .notice_background = make_ui_color(0, 0, 0),
             .caption = {
                 .background = make_ui_color(0, 0, 0),
                 .foreground = make_ui_color(255, 255, 255),

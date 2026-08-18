@@ -98,11 +98,14 @@ namespace gitman {
             json value { had_settings ? *existing : json::object() };
             const bool had_git { value.contains("git_executable") };
             const bool had_svn { value.contains("svn_executable") };
+            const bool had_relative_paths { value.contains("show_relative_paths") };
 
             if (had_git || settings.git_executable.empty() == false)
                 value["git_executable"] = as_string(settings.git_executable);
             if (had_svn || settings.svn_executable.empty() == false)
                 value["svn_executable"] = as_string(settings.svn_executable);
+            if (had_relative_paths || settings.show_relative_paths)
+                value["show_relative_paths"] = settings.show_relative_paths;
 
             root["settings"] = std::move(value);
         }

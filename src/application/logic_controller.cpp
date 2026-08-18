@@ -1,5 +1,6 @@
 #include "application/logic_controller.h"
 
+#include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
 
 #include <algorithm>
@@ -149,6 +150,8 @@ namespace gitman {
                     filter_ = std::move(value.text);
                     clamp_scroll();
                 }
+                else if constexpr (std::is_same_v<value_type, toggle_path_display_intent>)
+                    handle_toggle_path_display();
                 else if constexpr (std::is_same_v<value_type, set_sort_intent>)
                 {
                     sort_ = value.key;
@@ -395,6 +398,16 @@ namespace gitman {
         scroll_selected_into_view();
     }
 
+    void logic_controller::handle_toggle_path_display()
+    {
+        if (shutting_down_ || document_.has_value() == false)
+            return;
+
+        // 표시 방식은 문서에 남는 설정이라 순서 변경과 같은 저장 경로를 탄다.
+        document_->settings.show_relative_paths = document_->settings.show_relative_paths == false;
+        request_save();
+    }
+
     void logic_controller::handle_window_placement(const window_placement_intent& intent)
     {
         if (intent.placement.valid() == false || document_.has_value() == false)
@@ -549,6 +562,22 @@ namespace gitman {
         return contains_ignoring_ascii_case(card.project.display_name, filter_) || contains_ignoring_ascii_case(card.project.path.original, filter_);
     }
 
+    bool logic_controller::relative_paths() const noexcept
+    {
+        return document_.has_value() && document_->settings.show_relative_paths;
+    }
+
+    std::u8string logic_controller::display_path(const project_definition& project) const
+    {
+        if (relative_paths() == false)
+            return project.path.original;
+        // 문서가 있는 폴더가 기준이다. 문서 경로를 모르면 전체 경로를 그대로 쓴다.
+        const std::u8string_view base { windows_parent_directory(document_path_) };
+        if (base.empty())
+            return project.path.original;
+        return relative_windows_path(project.path.original, base);
+    }
+
     std::size_t logic_controller::visible_card_count() const noexcept
     {
         std::size_t count { 0 };
@@ -569,7 +598,7 @@ namespace gitman {
             card_view_model model {};
             model.id = card.project.id;
             model.display_name = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
-            model.path = card.project.path.original;
+            model.path = display_path(card.project);
             model.kind = card.snapshot.kind;
             model.reference = card.snapshot.current_reference;
             model.revision = card.snapshot.local_revision;
@@ -618,6 +647,7 @@ namespace gitman {
         snapshot->window_height = window_height_;
         snapshot->scale = scale_;
         snapshot->scroll_offset = scroll_offset_;
+        snapshot->relative_paths = relative_paths();
         snapshot->window_placement_request = window_placement_;
         snapshot->window_placement_revision = window_placement_revision_;
         snapshot->document_generating = pending_generation_operation_id_ != 0;

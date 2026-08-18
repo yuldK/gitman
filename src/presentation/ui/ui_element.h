@@ -44,8 +44,10 @@ namespace gitman::ui {
         toolbar_refresh_all,
         toolbar_open_document,
         toolbar_generate_document,
+        toolbar_toggle_path_display,
         notice,
         card_list,
+        card_scrollbar,
         card_body,
         card_refresh,
         card_update,
@@ -101,6 +103,18 @@ namespace gitman::ui {
     {
         std::function<bool(const drag_payload&)> accepts {};
         std::function<std::vector<input_action>(const drag_payload&, const ui_action_context&)> on_drop {};
+    };
+
+    // 누른 채 끄는 동안 연속으로 반응하는 element다 (스크롤 막대). 카드의
+    // drag & drop과 달리 ghost도 drop 대상도 없고, 포인터 이동을 그때그때 메시지로
+    // 바꾼다. 눌린 동안에는 포인터가 element를 벗어나도 계속 호출된다.
+    struct pointer_drag_target
+    {
+        // 눌린 순간 한 번이다. 누른 지점으로 즉시 이동할지 element가 정한다.
+        std::function<std::vector<input_action>(const ui_action_context&)> on_press {};
+        // 직전 위치와 현재 위치를 받는다. 상대 변화량만 쓰므로 tree가 다시 빌드되어도
+        // 이어서 끌 수 있다.
+        std::function<std::vector<input_action>(const ui_action_context& previous, const ui_action_context& current)> on_move {};
     };
 
     // 배치 문맥이다. slot은 부모가 준 영역이고 scroll_offset은 논리 픽셀이다.
@@ -173,6 +187,7 @@ namespace gitman::ui {
         [[nodiscard]] const ui_action* action(ui_trigger trigger) const noexcept;
         [[nodiscard]] const drag_source* drag() const noexcept;
         [[nodiscard]] const drop_target* drop() const noexcept;
+        [[nodiscard]] const pointer_drag_target* pointer_drag() const noexcept;
         // 액션·drag·drop·tooltip 중 하나라도 있으면 hit test의 대상이 된다. 비활성
         // element도 tooltip 표시를 위해 hit는 되고 액션 실행만 막는다.
         [[nodiscard]] bool interactive() const noexcept;
@@ -187,6 +202,7 @@ namespace gitman::ui {
         void clear_action(ui_trigger trigger) noexcept;
         void set_drag_source(std::optional<drag_source> source);
         void set_drop_target(std::optional<drop_target> target);
+        void set_pointer_drag_target(std::optional<pointer_drag_target> target);
 
         // 부모가 준 slot 안에서 자기 bounds와 자식 배치를 확정한다.
         virtual void arrange(const arrange_context& context) = 0;
@@ -209,6 +225,7 @@ namespace gitman::ui {
         std::array<ui_action, ui_trigger_count> actions_ {};
         std::optional<drag_source> drag_source_ {};
         std::optional<drop_target> drop_target_ {};
+        std::optional<pointer_drag_target> pointer_drag_target_ {};
         std::vector<std::unique_ptr<ui_element>> children_ {};
     };
 } // namespace gitman::ui

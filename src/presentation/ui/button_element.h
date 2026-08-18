@@ -19,6 +19,8 @@ namespace gitman::ui {
         float icon_size { 14.0f };
         float corner_radius { 2.0f };
         button_visual_role role { button_visual_role::toolbar };
+        // 토글 버튼이 켜진 상태다. hover가 아니어도 배경과 강조색으로 표시한다.
+        bool active { false };
     };
 
     // 아이콘 버튼이다. hover·눌림 강조와 비활성 흐림을 일관되게 그린다. 클릭 액션과

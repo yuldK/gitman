@@ -35,6 +35,11 @@ namespace gitman {
         ui_color button_pressed_background { 0 };
         ui_color tooltip_background { 0 };
         ui_color tooltip_border { 0 };
+        // 상단 막대 아래로 내용이 지나갈 때 쓰는 그림자다. 알파는 그리는 쪽이
+        // 거리에 따라 낮춘다.
+        ui_color content_shadow { 0 };
+        // notice 배너의 바탕이다. 카드와 같은 색으로 보이지 않도록 구분한다.
+        ui_color notice_background { 0 };
         caption_color_palette caption {};
     };
 

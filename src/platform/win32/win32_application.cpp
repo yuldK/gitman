@@ -66,9 +66,21 @@ namespace gitman::win32 {
             dialog->Release();
             return chosen;
         }
-        // 저장된 배치를 복원할 때의 최소 크기다 (물리 픽셀). 이보다 작으면 무시한다.
-        constexpr int minimum_restored_width { 240 };
-        constexpr int minimum_restored_height { 160 };
+        // ─────────────────────────────────────────────────────────────────────
+        // 창 크기 정책. 값만 바꾸면 되도록 한곳에 모아 둔다 (논리 96 DPI 기준 px).
+        //
+        //  - minimum_window_width/height: 사용자가 이보다 작게 줄일 수 없는 client
+        //    영역 크기다. WM_GETMINMAXINFO가 강제하고, 문서에서 복원한 배치도 이
+        //    값보다 작으면 적용하지 않는다.
+        //  - resize_border_thickness: 창 가장자리에서 크기 조절로 잡히는 두께다.
+        //    좁을수록 가장자리에 붙은 UI(스크롤 막대)를 잡기 쉽다.
+        //  - resize_corner_thickness: 대각선 조절이 걸리는 모서리 두께다. 가장자리
+        //    보다 넓게 두어야 모서리를 잡기 쉽다.
+        // ─────────────────────────────────────────────────────────────────────
+        constexpr int minimum_window_width { 480 };
+        constexpr int minimum_window_height { 320 };
+        constexpr int resize_border_thickness { 4 };
+        constexpr int resize_corner_thickness { 10 };
 
         constexpr DWORD initial_window_style { WS_OVERLAPPEDWINDOW };
         constexpr DWORD retained_window_styles {
@@ -308,7 +320,7 @@ namespace gitman::win32 {
                         update_caption_hover(ui::caption_button_hover::none);
                     break;
                 case WM_GETMINMAXINFO:
-                    update_maximized_bounds(reinterpret_cast<MINMAXINFO*>(long_parameter));
+                    update_size_limits(reinterpret_cast<MINMAXINFO*>(long_parameter));
                     return 0;
                 case WM_NCRBUTTONUP:
                     if (word_parameter == HTCAPTION || word_parameter == HTSYSMENU)
@@ -405,27 +417,29 @@ namespace gitman::win32 {
 
                 if (IsZoomed(window_) == FALSE)
                 {
-                    const int horizontal_border { GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi_) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi_) };
-                    const int vertical_border { GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi_) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi_) };
-                    const bool left { x < horizontal_border };
-                    const bool right { x >= width - horizontal_border };
-                    const bool top { y < vertical_border };
-                    const bool bottom { y >= height - vertical_border };
-                    if (top && left)
+                    // 시스템 기본 테두리(보통 8px)는 가장자리에 붙은 스크롤 막대를
+                    // 잡기 어렵게 한다. 조절 두께를 좁히고 모서리만 넉넉히 둔다.
+                    const int border { std::max(1, scale_for_dpi(resize_border_thickness)) };
+                    const int corner { std::max(border, scale_for_dpi(resize_corner_thickness)) };
+                    const bool corner_left { x < corner };
+                    const bool corner_right { x >= width - corner };
+                    const bool corner_top { y < corner };
+                    const bool corner_bottom { y >= height - corner };
+                    if (corner_top && corner_left)
                         return HTTOPLEFT;
-                    if (top && right)
+                    if (corner_top && corner_right)
                         return HTTOPRIGHT;
-                    if (bottom && left)
+                    if (corner_bottom && corner_left)
                         return HTBOTTOMLEFT;
-                    if (bottom && right)
+                    if (corner_bottom && corner_right)
                         return HTBOTTOMRIGHT;
-                    if (left)
+                    if (x < border)
                         return HTLEFT;
-                    if (right)
+                    if (x >= width - border)
                         return HTRIGHT;
-                    if (top)
+                    if (y < border)
                         return HTTOP;
-                    if (bottom)
+                    if (y >= height - border)
                         return HTBOTTOM;
                 }
 
@@ -634,8 +648,27 @@ namespace gitman::win32 {
                 }
             }
 
-            void update_maximized_bounds(MINMAXINFO* information) const noexcept
+            // 최소 크기와 최대화 크기를 함께 정한다. 최소 크기는 client 기준 값을
+            // 창 크기로 바꿔 넣는다 (frame 두께 포함).
+            void update_size_limits(MINMAXINFO* information) const noexcept
             {
+                RECT minimum {
+                    0,
+                    0,
+                    scale_for_dpi(minimum_window_width),
+                    scale_for_dpi(minimum_window_height),
+                };
+                if (AdjustWindowRectExForDpi(&minimum, custom_window_style, FALSE, WS_EX_APPWINDOW | WS_EX_ACCEPTFILES, dpi_) != FALSE)
+                {
+                    information->ptMinTrackSize.x = minimum.right - minimum.left;
+                    information->ptMinTrackSize.y = minimum.bottom - minimum.top;
+                }
+                else
+                {
+                    information->ptMinTrackSize.x = scale_for_dpi(minimum_window_width);
+                    information->ptMinTrackSize.y = scale_for_dpi(minimum_window_height);
+                }
+
                 const HMONITOR monitor { MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST) };
                 MONITORINFO monitor_information {};
                 monitor_information.cbSize = sizeof(monitor_information);
@@ -744,7 +777,7 @@ namespace gitman::win32 {
 
                 const window_placement& requested { *view->window_placement_request };
                 // 너무 작은 값은 창을 사실상 못 쓰게 만든다. 저장이 깨진 경우의 방어다.
-                if (requested.valid() == false || requested.width < minimum_restored_width || requested.height < minimum_restored_height)
+                if (requested.valid() == false || requested.width < scale_for_dpi(minimum_window_width) || requested.height < scale_for_dpi(minimum_window_height))
                     return;
 
                 RECT bounds {

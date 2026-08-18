@@ -53,9 +53,14 @@ namespace gitman::ui {
         return drop_target_.has_value() ? &*drop_target_ : nullptr;
     }
 
+    const pointer_drag_target* ui_element::pointer_drag() const noexcept
+    {
+        return pointer_drag_target_.has_value() ? &*pointer_drag_target_ : nullptr;
+    }
+
     bool ui_element::interactive() const noexcept
     {
-        if (tooltip_.empty() == false || drag_source_.has_value() || drop_target_.has_value())
+        if (tooltip_.empty() == false || drag_source_.has_value() || drop_target_.has_value() || pointer_drag_target_.has_value())
             return true;
         for (const ui_action& stored : actions_)
             if (stored)
@@ -106,6 +111,11 @@ namespace gitman::ui {
     void ui_element::set_drop_target(std::optional<drop_target> target)
     {
         drop_target_ = std::move(target);
+    }
+
+    void ui_element::set_pointer_drag_target(std::optional<pointer_drag_target> target)
+    {
+        pointer_drag_target_ = std::move(target);
     }
 
     const ui_element* ui_element::hit_test(const float x, const float y) const

@@ -83,6 +83,22 @@ namespace gitman::ui {
         if (tree_ == nullptr)
             return {};
 
+        // 스크롤 막대를 잡고 있으면 이동은 전부 그 element의 몫이다. tree가 다시
+        // 빌드되어도 같은 id로 찾아 이어서 끈다.
+        if (pointer_drag_id_ != ui_element_id {})
+        {
+            const ui_element* const target { tree_->find(pointer_drag_id_) };
+            const pointer_drag_target* const handler { target != nullptr ? target->pointer_drag() : nullptr };
+            if (handler == nullptr || handler->on_move == nullptr)
+                return {};
+
+            const ui_action_context previous { pointer_drag_id_, pointer_drag_x_, pointer_drag_y_, false };
+            const ui_action_context current { pointer_drag_id_, event.x, event.y, false };
+            pointer_drag_x_ = event.x;
+            pointer_drag_y_ = event.y;
+            return handler->on_move(previous, current);
+        }
+
         // drag 중이면 ghost 위치와 수락 중인 drop 대상만 갱신한다.
         if (snapshot_.drag.has_value())
         {
@@ -132,6 +148,17 @@ namespace gitman::ui {
         drag_candidate_ = event.button == pointer_button::left && hit->drag() != nullptr;
         if (event.button == pointer_button::left)
             snapshot_.pressed = hit->id();
+
+        // 스크롤 막대는 누른 순간부터 끌기가 시작된다. 임계 거리를 두지 않는다.
+        const pointer_drag_target* const handler { hit->pointer_drag() };
+        if (event.button == pointer_button::left && handler != nullptr)
+        {
+            pointer_drag_id_ = hit->id();
+            pointer_drag_x_ = event.x;
+            pointer_drag_y_ = event.y;
+            if (handler->on_press)
+                return handler->on_press(ui_action_context { pointer_drag_id_, event.x, event.y, false });
+        }
         return {};
     }
 
@@ -139,6 +166,14 @@ namespace gitman::ui {
     {
         if (tree_ == nullptr)
             return {};
+
+        // 스크롤 막대를 놓는 것은 클릭이 아니다. 끌기만 끝낸다.
+        if (pointer_drag_id_ != ui_element_id {} && event.button == pointer_button::left)
+        {
+            pointer_drag_id_ = {};
+            clear_press();
+            return {};
+        }
 
         // drag를 끝낸다. 수락하는 대상 위에서만 drop 액션이 실행된다.
         if (snapshot_.drag.has_value())
@@ -264,6 +299,7 @@ namespace gitman::ui {
 
     void interaction_controller::clear_press() noexcept
     {
+        pointer_drag_id_ = {};
         pressed_id_ = {};
         pressed_button_ = pointer_button::none;
         drag_candidate_ = false;

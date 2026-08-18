@@ -49,6 +49,7 @@ namespace gitman {
         void handle_query_completed(query_completed_event event);
         void handle_reorder_card(const reorder_card_intent& intent);
         void handle_select_card(const select_card_intent& intent);
+        void handle_toggle_path_display();
         void handle_window_placement(const window_placement_intent& intent);
         void handle_document_saved(document_saved_event event);
         void install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics);
@@ -60,6 +61,10 @@ namespace gitman {
         // 스크롤 계산이 같은 순서를 보도록 한 곳에서 만든다.
         [[nodiscard]] std::vector<card_view_model> build_ordered_cards() const;
         [[nodiscard]] bool matches_filter(const card_state& card) const noexcept;
+        // 카드에 그릴 경로 문자열이다. 문서 설정에 따라 전체 경로 또는 문서가 있는
+        // 폴더 기준 상대 경로다.
+        [[nodiscard]] std::u8string display_path(const project_definition& project) const;
+        [[nodiscard]] bool relative_paths() const noexcept;
         // 스크롤 한계만 필요한 곳은 표시 모델을 만들지 않는다. 창 크기 변경처럼
         // 자주 오는 입력이 이 경로를 쓴다.
         [[nodiscard]] std::size_t visible_card_count() const noexcept;

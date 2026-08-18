@@ -52,6 +52,11 @@ namespace gitman {
         card_sort_key key { card_sort_key::name };
     };
 
+    // 카드 경로를 전체 경로와 문서 기준 상대 경로 사이에서 바꾼다. 표시 방식은 문서
+    // `settings`에 남으므로 처리 시 저장이 예약된다.
+    struct toggle_path_display_intent
+    {};
+
     // 카드 drag & drop이 만드는 순서 변경이다. `id` 카드를 `target` 카드의 앞 또는
     // 뒤로 옮긴다. 처리 시 정렬이 custom(문서 순서)으로 바뀌고 문서 저장이 예약된다.
     struct reorder_card_intent
@@ -164,8 +169,8 @@ namespace gitman {
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
-        reorder_card_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event,
-        shutdown_message>;
+        toggle_path_display_intent, reorder_card_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event,
+        query_completed_event, document_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

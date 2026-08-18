@@ -14,8 +14,9 @@
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy)
+    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths)
         : ui_element { ui_element_id { ui_element_kind::toolbar } }
+        , show_open_button_ { show_open_button }
     {
         auto document_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::toolbar_document_path }, label_config { .text = std::move(document_text) }) };
         document_label_ = document_label.get();
@@ -40,6 +41,16 @@ namespace gitman::ui {
         generate_document->set_enabled(generation_busy == false);
         generate_document_ = generate_document.get();
         add_child(std::move(generate_document));
+
+        // 경로 표시 토글이다. 켜져 있으면 강조 배경으로 상태를 계속 보여 준다.
+        auto toggle_path_display {
+            std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_toggle_path_display }, button_config { .glyph = codicons::icon_root_folder, .active = relative_paths }),
+        };
+        toggle_path_display->set_tooltip(relative_paths ? std::u8string { u8"카드 경로를 전체 경로로 표시" } : std::u8string { u8"카드 경로를 문서 기준 상대 경로로 표시" });
+        toggle_path_display->set_action(
+            ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_path_display_intent {} } } }; });
+        toggle_path_display_ = toggle_path_display.get();
+        add_child(std::move(toggle_path_display));
     }
 
     void toolbar_element::arrange(const arrange_context& context)
@@ -50,15 +61,28 @@ namespace gitman::ui {
         const float margin { layout_margin * scale };
         const float button { layout_button_size * scale };
         const float button_y { context.slot.y + (context.slot.height - button) / 2.0f };
-        const float refresh_x { context.slot.x + context.slot.width - margin - button };
-        refresh_all_->arrange({ { refresh_x, button_y, button, button }, scale });
-        const float open_x { refresh_x - margin - button };
-        open_document_->arrange({ { open_x, button_y, button, button }, scale });
-        const float generate_x { (open_document_->visible() ? open_x : refresh_x) - margin - button };
-        generate_document_->arrange({ { generate_x, button_y, button, button }, scale });
+        const float label_left { context.slot.x + margin };
+        // 창이 좁으면 오른쪽부터 들어가고 자리가 없는 버튼은 숨긴다. 남은 버튼과
+        // 문서 경로가 서로 겹치는 것보다 낫다.
+        float next_x { context.slot.x + context.slot.width - margin - button };
+        const auto place = [&](ui_element* const element, const bool wanted) {
+            if (wanted == false || next_x < label_left)
+            {
+                element->set_visible(false);
+                return;
+            }
+            element->set_visible(true);
+            element->arrange({ { next_x, button_y, button, button }, scale });
+            next_x -= button + margin;
+        };
 
-        const float label_width { generate_x - margin * 2.0f };
-        document_label_->arrange({ { context.slot.x + margin, context.slot.y, label_width, context.slot.height }, scale });
+        place(refresh_all_, true);
+        place(open_document_, show_open_button_);
+        place(generate_document_, true);
+        place(toggle_path_display_, true);
+
+        const float label_width { next_x + button - label_left };
+        document_label_->arrange({ { label_left, context.slot.y, label_width < 0.0f ? 0.0f : label_width, context.slot.height }, scale });
     }
 
     void toolbar_element::draw(draw_context& context, const interaction_snapshot& interaction) const

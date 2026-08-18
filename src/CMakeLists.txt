@@ -261,6 +261,8 @@ add_library(gitman_ui STATIC
     presentation/ui/draw_primitives.h
     presentation/ui/label_element.cpp
     presentation/ui/label_element.h
+    presentation/ui/scrollbar_element.cpp
+    presentation/ui/scrollbar_element.h
     presentation/ui/toolbar_element.cpp
     presentation/ui/toolbar_element.h
     presentation/ui/ui_element.cpp

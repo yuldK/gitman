@@ -67,6 +67,9 @@ namespace gitman {
         float window_height { 0.0f };
         float scale { 1.0f };
         float scroll_offset { 0.0f };
+        // 카드 경로가 문서 기준 상대 경로로 표시되고 있다. toolbar 토글의 표시
+        // 상태이며, 카드의 `path`에는 이미 적용된 문자열이 들어 있다.
+        bool relative_paths { false };
         // 문서에서 읽은 창 배치다. UI thread는 revision이 바뀔 때 한 번만 적용한다.
         // snapshot마다 창을 다시 배치하지 않도록 revision 비교가 경계를 만든다.
         std::optional<window_placement> window_placement_request {};

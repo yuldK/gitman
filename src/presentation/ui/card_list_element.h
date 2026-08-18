@@ -24,8 +24,8 @@ namespace gitman::ui {
         [[nodiscard]] float content_height() const noexcept;
 
     private:
-        // 내용이 화면보다 길 때만 오른쪽 여백에 thumb를 그린다. 표시 전용이다.
-        void draw_scroll_indicator(draw_context& context) const;
+        // 내용이 화면보다 길 때만 만드는 스크롤 막대다. 클릭·끌기를 직접 처리한다.
+        ui_element* scrollbar_ { nullptr };
 
         // 자식 카드가 전체 목록에서 몇 번째인지다. 자식과 같은 순서다.
         std::vector<std::size_t> visible_indices_ {};

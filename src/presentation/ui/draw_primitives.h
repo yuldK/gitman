@@ -2,6 +2,7 @@
 
 #include "presentation/ui/ui_element.h"
 
+#include <string>
 #include <string_view>
 
 class SkFont;
@@ -13,6 +14,23 @@ namespace gitman::ui {
     [[nodiscard]] SkPaint solid_paint(ui_color color);
 
     void draw_text(SkCanvas& canvas, std::u8string_view text, float x, float y, const SkFont& font, const SkPaint& paint);
+
+    // 같은 색의 투명도만 바꾼 값이다. chip 배경처럼 강조색을 옅게 깔 때 쓴다.
+    [[nodiscard]] ui_color with_alpha(ui_color color, float alpha) noexcept;
+
+    [[nodiscard]] float measure_text(std::u8string_view text, const SkFont& font);
+
+    // `max_width` 안에 들어가도록 뒤를 잘라 `…`를 붙인 문자열이다. `…`조차 들어가지
+    // 않으면 빈 값이다. 자르는 위치는 UTF-8 문자 경계다.
+    [[nodiscard]] std::u8string elide_text(std::u8string_view text, float max_width, const SkFont& font);
+
+    // `max_width` 안에서 잘라 그린다. 좁은 창에서 글자가 옆 UI를 침범하지 않게 하는
+    // 공통 경로다. 반환값은 실제로 그린 폭이다.
+    float draw_text_within(SkCanvas& canvas, std::u8string_view text, float x, float y, float max_width, const SkFont& font, const SkPaint& paint);
+
+    // `area` 위쪽 경계에서 아래로 옅어지는 그림자다. 스크롤된 내용이 상단 막대
+    // 아래로 지나간다는 것을 보여 준다. 셰이더 없이 알파를 낮춘 띠를 쌓는다.
+    void draw_downward_shadow(SkCanvas& canvas, const rect_f& area, ui_color color, float strength);
 
     // target 중앙에 글리프 하나를 그린다. 글리프가 없으면 아무것도 그리지 않는다.
     void draw_centered_glyph(SkCanvas& canvas, char32_t codepoint, const rect_f& target, const SkFont& font, const SkPaint& paint);

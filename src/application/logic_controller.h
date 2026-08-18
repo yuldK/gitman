@@ -6,6 +6,7 @@
 #include "domain/repository_snapshot.h"
 #include "presentation/view_snapshot.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -47,11 +48,26 @@ namespace gitman {
         void handle_document_generated(document_generated_event event);
         void handle_query_completed(query_completed_event event);
         void handle_reorder_card(const reorder_card_intent& intent);
+        void handle_select_card(const select_card_intent& intent);
+        void handle_window_placement(const window_placement_intent& intent);
         void handle_document_saved(document_saved_event event);
         void install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics);
         void request_refresh(card_state& card);
         void request_save();
         void begin_shutdown();
+
+        // 필터를 통과한 카드를 정렬 규칙대로 담은 표시 목록이다. view snapshot과
+        // 스크롤 계산이 같은 순서를 보도록 한 곳에서 만든다.
+        [[nodiscard]] std::vector<card_view_model> build_ordered_cards() const;
+        [[nodiscard]] bool matches_filter(const card_state& card) const noexcept;
+        // 스크롤 한계만 필요한 곳은 표시 모델을 만들지 않는다. 창 크기 변경처럼
+        // 자주 오는 입력이 이 경로를 쓴다.
+        [[nodiscard]] std::size_t visible_card_count() const noexcept;
+        // 필터·정렬·창 크기가 바뀐 뒤 저장된 스크롤 값을 다시 범위 안으로 넣는다.
+        void clamp_scroll();
+        void scroll_selected_into_view();
+        [[nodiscard]] float list_viewport_height() const noexcept;
+        [[nodiscard]] bool has_notice() const noexcept;
 
         [[nodiscard]] card_state* find_card(const project_id& id) noexcept;
         [[nodiscard]] operation_request make_request(operation_kind kind, const card_state* card, std::uint64_t generation);
@@ -74,6 +90,13 @@ namespace gitman {
         float window_height_ { 0.0f };
         float scale_ { 1.0f };
         float scroll_offset_ { 0.0f };
+        // 문서에서 읽은 창 배치와 그 게시 번호다. UI thread는 번호가 바뀔 때만
+        // 창을 다시 배치한다.
+        std::optional<window_placement> window_placement_ {};
+        std::uint64_t window_placement_revision_ { 0 };
+        // 종료 시 배치를 문서에 저장해야 하는지다. UI thread가 보낸 배치가 문서의
+        // 값과 다를 때만 켜진다.
+        bool window_placement_dirty_ { false };
         std::uint64_t next_operation_id_ { 1 };
         bool document_loading_ { false };
         // 생성은 한 번에 하나만 진행한다. id가 0이 아니면 진행 중이며, id 비교로

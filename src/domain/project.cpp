@@ -6,6 +6,11 @@ namespace gitman {
         return git_executable.empty() && svn_executable.empty();
     }
 
+    bool window_placement::valid() const noexcept
+    {
+        return width > 0 && height > 0;
+    }
+
     std::optional<vcs_hint> parse_vcs_hint(const std::u8string_view value) noexcept
     {
         if (value == u8"auto")

@@ -5,6 +5,7 @@
 #include "presentation/status_presentation.h"
 
 #include <chrono>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -66,6 +67,10 @@ namespace gitman {
         float window_height { 0.0f };
         float scale { 1.0f };
         float scroll_offset { 0.0f };
+        // 문서에서 읽은 창 배치다. UI thread는 revision이 바뀔 때 한 번만 적용한다.
+        // snapshot마다 창을 다시 배치하지 않도록 revision 비교가 경계를 만든다.
+        std::optional<window_placement> window_placement_request {};
+        std::uint64_t window_placement_revision { 0 };
         // `.version-list` 생성이 진행 중이다. toolbar 생성 버튼을 비활성화한다.
         bool document_generating { false };
         bool shutting_down { false };

@@ -75,6 +75,14 @@ namespace gitman {
         float delta { 0.0f };
     };
 
+    // UI thread가 종료 직전에 읽은 창 배치다. logic이 현재 문서에 반영하고 종료
+    // 저장에 싣는다. close intent보다 먼저 게시해야 한다 (같은 채널이라 순서가
+    // 보장된다).
+    struct window_placement_intent
+    {
+        window_placement placement {};
+    };
+
     struct close_intent
     {};
 
@@ -156,7 +164,8 @@ namespace gitman {
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
-        reorder_card_intent, window_metrics_intent, scroll_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event, shutdown_message>;
+        reorder_card_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event,
+        shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

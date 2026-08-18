@@ -143,16 +143,17 @@ namespace gitman {
                         request_refresh(*card);
                 }
                 else if constexpr (std::is_same_v<value_type, select_card_intent>)
-                {
-                    if (value.id.has_value() && find_card(*value.id) == nullptr)
-                        selected_.reset();
-                    else
-                        selected_ = value.id;
-                }
+                    handle_select_card(value);
                 else if constexpr (std::is_same_v<value_type, set_filter_intent>)
+                {
                     filter_ = std::move(value.text);
+                    clamp_scroll();
+                }
                 else if constexpr (std::is_same_v<value_type, set_sort_intent>)
+                {
                     sort_ = value.key;
+                    scroll_selected_into_view();
+                }
                 else if constexpr (std::is_same_v<value_type, reorder_card_intent>)
                     handle_reorder_card(value);
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
@@ -160,13 +161,17 @@ namespace gitman {
                     window_width_ = value.width;
                     window_height_ = value.height;
                     scale_ = value.scale > 0.0f ? value.scale : 1.0f;
+                    // 창이 커지면 남은 스크롤 여유가 줄어든다. 다시 고정하지 않으면
+                    // 화면은 맞게 그려지지만 다음 휠 입력이 한참 동안 헛돈다.
+                    clamp_scroll();
                 }
                 else if constexpr (std::is_same_v<value_type, scroll_intent>)
                 {
-                    const float viewport { window_height_ / scale_ - layout_caption_height - layout_toolbar_height };
-                    const float content { card_list_content_height(cards_.size(), 1.0f) };
-                    scroll_offset_ = clamp_scroll_offset(scroll_offset_ + value.delta, content, viewport);
+                    scroll_offset_ += value.delta;
+                    clamp_scroll();
                 }
+                else if constexpr (std::is_same_v<value_type, window_placement_intent>)
+                    handle_window_placement(value);
                 else if constexpr (std::is_same_v<value_type, close_intent> || std::is_same_v<value_type, shutdown_message>)
                     begin_shutdown();
                 else if constexpr (std::is_same_v<value_type, document_loaded_event>)
@@ -283,6 +288,12 @@ namespace gitman {
         scroll_offset_ = 0.0f;
         document_ = std::move(document);
         revision_ = std::move(revision);
+
+        // 문서가 배치를 담고 있으면 UI thread가 한 번 적용하도록 게시 번호를 올린다.
+        window_placement_ = document_->window;
+        window_placement_dirty_ = false;
+        if (window_placement_.has_value())
+            ++window_placement_revision_;
         cards_.clear();
         cards_.reserve(document_->projects.size());
         for (const project_definition& project : document_->projects)
@@ -373,6 +384,29 @@ namespace gitman {
         request_save();
     }
 
+    void logic_controller::handle_select_card(const select_card_intent& intent)
+    {
+        if (intent.id.has_value() && find_card(*intent.id) == nullptr)
+            selected_.reset();
+        else
+            selected_ = intent.id;
+
+        // 키보드 순회는 화면 밖 카드도 고를 수 있다. 선택이 보이도록 따라간다.
+        scroll_selected_into_view();
+    }
+
+    void logic_controller::handle_window_placement(const window_placement_intent& intent)
+    {
+        if (intent.placement.valid() == false || document_.has_value() == false)
+            return;
+        if (document_->window.has_value() && *document_->window == intent.placement)
+            return;
+
+        document_->window = intent.placement;
+        window_placement_ = intent.placement;
+        window_placement_dirty_ = true;
+    }
+
     void logic_controller::handle_document_saved(document_saved_event event)
     {
         // 다른 문서를 연 뒤 도착한 이전 저장 결과는 버린다.
@@ -436,6 +470,55 @@ namespace gitman {
             return;
         shutting_down_ = true;
         cancellation_source_.request_cancellation();
+
+        // 종료 저장은 취소 전파 뒤에도 한 번 나간다. runtime의 종료 순서가 이 요청이
+        // worker inbox에 들어간 뒤에 inbox를 닫으므로 join 안에서 끝까지 실행된다.
+        if (window_placement_dirty_ == false || document_.has_value() == false)
+            return;
+        window_placement_dirty_ = false;
+
+        operation_request request { make_request(operation_kind::save_document, nullptr, 0) };
+        request.document = document_;
+        request.revision = revision_;
+        // 저장은 취소 token을 보지 않지만, 종료 저장이 취소 대상이 아니라는 의도를
+        // 요청에 남긴다.
+        request.token = {};
+        pending_save_operation_id_ = request.operation_id;
+        static_cast<void>(submitter_->submit(std::move(request)));
+    }
+
+    bool logic_controller::has_notice() const noexcept
+    {
+        return notices_.empty() == false || save_notice_.empty() == false;
+    }
+
+    float logic_controller::list_viewport_height() const noexcept
+    {
+        // logic은 논리 픽셀로 계산한다. 창 크기만 물리 픽셀이라 배율로 되돌린다.
+        return compute_list_layout(window_height_ / scale_, 1.0f, has_notice()).viewport_height;
+    }
+
+    void logic_controller::clamp_scroll()
+    {
+        const float content { card_list_content_height(visible_card_count(), 1.0f) };
+        scroll_offset_ = clamp_scroll_offset(scroll_offset_, content, list_viewport_height());
+    }
+
+    void logic_controller::scroll_selected_into_view()
+    {
+        if (selected_.has_value() == false)
+        {
+            clamp_scroll();
+            return;
+        }
+
+        const std::vector<card_view_model> ordered { build_ordered_cards() };
+        std::size_t index { ordered.size() };
+        for (std::size_t position = 0; position < ordered.size(); ++position)
+            if (ordered[position].id == *selected_)
+                index = position;
+
+        scroll_offset_ = scroll_offset_showing_card(scroll_offset_, index, ordered.size(), list_viewport_height(), 1.0f);
     }
 
     logic_controller::card_state* logic_controller::find_card(const project_id& id) noexcept
@@ -461,27 +544,26 @@ namespace gitman {
         return request;
     }
 
-    std::shared_ptr<const view_snapshot> logic_controller::make_view_snapshot() const
+    bool logic_controller::matches_filter(const card_state& card) const noexcept
     {
-        auto snapshot { std::make_shared<view_snapshot>() };
-        snapshot->document_path = document_path_;
-        snapshot->selected = selected_;
-        snapshot->filter_text = filter_;
-        snapshot->sort = sort_;
-        snapshot->notices = notices_;
-        // 저장 실패는 문서 진단보다 먼저 보인다. UI는 첫 notice만 표시한다.
-        if (save_notice_.empty() == false)
-            snapshot->notices.insert(snapshot->notices.begin(), save_notice_);
-        snapshot->window_width = window_width_;
-        snapshot->window_height = window_height_;
-        snapshot->scale = scale_;
-        snapshot->scroll_offset = scroll_offset_;
-        snapshot->document_generating = pending_generation_operation_id_ != 0;
-        snapshot->shutting_down = shutting_down_;
+        return contains_ignoring_ascii_case(card.project.display_name, filter_) || contains_ignoring_ascii_case(card.project.path.original, filter_);
+    }
 
+    std::size_t logic_controller::visible_card_count() const noexcept
+    {
+        std::size_t count { 0 };
+        for (const card_state& card : cards_)
+            if (matches_filter(card))
+                ++count;
+        return count;
+    }
+
+    std::vector<card_view_model> logic_controller::build_ordered_cards() const
+    {
+        std::vector<card_view_model> ordered {};
         for (const card_state& card : cards_)
         {
-            if (contains_ignoring_ascii_case(card.project.display_name, filter_) == false && contains_ignoring_ascii_case(card.project.path.original, filter_) == false)
+            if (matches_filter(card) == false)
                 continue;
 
             card_view_model model {};
@@ -510,14 +592,37 @@ namespace gitman {
 
             const bool availability_problem { card.snapshot.availability != repository_availability::ready && card.snapshot.availability != repository_availability::unknown };
             model.status = availability_problem ? availability_glyph(card.snapshot.availability) : sync_state_glyph(card.snapshot.sync_state, card.snapshot.ahead_count, card.snapshot.behind_count);
-            snapshot->cards.push_back(std::move(model));
+            ordered.push_back(std::move(model));
         }
 
         // custom은 문서(카드) 순서를 그대로 둔다.
         if (sort_ == card_sort_key::name)
-            std::sort(snapshot->cards.begin(), snapshot->cards.end(), name_before);
+            std::sort(ordered.begin(), ordered.end(), name_before);
         else if (sort_ == card_sort_key::status)
-            std::sort(snapshot->cards.begin(), snapshot->cards.end(), status_before);
+            std::sort(ordered.begin(), ordered.end(), status_before);
+        return ordered;
+    }
+
+    std::shared_ptr<const view_snapshot> logic_controller::make_view_snapshot() const
+    {
+        auto snapshot { std::make_shared<view_snapshot>() };
+        snapshot->document_path = document_path_;
+        snapshot->selected = selected_;
+        snapshot->filter_text = filter_;
+        snapshot->sort = sort_;
+        snapshot->notices = notices_;
+        // 저장 실패는 문서 진단보다 먼저 보인다. UI는 첫 notice만 표시한다.
+        if (save_notice_.empty() == false)
+            snapshot->notices.insert(snapshot->notices.begin(), save_notice_);
+        snapshot->window_width = window_width_;
+        snapshot->window_height = window_height_;
+        snapshot->scale = scale_;
+        snapshot->scroll_offset = scroll_offset_;
+        snapshot->window_placement_request = window_placement_;
+        snapshot->window_placement_revision = window_placement_revision_;
+        snapshot->document_generating = pending_generation_operation_id_ != 0;
+        snapshot->shutting_down = shutting_down_;
+        snapshot->cards = build_ordered_cards();
 
         if (document_loading_)
             snapshot->empty_state = view_empty_state::document_loading;

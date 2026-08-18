@@ -111,16 +111,21 @@ namespace gitman::win32 {
             // 1. logic이 취소를 전파하고 종료 상태를 게시하게 한다.
             static_cast<void>(assembly_->logic_inbox.post(logic_message { close_intent {} }));
 
-            // 2. worker를 먼저 끝낸다. 취소된 작업의 event가 아직 열린 logic inbox로
-            //    들어가거나, 이후 닫힌 inbox에서 조용히 버려진다.
+            // 2. logic이 close를 처리할 때까지 기다린다. 이 시점 이후에는 종료 저장
+            //    (창 배치) 요청이 이미 worker lane에 들어가 있다.
+            wait_for_logic_shutdown();
+
+            // 3. worker를 먼저 끝낸다. 취소된 작업의 event가 아직 열린 logic inbox로
+            //    들어가거나, 이후 닫힌 inbox에서 조용히 버려진다. 채널은 닫힌 뒤에도
+            //    남은 요청을 소비하므로 종료 저장은 join 안에서 끝까지 실행된다.
             assembly_->scheduler->shutdown();
 
-            // 3. logic inbox를 닫아 남은 메시지를 소진시키고 join한다.
+            // 4. logic inbox를 닫아 남은 메시지를 소진시키고 join한다.
             assembly_->logic_inbox.close();
             if (assembly_->logic_thread.joinable())
                 assembly_->logic_thread.join();
 
-            // 4. input을 닫고 join한 뒤 slot을 닫는다.
+            // 5. input을 닫고 join한 뒤 slot을 닫는다.
             assembly_->input_inbox.close();
             if (assembly_->input_thread.joinable())
                 assembly_->input_thread.join();
@@ -130,6 +135,20 @@ namespace gitman::win32 {
         }
         catch (...)
         {}
+    }
+
+    void app_runtime::wait_for_logic_shutdown() noexcept
+    {
+        // logic이 멈춘 비정상 상황에서 종료가 매달리지 않도록 상한을 둔다. 상한을
+        // 넘으면 배치 저장을 포기하고 기존 순서대로 정리한다.
+        constexpr std::chrono::milliseconds wait_limit { 3000 };
+        const std::chrono::steady_clock::time_point deadline { std::chrono::steady_clock::now() + wait_limit };
+        while (logic_shutdown_handled_.load(std::memory_order_acquire) == false)
+        {
+            if (std::chrono::steady_clock::now() >= deadline)
+                return;
+            std::this_thread::sleep_for(std::chrono::milliseconds { 1 });
+        }
     }
 
     void app_runtime::post_raw_input(ui::raw_input_event event) noexcept
@@ -217,6 +236,11 @@ namespace gitman::win32 {
             for (messaging::envelope<logic_message>& entry : batch)
                 controller.handle(std::move(entry.payload));
             publish_snapshots(controller);
+
+            // 종료 저장 요청까지 나간 뒤에 알린다. shutdown()이 이 신호를 보고
+            // worker inbox를 닫는다.
+            if (controller.shutdown_requested())
+                logic_shutdown_handled_.store(true, std::memory_order_release);
         }
     }
 } // namespace gitman::win32

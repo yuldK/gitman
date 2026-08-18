@@ -66,6 +66,10 @@ namespace gitman::win32 {
             dialog->Release();
             return chosen;
         }
+        // 저장된 배치를 복원할 때의 최소 크기다 (물리 픽셀). 이보다 작으면 무시한다.
+        constexpr int minimum_restored_width { 240 };
+        constexpr int minimum_restored_height { 160 };
+
         constexpr DWORD initial_window_style { WS_OVERLAPPEDWINDOW };
         constexpr DWORD retained_window_styles {
             WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
@@ -178,6 +182,7 @@ namespace gitman::win32 {
                 switch (message)
                 {
                 case snapshot_wake_message:
+                    apply_requested_window_placement();
                     InvalidateRect(window_, nullptr, FALSE);
                     return 0;
                 case ui_command_request_message:
@@ -195,9 +200,11 @@ namespace gitman::win32 {
                     }
                     break;
                 case WM_CLOSE:
-                    // ADR-005 7.3: 스레드를 모두 정리한 뒤에 창을 파괴한다.
+                    // ADR-005 7.3: 스레드를 모두 정리한 뒤에 창을 파괴한다. 창 배치는
+                    // 종료 신호보다 먼저 게시해야 같은 채널의 순서로 반영된다.
                     if (runtime_ != nullptr)
                     {
+                        post_window_placement();
                         runtime_->shutdown();
                         runtime_.reset();
                     }
@@ -701,6 +708,69 @@ namespace gitman::win32 {
                 }
             }
 
+            // 종료 직전의 창 배치를 logic에 알린다. 최대화·최소화 상태에서도
+            // `rcNormalPosition`이 복원 크기를 담으므로 그대로 저장한다.
+            void post_window_placement() const noexcept
+            {
+                WINDOWPLACEMENT placement {};
+                placement.length = sizeof(placement);
+                if (GetWindowPlacement(window_, &placement) == FALSE)
+                    return;
+
+                window_placement_intent intent {};
+                intent.placement.x = placement.rcNormalPosition.left;
+                intent.placement.y = placement.rcNormalPosition.top;
+                intent.placement.width = placement.rcNormalPosition.right - placement.rcNormalPosition.left;
+                intent.placement.height = placement.rcNormalPosition.bottom - placement.rcNormalPosition.top;
+                intent.placement.maximized = IsZoomed(window_) != FALSE;
+                if (intent.placement.valid() == false)
+                    return;
+                runtime_->post_logic(logic_message { intent });
+            }
+
+            // 문서가 담고 있던 배치를 한 번만 적용한다. snapshot마다 창을 옮기지
+            // 않도록 게시 번호가 바뀐 경우에만 움직인다.
+            void apply_requested_window_placement()
+            {
+                if (runtime_ == nullptr)
+                    return;
+                const std::shared_ptr<const view_snapshot> view { runtime_->acquire_view() };
+                if (view == nullptr || view->window_placement_revision == applied_window_placement_revision_)
+                    return;
+
+                applied_window_placement_revision_ = view->window_placement_revision;
+                if (view->window_placement_request.has_value() == false)
+                    return;
+
+                const window_placement& requested { *view->window_placement_request };
+                // 너무 작은 값은 창을 사실상 못 쓰게 만든다. 저장이 깨진 경우의 방어다.
+                if (requested.valid() == false || requested.width < minimum_restored_width || requested.height < minimum_restored_height)
+                    return;
+
+                RECT bounds {
+                    requested.x,
+                    requested.y,
+                    requested.x + requested.width,
+                    requested.y + requested.height,
+                };
+                // 모니터 구성이 바뀌어 저장된 위치가 화면 밖이면 크기만 적용한다.
+                if (MonitorFromRect(&bounds, MONITOR_DEFAULTTONULL) == nullptr)
+                {
+                    RECT current {};
+                    if (GetWindowRect(window_, &current) == FALSE)
+                        return;
+                    bounds = { current.left, current.top, current.left + requested.width, current.top + requested.height };
+                }
+
+                WINDOWPLACEMENT placement {};
+                placement.length = sizeof(placement);
+                if (GetWindowPlacement(window_, &placement) == FALSE)
+                    return;
+                placement.rcNormalPosition = bounds;
+                placement.showCmd = requested.maximized ? static_cast<UINT>(SW_SHOWMAXIMIZED) : static_cast<UINT>(SW_SHOWNORMAL);
+                static_cast<void>(SetWindowPlacement(window_, &placement));
+            }
+
             void post_window_metrics() const noexcept
             {
                 if (runtime_ == nullptr)
@@ -802,6 +872,8 @@ namespace gitman::win32 {
             application_options options_ {};
             HWND window_ { nullptr };
             std::uint32_t dpi_ { 96 };
+            // 마지막으로 적용한 창 배치 게시 번호다. 0은 아직 적용한 적이 없다는 뜻이다.
+            std::uint64_t applied_window_placement_revision_ { 0 };
             ui::caption_button_hover hovered_caption_button_ { ui::caption_button_hover::none };
             std::chrono::steady_clock::time_point nc_hover_since_ {};
             bool tracking_non_client_mouse_ { false };

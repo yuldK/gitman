@@ -32,6 +32,7 @@ namespace gitman {
         invalid_project_path,
         duplicate_project_path,
         invalid_vcs_hint,
+        invalid_window_placement,
         unknown_field,
         path_missing,
         path_inaccessible,

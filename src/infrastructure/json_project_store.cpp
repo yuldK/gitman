@@ -107,6 +107,23 @@ namespace gitman {
             root["settings"] = std::move(value);
         }
 
+        // 창 배치는 표시 상태라 문서에 없던 값을 새로 만들지 않고, 문서에 있던 값을
+        // 지우지도 않는다. 배치를 아는 경우에만 기존 object를 template으로 갱신한다.
+        void write_window(json& root, const std::optional<window_placement>& placement)
+        {
+            if (placement.has_value() == false)
+                return;
+
+            const auto existing { root.find("window") };
+            json value { existing != root.end() && existing->is_object() ? *existing : json::object() };
+            value["x"] = placement->x;
+            value["y"] = placement->y;
+            value["width"] = placement->width;
+            value["height"] = placement->height;
+            value["maximized"] = placement->maximized;
+            root["window"] = std::move(value);
+        }
+
         json project_json(json value, const project_definition& project)
         {
             if (value.is_object() == false)
@@ -181,6 +198,7 @@ namespace gitman {
 
             root["schema_version"] = document.schema_version;
             write_settings(root, document.settings);
+            write_window(root, document.window);
             root["projects"] = std::move(projects);
 
             serialized_workspace_document result {};

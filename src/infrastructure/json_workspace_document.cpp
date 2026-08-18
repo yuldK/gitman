@@ -102,7 +102,81 @@ namespace gitman {
 
         bool is_known_top_level_field(const std::string_view field) noexcept
         {
-            return field == "schema_version" || field == "settings" || field == "projects";
+            return field == "schema_version" || field == "settings" || field == "window" || field == "projects";
+        }
+
+        std::u8string window_field_pointer(const std::string_view field)
+        {
+            std::u8string pointer { u8"/window/" };
+            pointer.append(escape_json_pointer_token(field));
+            return pointer;
+        }
+
+        // `window`는 표시 상태이므로 어떤 오류도 문서 열기를 막지 않는다. 읽을 수
+        // 없으면 경고만 남기고 배치 없이 연다.
+        std::optional<window_placement> parse_window(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
+        {
+            const auto source { root.find("window") };
+            if (source == root.end() || source->is_null())
+                return std::nullopt;
+
+            if (source->is_object() == false)
+            {
+                add_diagnostic(result, diagnostic_code::invalid_window_placement, diagnostic_severity::warning, u8"window는 object여야 합니다. 창 배치를 무시합니다.", document_path, u8"/window");
+                return std::nullopt;
+            }
+
+            constexpr std::array coordinate_fields {
+                std::string_view { "x" },
+                std::string_view { "y" },
+                std::string_view { "width" },
+                std::string_view { "height" },
+            };
+            std::array<std::int32_t, 4> coordinates {};
+            for (std::size_t index = 0; index < coordinate_fields.size(); ++index)
+            {
+                const auto value { source->find(coordinate_fields[index]) };
+                if (value == source->end() || value->is_number_integer() == false)
+                {
+                    add_diagnostic(result, diagnostic_code::invalid_window_placement, diagnostic_severity::warning, u8"window의 좌표와 크기는 정수여야 합니다. 창 배치를 무시합니다.", document_path,
+                        window_field_pointer(coordinate_fields[index]));
+                    return std::nullopt;
+                }
+
+                const std::int64_t number { value->get<std::int64_t>() };
+                if (number < std::numeric_limits<std::int32_t>::min() || number > std::numeric_limits<std::int32_t>::max())
+                {
+                    add_diagnostic(result, diagnostic_code::invalid_window_placement, diagnostic_severity::warning, u8"window의 좌표와 크기가 표현 범위를 벗어났습니다. 창 배치를 무시합니다.",
+                        document_path, window_field_pointer(coordinate_fields[index]));
+                    return std::nullopt;
+                }
+                coordinates[index] = static_cast<std::int32_t>(number);
+            }
+
+            window_placement placement {};
+            placement.x = coordinates[0];
+            placement.y = coordinates[1];
+            placement.width = coordinates[2];
+            placement.height = coordinates[3];
+            if (placement.valid() == false)
+            {
+                add_diagnostic(result, diagnostic_code::invalid_window_placement, diagnostic_severity::warning, u8"window의 크기는 양수여야 합니다. 창 배치를 무시합니다.", document_path,
+                    window_field_pointer("width"));
+                return std::nullopt;
+            }
+
+            const auto maximized { source->find("maximized") };
+            if (maximized != source->end() && maximized->is_null() == false)
+            {
+                if (maximized->is_boolean() == false)
+                {
+                    add_diagnostic(result, diagnostic_code::invalid_window_placement, diagnostic_severity::warning, u8"window의 maximized는 boolean이어야 합니다. 최대화 상태를 무시합니다.",
+                        document_path, window_field_pointer("maximized"));
+                }
+                else
+                    placement.maximized = maximized->get<bool>();
+            }
+            return placement;
         }
 
         bool is_known_settings_field(const std::string_view field) noexcept
@@ -474,6 +548,7 @@ namespace gitman {
         document.schema_version = *schema_version;
         document.document_path = document_path;
         document.settings = parse_settings(root, result, document_path);
+        document.window = parse_window(root, result, document_path);
         std::unordered_set<std::u8string> project_ids {};
         for (std::size_t project_index = 0; project_index < projects->size(); ++project_index)
         {

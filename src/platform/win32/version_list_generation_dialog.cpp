@@ -25,16 +25,22 @@ namespace gitman::win32 {
         constexpr int create_button_id { 1004 };
         constexpr int cancel_button_id { 1005 };
         constexpr int error_label_id { 1006 };
+        constexpr int location_edit_id { 1007 };
+        constexpr int location_browse_button_id { 1008 };
+        constexpr int same_folder_check_id { 1009 };
 
         // 논리 96 DPI 기준 치수다. 표시 시점에 창 DPI로 배율한다.
         constexpr int dialog_width { 460 };
-        constexpr int dialog_height { 196 };
+        constexpr int dialog_height { 236 };
         constexpr int dialog_margin { 16 };
         constexpr int label_width { 44 };
         constexpr int row_height { 26 };
         constexpr int field_gap { 10 };
         constexpr int browse_width { 34 };
         constexpr int action_width { 88 };
+        // 체크 상자 행의 높이와 상자 한 변의 길이다.
+        constexpr int check_row_height { 22 };
+        constexpr int check_box_size { 14 };
 
         [[nodiscard]] int scaled(const int value, const UINT dpi) noexcept
         {
@@ -73,6 +79,9 @@ namespace gitman::win32 {
             HWND window { nullptr };
             HWND name_edit { nullptr };
             HWND folder_edit { nullptr };
+            HWND location_edit { nullptr };
+            HWND location_browse { nullptr };
+            HWND same_folder_check { nullptr };
             HWND error_label { nullptr };
             HFONT font { nullptr };
             HBRUSH window_brush { nullptr };
@@ -82,8 +91,11 @@ namespace gitman::win32 {
             // EDIT 뒤에 부모가 그리는 입력 상자 테두리 영역이다.
             RECT name_field {};
             RECT folder_field {};
-            std::array<button_state, 3> buttons {};
+            RECT location_field {};
+            std::array<button_state, 5> buttons {};
             std::optional<generate_document_intent> result {};
+            // 기본값은 기존 동작(스캔 폴더에 생성)이다.
+            bool same_folder { true };
             bool finished { false };
         };
 
@@ -156,7 +168,8 @@ namespace gitman::win32 {
         }
 
         // 폴더 선택은 문서 열기 dialog와 같은 IFileOpenDialog를 폴더 모드로 쓴다.
-        [[nodiscard]] std::optional<std::wstring> choose_scan_folder(const HWND owner, const std::wstring& initial)
+        // 스캔 폴더와 저장 위치가 같은 함수를 제목만 바꿔 쓴다.
+        [[nodiscard]] std::optional<std::wstring> choose_folder(const HWND owner, const std::wstring& initial, const wchar_t* const title)
         {
             IFileOpenDialog* dialog { nullptr };
             if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))) || dialog == nullptr)
@@ -166,7 +179,7 @@ namespace gitman::win32 {
             FILEOPENDIALOGOPTIONS options { 0 };
             if (SUCCEEDED(dialog->GetOptions(&options)))
                 static_cast<void>(dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM));
-            static_cast<void>(dialog->SetTitle(L"저장소들을 담은 폴더 선택"));
+            static_cast<void>(dialog->SetTitle(title));
             if (initial.empty() == false)
             {
                 IShellItem* start { nullptr };
@@ -194,14 +207,39 @@ namespace gitman::win32 {
             return chosen;
         }
 
+        // 체크 상태에서는 위치가 스캔 폴더를 그대로 따라간다. 입력과 찾아보기는
+        // 체크를 풀었을 때만 쓸 수 있다.
+        void update_location_controls(dialog_state& state)
+        {
+            EnableWindow(state.location_edit, state.same_folder ? FALSE : TRUE);
+            EnableWindow(state.location_browse, state.same_folder ? FALSE : TRUE);
+            if (state.same_folder)
+                SetWindowTextW(state.location_edit, window_text(state.folder_edit).c_str());
+            InvalidateRect(state.window, nullptr, FALSE);
+        }
+
         void apply_browse_result(dialog_state& state)
         {
-            const std::optional<std::wstring> folder { choose_scan_folder(state.window, trimmed(window_text(state.folder_edit))) };
+            const std::optional<std::wstring> folder { choose_folder(state.window, trimmed(window_text(state.folder_edit)), L"저장소들을 담은 폴더 선택") };
             if (folder.has_value() == false)
                 return;
             SetWindowTextW(state.folder_edit, folder->c_str());
             if (trimmed(window_text(state.name_edit)).empty())
                 SetWindowTextW(state.name_edit, folder_leaf(*folder).c_str());
+            update_location_controls(state);
+            show_error(state, L"");
+        }
+
+        void apply_location_browse_result(dialog_state& state)
+        {
+            std::wstring initial { trimmed(window_text(state.location_edit)) };
+            if (initial.empty())
+                initial = trimmed(window_text(state.folder_edit));
+
+            const std::optional<std::wstring> folder { choose_folder(state.window, initial, L".version-list을 저장할 폴더 선택") };
+            if (folder.has_value() == false)
+                return;
+            SetWindowTextW(state.location_edit, folder->c_str());
             show_error(state, L"");
         }
 
@@ -243,7 +281,36 @@ namespace gitman::win32 {
                 return;
             }
 
-            std::wstring document_path { folder };
+            // 저장 위치는 체크 상태면 스캔 폴더와 같고, 아니면 따로 검증한다.
+            std::wstring location { folder };
+            if (state.same_folder == false)
+            {
+                location = trimmed(window_text(state.location_edit));
+                if (location.empty())
+                {
+                    show_error(state, L"문서를 저장할 위치를 지정하세요.");
+                    SetFocus(state.location_edit);
+                    return;
+                }
+
+                const utf_conversion_result<std::u8string> location_utf8 { utf16_to_utf8(location) };
+                if (location_utf8.value.has_value() == false || is_absolute_windows_path(*location_utf8.value) == false)
+                {
+                    show_error(state, L"저장 위치는 절대 경로여야 합니다.");
+                    SetFocus(state.location_edit);
+                    return;
+                }
+
+                const DWORD location_attributes { GetFileAttributesW(location.c_str()) };
+                if (location_attributes == INVALID_FILE_ATTRIBUTES || (location_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+                {
+                    show_error(state, L"지정한 저장 위치를 찾을 수 없습니다.");
+                    SetFocus(state.location_edit);
+                    return;
+                }
+            }
+
+            std::wstring document_path { location };
             if (document_path.back() != L'\\' && document_path.back() != L'/')
                 document_path.push_back(L'\\');
             document_path.append(name);
@@ -294,8 +361,56 @@ namespace gitman::win32 {
             return CallWindowProcW(state->original_procedure, window, message, word_parameter, long_parameter);
         }
 
+        // 표준 체크 상자는 dark theme에서 밝게 그려진다. 상자와 글자를 직접 그린다.
+        void draw_dialog_check(const dialog_state& state, const DRAWITEMSTRUCT& item)
+        {
+            const ui_color_palette& palette { *state.palette };
+            const auto* const hover_state { reinterpret_cast<const button_state*>(GetWindowLongPtrW(item.hwndItem, GWLP_USERDATA)) };
+
+            COLORREF background { to_colorref(palette.window_background) };
+            if ((item.itemState & ODS_SELECTED) != 0)
+                background = blend_over(background, palette.button_pressed_background);
+            else if (hover_state != nullptr && hover_state->hovered)
+                background = blend_over(background, palette.button_hover_background);
+
+            const HBRUSH fill { CreateSolidBrush(background) };
+            FillRect(item.hDC, &item.rcItem, fill);
+            DeleteObject(fill);
+
+            const int size { scaled(check_box_size, state.dpi) };
+            const int top { item.rcItem.top + ((item.rcItem.bottom - item.rcItem.top) - size) / 2 };
+            RECT box { item.rcItem.left, top, item.rcItem.left + size, top + size };
+            const HBRUSH box_fill { CreateSolidBrush(to_colorref(state.same_folder ? palette.positive_accent : palette.surface_background)) };
+            FillRect(item.hDC, &box, box_fill);
+            DeleteObject(box_fill);
+            const HBRUSH border { CreateSolidBrush(to_colorref(palette.tooltip_border)) };
+            FrameRect(item.hDC, &box, border);
+            DeleteObject(border);
+
+            SetBkMode(item.hDC, TRANSPARENT);
+            SetTextColor(item.hDC, to_colorref(palette.primary_foreground));
+            const HGDIOBJ previous_font { SelectObject(item.hDC, state.font) };
+            RECT text { item.rcItem.left + size + scaled(8, state.dpi), item.rcItem.top, item.rcItem.right, item.rcItem.bottom };
+            const std::wstring label { window_text(item.hwndItem) };
+            DrawTextW(item.hDC, label.c_str(), -1, &text, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            SelectObject(item.hDC, previous_font);
+
+            if ((item.itemState & ODS_FOCUS) != 0)
+            {
+                RECT focus { item.rcItem };
+                InflateRect(&focus, -1, -1);
+                DrawFocusRect(item.hDC, &focus);
+            }
+        }
+
         void draw_dialog_button(const dialog_state& state, const DRAWITEMSTRUCT& item)
         {
+            if (item.CtlID == static_cast<UINT>(same_folder_check_id))
+            {
+                draw_dialog_check(state, item);
+                return;
+            }
+
             const ui_color_palette& palette { *state.palette };
             const bool accent { item.CtlID == static_cast<UINT>(create_button_id) };
             const auto* const hover_state { reinterpret_cast<const button_state*>(GetWindowLongPtrW(item.hwndItem, GWLP_USERDATA)) };
@@ -359,8 +474,11 @@ namespace gitman::win32 {
             GetClientRect(state.window, &client);
             const int content_width { client.right - client.left - margin * 2 };
 
+            const int check_row { scaled(check_row_height, dpi) };
             const int name_row_top { margin };
             const int folder_row_top { name_row_top + row + gap };
+            const int check_row_top { folder_row_top + row + gap };
+            const int location_row_top { check_row_top + check_row + scaled(4, dpi) };
             const int field_left { margin + label + gap };
             const int browse { scaled(browse_width, dpi) };
             const int name_field_width { content_width - label - gap };
@@ -368,9 +486,11 @@ namespace gitman::win32 {
 
             CreateWindowExW(0, L"STATIC", L"이름", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, margin, name_row_top, label, row, state.window, nullptr, instance, nullptr);
             CreateWindowExW(0, L"STATIC", L"폴더", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, margin, folder_row_top, label, row, state.window, nullptr, instance, nullptr);
+            CreateWindowExW(0, L"STATIC", L"위치", WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE, margin, check_row_top, label, check_row, state.window, nullptr, instance, nullptr);
 
             state.name_field = { field_left, name_row_top, field_left + name_field_width, name_row_top + row };
             state.folder_field = { field_left, folder_row_top, field_left + folder_field_width, folder_row_top + row };
+            state.location_field = { field_left, location_row_top, field_left + folder_field_width, location_row_top + row };
 
             // EDIT는 테두리 없이 만들고 상자는 부모가 그린다. 클래식 컨트롤의 밝은
             // 3D 테두리를 피하면서 IME를 포함한 표준 문자 입력을 그대로 얻는다.
@@ -384,7 +504,12 @@ namespace gitman::win32 {
 
             const HWND browse_button { create_owner_drawn_button(state, instance, L"...", browse_button_id, field_left + folder_field_width + gap, folder_row_top, browse, row) };
 
-            const int error_top { folder_row_top + row + gap };
+            state.same_folder_check = create_owner_drawn_button(state, instance, L"스캔 폴더에 만들기", same_folder_check_id, field_left, check_row_top, content_width - label - gap, check_row);
+            state.location_edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, field_left + inset, location_row_top + scaled(4, dpi),
+                folder_field_width - inset * 2, edit_height, state.window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(location_edit_id)), instance, nullptr);
+            state.location_browse = create_owner_drawn_button(state, instance, L"...", location_browse_button_id, field_left + folder_field_width + gap, location_row_top, browse, row);
+
+            const int error_top { location_row_top + row + gap };
             state.error_label = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFT, margin, error_top, content_width, row, state.window,
                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(error_label_id)), instance, nullptr);
 
@@ -394,8 +519,11 @@ namespace gitman::win32 {
             const HWND cancel_button { create_owner_drawn_button(state, instance, L"취소", cancel_button_id, client.right - margin - action, action_top, action, row) };
 
             register_button(state, 0, browse_button);
-            register_button(state, 1, create_button);
-            register_button(state, 2, cancel_button);
+            register_button(state, 1, state.location_browse);
+            register_button(state, 2, state.same_folder_check);
+            register_button(state, 3, create_button);
+            register_button(state, 4, cancel_button);
+            update_location_controls(state);
 
             state.font = CreateFontW(
                 -scaled(14, dpi), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
@@ -417,7 +545,7 @@ namespace gitman::win32 {
             FillRect(device, &client, state.window_brush);
 
             const HBRUSH border { CreateSolidBrush(to_colorref(state.palette->tooltip_border)) };
-            for (const RECT& field : { state.name_field, state.folder_field })
+            for (const RECT& field : { state.name_field, state.folder_field, state.location_field })
             {
                 RECT box { field };
                 FillRect(device, &box, state.input_brush);
@@ -451,7 +579,17 @@ namespace gitman::win32 {
             }
             case WM_CTLCOLORSTATIC: {
                 const HDC device { reinterpret_cast<HDC>(word_parameter) };
-                const bool error { reinterpret_cast<HWND>(long_parameter) == state->error_label };
+                const HWND control { reinterpret_cast<HWND>(long_parameter) };
+                // 비활성 EDIT은 STATIC 색 통지로 온다. 부모가 그린 입력 상자 안에
+                // 있으므로 배경만은 입력 상자 색을 유지한다.
+                if (control == state->location_edit)
+                {
+                    SetTextColor(device, RGB(150, 150, 150));
+                    SetBkColor(device, to_colorref(state->palette->surface_background));
+                    return reinterpret_cast<LRESULT>(state->input_brush);
+                }
+
+                const bool error { control == state->error_label };
                 SetTextColor(device, error ? to_colorref(state->palette->error_accent) : RGB(190, 190, 190));
                 SetBkColor(device, to_colorref(state->palette->window_background));
                 return reinterpret_cast<LRESULT>(state->window_brush);
@@ -470,6 +608,18 @@ namespace gitman::win32 {
                     if (HIWORD(word_parameter) == BN_CLICKED)
                         apply_browse_result(*state);
                     return 0;
+                case location_browse_button_id:
+                    if (HIWORD(word_parameter) == BN_CLICKED)
+                        apply_location_browse_result(*state);
+                    return 0;
+                case same_folder_check_id:
+                    if (HIWORD(word_parameter) == BN_CLICKED)
+                    {
+                        state->same_folder = state->same_folder == false;
+                        update_location_controls(*state);
+                        show_error(*state, L"");
+                    }
+                    return 0;
                 case create_button_id:
                     if (HIWORD(word_parameter) == BN_CLICKED)
                         attempt_create(*state);
@@ -478,8 +628,17 @@ namespace gitman::win32 {
                     if (HIWORD(word_parameter) == BN_CLICKED)
                         state->finished = true;
                     return 0;
-                case name_edit_id:
                 case folder_edit_id:
+                    if (HIWORD(word_parameter) == EN_CHANGE)
+                    {
+                        // 체크 상태에서는 위치가 스캔 폴더를 그대로 따라간다.
+                        if (state->same_folder)
+                            SetWindowTextW(state->location_edit, window_text(state->folder_edit).c_str());
+                        show_error(*state, L"");
+                    }
+                    return 0;
+                case name_edit_id:
+                case location_edit_id:
                     if (HIWORD(word_parameter) == EN_CHANGE)
                         show_error(*state, L"");
                     return 0;

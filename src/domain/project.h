@@ -65,11 +65,31 @@ namespace gitman {
         [[nodiscard]] bool is_default() const noexcept;
     };
 
+    // 문서를 마지막으로 닫을 때의 창 배치다. `.version-list`의 optional `window`
+    // object에 대응한다. 좌표는 `WINDOWPLACEMENT::rcNormalPosition`의 값 그대로이며
+    // (물리 픽셀, 작업 영역 기준) 최대화 상태에서도 복원 크기를 담는다.
+    struct window_placement
+    {
+        std::int32_t x { 0 };
+        std::int32_t y { 0 };
+        std::int32_t width { 0 };
+        std::int32_t height { 0 };
+        bool maximized { false };
+
+        [[nodiscard]] bool operator==(const window_placement&) const noexcept = default;
+        // 크기가 양수여야 복원에 쓸 수 있다. 위치는 모니터 구성이 바뀔 수 있어
+        // 적용하는 쪽이 따로 검사한다.
+        [[nodiscard]] bool valid() const noexcept;
+    };
+
     struct workspace_document
     {
         std::int32_t schema_version { current_workspace_schema_version };
         std::u8string document_path {};
         workspace_settings settings {};
+        // 값이 없으면 문서에 배치가 없거나 읽을 수 없었다는 뜻이다. 저장 시 기존
+        // 문서의 `window` 필드를 지우지 않는다.
+        std::optional<window_placement> window {};
         std::vector<project_definition> projects {};
     };
 

@@ -80,13 +80,16 @@ namespace gitman::ui {
 
                 const float caption_height { layout_caption_height * scale };
                 const float toolbar_height { layout_toolbar_height * scale };
-                const float list_top { caption_height + toolbar_height };
+                // 배너가 보이면 목록이 그만큼 아래에서 시작한다. 목록·element·logic이
+                // 같은 함수로 계산해야 스크롤 한계와 그리기가 어긋나지 않는다.
+                const list_layout layout { compute_list_layout(context.slot.height, scale, notice_->visible()) };
                 caption_->arrange({ { 0.0f, 0.0f, context.slot.width, caption_height }, scale });
                 toolbar_->arrange({ { 0.0f, caption_height, context.slot.width, toolbar_height }, scale });
-                notice_->arrange({ { layout_margin * scale, list_top, context.slot.width - layout_margin * 2.0f * scale, 20.0f * scale }, scale });
-                card_list_->arrange({ { 0.0f, list_top, context.slot.width, context.slot.height - list_top }, scale, context.scroll_offset });
+                const float notice_top { caption_height + toolbar_height };
+                notice_->arrange({ { layout_margin * scale, notice_top, context.slot.width - layout_margin * 2.0f * scale, layout_notice_height * scale }, scale });
+                card_list_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale, context.scroll_offset });
                 const float empty_height { 22.0f * scale };
-                const float empty_top { list_top + (context.slot.height - list_top - empty_height) / 2.0f };
+                const float empty_top { layout.content_top + (layout.viewport_height - empty_height) / 2.0f };
                 const rect_f empty_slot { layout_margin * scale * 2.0f, empty_top, context.slot.width - layout_margin * 4.0f * scale, empty_height };
                 empty_label_->arrange({ empty_slot, scale });
             }

@@ -51,6 +51,8 @@ namespace gitman {
             return u8"duplicate_project_path";
         case diagnostic_code::invalid_vcs_hint:
             return u8"invalid_vcs_hint";
+        case diagnostic_code::invalid_window_placement:
+            return u8"invalid_window_placement";
         case diagnostic_code::unknown_field:
             return u8"unknown_field";
         case diagnostic_code::path_missing:

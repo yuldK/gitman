@@ -10,6 +10,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -36,8 +37,10 @@ namespace gitman::win32 {
         app_runtime& operator=(app_runtime&&) = delete;
         ~app_runtime();
 
-        // ADR-005 7.3의 순서로 스레드를 정리한다: 취소(close intent) → worker join →
-        // logic join → input join. 멱등이며 UI thread에서 호출한다.
+        // ADR-005 7.3의 순서로 스레드를 정리한다: 취소(close intent) → logic의 close
+        // 처리 확인 → worker join → logic join → input join. 멱등이며 UI thread에서
+        // 호출한다. close 처리를 기다리는 단계가 종료 저장(창 배치)이 worker inbox에
+        // 들어간 뒤에 inbox를 닫는 것을 보장한다.
         void shutdown() noexcept;
 
         // UI thread 전용 진입점들이다.
@@ -53,6 +56,8 @@ namespace gitman::win32 {
     private:
         void logic_thread_main();
         void publish_snapshots(logic_controller& controller);
+        // logic이 close intent를 처리할 때까지 기다린다. 한계를 넘으면 포기한다.
+        void wait_for_logic_shutdown() noexcept;
 
         struct assembly;
         std::unique_ptr<assembly> assembly_ {};
@@ -65,6 +70,8 @@ namespace gitman::win32 {
         std::uint64_t seen_tree_version_ { 0 };
         ui::interaction_snapshot current_interaction_ {};
         std::uint64_t seen_interaction_version_ { 0 };
+        // logic thread가 close intent를 처리하고 종료 저장까지 내보냈음을 알린다.
+        std::atomic<bool> logic_shutdown_handled_ { false };
         bool shut_down_ { false };
     };
 } // namespace gitman::win32

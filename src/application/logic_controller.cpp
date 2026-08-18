@@ -183,6 +183,38 @@ namespace gitman {
                     log_auto_scroll_ = value.enabled;
                 else if constexpr (std::is_same_v<value_type, log_scroll_intent>)
                     handle_log_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, show_update_options_intent>)
+                {
+                    // busy 카드는 버튼이 이미 비활성이지만 늦게 도착한 클릭도 막는다.
+                    const card_state* const card { find_card(value.id) };
+                    if (shutting_down_ == false && card != nullptr && card->project.enabled && card->busy == false)
+                    {
+                        update_overlay_card_ = { value.id };
+                        // ADR-003: submodule 갱신은 매번 명시적으로 켜는 기본 off다.
+                        update_overlay_submodules_ = false;
+                    }
+                }
+                else if constexpr (std::is_same_v<value_type, set_update_submodules_intent>)
+                {
+                    if (update_overlay_card_.has_value())
+                        update_overlay_submodules_ = value.enabled;
+                }
+                else if constexpr (std::is_same_v<value_type, confirm_update_intent>)
+                {
+                    if (update_overlay_card_.has_value())
+                    {
+                        card_state* const card { find_card(*update_overlay_card_) };
+                        update_overlay_card_.reset();
+                        if (card != nullptr && shutting_down_ == false)
+                        {
+                            update_options options {};
+                            options.update_submodules = update_overlay_submodules_;
+                            begin_change(*card, operation_kind::update, options, nullptr);
+                        }
+                    }
+                }
+                else if constexpr (std::is_same_v<value_type, cancel_update_options_intent>)
+                    update_overlay_card_.reset();
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -327,6 +359,8 @@ namespace gitman {
         scroll_offset_ = 0.0f;
         document_ = std::move(document);
         revision_ = std::move(revision);
+        // 이전 문서의 카드를 가리키던 overlay는 의미가 없다.
+        update_overlay_card_.reset();
 
         // 문서가 배치를 담고 있으면 UI thread가 한 번 적용하도록 게시 번호를 올린다.
         window_placement_ = document_->window;
@@ -866,6 +900,8 @@ namespace gitman {
             model.busy = card.busy;
             model.selected = selected_.has_value() && *selected_ == card.project.id;
             model.enabled = card.project.enabled;
+            model.can_change = card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready;
+            model.change_running = card.change_operation_id != 0;
 
             card_view_inputs inputs {};
             inputs.enabled = card.project.enabled;
@@ -935,6 +971,22 @@ namespace gitman {
                     maximum = 0.0f;
                 log.scroll_offset = log_auto_scroll_ ? maximum : (log_scroll_offset_ > maximum ? maximum : log_scroll_offset_);
                 snapshot->log = { std::move(log) };
+                break;
+            }
+        }
+
+        if (update_overlay_card_.has_value())
+        {
+            for (const card_state& card : cards_)
+            {
+                if ((card.project.id == *update_overlay_card_) == false)
+                    continue;
+
+                update_overlay_view overlay {};
+                overlay.card = card.project.id;
+                overlay.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
+                overlay.update_submodules = update_overlay_submodules_;
+                snapshot->update_overlay = { std::move(overlay) };
                 break;
             }
         }

@@ -59,6 +59,7 @@ add_executable(gitman_tests
     ui_interaction_tests.cpp
     ui_theme_tests.cpp
     ui_tree_build_tests.cpp
+    update_ui_tests.cpp
     utf8_tests.cpp
     vcs_domain_tests.cpp
     vcs_error_classifier_tests.cpp

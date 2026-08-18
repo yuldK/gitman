@@ -1,5 +1,32 @@
 # 변경 이력
 
+## 2026-08-19 - 단계 7 `S7-D3` update 실행 UI
+
+### 사용자 지시
+
+- 단계 7 자동 진행 위임 (2026-08-18).
+
+### 반영 내용
+
+- 카드 update 버튼을 활성화했다 (REQ-006). 준비된 Git 카드는 submodule option이
+  있는 확인 overlay를 열고, SVN 카드는 곧바로 실행하며, 실행 중에는 중지 버튼이
+  되어 그 작업만 취소한다. 준비 전에는 비활성 + 사유 tooltip이다.
+- update 확인 overlay를 in-app으로 구현했다: dim 배경(클릭·Esc 취소), panel의
+  안내와 `submodule 함께 갱신` checkbox(기본 off, ADR-003), 실행·취소 버튼.
+  overlay 상태는 logic이 소유하고 view snapshot으로 게시된다.
+- 실제 Git 저장소의 executor update end-to-end(fast-forward 성공, 재조회
+  snapshot, 로그 event 스트리밍)를 통합 test로 실측했다.
+- test 5개 추가, 전체 CTest **577/577** 통과. clang-format·style 통과. 상세는
+  `docs/verification/2026-08-19-stage-7-d3.md`.
+
+### 영향 요구사항
+
+- REQ-005, REQ-006, REQ-009~REQ-012, REQ-014, REQ-015
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S7-D4` switch dialog를 계속 진행한다.
+
 ## 2026-08-19 - 단계 7 `S7-D2` 선택 카드 전용 하단 로그 뷰
 
 ### 사용자 지시

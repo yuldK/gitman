@@ -126,6 +126,9 @@ namespace gitman {
         log_stream_filter log_filter_ { log_stream_filter::all };
         bool log_auto_scroll_ { true };
         float log_scroll_offset_ { 0.0f };
+        // update 확인 overlay의 상태다. 값이 있으면 overlay가 열려 있다.
+        std::optional<project_id> update_overlay_card_ {};
+        bool update_overlay_submodules_ { false };
         float window_width_ { 0.0f };
         float window_height_ { 0.0f };
         float scale_ { 1.0f };

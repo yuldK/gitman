@@ -60,6 +60,13 @@ namespace gitman::ui {
         log_autoscroll,
         log_copy,
         log_clear,
+        // Git update 확인 overlay다 (단계 7). 배경 클릭은 닫기이고 panel이 클릭을
+        // 흡수한다.
+        update_overlay,
+        update_overlay_panel,
+        update_overlay_submodule,
+        update_overlay_confirm,
+        update_overlay_cancel,
     };
 
     struct ui_element_id

@@ -276,6 +276,9 @@ namespace gitman::ui {
                 snapshot_.drag.reset();
                 return {};
             }
+            // 열린 overlay가 있으면 닫기가 먼저다.
+            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::update_overlay }) != nullptr)
+                return { input_action { logic_message { cancel_update_options_intent {} } } };
             focused_.reset();
             return { input_action { logic_message { select_card_intent {} } } };
         case key_code::none:

@@ -40,6 +40,12 @@ namespace gitman {
         bool busy { false };
         bool selected { false };
         bool enabled { true };
+        // 변경 작업(update·switch)을 시작할 수 있는 상태다. 로컬 조회가 끝난 준비
+        // 상태의 활성 카드만 참이다. 실제 보호 정책은 provider가 실행 직전에 다시
+        // 검사한다 (stage-7-plan 4.4).
+        bool can_change { false };
+        // 변경 작업이 실행 중이다. update 버튼이 중지 버튼으로 바뀐다.
+        bool change_running { false };
     };
 
     enum class view_empty_state
@@ -74,6 +80,15 @@ namespace gitman {
         bool truncated { false };
     };
 
+    // Git 카드의 update 확인 overlay다 (stage-7-plan 4.4). submodule option을
+    // 정한 뒤 실행하며, SVN 카드는 overlay 없이 곧바로 실행한다.
+    struct update_overlay_view
+    {
+        project_id card {};
+        std::u8string title {};
+        bool update_submodules { false };
+    };
+
     // logic thread가 게시하고 UI thread가 그대로 그리는 불변 snapshot이다 (ADR-004).
     // 렌더러와 input thread가 같은 layout을 계산할 수 있도록 창 크기와 스크롤 값을
     // 함께 담는다.
@@ -102,6 +117,8 @@ namespace gitman {
         bool document_generating { false };
         // 선택 카드가 있으면 그 카드의 로그 뷰다. 없으면 하단 pane을 그리지 않는다.
         std::optional<log_view_model> log {};
+        // 값이 있으면 update 확인 overlay가 화면을 덮는다.
+        std::optional<update_overlay_view> update_overlay {};
         bool shutting_down { false };
     };
 } // namespace gitman

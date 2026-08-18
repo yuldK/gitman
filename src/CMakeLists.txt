@@ -168,6 +168,8 @@ add_library(gitman_lib STATIC
     presentation/ui/scrollbar_element.h
     presentation/ui/toolbar_element.cpp
     presentation/ui/toolbar_element.h
+    presentation/ui/update_overlay_element.cpp
+    presentation/ui/update_overlay_element.h
     presentation/ui/ui_element.cpp
     presentation/ui/ui_element.h
     presentation/ui/ui_events.h

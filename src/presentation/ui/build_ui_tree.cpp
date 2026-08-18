@@ -7,6 +7,7 @@
 #include "presentation/ui/label_element.h"
 #include "presentation/ui/log_view_element.h"
 #include "presentation/ui/toolbar_element.h"
+#include "presentation/ui/update_overlay_element.h"
 
 #include "include/core/SkCanvas.h"
 
@@ -82,6 +83,15 @@ namespace gitman::ui {
                 auto caption { std::make_unique<caption_element>(u8"Gitman") };
                 caption_ = caption.get();
                 add_child(std::move(caption));
+
+                // overlay는 맨 마지막 자식이라 모든 것 위에 그려지고 hit test도
+                // 먼저 걸린다. 창 이동은 비클라이언트 경로라 계속 동작한다.
+                if (view.update_overlay.has_value())
+                {
+                    auto overlay { std::make_unique<update_overlay_element>(*view.update_overlay) };
+                    update_overlay_ = overlay.get();
+                    add_child(std::move(overlay));
+                }
             }
 
             void arrange(const arrange_context& context) override
@@ -102,6 +112,8 @@ namespace gitman::ui {
                 card_list_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale, context.scroll_offset });
                 if (log_pane_ != nullptr)
                     log_pane_->arrange({ { 0.0f, layout.log_top, context.slot.width, layout.log_height }, scale });
+                if (update_overlay_ != nullptr)
+                    update_overlay_->arrange({ context.slot, scale });
                 const float empty_height { 22.0f * scale };
                 const float empty_top { layout.content_top + (layout.viewport_height - empty_height) / 2.0f };
                 const rect_f empty_slot { layout_margin * scale * 2.0f, empty_top, context.slot.width - layout_margin * 4.0f * scale, empty_height };
@@ -121,6 +133,7 @@ namespace gitman::ui {
             ui_element* card_list_ { nullptr };
             ui_element* empty_label_ { nullptr };
             ui_element* log_pane_ { nullptr };
+            ui_element* update_overlay_ { nullptr };
         };
     } // namespace
 

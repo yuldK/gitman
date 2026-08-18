@@ -87,9 +87,37 @@ namespace gitman::ui {
         refresh_ = refresh.get();
         add_child(std::move(refresh));
 
-        auto update { std::make_unique<button_element>(ui_element_id { ui_element_kind::card_update, card_.id }, button_config { .glyph = codicons::icon_repo_pull }) };
-        update->set_tooltip(u8"업데이트는 단계 7에서 활성화됩니다");
-        update->set_enabled(false);
+        // update 버튼: 실행 중에는 그 작업의 중지 버튼이 된다 (stage-7-plan 4.4).
+        button_config update_config {};
+        update_config.glyph = card_.change_running ? codicons::icon_stop_circle : codicons::icon_repo_pull;
+        auto update { std::make_unique<button_element>(ui_element_id { ui_element_kind::card_update, card_.id }, update_config) };
+        if (card_.change_running)
+        {
+            update->set_tooltip(u8"실행 중인 작업 취소");
+            update->set_action(
+                ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_operation_intent { id } } } }; });
+        }
+        else if (card_.can_change)
+        {
+            if (card_.kind == repository_kind::subversion)
+            {
+                // SVN은 option이 없어 확인 없이 곧바로 실행한다.
+                update->set_tooltip(u8"업데이트 (svn update)");
+                update->set_action(
+                    ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { request_update_intent { id, {} } } } }; });
+            }
+            else
+            {
+                update->set_tooltip(u8"업데이트 (git pull --ff-only)");
+                update->set_action(ui_trigger::left_click,
+                    [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { show_update_options_intent { id } } } }; });
+            }
+        }
+        else
+        {
+            update->set_tooltip(u8"카드가 준비된 뒤 업데이트할 수 있습니다");
+            update->set_enabled(false);
+        }
         update_ = update.get();
         add_child(std::move(update));
 

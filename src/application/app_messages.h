@@ -113,6 +113,24 @@ namespace gitman {
         float delta { 0.0f };
     };
 
+    // Git 카드의 update 버튼이 여는 확인 overlay다 (stage-7-plan 4.4). SVN 카드는
+    // overlay 없이 `request_update_intent`를 바로 보낸다.
+    struct show_update_options_intent
+    {
+        project_id id {};
+    };
+
+    struct set_update_submodules_intent
+    {
+        bool enabled { false };
+    };
+
+    struct confirm_update_intent
+    {};
+
+    struct cancel_update_options_intent
+    {};
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -253,10 +271,11 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
-        toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
-        log_scroll_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event,
-        operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
+    using logic_message
+        = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent, toggle_path_display_intent,
+            reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
+            show_update_options_intent, set_update_submodules_intent, confirm_update_intent, cancel_update_options_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
+            document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

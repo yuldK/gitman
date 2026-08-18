@@ -54,6 +54,8 @@ add_library(gitman_lib STATIC
     domain/discovery.h
     domain/operation.cpp
     domain/operation.h
+    domain/operation_log.cpp
+    domain/operation_log.h
     domain/path_syntax.cpp
     domain/path_syntax.h
     domain/process_execution.cpp

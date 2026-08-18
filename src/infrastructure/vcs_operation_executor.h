@@ -32,6 +32,10 @@ namespace gitman {
         [[nodiscard]] vcs_tool_set tools_for(const workspace_settings& settings, const process_cancellation_token& token);
         [[nodiscard]] repository_kind decide_kind(const project_definition& project) const;
         void execute_query(const operation_request& request, const std::function<void(logic_message)>& emit);
+        // update와 switch_to다. 프로세스 출력을 로그 sink로 스트리밍하고 마지막에
+        // change_completed_event를 보낸다 (단계 7).
+        void execute_change(const operation_request& request, const std::function<void(logic_message)>& emit);
+        void execute_switch_candidates(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_generate_document(const operation_request& request, const std::function<void(logic_message)>& emit);
 
         project_store* store_ { nullptr };

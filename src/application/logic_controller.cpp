@@ -4,6 +4,7 @@
 #include "presentation/list_metrics.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <type_traits>
 #include <utility>
@@ -159,6 +160,18 @@ namespace gitman {
                 }
                 else if constexpr (std::is_same_v<value_type, reorder_card_intent>)
                     handle_reorder_card(value);
+                else if constexpr (std::is_same_v<value_type, request_update_intent>)
+                    handle_request_update(value);
+                else if constexpr (std::is_same_v<value_type, request_switch_intent>)
+                    handle_request_switch(value);
+                else if constexpr (std::is_same_v<value_type, cancel_operation_intent>)
+                    handle_cancel_operation(value);
+                else if constexpr (std::is_same_v<value_type, clear_log_intent>)
+                {
+                    card_state* const card { find_card(value.id) };
+                    if (card != nullptr)
+                        card->log.clear();
+                }
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -185,6 +198,10 @@ namespace gitman {
                     handle_query_completed(std::move(value));
                 else if constexpr (std::is_same_v<value_type, document_saved_event>)
                     handle_document_saved(std::move(value));
+                else if constexpr (std::is_same_v<value_type, operation_log_event>)
+                    handle_operation_log(std::move(value));
+                else if constexpr (std::is_same_v<value_type, change_completed_event>)
+                    handle_change_completed(std::move(value));
             },
             std::move(message));
     }
@@ -203,6 +220,10 @@ namespace gitman {
     {
         if (shutting_down_)
             return;
+
+        // 이전 문서에서 진행 중인 변경 작업은 결과가 버려질 것이므로 프로세스도
+        // 계속 둘 이유가 없다. 카드가 사라지기 전에 취소를 전파한다.
+        cancel_running_changes();
 
         document_path_ = intent.path;
         document_.reset();
@@ -281,6 +302,10 @@ namespace gitman {
 
     void logic_controller::install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics)
     {
+        // 생성된 문서 채택처럼 open을 거치지 않는 교체 경로도 이전 카드의 변경
+        // 작업을 취소해야 한다.
+        cancel_running_changes();
+
         notices_.clear();
         for (const diagnostic& value : diagnostics)
             if (value.severity != diagnostic_severity::information)
@@ -462,6 +487,151 @@ namespace gitman {
         static_cast<void>(submitter_->submit(std::move(request)));
     }
 
+    void logic_controller::handle_request_update(const request_update_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        card_state* const card { find_card(intent.id) };
+        if (card == nullptr || card->project.enabled == false)
+            return;
+
+        begin_change(*card, operation_kind::update, intent.options, nullptr);
+    }
+
+    void logic_controller::handle_request_switch(const request_switch_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        card_state* const card { find_card(intent.id) };
+        if (card == nullptr || card->project.enabled == false)
+            return;
+
+        begin_change(*card, operation_kind::switch_to, {}, &intent.target);
+    }
+
+    void logic_controller::begin_change(card_state& card, const operation_kind kind, const update_options& options, const switch_candidate* const target)
+    {
+        const bool is_update { kind == operation_kind::update };
+        if (card.busy)
+        {
+            // lane 직렬화와 별개로 대기열 폭주를 막는다 (stage-7-plan 4.4). 사유는
+            // 로그로 남겨 사용자가 클릭이 무시된 이유를 알 수 있다.
+            append_lifecycle_log(card, diagnostic_severity::warning,
+                is_update ? std::u8string { u8"이미 작업이 진행 중이라 update를 시작하지 않습니다." } : std::u8string { u8"이미 작업이 진행 중이라 switch를 시작하지 않습니다." });
+            return;
+        }
+
+        process_cancellation_source cancellation {};
+        operation_request request { make_request(kind, &card, card.generation) };
+        request.options = options;
+        if (target != nullptr)
+            request.switch_target = *target;
+        // 변경 작업은 카드 단위 취소가 가능해야 하므로 전역 token 대신 작업별
+        // token을 싣는다. 종료 시에는 cancel_running_changes가 함께 취소한다.
+        request.token = cancellation.token();
+
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+        {
+            append_lifecycle_log(card, diagnostic_severity::error, u8"작업을 제출하지 못했습니다.");
+            return;
+        }
+
+        card.busy = true;
+        card.change_operation_id = operation_id;
+        card.change_kind = kind;
+        card.change_cancellation = std::move(cancellation);
+        if (is_update)
+            append_lifecycle_log(
+                card, diagnostic_severity::information, options.update_submodules ? std::u8string { u8"update를 시작합니다 (submodule 함께 갱신)." } : std::u8string { u8"update를 시작합니다." });
+        else
+            append_lifecycle_log(card, diagnostic_severity::information, std::u8string { u8"switch를 시작합니다: " } + (target != nullptr ? target->display_name : std::u8string {}));
+    }
+
+    void logic_controller::handle_cancel_operation(const cancel_operation_intent& intent)
+    {
+        card_state* const card { find_card(intent.id) };
+        if (card == nullptr || card->change_operation_id == 0 || card->change_cancellation.has_value() == false)
+            return;
+
+        card->change_cancellation->request_cancellation();
+        append_lifecycle_log(*card, diagnostic_severity::warning, u8"취소를 요청했습니다.");
+    }
+
+    void logic_controller::handle_operation_log(operation_log_event event)
+    {
+        card_state* const card { find_card(event.id) };
+        // 끝난 작업이나 다른 문서의 늦은 로그는 버린다. 같은 작업의 로그는 executor가
+        // 완료 event보다 먼저 보내므로 (같은 producer, FIFO) 유실되지 않는다.
+        if (card == nullptr || event.operation_id != card->change_operation_id)
+            return;
+
+        for (operation_log_entry& entry : event.entries)
+            card->log.append(std::move(entry));
+    }
+
+    void logic_controller::handle_change_completed(change_completed_event event)
+    {
+        card_state* const card { find_card(event.id) };
+        if (card == nullptr || event.operation_id != card->change_operation_id)
+            return;
+
+        card->change_operation_id = 0;
+        card->change_cancellation.reset();
+        card->busy = false;
+
+        // 실행 직후 재조회한 상태만 반영한다. 도구 부재처럼 조회 없이 차단된 결과의
+        // 빈 snapshot으로 카드 상태를 지우지 않는다.
+        card->diagnostics = std::move(event.result.diagnostics);
+        if (event.result.snapshot.availability != repository_availability::unknown)
+        {
+            card->snapshot = std::move(event.result.snapshot);
+            card->has_local_result = true;
+        }
+
+        const bool is_update { event.kind == operation_kind::update };
+        if (event.result.executed && event.result.succeeded)
+            append_lifecycle_log(*card, diagnostic_severity::information, is_update ? std::u8string { u8"update가 완료되었습니다." } : std::u8string { u8"switch가 완료되었습니다." });
+        else if (event.result.executed)
+            append_lifecycle_log(*card, diagnostic_severity::error, is_update ? std::u8string { u8"update가 실패했습니다." } : std::u8string { u8"switch가 실패했습니다." });
+        else if (event.result.blocked_by != update_block_reason::none)
+            append_lifecycle_log(*card, diagnostic_severity::warning, std::u8string { update_block_reason_message(event.result.blocked_by) });
+        else if (event.result.rejected_by != switch_rejection::none)
+            append_lifecycle_log(*card, diagnostic_severity::warning, std::u8string { switch_rejection_message(event.result.rejected_by) });
+        else
+            append_lifecycle_log(*card, diagnostic_severity::error, is_update ? std::u8string { u8"update가 실행되지 않았습니다." } : std::u8string { u8"switch가 실행되지 않았습니다." });
+
+        // 실패 원인 진단도 로그에서 추적할 수 있어야 한다 (REQ-008).
+        for (const diagnostic& value : card->diagnostics)
+            if (value.severity != diagnostic_severity::information)
+                append_lifecycle_log(*card, value.severity, value.message);
+
+        // 성공 여부와 관계없이 상태를 다시 조회한다 (plan 5.2의 8, 5.3의 9).
+        // provider의 재조회는 로컬뿐이므로 remote-first 판정까지 이어 실행한다.
+        if (shutting_down_ == false && card->project.enabled)
+        {
+            card->refresh_queued = false;
+            request_refresh(*card);
+        }
+    }
+
+    void logic_controller::append_lifecycle_log(card_state& card, const diagnostic_severity severity, std::u8string text)
+    {
+        operation_log_entry entry {};
+        entry.kind = log_entry_kind::lifecycle;
+        entry.severity = severity;
+        entry.text = std::move(text);
+        entry.time = std::chrono::system_clock::now();
+        card.log.append(std::move(entry));
+    }
+
+    void logic_controller::cancel_running_changes() noexcept
+    {
+        for (card_state& card : cards_)
+            if (card.change_cancellation.has_value())
+                card.change_cancellation->request_cancellation();
+    }
+
     void logic_controller::request_refresh(card_state& card)
     {
         if (shutting_down_)
@@ -483,6 +653,8 @@ namespace gitman {
             return;
         shutting_down_ = true;
         cancellation_source_.request_cancellation();
+        // 변경 작업은 작업별 token을 쓰므로 전역 취소와 별도로 전파한다.
+        cancel_running_changes();
 
         // 종료 저장은 취소 전파 뒤에도 한 번 나간다. runtime의 종료 순서가 이 요청이
         // worker inbox에 들어간 뒤에 inbox를 닫으므로 join 안에서 끝까지 실행된다.
@@ -539,6 +711,14 @@ namespace gitman {
         for (card_state& card : cards_)
             if (card.project.id == id)
                 return &card;
+        return nullptr;
+    }
+
+    const operation_log_buffer* logic_controller::card_log(const project_id& id) const noexcept
+    {
+        for (const card_state& card : cards_)
+            if (card.project.id == id)
+                return &card.log;
         return nullptr;
     }
 

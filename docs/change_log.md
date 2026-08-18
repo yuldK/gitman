@@ -1,5 +1,34 @@
 # 변경 이력
 
+## 2026-08-18 - 단계 7 `S7-D1` 로그 model과 변경 작업 배관
+
+### 사용자 지시
+
+- 단계 7 자동 진행 위임 (2026-08-18).
+
+### 반영 내용
+
+- 카드별 로그 ring buffer(`domain/operation_log`, 상한 1,000 record, 카드별
+  단조 sequence)를 추가하고 logic thread가 소유한다 (ADR-004, plan 3.9).
+- `operation_kind`에 update·switch_to·query_switch_candidates를, logic_message에
+  변경 작업 intent 4종과 event 3종을 추가했다.
+- executor가 변경 작업을 실행한다. provider의 log sink 자리에 배치 sink(16
+  record)를 꽂아 프로세스 출력을 `operation_log_event`로 옮기고, 어떤 실패에서도
+  종류에 맞는 final event를 보낸다.
+- logic의 변경 작업 상태 기계: 작업별 취소 token(카드 단위 취소), busy 중복 거부,
+  늦은 결과·로그 폐기, 완료 후 자동 refresh 연쇄, 수명 주기·진단의 로그 기록,
+  종료·문서 교체 시 변경 작업 취소.
+- test 19개 추가, 전체 CTest **563/563** 통과. clang-format·style 통과. 상세는
+  `docs/verification/2026-08-18-stage-7-d1.md`.
+
+### 영향 요구사항
+
+- REQ-006, REQ-007, REQ-008, REQ-009~REQ-012, REQ-015
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S7-D2` 하단 로그 뷰를 계속 진행한다.
+
 ## 2026-08-18 - 단계 7 개시 및 `S7-P0` 계획 수립
 
 ### 사용자 지시

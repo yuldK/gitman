@@ -7,7 +7,10 @@
 #include "infrastructure/git_repository_provider.h"
 #include "infrastructure/svn_repository_provider.h"
 
+#include <chrono>
+#include <cstddef>
 #include <utility>
+#include <vector>
 
 namespace gitman {
     namespace {
@@ -19,6 +22,63 @@ namespace gitman {
             event.id = request.project.id;
             event.remote = remote;
             event.final_event = final_event;
+            event.result = std::move(result);
+            return event;
+        }
+
+        // 배치 하나로 보내는 로그 record 수다. record마다 메시지를 만들면 대용량
+        // 출력에서 logic inbox가 넘치므로 모아서 보낸다 (stage-7-plan 4.1).
+        constexpr std::size_t operation_log_flush_count { 16 };
+
+        // provider의 log sink 자리에 꽂혀 프로세스 출력을 operation_log_event로
+        // 옮기는 sink다. runner가 호출을 직렬화하므로 스스로 동기화하지 않는다.
+        class operation_log_forwarder final : public process_output_sink
+        {
+        public:
+            operation_log_forwarder(const operation_request& request, const std::function<void(logic_message)>& emit) noexcept
+                : request_ { &request }
+                , emit_ { &emit }
+            {}
+
+            void on_record(const process_output_record& record) override
+            {
+                operation_log_entry entry {};
+                entry.kind = record.stream == process_stream::standard_error ? log_entry_kind::standard_error : log_entry_kind::standard_output;
+                entry.severity = diagnostic_severity::information;
+                entry.text = record.text;
+                entry.progress = record.progress;
+                entry.time = std::chrono::system_clock::now();
+                entries_.push_back(std::move(entry));
+                if (entries_.size() >= operation_log_flush_count)
+                    flush();
+            }
+
+            void flush()
+            {
+                if (entries_.empty())
+                    return;
+
+                operation_log_event event {};
+                event.operation_id = request_->operation_id;
+                event.id = request_->project.id;
+                event.entries = std::move(entries_);
+                entries_ = {};
+                (*emit_)(std::move(event));
+            }
+
+        private:
+            const operation_request* request_ { nullptr };
+            const std::function<void(logic_message)>* emit_ { nullptr };
+            std::vector<operation_log_entry> entries_ {};
+        };
+
+        change_completed_event make_change_event(const operation_request& request, repository_change_result result)
+        {
+            change_completed_event event {};
+            event.operation_id = request.operation_id;
+            event.generation = request.generation;
+            event.id = request.project.id;
+            event.kind = request.kind;
             event.result = std::move(result);
             return event;
         }
@@ -85,6 +145,18 @@ namespace gitman {
                 return;
             }
 
+            if (request.kind == operation_kind::update || request.kind == operation_kind::switch_to)
+            {
+                execute_change(request, emit);
+                return;
+            }
+
+            if (request.kind == operation_kind::query_switch_candidates)
+            {
+                execute_switch_candidates(request, emit);
+                return;
+            }
+
             execute_query(request, emit);
         }
         catch (...)
@@ -119,6 +191,20 @@ namespace gitman {
                     failure.diagnostics.push_back(std::move(value));
                     emit(std::move(failure));
                 }
+                else if (request.kind == operation_kind::update || request.kind == operation_kind::switch_to)
+                {
+                    change_completed_event failure { make_change_event(request, {}) };
+                    failure.result.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::query_switch_candidates)
+                {
+                    switch_candidates_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.id = request.project.id;
+                    failure.result.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
                 else
                 {
                     query_completed_event failure { make_query_event(request, false, true, {}) };
@@ -129,6 +215,68 @@ namespace gitman {
             catch (...)
             {}
         }
+    }
+
+    void vcs_operation_executor::execute_change(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        const vcs_tool_set tools { tools_for(request.settings, request.token) };
+        const repository_kind kind { decide_kind(request.project) };
+
+        // switch 대상이 없는 요청은 명령을 만들지 않고 거부한다. dialog가 채우는
+        // 값이므로 정상 경로에서는 도달하지 않는다.
+        if (request.kind == operation_kind::switch_to && request.switch_target.has_value() == false)
+        {
+            repository_change_result rejected {};
+            rejected.rejected_by = switch_rejection::target_not_found;
+            diagnostic value {};
+            value.code = diagnostic_code::switch_target_rejected;
+            value.severity = diagnostic_severity::error;
+            value.message = u8"전환 대상이 요청에 없습니다.";
+            rejected.diagnostics.push_back(std::move(value));
+            emit(make_change_event(request, std::move(rejected)));
+            return;
+        }
+
+        // 사전 검사 조회를 포함한 이 작업의 모든 프로세스 출력이 카드 로그로 간다.
+        operation_log_forwarder log { request, emit };
+        repository_change_result result {};
+        if (kind == repository_kind::subversion)
+        {
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, &log };
+            result = request.kind == operation_kind::update ? provider.update(request.project, request.options, request.token)
+                                                            : provider.switch_to(request.project, *request.switch_target, request.token);
+        }
+        else
+        {
+            git_repository_provider provider { tools.git, *runner_, *probe_, &log };
+            result = request.kind == operation_kind::update ? provider.update(request.project, request.options, request.token)
+                                                            : provider.switch_to(request.project, *request.switch_target, request.token);
+        }
+
+        // 마지막 event인 change_completed보다 로그가 먼저 도착해야 한다.
+        log.flush();
+        emit(make_change_event(request, std::move(result)));
+    }
+
+    void vcs_operation_executor::execute_switch_candidates(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        const vcs_tool_set tools { tools_for(request.settings, request.token) };
+        const repository_kind kind { decide_kind(request.project) };
+
+        switch_candidates_event event {};
+        event.operation_id = request.operation_id;
+        event.id = request.project.id;
+        if (kind == repository_kind::subversion)
+        {
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_ };
+            event.result = provider.query_switch_candidates(request.project, request.token);
+        }
+        else
+        {
+            git_repository_provider provider { tools.git, *runner_, *probe_ };
+            event.result = provider.query_switch_candidates(request.project, request.token);
+        }
+        emit(std::move(event));
     }
 
     void vcs_operation_executor::execute_generate_document(const operation_request& request, const std::function<void(logic_message)>& emit)

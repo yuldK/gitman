@@ -284,6 +284,99 @@ TEST_CASE("A refresh emits the local result first and the remote result last", "
     REQUIRE(remote->generation == 3u);
 }
 
+TEST_CASE("An update without tools reports a blocked change without processes", "[executor][app]")
+{
+    executor_fixture fixture {};
+    fixture.probe.add_directory(u8"C:\\work\\repo");
+    fixture.run(make_query(u8"C:\\work\\repo", gitman::vcs_hint::git, gitman::operation_kind::update));
+
+    REQUIRE(fixture.emitted.size() == 1u);
+    const auto* const event { std::get_if<gitman::change_completed_event>(&fixture.emitted.front()) };
+    REQUIRE(event != nullptr);
+    REQUIRE(event->operation_id == 11u);
+    REQUIRE(event->kind == gitman::operation_kind::update);
+    REQUIRE_FALSE(event->result.executed);
+    REQUIRE(event->result.blocked_by == gitman::update_block_reason::tool_unavailable);
+    REQUIRE(fixture.runner.request_count() == 0u);
+}
+
+TEST_CASE("A switch without a target is rejected before any command", "[executor][app]")
+{
+    executor_fixture fixture {};
+    fixture.probe.add_directory(u8"C:\\work\\repo");
+    fixture.run(make_query(u8"C:\\work\\repo", gitman::vcs_hint::git, gitman::operation_kind::switch_to));
+
+    REQUIRE(fixture.emitted.size() == 1u);
+    const auto* const event { std::get_if<gitman::change_completed_event>(&fixture.emitted.front()) };
+    REQUIRE(event != nullptr);
+    REQUIRE(event->kind == gitman::operation_kind::switch_to);
+    REQUIRE_FALSE(event->result.executed);
+    REQUIRE(event->result.rejected_by == gitman::switch_rejection::target_not_found);
+    REQUIRE(event->result.diagnostics.empty() == false);
+    REQUIRE(fixture.runner.request_count() == 0u);
+}
+
+TEST_CASE("A candidate query without tools still emits its event", "[executor][app]")
+{
+    executor_fixture fixture {};
+    fixture.probe.add_directory(u8"C:\\work\\repo");
+    fixture.run(make_query(u8"C:\\work\\repo", gitman::vcs_hint::git, gitman::operation_kind::query_switch_candidates));
+
+    REQUIRE(fixture.emitted.size() == 1u);
+    const auto* const event { std::get_if<gitman::switch_candidates_event>(&fixture.emitted.front()) };
+    REQUIRE(event != nullptr);
+    REQUIRE(event->operation_id == 11u);
+    REQUIRE(event->id.value == u8"card");
+    REQUIRE(event->result.candidates.empty());
+    REQUIRE(fixture.runner.request_count() == 0u);
+}
+
+TEST_CASE("Change operations stream their process output as log events before the final event", "[executor][app]")
+{
+    executor_fixture fixture {};
+    fixture.probe.add_directory(u8"C:\\work\\repo");
+    fixture.probe.add_file(u8"C:\\tools\\git.exe");
+
+    // 지정 경로의 git이 존재하므로 도구 조사는 `--version` 하나만 실행한다.
+    gitman::testing::fake_process_runner::response version {};
+    version.standard_output = u8"git version 2.52.0.windows.1";
+    fixture.runner.push_response(version);
+    // 이후 모든 명령은 같은 출력이다. 파싱 실패로 update가 차단되어도 그때까지의
+    // 출력은 로그 sink로 흘러야 한다.
+    gitman::testing::fake_process_runner::response output {};
+    output.standard_output = u8"line-1\nline-2\n";
+    output.standard_error = u8"error-line\n";
+    fixture.runner.set_default_response(output);
+
+    gitman::operation_request request { make_query(u8"C:\\work\\repo", gitman::vcs_hint::git, gitman::operation_kind::update) };
+    request.settings.git_executable = u8"C:\\tools\\git.exe";
+    fixture.run(request);
+
+    REQUIRE(fixture.emitted.size() >= 2u);
+    // 마지막 메시지가 완료 event이고 로그는 모두 그 앞이다.
+    const auto* const final_event { std::get_if<gitman::change_completed_event>(&fixture.emitted.back()) };
+    REQUIRE(final_event != nullptr);
+
+    bool found_output { false };
+    bool found_error { false };
+    for (std::size_t index = 0; index + 1 < fixture.emitted.size(); ++index)
+    {
+        const auto* const log { std::get_if<gitman::operation_log_event>(&fixture.emitted[index]) };
+        REQUIRE(log != nullptr);
+        REQUIRE(log->operation_id == 11u);
+        REQUIRE(log->id.value == u8"card");
+        for (const gitman::operation_log_entry& entry : log->entries)
+        {
+            if (entry.kind == gitman::log_entry_kind::standard_output)
+                found_output = true;
+            if (entry.kind == gitman::log_entry_kind::standard_error)
+                found_error = true;
+        }
+    }
+    REQUIRE(found_output);
+    REQUIRE(found_error);
+}
+
 TEST_CASE("Tool discovery results are cached per settings", "[executor][app]")
 {
     executor_fixture fixture {};

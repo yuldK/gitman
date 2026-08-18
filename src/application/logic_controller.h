@@ -2,6 +2,7 @@
 
 #include "application/app_messages.h"
 #include "application/process_cancellation.h"
+#include "domain/operation_log.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "presentation/view_snapshot.h"
@@ -30,13 +31,25 @@ namespace gitman {
 
         [[nodiscard]] std::shared_ptr<const view_snapshot> make_view_snapshot() const;
 
+        // 카드의 로그 buffer다. 없는 카드는 nullptr다. logic thread에서만 호출한다
+        // (view snapshot 구성과 test 관찰용 읽기 전용 접근).
+        [[nodiscard]] const operation_log_buffer* card_log(const project_id& id) const noexcept;
+
     private:
         struct card_state
         {
             project_definition project {};
             repository_snapshot snapshot {};
             std::vector<diagnostic> diagnostics {};
+            operation_log_buffer log {};
             std::uint64_t generation { 0 };
+            // 진행 중인 변경 작업(update·switch)이다. 0이면 없다. 로그와 완료 event를
+            // 이 id로 대조해 늦은 결과를 버린다.
+            std::uint64_t change_operation_id { 0 };
+            operation_kind change_kind { operation_kind::update };
+            // 변경 작업별 취소 source다. 조회와 달리 사용자가 카드 단위로 취소할 수
+            // 있다 (stage-7-plan 4.4).
+            std::optional<process_cancellation_source> change_cancellation {};
             bool busy { false };
             bool refresh_queued { false };
             bool has_local_result { false };
@@ -52,9 +65,19 @@ namespace gitman {
         void handle_toggle_path_display();
         void handle_window_placement(const window_placement_intent& intent);
         void handle_document_saved(document_saved_event event);
+        void handle_request_update(const request_update_intent& intent);
+        void handle_request_switch(const request_switch_intent& intent);
+        void handle_cancel_operation(const cancel_operation_intent& intent);
+        void handle_operation_log(operation_log_event event);
+        void handle_change_completed(change_completed_event event);
         void install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics);
         void request_refresh(card_state& card);
         void request_save();
+        // 변경 작업(update·switch)을 시작한다. busy 카드는 거부하고 사유를 로그에
+        // 남긴다.
+        void begin_change(card_state& card, operation_kind kind, const update_options& options, const switch_candidate* target);
+        void append_lifecycle_log(card_state& card, diagnostic_severity severity, std::u8string text);
+        void cancel_running_changes() noexcept;
         void begin_shutdown();
 
         // 필터를 통과한 카드를 정렬 규칙대로 담은 표시 목록이다. view snapshot과

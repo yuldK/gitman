@@ -4,7 +4,9 @@
 #include "application/project_store.h"
 #include "application/repository_provider.h"
 #include "domain/diagnostic.h"
+#include "domain/operation_log.h"
 #include "domain/project.h"
+#include "domain/vcs_operation.h"
 #include "presentation/view_snapshot.h"
 
 #include <cstdint>
@@ -66,6 +68,33 @@ namespace gitman {
         bool place_after { false };
     };
 
+    // 카드의 update 실행 요청이다. Git 카드는 확인 overlay가 option을 채워 보내고
+    // SVN 카드는 기본 option으로 곧바로 보낸다 (stage-7-plan 4.4).
+    struct request_update_intent
+    {
+        project_id id {};
+        update_options options {};
+    };
+
+    // 카드의 switch 실행 요청이다. switch dialog가 검증을 통과한 후보를 담아 보낸다.
+    // provider가 실행 직전에 같은 조건을 다시 검증한다 (REQ-007).
+    struct request_switch_intent
+    {
+        project_id id {};
+        switch_candidate target {};
+    };
+
+    // 진행 중인 변경 작업(update·switch)의 취소 요청이다. 조회는 취소 대상이 아니다.
+    struct cancel_operation_intent
+    {
+        project_id id {};
+    };
+
+    struct clear_log_intent
+    {
+        project_id id {};
+    };
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -105,6 +134,12 @@ namespace gitman {
         query_local,
         // 로컬 조회 후 remote-first 원격 판정까지 수행한다. refresh 버튼의 동작이다.
         refresh,
+        // 사전 검사를 포함한 update 실행이다. 카드 lane에서 직렬화된다 (단계 7).
+        update,
+        // 실행 직전 재검증을 포함한 switch 실행이다 (단계 7).
+        switch_to,
+        // remote-first 전환 후보 조회다. switch dialog가 요청한다 (단계 7).
+        query_switch_candidates,
     };
 
     struct operation_request
@@ -121,6 +156,10 @@ namespace gitman {
         // save_document 전용: 저장할 문서 내용과 낙관적 잠금의 기준 revision이다.
         std::optional<workspace_document> document {};
         workspace_revision_token revision {};
+        // update 전용 option이다 (ADR-003, 기본 off).
+        update_options options {};
+        // switch_to 전용: 검증을 통과한 전환 대상이다.
+        std::optional<switch_candidate> switch_target {};
         process_cancellation_token token {};
     };
 
@@ -163,14 +202,43 @@ namespace gitman {
         std::vector<diagnostic> diagnostics {};
     };
 
+    // 변경 작업(update·switch)의 프로세스 출력 배치다. worker의 로그 sink가 모아
+    // 보내고 logic이 카드 buffer에 sequence를 부여하며 담는다 (stage-7-plan 4.1).
+    struct operation_log_event
+    {
+        std::uint64_t operation_id { 0 };
+        project_id id {};
+        std::vector<operation_log_entry> entries {};
+    };
+
+    // 변경 작업(update·switch)의 최종 결과다. 그 작업의 마지막 event이며 snapshot은
+    // 실행 직후 재조회한 로컬 상태다.
+    struct change_completed_event
+    {
+        std::uint64_t operation_id { 0 };
+        std::uint64_t generation { 0 };
+        project_id id {};
+        operation_kind kind { operation_kind::update };
+        repository_change_result result {};
+    };
+
+    // remote-first 전환 후보 조회 결과다. switch dialog 상태가 소비한다.
+    struct switch_candidates_event
+    {
+        std::uint64_t operation_id { 0 };
+        project_id id {};
+        switch_candidate_result result {};
+    };
+
     struct shutdown_message
     {};
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
-        toggle_path_display_intent, reorder_card_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event,
-        query_completed_event, document_saved_event, shutdown_message>;
+    using logic_message
+        = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent, toggle_path_display_intent,
+            reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
+            document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

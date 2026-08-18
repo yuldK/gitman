@@ -38,6 +38,12 @@ namespace gitman {
     inline constexpr float layout_log_header_height { 26.0f };
     inline constexpr float layout_log_line_height { 15.0f };
     inline constexpr float layout_log_text_inset { 8.0f };
+    // switch dialog의 치수다. 후보 목록의 스크롤 한계 계산을 logic과 element가
+    // 같은 값으로 하도록 여기에 둔다 (stage-7-plan 4.5).
+    inline constexpr float layout_switch_dialog_width { 400.0f };
+    inline constexpr float layout_switch_dialog_height { 320.0f };
+    inline constexpr float layout_switch_dialog_row_height { 22.0f };
+    inline constexpr float layout_switch_dialog_list_height { 190.0f };
 
     // 카드 목록이 차지하는 영역이다. tree 빌드, 카드 목록 element와 logic의 스크롤
     // 한계 계산이 모두 이 함수를 거쳐 같은 값을 쓴다.

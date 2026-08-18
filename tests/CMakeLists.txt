@@ -53,6 +53,7 @@ add_executable(gitman_tests
     svn_integration_tests.cpp
     svn_output_parser_tests.cpp
     svn_repository_provider_tests.cpp
+    switch_dialog_tests.cpp
     switch_validation_tests.cpp
     task_scheduler_tests.cpp
     ui_element_tests.cpp

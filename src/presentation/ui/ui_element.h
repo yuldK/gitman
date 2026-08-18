@@ -67,6 +67,13 @@ namespace gitman::ui {
         update_overlay_submodule,
         update_overlay_confirm,
         update_overlay_cancel,
+        // switch dialog다 (단계 7). 후보 행의 정체성은 owner의 값에 index를 담아
+        // 구분한다.
+        switch_dialog,
+        switch_dialog_panel,
+        switch_dialog_item,
+        switch_dialog_confirm,
+        switch_dialog_cancel,
     };
 
     struct ui_element_id

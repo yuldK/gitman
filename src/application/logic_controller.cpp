@@ -101,6 +101,17 @@ namespace gitman {
             return name_before(left, right);
         }
 
+        // dialog 수준에서 곧바로 판정할 수 있는 검증이다. 존재·저장소 일치 같은
+        // 나머지 검증은 provider가 실행 직전에 다시 수행한다 (REQ-007).
+        bool candidate_is_current(const repository_snapshot& snapshot, const switch_candidate& candidate) noexcept
+        {
+            if (candidate.kind == switch_candidate_kind::git_local_branch)
+                return candidate.display_name == snapshot.current_reference;
+            if (candidate.kind == switch_candidate_kind::subversion_url)
+                return candidate.target == snapshot.current_reference;
+            return false;
+        }
+
         card_view_state derive_card_state(const card_view_inputs& inputs) noexcept
         {
             if (inputs.enabled == false)
@@ -215,6 +226,16 @@ namespace gitman {
                 }
                 else if constexpr (std::is_same_v<value_type, cancel_update_options_intent>)
                     update_overlay_card_.reset();
+                else if constexpr (std::is_same_v<value_type, begin_switch_intent>)
+                    handle_begin_switch(value);
+                else if constexpr (std::is_same_v<value_type, select_switch_candidate_intent>)
+                    handle_select_switch_candidate(value.index);
+                else if constexpr (std::is_same_v<value_type, confirm_switch_intent>)
+                    handle_confirm_switch();
+                else if constexpr (std::is_same_v<value_type, cancel_switch_dialog_intent>)
+                    switch_dialog_.reset();
+                else if constexpr (std::is_same_v<value_type, switch_dialog_scroll_intent>)
+                    handle_switch_dialog_scroll(value.delta);
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -245,6 +266,8 @@ namespace gitman {
                     handle_operation_log(std::move(value));
                 else if constexpr (std::is_same_v<value_type, change_completed_event>)
                     handle_change_completed(std::move(value));
+                else if constexpr (std::is_same_v<value_type, switch_candidates_event>)
+                    handle_switch_candidates(std::move(value));
             },
             std::move(message));
     }
@@ -359,8 +382,9 @@ namespace gitman {
         scroll_offset_ = 0.0f;
         document_ = std::move(document);
         revision_ = std::move(revision);
-        // 이전 문서의 카드를 가리키던 overlay는 의미가 없다.
+        // 이전 문서의 카드를 가리키던 overlay와 dialog는 의미가 없다.
         update_overlay_card_.reset();
+        switch_dialog_.reset();
 
         // 문서가 배치를 담고 있으면 UI thread가 한 번 적용하도록 게시 번호를 올린다.
         window_placement_ = document_->window;
@@ -717,6 +741,24 @@ namespace gitman {
             if (value.severity != diagnostic_severity::information)
                 append_lifecycle_log(*card, value.severity, value.message);
 
+        // 실행을 기다리던 switch dialog에 결과를 반영한다. 재검증 거부는 dialog가
+        // 사유를 표시한 채 남고 (REQ-007), 실행된 전환은 성패와 관계없이 dialog를
+        // 닫는다. 결과는 카드 로그와 상태로 확인한다.
+        if (switch_dialog_.has_value() && switch_dialog_->card == event.id && switch_dialog_->executing && event.kind == operation_kind::switch_to)
+        {
+            switch_dialog_->executing = false;
+            if (event.result.executed)
+                switch_dialog_.reset();
+            else
+            {
+                switch_dialog_->tracking_confirm_pending = false;
+                if (event.result.rejected_by != switch_rejection::none)
+                    switch_dialog_->message = std::u8string { switch_rejection_message(event.result.rejected_by) };
+                else
+                    switch_dialog_->message = u8"전환이 실행되지 않았습니다. 카드 로그를 확인하세요.";
+            }
+        }
+
         // 성공 여부와 관계없이 상태를 다시 조회한다 (plan 5.2의 8, 5.3의 9).
         // provider의 재조회는 로컬뿐이므로 remote-first 판정까지 이어 실행한다.
         if (shutting_down_ == false && card->project.enabled)
@@ -724,6 +766,114 @@ namespace gitman {
             card->refresh_queued = false;
             request_refresh(*card);
         }
+    }
+
+    void logic_controller::handle_begin_switch(const begin_switch_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        card_state* const card { find_card(intent.id) };
+        if (card == nullptr || card->project.enabled == false)
+            return;
+
+        // dialog를 열면서 곧바로 remote-first 후보 조회를 제출한다 (plan 5.3의 2).
+        // 조회는 카드를 busy로 만들지 않아 dialog가 열린 동안에도 UI가 멈추지 않는다.
+        operation_request request { make_request(operation_kind::query_switch_candidates, card, card->generation) };
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+
+        switch_dialog_state dialog {};
+        dialog.card = intent.id;
+        dialog.candidates_operation_id = operation_id;
+        switch_dialog_ = { std::move(dialog) };
+    }
+
+    void logic_controller::handle_switch_candidates(switch_candidates_event event)
+    {
+        // 닫힌 dialog나 다른 조회의 늦은 결과는 버린다.
+        if (switch_dialog_.has_value() == false || event.operation_id != switch_dialog_->candidates_operation_id)
+            return;
+
+        switch_dialog_->loading = false;
+        switch_dialog_->candidates = std::move(event.result);
+        switch_dialog_->selected.reset();
+        switch_dialog_->tracking_confirm_pending = false;
+        switch_dialog_->scroll_offset = 0.0f;
+    }
+
+    void logic_controller::handle_select_switch_candidate(const std::size_t index)
+    {
+        if (switch_dialog_.has_value() == false || switch_dialog_->executing || switch_dialog_->loading)
+            return;
+        if (index >= switch_dialog_->candidates.candidates.size())
+            return;
+
+        switch_dialog_->selected = { index };
+        // 다른 후보를 고르면 이전 검증·거부 메시지와 확인 단계는 의미가 없다.
+        switch_dialog_->tracking_confirm_pending = false;
+        switch_dialog_->message.clear();
+    }
+
+    void logic_controller::handle_confirm_switch()
+    {
+        if (switch_dialog_.has_value() == false || switch_dialog_->loading || switch_dialog_->executing || switch_dialog_->selected.has_value() == false)
+            return;
+
+        card_state* const card { find_card(switch_dialog_->card) };
+        if (card == nullptr)
+        {
+            switch_dialog_.reset();
+            return;
+        }
+
+        switch_candidate target { switch_dialog_->candidates.candidates[*switch_dialog_->selected] };
+        if (candidate_is_current(card->snapshot, target))
+        {
+            switch_dialog_->message = u8"이미 현재 참조입니다. 다른 후보를 선택하세요.";
+            return;
+        }
+
+        // tracking branch 생성은 명시적인 두 단계 확인을 거친다 (plan 3.3).
+        if (target.requires_tracking_branch && switch_dialog_->tracking_confirm_pending == false)
+        {
+            switch_dialog_->tracking_confirm_pending = true;
+            switch_dialog_->message = std::u8string { u8"local tracking branch를 만들고 전환합니다. 확인하려면 한 번 더 누르세요." };
+            return;
+        }
+        if (target.requires_tracking_branch)
+            target.tracking_branch_confirmed = true;
+
+        if (card->busy)
+        {
+            switch_dialog_->message = u8"카드가 다른 작업을 실행 중입니다. 끝난 뒤 다시 시도하세요.";
+            return;
+        }
+
+        begin_change(*card, operation_kind::switch_to, {}, &target);
+        if (card->change_operation_id != 0)
+        {
+            switch_dialog_->executing = true;
+            switch_dialog_->tracking_confirm_pending = false;
+            switch_dialog_->message.clear();
+        }
+    }
+
+    void logic_controller::handle_switch_dialog_scroll(const float delta)
+    {
+        if (switch_dialog_.has_value() == false)
+            return;
+
+        const float content { static_cast<float>(switch_dialog_->candidates.candidates.size()) * layout_switch_dialog_row_height };
+        float maximum { content - layout_switch_dialog_list_height };
+        if (maximum < 0.0f)
+            maximum = 0.0f;
+        float offset { switch_dialog_->scroll_offset + delta };
+        if (offset < 0.0f)
+            offset = 0.0f;
+        if (offset > maximum)
+            offset = maximum;
+        switch_dialog_->scroll_offset = offset;
     }
 
     void logic_controller::append_lifecycle_log(card_state& card, const diagnostic_severity severity, std::u8string text)
@@ -987,6 +1137,57 @@ namespace gitman {
                 overlay.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
                 overlay.update_submodules = update_overlay_submodules_;
                 snapshot->update_overlay = { std::move(overlay) };
+                break;
+            }
+        }
+
+        if (switch_dialog_.has_value())
+        {
+            for (const card_state& card : cards_)
+            {
+                if ((card.project.id == switch_dialog_->card) == false)
+                    continue;
+
+                switch_dialog_view dialog {};
+                dialog.card = card.project.id;
+                dialog.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
+                dialog.loading = switch_dialog_->loading;
+                dialog.stale = switch_dialog_->candidates.stale;
+                dialog.candidates = switch_dialog_->candidates.candidates;
+                dialog.selected = switch_dialog_->selected;
+                dialog.executing = switch_dialog_->executing;
+                dialog.message = switch_dialog_->message;
+
+                // 확인 버튼 상태와 label은 logic이 한곳에서 정한다 (plan 5.3의 4~5).
+                if (switch_dialog_->loading == false && switch_dialog_->selected.has_value() && switch_dialog_->executing == false)
+                {
+                    const switch_candidate& candidate { switch_dialog_->candidates.candidates[*switch_dialog_->selected] };
+                    if (candidate_is_current(card.snapshot, candidate))
+                    {
+                        dialog.can_confirm = false;
+                        if (dialog.message.empty())
+                            dialog.message = u8"이미 현재 참조입니다.";
+                    }
+                    else
+                    {
+                        dialog.can_confirm = true;
+                        if (switch_dialog_->tracking_confirm_pending)
+                            dialog.confirm_label = u8"생성 확인";
+                        else if (candidate.requires_tracking_branch)
+                            dialog.confirm_label = u8"브랜치 만들고 전환";
+                        else
+                            dialog.confirm_label = u8"전환 실행";
+                    }
+                }
+                if (dialog.confirm_label.empty())
+                    dialog.confirm_label = u8"전환 실행";
+
+                const float content { static_cast<float>(dialog.candidates.size()) * layout_switch_dialog_row_height };
+                float maximum { content - layout_switch_dialog_list_height };
+                if (maximum < 0.0f)
+                    maximum = 0.0f;
+                dialog.scroll_offset = switch_dialog_->scroll_offset > maximum ? maximum : switch_dialog_->scroll_offset;
+                snapshot->switch_dialog = { std::move(dialog) };
                 break;
             }
         }

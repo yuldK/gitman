@@ -3,6 +3,7 @@
 #include "domain/operation_log.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
+#include "domain/vcs_operation.h"
 #include "presentation/status_presentation.h"
 
 #include <chrono>
@@ -89,6 +90,29 @@ namespace gitman {
         bool update_submodules { false };
     };
 
+    // switch dialog의 불변 표시 모델이다 (REQ-007, stage-7-plan 4.5). 후보 목록은
+    // provider가 만든 순서 그대로다 (remote group 먼저). confirm_label과 message는
+    // logic이 검증 상태에서 계산해 UI는 그대로 그린다.
+    struct switch_dialog_view
+    {
+        project_id card {};
+        std::u8string title {};
+        // 후보 조회가 아직 진행 중이다.
+        bool loading { true };
+        // fetch 실패로 cache된 tracking ref만으로 만든 목록이다.
+        bool stale { false };
+        std::vector<switch_candidate> candidates {};
+        std::optional<std::size_t> selected {};
+        bool can_confirm { false };
+        std::u8string confirm_label {};
+        // 검증·거부·안내 메시지다. 비어 있으면 표시하지 않는다.
+        std::u8string message {};
+        // 전환 실행이 제출되어 결과를 기다리는 중이다.
+        bool executing { false };
+        // 후보 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
+        float scroll_offset { 0.0f };
+    };
+
     // logic thread가 게시하고 UI thread가 그대로 그리는 불변 snapshot이다 (ADR-004).
     // 렌더러와 input thread가 같은 layout을 계산할 수 있도록 창 크기와 스크롤 값을
     // 함께 담는다.
@@ -119,6 +143,8 @@ namespace gitman {
         std::optional<log_view_model> log {};
         // 값이 있으면 update 확인 overlay가 화면을 덮는다.
         std::optional<update_overlay_view> update_overlay {};
+        // 값이 있으면 switch dialog가 화면을 덮는다.
+        std::optional<switch_dialog_view> switch_dialog {};
         bool shutting_down { false };
     };
 } // namespace gitman

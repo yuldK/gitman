@@ -70,6 +70,11 @@ namespace gitman {
         void handle_cancel_operation(const cancel_operation_intent& intent);
         void handle_operation_log(operation_log_event event);
         void handle_change_completed(change_completed_event event);
+        void handle_begin_switch(const begin_switch_intent& intent);
+        void handle_select_switch_candidate(std::size_t index);
+        void handle_confirm_switch();
+        void handle_switch_candidates(switch_candidates_event event);
+        void handle_switch_dialog_scroll(float delta);
         void install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics);
         void request_refresh(card_state& card);
         void request_save();
@@ -129,6 +134,26 @@ namespace gitman {
         // update 확인 overlay의 상태다. 값이 있으면 overlay가 열려 있다.
         std::optional<project_id> update_overlay_card_ {};
         bool update_overlay_submodules_ { false };
+
+        // switch dialog의 상태다 (stage-7-plan 4.5). 값이 있으면 dialog가 열려 있다.
+        struct switch_dialog_state
+        {
+            project_id card {};
+            // 후보 조회 작업의 id다. 늦은 결과를 구분한다.
+            std::uint64_t candidates_operation_id { 0 };
+            bool loading { true };
+            switch_candidate_result candidates {};
+            std::optional<std::size_t> selected {};
+            // tracking branch 생성의 두 단계 확인 중 첫 단계가 끝났다.
+            bool tracking_confirm_pending { false };
+            // 전환 실행이 제출되어 결과를 기다린다.
+            bool executing { false };
+            // 실행 거부·실패 사유다. 후보를 다시 고르면 지워진다.
+            std::u8string message {};
+            float scroll_offset { 0.0f };
+        };
+
+        std::optional<switch_dialog_state> switch_dialog_ {};
         float window_width_ { 0.0f };
         float window_height_ { 0.0f };
         float scale_ { 1.0f };

@@ -158,6 +158,8 @@ add_library(gitman_lib STATIC
     presentation/ui/card_element.h
     presentation/ui/card_list_element.cpp
     presentation/ui/card_list_element.h
+    presentation/ui/dialog_elements.cpp
+    presentation/ui/dialog_elements.h
     presentation/ui/draw_primitives.cpp
     presentation/ui/draw_primitives.h
     presentation/ui/label_element.cpp
@@ -166,6 +168,8 @@ add_library(gitman_lib STATIC
     presentation/ui/log_view_element.h
     presentation/ui/scrollbar_element.cpp
     presentation/ui/scrollbar_element.h
+    presentation/ui/switch_dialog_element.cpp
+    presentation/ui/switch_dialog_element.h
     presentation/ui/toolbar_element.cpp
     presentation/ui/toolbar_element.h
     presentation/ui/update_overlay_element.cpp

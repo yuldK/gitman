@@ -1,6 +1,7 @@
 #include "presentation/ui/update_overlay_element.h"
 
 #include "gitman/generated/codicons.h"
+#include "presentation/ui/dialog_elements.h"
 #include "presentation/ui/draw_primitives.h"
 
 #include "include/core/SkCanvas.h"
@@ -23,49 +24,6 @@ namespace gitman::ui {
         constexpr float row_height { 24.0f };
         constexpr float action_button_width { 88.0f };
         constexpr float action_button_height { 28.0f };
-
-        // 글자가 있는 dialog 버튼이다. 아이콘 전용 button_element와 달리 텍스트를
-        // 중앙에 그린다. hover·눌림·비활성 표시는 같은 규칙을 쓴다.
-        class text_button_element final : public ui_element
-        {
-        public:
-            text_button_element(const ui_element_id id, std::u8string text, const bool accent)
-                : ui_element { id }
-                , text_ { std::move(text) }
-                , accent_ { accent }
-            {}
-
-            void arrange(const arrange_context& context) override
-            {
-                set_bounds(context.slot);
-            }
-
-            void draw(draw_context& context, const interaction_snapshot& interaction) const override
-            {
-                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
-                const rect_f box { bounds() };
-                const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
-                const float radius { 3.0f * scale };
-
-                ui_color background { accent_ ? with_alpha(context.palette.positive_accent, 0.25f) : with_alpha(context.palette.primary_foreground, 0.08f) };
-                if (enabled() && interaction.pressed == id())
-                    background = context.palette.button_pressed_background;
-                else if (enabled() && interaction.hovered == id())
-                    background = context.palette.button_hover_background;
-                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(background));
-
-                const SkFont font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
-                SkPaint foreground { solid_paint(accent_ ? context.palette.positive_accent : context.palette.primary_foreground) };
-                if (enabled() == false)
-                    foreground.setAlphaf(0.4f);
-                const float text_width { measure_text(text_, font) };
-                draw_text(context.canvas, text_, box.x + (box.width - text_width) / 2.0f, box.y + centered_text_baseline(font, box.height), font, foreground);
-            }
-
-        private:
-            std::u8string text_ {};
-            bool accent_ { false };
-        };
 
         // checkbox 한 줄이다. 상자와 설명 글자를 함께 그리고 줄 전체가 클릭 대상이다.
         class checkbox_row_element final : public ui_element

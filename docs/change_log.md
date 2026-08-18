@@ -1,5 +1,35 @@
 # 변경 이력
 
+## 2026-08-19 - 단계 7 `S7-D4` switch dialog
+
+### 사용자 지시
+
+- 단계 7 자동 진행 위임 (2026-08-18).
+
+### 반영 내용
+
+- 카드 switch 버튼을 활성화하고 in-app switch dialog를 구현했다 (REQ-007).
+  열면 remote-first 후보 조회를 제출하고, 후보 목록(remote group 먼저, stale
+  표시)에서 선택·검증·실행을 진행한다. 조회·실행 중에도 UI는 멈추지 않는다.
+- 현재 참조 후보는 확인을 차단하고 명령을 만들지 않으며, 나머지 검증은
+  provider가 실행 직전에 재수행한다. 재검증 거부는 dialog에 사유를 표시한 채
+  남고, 실행된 전환은 dialog를 닫고 카드 로그·상태로 추적한다.
+- tracking branch 생성은 두 단계 확인(브랜치 만들고 전환 → 생성 확인) 후에만
+  `tracking_branch_confirmed`로 실행한다 (단계 4 계약).
+- 실제 Git 저장소 end-to-end(후보 조회 → 확인 → 전환·tracking branch 생성)를
+  통합 test로 실측했다. dialog 공용 텍스트 버튼을 분리해 update overlay와
+  공유한다.
+- test 7개 추가, 전체 CTest **584/584** 통과. clang-format·style 통과. 상세는
+  `docs/verification/2026-08-19-stage-7-d4.md`.
+
+### 영향 요구사항
+
+- REQ-005, REQ-007, REQ-009~REQ-012, REQ-014, REQ-015
+
+### 다음 작업 제한
+
+- 사용자 위임에 따라 `S7-V1` 단계 7 최종 검증을 진행한다.
+
 ## 2026-08-19 - 단계 7 `S7-D3` update 실행 UI
 
 ### 사용자 지시

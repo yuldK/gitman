@@ -122,8 +122,17 @@ namespace gitman::ui {
         add_child(std::move(update));
 
         auto switch_button { std::make_unique<button_element>(ui_element_id { ui_element_kind::card_switch, card_.id }, button_config { .glyph = codicons::icon_source_control }) };
-        switch_button->set_tooltip(u8"전환은 단계 7에서 활성화됩니다");
-        switch_button->set_enabled(false);
+        if (card_.can_change)
+        {
+            switch_button->set_tooltip(card_.kind == repository_kind::subversion ? std::u8string { u8"URL 전환 (svn switch)" } : std::u8string { u8"브랜치 전환 (git switch)" });
+            switch_button->set_action(
+                ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { begin_switch_intent { id } } } }; });
+        }
+        else
+        {
+            switch_button->set_tooltip(u8"카드가 준비된 뒤 전환할 수 있습니다");
+            switch_button->set_enabled(false);
+        }
         switch_ = switch_button.get();
         add_child(std::move(switch_button));
     }

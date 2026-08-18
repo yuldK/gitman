@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/operation_log.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "presentation/status_presentation.h"
@@ -50,6 +51,29 @@ namespace gitman {
         no_filter_match,
     };
 
+    // 하단 로그 뷰의 스트림 필터다 (plan 3.9). `output`은 stderr를 제외하고,
+    // `errors`는 stderr와 경고 이상 수명 주기만 남긴다.
+    enum class log_stream_filter
+    {
+        all,
+        output,
+        errors,
+    };
+
+    // 선택 카드 전용 하단 로그 뷰의 불변 표시 모델이다 (REQ-008). records는 필터를
+    // 통과한 것만 담고 scroll_offset은 이미 범위 안으로 고정된 논리 픽셀 값이다.
+    struct log_view_model
+    {
+        project_id card {};
+        std::u8string title {};
+        std::vector<operation_log_record> records {};
+        log_stream_filter filter { log_stream_filter::all };
+        bool auto_scroll { true };
+        float scroll_offset { 0.0f };
+        // 상한 초과로 오래된 record가 제거된 적이 있다.
+        bool truncated { false };
+    };
+
     // logic thread가 게시하고 UI thread가 그대로 그리는 불변 snapshot이다 (ADR-004).
     // 렌더러와 input thread가 같은 layout을 계산할 수 있도록 창 크기와 스크롤 값을
     // 함께 담는다.
@@ -76,6 +100,8 @@ namespace gitman {
         std::uint64_t window_placement_revision { 0 };
         // `.version-list` 생성이 진행 중이다. toolbar 생성 버튼을 비활성화한다.
         bool document_generating { false };
+        // 선택 카드가 있으면 그 카드의 로그 뷰다. 없으면 하단 pane을 그리지 않는다.
+        std::optional<log_view_model> log {};
         bool shutting_down { false };
     };
 } // namespace gitman

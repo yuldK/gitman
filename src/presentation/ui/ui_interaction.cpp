@@ -60,10 +60,18 @@ namespace gitman::ui {
                 }
                 else if constexpr (std::is_same_v<value_type, mouse_wheel_event>)
                 {
-                    // 위로 굴리면 목록이 위로 간다.
-                    scroll_intent intent {};
-                    intent.delta = -(value.delta / 120.0f) * input_wheel_scroll_step;
-                    return { input_action { logic_message { intent } } };
+                    // 위로 굴리면 내용이 위로 간다.
+                    const float delta { -(value.delta / 120.0f) * input_wheel_scroll_step };
+
+                    // 하단 로그 pane 위의 휠은 목록이 아니라 로그를 스크롤한다.
+                    if (tree_ != nullptr)
+                    {
+                        const ui_element* const pane { tree_->find(ui_element_id { ui_element_kind::log_pane }) };
+                        if (pane != nullptr && pane->visible() && pane->bounds().contains(value.x, value.y))
+                            return { input_action { logic_message { log_scroll_intent { delta } } } };
+                    }
+
+                    return { input_action { logic_message { scroll_intent { delta } } } };
                 }
                 else if constexpr (std::is_same_v<value_type, key_pressed_event>)
                     return process_key(value);

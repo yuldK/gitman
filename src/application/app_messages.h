@@ -95,6 +95,24 @@ namespace gitman {
         project_id id {};
     };
 
+    // 하단 로그 뷰의 스트림 필터 변경이다. 선택 카드의 로그 뷰 상태에 적용된다.
+    struct set_log_filter_intent
+    {
+        log_stream_filter filter { log_stream_filter::all };
+    };
+
+    struct set_log_auto_scroll_intent
+    {
+        bool enabled { true };
+    };
+
+    // 로그 뷰의 스크롤 변화량이다 (논리 픽셀, 양수가 아래). 위로 굴리면 자동
+    // 스크롤이 꺼지고 맨 아래에 닿으면 다시 켜진다.
+    struct log_scroll_intent
+    {
+        float delta { 0.0f };
+    };
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -235,10 +253,10 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message
-        = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent, toggle_path_display_intent,
-            reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
-            document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
+    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
+        toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
+        log_scroll_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event,
+        operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

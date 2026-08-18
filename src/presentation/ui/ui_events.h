@@ -76,6 +76,9 @@ namespace gitman::ui {
     {
         show_open_document_dialog,
         show_generate_document_dialog,
+        // 하단 로그 뷰의 표시 중 내용을 클립보드에 넣는다. 클립보드는 Win32 자원이라
+        // UI thread 전용이다.
+        copy_selected_log,
         window_minimize,
         window_toggle_maximize,
         window_close,

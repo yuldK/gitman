@@ -1,14 +1,23 @@
 #include "presentation/list_metrics.h"
 
 namespace gitman {
-    list_layout compute_list_layout(const float window_height, const float scale, const bool has_notice) noexcept
+    list_layout compute_list_layout(const float window_height, const float scale, const bool has_notice, const bool has_log_pane) noexcept
     {
         const float factor { scale > 0.0f ? scale : 1.0f };
         list_layout layout {};
         layout.content_top = (layout_caption_height + layout_toolbar_height + (has_notice ? layout_notice_height : 0.0f)) * factor;
-        layout.viewport_height = window_height - layout.content_top;
-        if (layout.viewport_height < 0.0f)
-            layout.viewport_height = 0.0f;
+        float available { window_height - layout.content_top };
+        if (available < 0.0f)
+            available = 0.0f;
+
+        // 로그 pane은 남은 공간 안에서만 자리를 차지한다. 창이 아주 작으면 로그가
+        // 먼저 줄어든다.
+        float log_height { has_log_pane ? layout_log_pane_height * factor : 0.0f };
+        if (log_height > available)
+            log_height = available;
+        layout.viewport_height = available - log_height;
+        layout.log_top = layout.content_top + layout.viewport_height;
+        layout.log_height = log_height;
         return layout;
     }
 

@@ -88,6 +88,14 @@ namespace gitman {
         // 폴더 기준 상대 경로다.
         [[nodiscard]] std::u8string display_path(const project_definition& project) const;
         [[nodiscard]] bool relative_paths() const noexcept;
+        // 선택 카드가 있어 하단 로그 pane이 보이는 상태다. layout 계산과 view 구성이
+        // 같은 판정을 써야 스크롤 한계가 어긋나지 않는다.
+        [[nodiscard]] bool has_log_pane() const noexcept;
+        void handle_log_scroll(float delta);
+        // 선택 카드 로그의 필터 적용 후 내용 높이다 (논리 픽셀).
+        [[nodiscard]] float log_content_height() const noexcept;
+        [[nodiscard]] float log_viewport_height() const noexcept;
+        void reset_log_view_state() noexcept;
         // 스크롤 한계만 필요한 곳은 표시 모델을 만들지 않는다. 창 크기 변경처럼
         // 자주 오는 입력이 이 경로를 쓴다.
         [[nodiscard]] std::size_t visible_card_count() const noexcept;
@@ -114,6 +122,10 @@ namespace gitman {
         std::optional<project_id> selected_ {};
         std::u8string filter_ {};
         card_sort_key sort_ { card_sort_key::name };
+        // 하단 로그 뷰의 표시 상태다. 선택이 바뀌면 기본값으로 돌아간다.
+        log_stream_filter log_filter_ { log_stream_filter::all };
+        bool log_auto_scroll_ { true };
+        float log_scroll_offset_ { 0.0f };
         float window_width_ { 0.0f };
         float window_height_ { 0.0f };
         float scale_ { 1.0f };

@@ -2,6 +2,7 @@
 
 #include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
+#include "presentation/log_presentation.h"
 
 #include <algorithm>
 #include <chrono>
@@ -172,6 +173,16 @@ namespace gitman {
                     if (card != nullptr)
                         card->log.clear();
                 }
+                else if constexpr (std::is_same_v<value_type, set_log_filter_intent>)
+                {
+                    log_filter_ = value.filter;
+                    // 필터가 바뀌면 내용 높이가 달라진다. 저장된 위치를 다시 고정한다.
+                    handle_log_scroll(0.0f);
+                }
+                else if constexpr (std::is_same_v<value_type, set_log_auto_scroll_intent>)
+                    log_auto_scroll_ = value.enabled;
+                else if constexpr (std::is_same_v<value_type, log_scroll_intent>)
+                    handle_log_scroll(value.delta);
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -414,13 +425,79 @@ namespace gitman {
 
     void logic_controller::handle_select_card(const select_card_intent& intent)
     {
+        const std::optional<project_id> previous { selected_ };
         if (intent.id.has_value() && find_card(*intent.id) == nullptr)
             selected_.reset();
         else
             selected_ = intent.id;
 
+        // 다른 카드의 로그를 이전 카드의 필터·스크롤로 보지 않도록 뷰 상태를
+        // 기본값으로 되돌린다. 진행 중 작업은 건드리지 않는다 (plan 3.9).
+        if ((selected_ == previous) == false)
+            reset_log_view_state();
+
         // 키보드 순회는 화면 밖 카드도 고를 수 있다. 선택이 보이도록 따라간다.
         scroll_selected_into_view();
+    }
+
+    void logic_controller::reset_log_view_state() noexcept
+    {
+        log_filter_ = log_stream_filter::all;
+        log_auto_scroll_ = true;
+        log_scroll_offset_ = 0.0f;
+    }
+
+    bool logic_controller::has_log_pane() const noexcept
+    {
+        if (selected_.has_value() == false)
+            return false;
+        for (const card_state& card : cards_)
+            if (card.project.id == *selected_)
+                return true;
+        return false;
+    }
+
+    float logic_controller::log_content_height() const noexcept
+    {
+        if (selected_.has_value() == false)
+            return 0.0f;
+        const operation_log_buffer* const buffer { card_log(*selected_) };
+        if (buffer == nullptr)
+            return 0.0f;
+
+        std::size_t count { 0 };
+        for (const operation_log_record& record : buffer->records())
+            if (log_entry_matches_filter(record.entry, log_filter_))
+                ++count;
+        return static_cast<float>(count) * layout_log_line_height + layout_log_text_inset * 2.0f;
+    }
+
+    float logic_controller::log_viewport_height() const noexcept
+    {
+        // pane 높이는 창이 작으면 줄어든다. layout과 같은 함수로 계산해야 스크롤
+        // 한계가 그리기와 일치한다.
+        const list_layout layout { compute_list_layout(window_height_ / scale_, 1.0f, has_notice(), has_log_pane()) };
+        const float body { layout.log_height - layout_log_header_height };
+        return body > 0.0f ? body : 0.0f;
+    }
+
+    void logic_controller::handle_log_scroll(const float delta)
+    {
+        if (has_log_pane() == false)
+            return;
+
+        float maximum { log_content_height() - log_viewport_height() };
+        if (maximum < 0.0f)
+            maximum = 0.0f;
+        float offset { log_auto_scroll_ ? maximum : log_scroll_offset_ };
+        offset += delta;
+        if (offset < 0.0f)
+            offset = 0.0f;
+        if (offset > maximum)
+            offset = maximum;
+        log_scroll_offset_ = offset;
+        // 맨 아래에 닿으면 자동 스크롤로 돌아간다. 위로 올리면 꺼진다.
+        log_auto_scroll_ = offset >= maximum - 0.5f;
     }
 
     void logic_controller::handle_toggle_path_display()
@@ -680,7 +757,7 @@ namespace gitman {
     float logic_controller::list_viewport_height() const noexcept
     {
         // logic은 논리 픽셀로 계산한다. 창 크기만 물리 픽셀이라 배율로 되돌린다.
-        return compute_list_layout(window_height_ / scale_, 1.0f, has_notice()).viewport_height;
+        return compute_list_layout(window_height_ / scale_, 1.0f, has_notice(), has_log_pane()).viewport_height;
     }
 
     void logic_controller::clamp_scroll()
@@ -833,6 +910,34 @@ namespace gitman {
         snapshot->document_generating = pending_generation_operation_id_ != 0;
         snapshot->shutting_down = shutting_down_;
         snapshot->cards = build_ordered_cards();
+
+        // 선택 카드의 로그 뷰다. 필터를 통과한 record만 담고 스크롤은 이미 고정된
+        // 값이라 렌더러는 그대로 그린다 (REQ-008).
+        if (selected_.has_value())
+        {
+            for (const card_state& card : cards_)
+            {
+                if ((card.project.id == *selected_) == false)
+                    continue;
+
+                log_view_model log {};
+                log.card = card.project.id;
+                log.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
+                for (const operation_log_record& record : card.log.records())
+                    if (log_entry_matches_filter(record.entry, log_filter_))
+                        log.records.push_back(record);
+                log.filter = log_filter_;
+                log.auto_scroll = log_auto_scroll_;
+                log.truncated = card.log.dropped_count() > 0;
+
+                float maximum { log_content_height() - log_viewport_height() };
+                if (maximum < 0.0f)
+                    maximum = 0.0f;
+                log.scroll_offset = log_auto_scroll_ ? maximum : (log_scroll_offset_ > maximum ? maximum : log_scroll_offset_);
+                snapshot->log = { std::move(log) };
+                break;
+            }
+        }
 
         if (document_loading_)
             snapshot->empty_state = view_empty_state::document_loading;

@@ -162,6 +162,8 @@ add_library(gitman_lib STATIC
     presentation/ui/draw_primitives.h
     presentation/ui/label_element.cpp
     presentation/ui/label_element.h
+    presentation/ui/log_view_element.cpp
+    presentation/ui/log_view_element.h
     presentation/ui/scrollbar_element.cpp
     presentation/ui/scrollbar_element.h
     presentation/ui/toolbar_element.cpp
@@ -177,6 +179,8 @@ add_library(gitman_lib STATIC
     # presentation: 표시 모델과 theme이다.
     presentation/list_metrics.cpp
     presentation/list_metrics.h
+    presentation/log_presentation.cpp
+    presentation/log_presentation.h
     presentation/renderer_policy.cpp
     presentation/renderer_policy.h
     presentation/skia_smoke_view.cpp
@@ -206,6 +210,8 @@ add_library(gitman_lib STATIC
     platform/win32/win32_app_runtime.h
     platform/win32/win32_application.cpp
     platform/win32/win32_application.h
+    platform/win32/win32_clipboard.cpp
+    platform/win32/win32_clipboard.h
     platform/win32/win32_directory_enumerator.cpp
     platform/win32/win32_directory_enumerator.h
     platform/win32/win32_process_runner.cpp

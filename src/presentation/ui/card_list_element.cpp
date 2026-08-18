@@ -21,7 +21,7 @@ namespace gitman::ui {
         // 키보드 순회가 화면 밖 카드로 넘어갈 수 있게 하는 용도이며, 보이지 않으므로
         // 그리기·hit test·drop 대상에서는 빠진다.
         const float scale { view.scale > 0.0f ? view.scale : 1.0f };
-        const list_layout layout { compute_list_layout(view.window_height, scale, view.notices.empty() == false) };
+        const list_layout layout { compute_list_layout(view.window_height, scale, view.notices.empty() == false, view.log.has_value()) };
         const float content { card_list_content_height(view.cards.size(), scale) };
         const float scroll { clamp_scroll_offset(view.scroll_offset * scale, content, layout.viewport_height) };
         const float card_height { layout_card_height * scale };

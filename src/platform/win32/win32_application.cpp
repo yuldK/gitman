@@ -7,6 +7,9 @@
 #include "platform/win32/utf8.h"
 #include "platform/win32/version_list_generation_dialog.h"
 #include "platform/win32/win32_app_runtime.h"
+#include "platform/win32/win32_clipboard.h"
+
+#include "presentation/log_presentation.h"
 #include "presentation/ui/caption_element.h"
 #include "presentation/ui/ui_events.h"
 
@@ -591,6 +594,15 @@ namespace gitman::win32 {
                     {
                         if (const std::optional<generate_document_intent> intent { show_version_list_generation_dialog(window_) }; intent.has_value())
                             runtime_->post_logic(logic_message { *intent });
+                    }
+                    return;
+                case ui::ui_command::copy_selected_log:
+                    if (runtime_ != nullptr)
+                    {
+                        // 표시 중인(필터 적용 후) 로그만 복사한다 (stage-7-plan 4.3).
+                        const std::shared_ptr<const view_snapshot> view { runtime_->acquire_view() };
+                        if (view != nullptr && view->log.has_value())
+                            static_cast<void>(copy_text_to_clipboard(window_, format_log_copy_text(*view->log)));
                     }
                     return;
                 case ui::ui_command::window_minimize:

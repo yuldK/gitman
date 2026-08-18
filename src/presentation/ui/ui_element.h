@@ -53,6 +53,13 @@ namespace gitman::ui {
         card_update,
         card_switch,
         empty_state,
+        // 선택 카드 전용 하단 로그 pane과 헤더 버튼들이다 (단계 7).
+        log_pane,
+        log_title,
+        log_filter,
+        log_autoscroll,
+        log_copy,
+        log_clear,
     };
 
     struct ui_element_id

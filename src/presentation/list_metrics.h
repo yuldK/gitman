@@ -33,6 +33,11 @@ namespace gitman {
     // 막대가 목록 위아래 끝에 붙지 않도록 두는 여백이다.
     inline constexpr float layout_scrollbar_vertical_inset { 6.0f };
     inline constexpr float layout_scrollbar_minimum_thumb { 24.0f };
+    // 선택 카드 전용 하단 로그 pane의 치수다 (stage-7-plan 4.3).
+    inline constexpr float layout_log_pane_height { 160.0f };
+    inline constexpr float layout_log_header_height { 26.0f };
+    inline constexpr float layout_log_line_height { 15.0f };
+    inline constexpr float layout_log_text_inset { 8.0f };
 
     // 카드 목록이 차지하는 영역이다. tree 빌드, 카드 목록 element와 logic의 스크롤
     // 한계 계산이 모두 이 함수를 거쳐 같은 값을 쓴다.
@@ -42,10 +47,14 @@ namespace gitman {
         float content_top { 0.0f };
         // 목록 slot의 높이다. 창이 작으면 0이다.
         float viewport_height { 0.0f };
+        // 하단 로그 pane의 영역이다. pane이 없으면 높이가 0이다. 창이 작으면 로그가
+        // 먼저 줄어들어 목록이 완전히 사라지지 않는다.
+        float log_top { 0.0f };
+        float log_height { 0.0f };
     };
 
     // `window_height`와 결과는 같은 단위다. 논리 픽셀로 물으면 논리 픽셀로 답한다.
-    [[nodiscard]] list_layout compute_list_layout(float window_height, float scale, bool has_notice) noexcept;
+    [[nodiscard]] list_layout compute_list_layout(float window_height, float scale, bool has_notice, bool has_log_pane = false) noexcept;
 
     [[nodiscard]] float card_list_content_height(std::size_t card_count, float scale) noexcept;
 

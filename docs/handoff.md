@@ -2,21 +2,21 @@
 
 ## 1. 현재 상태
 
-- 기준일: 2026-08-17
-- 완료 단계: 단계 0, 단계 1 구현 및 자동 검증, 단계 2 전체, 단계 3 전체 (2026-08-16 사용자 최종 승인), 단계 4 전체, 단계 5 전체 (2026-08-17 사용자가 다음 구간 진행을 지시하며 최종 승인)
-- 현재 단계: 단계 6 GUI와 상태 연결
-- 현재 체크포인트: `S6-V1` 최종 검증 제출, **단계 6 최종 사용자 검수 대기** (수동 checklist 포함)
-- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다 (2026-08-17 사용자 지시). 단계 6은 사용자 위임으로 자동 진행하며 체크포인트마다 커밋했다
+- 기준일: 2026-08-18
+- 완료 단계: 단계 0~5 전체, 단계 6 전체 (2026-08-18 사용자가 단계 7 개시를 지시하며 최종 승인). 단계 6 이후의 UI element 계층, 카드 drag & drop, `.version-list` 생성, 창 배치 저장, 스크롤 UI, CMake 구성 정리도 같은 지시로 승인됐다
+- 현재 단계: 단계 7 작업 UI와 로그
+- 현재 체크포인트: `S7-P0` 계획 수립 완료, `S7-D1`부터 자동 진행
+- 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다. **단계 7은 사용자가 커밋까지의 자동 진행을 위임했다** (2026-08-18 지시). 체크포인트마다 검증 문서를 남기고 커밋한다
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: 단계 6 최종 승인(수동 checklist 확인 포함) 후 단계 7 계획(`S7-P0`)
-- 실제 구현: CMake, vcpkg manifest, Win32/Skia smoke shell, renderer, custom caption skeleton, embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 표식 판정 및 선택 등록 전체, test와 install 구성
-- 기준 문서: `docs/stage-6-plan.md`, `docs/decisions/ADR-005-thread-messaging.md`, `docs/thread-message-design.md`
-- 직전 단계 기준 문서: `docs/stage-5-plan.md`
-- 현재 검증 기록: `docs/verification/2026-08-17-stage-6.md` (단계 6 최종, 수동 checklist 포함)
-- 직전 검증 기록: `docs/verification/2026-08-17-stage-6-d5.md`
-- 사용자 진행 방식 지시: 계획, 작업과 테스트의 각 중간 지점에서 진행 내용과 처리 방침을 보고하고 검수를 받는다. 여러 체크포인트를 한 번에 자동 진행하지 않는다. 각 검수 후 사용자가 직접 커밋한다. **단계 5부터 production code와 test code 작성은 한 검수 구간에서 함께 진행한다** (2026-08-17 지시).
+- 다음 허용 작업: 단계 7 체크포인트 순차 진행 (`S7-D1` → `S7-D2` → `S7-D3` → `S7-D4` → `S7-V1`) 후 완료 보고
+- 실제 구현: CMake, vcpkg manifest, Win32/Skia 앱 (custom caption, 카드 목록, refresh, 문서 열기·생성, drag & drop 순서 변경, 창 배치 저장), embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 표식 판정 및 선택 등록 전체, messaging component와 3-thread 조립, test와 install 구성
+- 기준 문서: `docs/stage-7-plan.md`, `docs/ui-element-design.md`, `docs/decisions/ADR-005-thread-messaging.md`
+- 직전 단계 기준 문서: `docs/stage-6-plan.md`
+- 현재 검증 기록: 단계 7 진행 중 (`docs/verification/2026-08-18-stage-7-*.md`)
+- 직전 검증 기록: `docs/verification/2026-08-17-stage-6.md`
+- 테스트 실행 방식: CMake 구성 정리(2026-08-18)로 test는 `vs2022-tests`·`vs2026-tests` preset의 별도 binary directory에서 빌드·실행한다 (`GITMAN_BUILD_TESTS=ON`)
 
-다음 작업은 이 문서와 `docs/verification/2026-08-17-stage-6.md`를 먼저 읽어야 한다. 단계 6은 messaging component, 스레드 조립, 카드 표시와 refresh까지 구현을 마쳤고 최종 검수(수동 checklist 포함)를 기다린다. update·switch·탐색 dialog와 로그 뷰는 단계 7, association은 단계 8이다.
+다음 작업은 이 문서와 `docs/stage-7-plan.md`를 먼저 읽어야 한다. update·switch 실행 UI, 카드별 로그와 하단 로그 뷰가 단계 7이며, association과 실제 SVN·네트워크 검증은 단계 8이다.
 
 ## 2. 확정된 기술 기준선
 

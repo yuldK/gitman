@@ -11,14 +11,13 @@ set(GITMAN_CXX_STANDARD 20)
 set(GITMAN_MINIMUM_MSVC_VERSION 1940)
 set(GITMAN_MINIMUM_WINDOWS_SDK_VERSION "10.0.22621.0")
 set(GITMAN_TARGET_ARCHITECTURE "x64")
-set(GITMAN_VCPKG_TARGET_TRIPLET "x64-windows-static")
-set(GITMAN_CATCH2_VERSION "3.15.3")
 set(GITMAN_SUPPORTED_GENERATORS
     "Visual Studio 17 2022"
     "Visual Studio 18 2026"
 )
 
 set(GITMAN_CMAKE_DIRECTORY "${PROJECT_SOURCE_DIR}/cmake")
+set(GITMAN_THIRD_PARTY_DIRECTORY "${PROJECT_SOURCE_DIR}/third_party")
 set(GITMAN_SOURCE_DIRECTORY "${PROJECT_SOURCE_DIR}/src")
 set(GITMAN_TEST_DIRECTORY "${PROJECT_SOURCE_DIR}/tests")
 set(GITMAN_ASSET_DIRECTORY "${PROJECT_SOURCE_DIR}/assets/codicons")
@@ -31,6 +30,29 @@ set(GITMAN_THIRD_PARTY_NOTICES
     "${GITMAN_GENERATED_DIRECTORY}/third_party_notices.txt")
 set(GITMAN_SOURCE_STYLE_SCRIPT "${PROJECT_SOURCE_DIR}/scripts/check_source_style.ps1")
 set(GITMAN_SOURCE_STYLE_CMAKE_SCRIPT "${GITMAN_CMAKE_DIRECTORY}/run_style_check.cmake")
+
+# 의존성 위치. Skia만 사용자가 손으로 빌드하며 나머지는 submodule이다.
+set(GITMAN_SKIA_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/skia"
+    CACHE PATH "Skia source tree that the user built by hand.")
+set(GITMAN_SKIA_BUILD_DEBUG "${GITMAN_SKIA_ROOT}/out/gitman-debug"
+    CACHE PATH "Skia Debug build directory.")
+set(GITMAN_SKIA_BUILD_RELEASE "${GITMAN_SKIA_ROOT}/out/gitman-release"
+    CACHE PATH "Skia Release build directory.")
+set(GITMAN_NLOHMANN_JSON_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/nlohmann-json")
+set(GITMAN_CATCH2_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/catch2")
+
+# Skia 빌드가 내는 라이브러리다. vcpkg는 하나로 합쳐 주었지만 직접 빌드에서는
+# external별로 나오므로 모두 링크한다.
+set(GITMAN_SKIA_COMPONENTS
+    skia
+    skcms
+    spirv_cross
+    d3d12allocator)
+
+# Gitman이 요구하는 Skia 기능이다. 이 값으로 빌드되지 않은 Skia는 configure에서
+# 거른다. SkShaper를 쓰기 시작하면 skia_use_harfbuzz를 여기에 추가한다.
+set(GITMAN_SKIA_REQUIRED_ARGUMENTS
+    "skia_use_direct3d=true")
 
 set(CMAKE_CXX_STANDARD ${GITMAN_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -56,12 +78,6 @@ gitman_validate_windows_platform(
 gitman_validate_msvc(MINIMUM_VERSION "${GITMAN_MINIMUM_MSVC_VERSION}")
 gitman_configure_msvc_link_directories()
 
-if(NOT VCPKG_TARGET_TRIPLET STREQUAL GITMAN_VCPKG_TARGET_TRIPLET)
-    message(FATAL_ERROR
-        "VCPKG_TARGET_TRIPLET must be ${GITMAN_VCPKG_TARGET_TRIPLET}. "
-        "Current value: ${VCPKG_TARGET_TRIPLET}")
-endif()
-
 add_library(gitman_project_options INTERFACE)
 target_compile_features(gitman_project_options INTERFACE cxx_std_${GITMAN_CXX_STANDARD})
 gitman_apply_windows_options(gitman_project_options)
@@ -70,14 +86,16 @@ gitman_apply_msvc_options(
     ENABLE_ANALYZE "${GITMAN_ENABLE_MSVC_ANALYZE}"
 )
 
-find_package(unofficial-skia CONFIG REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
 find_program(GITMAN_POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
+
+# 의존성은 submodule과 사용자가 손으로 빌드한 Skia로만 구성한다 (ADR-006). 취득을
+# 자동화하지 않으므로 configure는 네트워크를 전혀 쓰지 않는다.
+include("${GITMAN_CMAKE_DIRECTORY}/dependencies.cmake")
+gitman_find_dependencies(BUILD_TESTS ${GITMAN_BUILD_TESTS})
 
 # `include(CTest)`는 Continuous·Experimental·Nightly 등 dashboard target을 함께
 # 만들어 솔루션을 부풀린다. 필요한 것은 test 등록뿐이라 enable_testing만 쓴다.
 if(GITMAN_BUILD_TESTS)
-    find_package(Catch2 ${GITMAN_CATCH2_VERSION} CONFIG REQUIRED)
     enable_testing()
 endif()
 

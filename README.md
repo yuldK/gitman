@@ -33,14 +33,24 @@ Gitman은 여러 저장소를 오가며 각각의 상태를 반복해서 확인�
 - Git
 - SVN 저장소를 사용할 경우 SVN 명령줄 도구
 
-의존성은 vcpkg manifest로 관리합니다. 저장소 루트에서 프로젝트가 고정한 vcpkg 버전을 준비합니다.
+의존성은 submodule과 직접 빌드한 Skia로 구성합니다. 빌드 체계가 외부에서 무엇인가를 내려받지 않으므로 네트워크가 통제된 환경에서도 빌드할 수 있습니다.
 
 ```powershell
-git clone https://github.com/microsoft/vcpkg.git build\vcpkg-baseline
-.\build\vcpkg-baseline\bootstrap-vcpkg.bat -disableMetrics
+git submodule update --init third_party/nlohmann-json
+git submodule update --init third_party/skia
+git submodule update --init third_party/skia-externals/d3d12allocator
+git submodule update --init third_party/skia-externals/spirv-cross
+git submodule update --init third_party/skia-externals/spirv-headers
 ```
 
-외부 vcpkg 설치를 사용하려면 `VCPKG_ROOT`를 해당 checkout 경로로 설정할 수 있습니다. 자세한 내용은 [빌드 및 실행 안내](docs/build.md)를 참고합니다.
+Skia는 한 번 직접 빌드합니다. `gn`과 `ninja` 실행 파일이 필요합니다.
+
+```powershell
+.\scriptsuild_skia.ps1 -Configuration Release
+.\scriptsuild_skia.ps1 -Configuration Debug
+```
+
+절차와 GN 옵션의 세부는 [Skia 준비 안내](docs/skia-build.md), 전체 빌드 안내는 [빌드 및 실행 안내](docs/build.md)를 참고합니다. 테스트를 빌드할 때만 Catch2 submodule이 추가로 필요합니다.
 
 ### 2. 빌드 및 설치
 
@@ -52,7 +62,7 @@ cmake --build --preset vs2022-release
 cmake --install build\vs2022 --config Release
 ```
 
-처음 빌드할 때는 vcpkg가 Skia 등의 의존성을 내려받아 빌드하므로 시간이 오래 걸릴 수 있습니다. 설치가 끝나면 다음 실행 파일이 생성됩니다.
+설치가 끝나면 다음 실행 파일이 생성됩니다.
 
 ```text
 bin\gitman.exe

@@ -1,6 +1,7 @@
 target_cpu = "x64"
 target_os = "win"
-is_official_build = true
+is_official_build = false
+is_debug = true
 is_component_build = false
 
 skia_use_direct3d = true
@@ -8,12 +9,10 @@ skia_use_gl = false
 skia_use_vulkan = false
 skia_use_metal = false
 
-skia_use_harfbuzz = true
-skia_use_system_harfbuzz = false
+skia_use_harfbuzz = false
 skia_use_icu = false
-skia_use_system_icu = false
 skia_use_icu4x = false
-skia_use_libgrapheme = true
+skia_use_libgrapheme = false
 skia_use_client_icu = false
 skia_use_freetype = false
 skia_use_fontconfig = false
@@ -44,4 +43,4 @@ skia_enable_android_utils = false
 skia_enable_spirv_validation = false
 skia_enable_gpu_debug_layers = false
 
-extra_cflags = [ "/MT" ]
+extra_cflags = [ "/MTd" ]

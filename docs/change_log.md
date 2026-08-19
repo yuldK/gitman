@@ -1,5 +1,44 @@
 # 변경 이력
 
+## 2026-08-19 - vcpkg 제거와 submodule 전환 (`N1`~`N5`)
+
+### 사용자 지시
+
+- vcpkg를 완전히 제거하고 의존성을 submodule로 둔다.
+- Catch2는 test를 만들 때만 유효성을 확인하고 일반 빌드에서는 없어도 되게 한다.
+- Skia를 submodule로 함께 두고 실측한 뒤 진행한다.
+
+### 반영 내용
+
+- `vcpkg.json`, `cmake/vcpkg_toolchain.cmake`, `cmake/triplets/`를 삭제하고
+  preset에서 vcpkg 배선을 걷어냈다. preset 이름과 개수는 그대로 두어 사용자가
+  익힌 명령이 바뀌지 않는다.
+- `cmake/dependencies.cmake`와 `cmake/dependencies/`를 신설했다. Skia는 사용자가
+  빌드한 산출물을 검사해 `unofficial::skia::skia`로 합성하고, nlohmann/json과
+  Catch2는 submodule을 `add_subdirectory`한다. **`src/`는 한 줄도 수정하지
+  않았다.**
+- Catch2는 `GITMAN_BUILD_TESTS=ON`일 때만 구성한다. submodule을 초기화하지 않은
+  상태에서 앱 빌드가 성립함을 확인했다.
+- 제3자 고지 생성을 vcpkg installed 트리에서 submodule 라이선스 원문으로 바꾸었다.
+  이에 맞춰 `tests/embedded_assets_tests.cpp`의 고지 형식 검사를 갱신했다.
+- `scripts/build_skia.ps1`과 `scripts/verify_skia_root.ps1`을 추가하고
+  `docs/skia-build.md`를 작성했다. 빌드 스크립트는 사용자가 손으로 실행하며
+  CMake와 CTest는 호출하지 않는다.
+- 검증: configure·Release·Debug 빌드와 install 성공, smoke 3종 통과, CTest
+  Debug **585/585**, Release **585/585**(ASan 17 실계측 포함), source style 350
+  파일 통과. `bin/gitman.exe` 6,510,080 byte (이전 7,185,920 byte).
+- 상세는 `docs/verification/2026-08-19-vcpkg-removal.md`.
+
+### 영향 요구사항
+
+- NFR-001 (빌드 재현성), ADR-002의 취득 수단
+
+### 다음 작업 제한
+
+- VS2026 재현, `/analyze` 무경고, 창 기반 렌더링 육안 검증이 남아 있다.
+- 텍스트 구성(harfbuzz + libgrapheme) 도입은 `N6`이며 별도로 진행한다.
+
+
 ## 2026-08-19 - 의존성 구성 재편 설계와 Skia 수동 빌드 실측
 
 ### 사용자 지시

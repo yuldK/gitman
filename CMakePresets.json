@@ -13,35 +13,26 @@
                 "value": "x64",
                 "strategy": "set"
             },
-            "toolchainFile": "${sourceDir}/cmake/vcpkg_toolchain.cmake",
             "binaryDir": "${sourceDir}/build/${presetName}",
             "installDir": "${sourceDir}/bin",
             "cacheVariables": {
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/bin",
                 "CMAKE_SYSTEM_VERSION": "10.0.22621.0",
                 "GITMAN_BUILD_TESTS": "OFF",
-                "GITMAN_ENABLE_MSVC_ANALYZE": "OFF",
-                "VCPKG_HOST_TRIPLET": "x64-windows-static",
-                "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+                "GITMAN_ENABLE_MSVC_ANALYZE": "OFF"
             }
         },
         {
             "name": "vs2022",
             "displayName": "Visual Studio 2022 x64",
             "inherits": "windows-common",
-            "generator": "Visual Studio 17 2022",
-            "cacheVariables": {
-                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets/vs2022"
-            }
+            "generator": "Visual Studio 17 2022"
         },
         {
             "name": "vs2026",
             "displayName": "Visual Studio 2026 x64",
             "inherits": "windows-common",
-            "generator": "Visual Studio 18 2026",
-            "cacheVariables": {
-                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets/vs2026"
-            }
+            "generator": "Visual Studio 18 2026"
         },
         {
             "name": "vs2022-tests",

@@ -9,37 +9,49 @@
 - Windows SDK 10.0.22621.0 이상
 - Git
 
-Ninja는 프로젝트 생성기에 필요하지 않다. vcpkg port가 내부 빌드 도구로 필요로 하면 vcpkg가 고정된 버전을 별도로 취득한다.
+Ninja와 GN은 CMake 프로젝트 생성기에 필요하지 않다. Skia를 직접 빌드할 때만 쓰며 준비 방법은 [Skia 준비 안내](skia-build.md)에 있다.
 
-## 2. vcpkg 준비
+## 2. 의존성 준비
 
-ADR-002의 기준선과 같은 commit을 사용하는 checkout을 준비한다. 외부 경로를
-사용하려면 `VCPKG_ROOT`를 설정한다.
+의존성은 submodule과 사용자가 직접 빌드한 Skia로만 구성한다. 빌드 체계는 아무것도
+내려받지 않는다. 근거는 [ADR-006](decisions/ADR-006-restricted-network-dependency-provisioning.md)에 있다.
 
-```powershell
-git clone https://github.com/microsoft/vcpkg.git C:\src\vcpkg-gitman
-git -C C:\src\vcpkg-gitman checkout b9a5010d499952121b0f1a40eb98963c37da32dc
-C:\src\vcpkg-gitman\bootstrap-vcpkg.bat -disableMetrics
-$env:VCPKG_ROOT = 'C:\src\vcpkg-gitman'
-```
-
-`VCPKG_ROOT`를 설정하지 않은 경우 CMake는 프로젝트의
-`build\vcpkg-baseline`을 자동으로 사용한다. 프로젝트 안에 checkout을 두려면
-다음과 같이 준비하면 이후 빌드 셸마다 환경 변수를 다시 설정할 필요가 없다.
+### 2.1 submodule
 
 ```powershell
-git clone https://github.com/microsoft/vcpkg.git build\vcpkg-baseline
-git -C build\vcpkg-baseline checkout b9a5010d499952121b0f1a40eb98963c37da32dc
-.\build\vcpkg-baseline\bootstrap-vcpkg.bat -disableMetrics
+git submodule update --init third_party/nlohmann-json
+git submodule update --init third_party/skia
+git submodule update --init third_party/skia-externals/d3d12allocator
+git submodule update --init third_party/skia-externals/spirv-cross
+git submodule update --init third_party/skia-externals/spirv-headers
 ```
 
-CI처럼 환경 변수 대신 CMake cache로 전달해야 하는 경우에는
-`-DGITMAN_VCPKG_ROOT=<checkout>`도 사용할 수 있다. 우선순위는
-`GITMAN_VCPKG_ROOT`, `VCPKG_ROOT`, 프로젝트 로컬 checkout 순서다.
+Catch2는 test를 빌드할 때만 필요하다. 앱만 빌드한다면 초기화하지 않아도 configure와
+빌드가 성립한다.
 
-Visual Studio 2026 Developer PowerShell은 자체 vcpkg 경로를 환경 변수에 넣을 수 있다. 이 경우 개발자 셸을 연 뒤 `VCPKG_ROOT`를 위 checkout으로 다시 설정한다.
+```powershell
+git submodule update --init third_party/catch2
+```
 
-프로젝트의 toolchain wrapper는 선택한 CMake generator와 같은 Visual Studio 설치본을 vcpkg에도 지정한다. VS2022와 VS2026이 함께 설치된 환경에서 서로 다른 STL ABI가 섞이는 것을 방지한다.
+사내 미러를 쓰는 환경은 `git config --global url."https://<사내미러>/".insteadOf
+"https://github.com/"`로 원격을 치환한다.
+
+### 2.2 Skia 빌드
+
+Skia는 1회 직접 빌드한다. `gn`과 `ninja` 실행 파일이 필요하며 나머지는 submodule로
+받은 소스로 해결된다.
+
+```powershell
+scriptsuild_skia.ps1 -Configuration Release
+scriptsuild_skia.ps1 -Configuration Debug
+scriptserify_skia_root.ps1
+```
+
+이 스크립트는 사용자가 직접 실행하며 CMake와 CTest는 호출하지 않는다. 절차와 GN
+args의 세부는 [Skia 준비 안내](skia-build.md)에 있다.
+
+산출물 위치를 바꾸려면 `GITMAN_SKIA_ROOT`, `GITMAN_SKIA_BUILD_DEBUG`,
+`GITMAN_SKIA_BUILD_RELEASE`를 CMake cache로 준다.
 
 ## 3. Configure, build와 test
 
@@ -75,7 +87,7 @@ ctest --preset vs2022-tests-release
 target(`gitman_format`, `gitman_format_check`)은 `-DGITMAN_BUILD_TOOLING=ON`이며
 test preset은 두 flag를 모두 켠다.
 
-각 generator는 전용 overlay triplet을 사용한다. VS2022는 v143, VS2026은 v145로 dependency와 애플리케이션을 같은 ABI에서 정적으로 빌드한다.
+Skia와 애플리케이션은 같은 정적 CRT(`/MT`·`/MTd`)로 빌드해야 한다. GN args가 이를 고정하며, 어긋나면 LNK2038로 드러난다. `scriptserify_skia_root.ps1`이 미리 검사한다.
 
 ## 4. 정적 분석과 포맷 검사
 
@@ -110,7 +122,7 @@ cmake --install build\vs2022 --config Release
 bin/gitman.exe
 ```
 
-Skia와 C/C++ runtime은 정적으로 연결되고 Codicons font, mapping에서 생성한 코드, Codicons license, 앱 아이콘과 vcpkg 제3자 고지문은 실행 파일 resource에 들어간다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
+Skia와 C/C++ runtime은 정적으로 연결되고 Codicons font, mapping에서 생성한 코드, Codicons license, 앱 아이콘과 제3자 고지문은 실행 파일 resource에 들어간다. 고지문은 submodule의 라이선스 원문에서 생성한다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
 
 앱 아이콘은 현재 custom caption에서 사용하는 `source-control` Codicon을 기준으로 생성한다. Codicons 자산을 갱신한 뒤 아이콘도 다시 생성하려면 저장소 루트에서 다음을 실행한다.
 

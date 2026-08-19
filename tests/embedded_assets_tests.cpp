@@ -31,6 +31,10 @@ TEST_CASE("Executable resources contain the Codicons font and licenses", "[asset
     const auto notice = gitman::win32::find_embedded_resource(IDR_THIRD_PARTY_NOTICES);
     REQUIRE(notice.data != nullptr);
     const std::string_view notice_text(static_cast<const char*>(notice.data), notice.size);
-    REQUIRE(notice_text.find("Package: skia") != std::string_view::npos);
-    REQUIRE(notice_text.find("Package: catch2") != std::string_view::npos);
+    // 고지는 실행 파일에 실제로 포함되는 구성 요소만 담는다 (ADR-006). Catch2는
+    // test 실행 파일에만 링크되므로 대상이 아니다.
+    REQUIRE(notice_text.find("Component: Skia") != std::string_view::npos);
+    REQUIRE(notice_text.find("Component: nlohmann/json") != std::string_view::npos);
+    REQUIRE(notice_text.find("Component: SPIRV-Cross") != std::string_view::npos);
+    REQUIRE(notice_text.find("Codicons") != std::string_view::npos);
 }

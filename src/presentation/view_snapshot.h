@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/discovery.h"
 #include "domain/operation_log.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
@@ -113,6 +114,32 @@ namespace gitman {
         float scroll_offset { 0.0f };
     };
 
+    // 탐색 dialog의 후보 한 행이다. 제외 사유가 있는 후보는 체크할 수 없고 표시만
+    // 된다 (stage-8-plan 5.2).
+    struct discovery_row_view
+    {
+        discovery_candidate candidate {};
+        bool checked { false };
+    };
+
+    // 탐색 후보 선택 등록 dialog의 불변 표시 모델이다 (REQ-004, stage-8-plan 5.2).
+    // 행 순서는 탐색 결과의 결정적 정렬 그대로다. message와 can_confirm은 logic이
+    // 계산해 UI는 그대로 그린다.
+    struct discovery_dialog_view
+    {
+        std::u8string scan_root {};
+        // 탐색이 아직 진행 중이다.
+        bool loading { true };
+        // 등록 실행이 제출되어 결과를 기다리는 중이다.
+        bool executing { false };
+        std::vector<discovery_row_view> rows {};
+        // 검증·실패·안내 메시지다. 비어 있으면 표시하지 않는다.
+        std::u8string message {};
+        bool can_confirm { false };
+        // 후보 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
+        float scroll_offset { 0.0f };
+    };
+
     // 환경설정 dialog의 불변 표시 모델이다 (REQ-017, stage-8-plan 5.1). 경로가
     // 비어 있으면 자동 탐색을 뜻하고 element가 안내 문구를 대신 그린다. message와
     // can_confirm은 logic이 초안 검증에서 계산해 UI는 그대로 그린다.
@@ -159,6 +186,8 @@ namespace gitman {
         std::optional<switch_dialog_view> switch_dialog {};
         // 값이 있으면 환경설정 dialog가 화면을 덮는다.
         std::optional<settings_dialog_view> settings_dialog {};
+        // 값이 있으면 탐색 후보 선택 등록 dialog가 화면을 덮는다.
+        std::optional<discovery_dialog_view> discovery_dialog {};
         bool shutting_down { false };
     };
 } // namespace gitman

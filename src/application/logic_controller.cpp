@@ -246,6 +246,16 @@ namespace gitman {
                     switch_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, switch_dialog_scroll_intent>)
                     handle_switch_dialog_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, begin_discovery_intent>)
+                    handle_begin_discovery(value);
+                else if constexpr (std::is_same_v<value_type, toggle_discovery_candidate_intent>)
+                    handle_toggle_discovery_candidate(value.index);
+                else if constexpr (std::is_same_v<value_type, confirm_discovery_intent>)
+                    handle_confirm_discovery();
+                else if constexpr (std::is_same_v<value_type, cancel_discovery_dialog_intent>)
+                    handle_cancel_discovery_dialog();
+                else if constexpr (std::is_same_v<value_type, discovery_dialog_scroll_intent>)
+                    handle_discovery_dialog_scroll(value.delta);
                 else if constexpr (std::is_same_v<value_type, open_settings_intent>)
                     handle_open_settings();
                 else if constexpr (std::is_same_v<value_type, set_settings_executable_intent>)
@@ -288,6 +298,10 @@ namespace gitman {
                     handle_change_completed(std::move(value));
                 else if constexpr (std::is_same_v<value_type, switch_candidates_event>)
                     handle_switch_candidates(std::move(value));
+                else if constexpr (std::is_same_v<value_type, discovery_completed_event>)
+                    handle_discovery_completed(std::move(value));
+                else if constexpr (std::is_same_v<value_type, projects_registered_event>)
+                    handle_projects_registered(std::move(value));
             },
             std::move(message));
     }
@@ -403,10 +417,14 @@ namespace gitman {
         document_ = std::move(document);
         revision_ = std::move(revision);
         // 이전 문서의 카드를 가리키던 overlay와 dialog는 의미가 없다. 환경설정
-        // 초안도 이전 문서의 settings 기준이라 함께 버린다.
+        // 초안도 이전 문서의 settings 기준이라 함께 버린다. 탐색 dialog는 진행 중
+        // 탐색을 취소하고 닫는다.
         update_overlay_card_.reset();
         switch_dialog_.reset();
         settings_dialog_.reset();
+        if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
+            discovery_dialog_->scan_cancellation->request_cancellation();
+        discovery_dialog_.reset();
 
         // 문서가 배치를 담고 있으면 UI thread가 한 번 적용하도록 게시 번호를 올린다.
         window_placement_ = document_->window;
@@ -790,6 +808,184 @@ namespace gitman {
         }
     }
 
+    void logic_controller::handle_begin_discovery(const begin_discovery_intent& intent)
+    {
+        // 탐색 등록은 열린 문서에 추가하는 경로다 (stage-8-plan 5.2). 이미 열린
+        // dialog가 있으면 무시한다 (dialog가 화면을 덮어 정상 경로에서는 오지 않는다).
+        if (shutting_down_ || document_.has_value() == false || discovery_dialog_.has_value())
+            return;
+
+        process_cancellation_source cancellation {};
+        operation_request request { make_request(operation_kind::discover_projects, nullptr, 0) };
+        request.scan_root = intent.scan_root;
+        // 탐색은 기존 등록 항목과의 중복 판정을 위해 문서 사본이 필요하다 (단계 5).
+        request.document = document_;
+        // dialog 취소가 탐색을 함께 취소할 수 있게 작업별 token을 싣는다.
+        request.token = cancellation.token();
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+
+        discovery_dialog_state dialog {};
+        dialog.scan_root = intent.scan_root;
+        dialog.scan_operation_id = operation_id;
+        dialog.scan_cancellation = std::move(cancellation);
+        discovery_dialog_ = { std::move(dialog) };
+    }
+
+    void logic_controller::handle_discovery_completed(discovery_completed_event event)
+    {
+        // 닫힌 dialog나 다른 탐색의 늦은 결과는 버린다.
+        if (discovery_dialog_.has_value() == false || event.operation_id != discovery_dialog_->scan_operation_id)
+            return;
+
+        discovery_dialog_->scan_operation_id = 0;
+        discovery_dialog_->scan_cancellation.reset();
+        discovery_dialog_->loading = false;
+        discovery_dialog_->result = std::move(event.result);
+        discovery_dialog_->scroll_offset = 0.0f;
+
+        // 등록 가능한 후보는 기본 체크다 (stage-8-plan 5.2).
+        discovery_dialog_->checked.assign(discovery_dialog_->result.candidates.size(), false);
+        for (std::size_t index = 0; index < discovery_dialog_->result.candidates.size(); ++index)
+            if (discovery_dialog_->result.candidates[index].selectable())
+                discovery_dialog_->checked[index] = true;
+
+        if (discovery_dialog_->result.completed == false)
+        {
+            discovery_dialog_->message = u8"탐색이 끝까지 완료되지 않았습니다.";
+            for (const diagnostic& value : discovery_dialog_->result.diagnostics)
+                if (value.severity == diagnostic_severity::error)
+                {
+                    discovery_dialog_->message = value.message;
+                    break;
+                }
+        }
+    }
+
+    void logic_controller::handle_toggle_discovery_candidate(const std::size_t index)
+    {
+        if (discovery_dialog_.has_value() == false || discovery_dialog_->loading || discovery_dialog_->register_operation_id != 0)
+            return;
+        if (index >= discovery_dialog_->result.candidates.size() || discovery_dialog_->result.candidates[index].selectable() == false)
+            return;
+
+        discovery_dialog_->checked[index] = discovery_dialog_->checked[index] == false;
+        discovery_dialog_->message.clear();
+    }
+
+    void logic_controller::handle_confirm_discovery()
+    {
+        if (discovery_dialog_.has_value() == false || discovery_dialog_->loading || discovery_dialog_->register_operation_id != 0 || shutting_down_ || document_.has_value() == false)
+            return;
+
+        std::vector<discovery_candidate> selected {};
+        for (std::size_t index = 0; index < discovery_dialog_->result.candidates.size(); ++index)
+            if (discovery_dialog_->checked[index])
+                selected.push_back(discovery_dialog_->result.candidates[index]);
+        if (selected.empty())
+            return;
+
+        // 진행 중인 일반 저장과 등록이 겹치면 store의 revision 충돌로 실패한다.
+        // 자초한 충돌 대신 안내를 표시하고 저장이 끝난 뒤 다시 시도하게 한다.
+        if (pending_save_operation_id_ != 0)
+        {
+            discovery_dialog_->message = u8"문서 저장이 진행 중입니다. 잠시 후 다시 시도하세요.";
+            return;
+        }
+
+        operation_request request { make_request(operation_kind::register_projects, nullptr, 0) };
+        request.document = document_;
+        request.revision = revision_;
+        request.discovery_selection = std::move(selected);
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+        {
+            discovery_dialog_->message = u8"등록 작업을 제출하지 못했습니다.";
+            return;
+        }
+
+        discovery_dialog_->register_operation_id = operation_id;
+        discovery_dialog_->message.clear();
+    }
+
+    void logic_controller::handle_projects_registered(projects_registered_event event)
+    {
+        if (discovery_dialog_.has_value() == false || event.operation_id != discovery_dialog_->register_operation_id)
+            return;
+        discovery_dialog_->register_operation_id = 0;
+
+        if (event.document.has_value() == false || event.revision.has_value() == false)
+        {
+            // 실패(저장 충돌 포함)는 dialog를 유지한 채 사유를 표시한다. 사용자는
+            // 그대로 다시 시도할 수 있다 (stage-8-plan 5.2).
+            discovery_dialog_->message = u8"등록에 실패했습니다.";
+            for (const diagnostic& value : event.diagnostics)
+                if (value.severity == diagnostic_severity::error)
+                {
+                    discovery_dialog_->message = value.message;
+                    break;
+                }
+            return;
+        }
+
+        // 등록된 문서를 활성 문서로 바꾼다 (단계 5 계약). 기존 카드의 상태·로그를
+        // 보존하기 위해 install_document 대신 새 프로젝트만 카드로 추가한다.
+        document_ = std::move(*event.document);
+        revision_ = std::move(*event.revision);
+        for (const project_definition& project : document_->projects)
+        {
+            if (find_card(project.id) != nullptr)
+                continue;
+
+            card_state card {};
+            card.project = project;
+            card.snapshot.project = project.id;
+            card.generation = 1;
+            cards_.push_back(std::move(card));
+
+            // 새 카드는 로컬 상태를 곧바로 조회한다 (plan 5.1).
+            card_state& added { cards_.back() };
+            if (added.project.enabled)
+            {
+                added.busy = true;
+                static_cast<void>(submitter_->submit(make_request(operation_kind::query_local, &added, added.generation)));
+            }
+        }
+        discovery_dialog_.reset();
+    }
+
+    void logic_controller::handle_cancel_discovery_dialog()
+    {
+        if (discovery_dialog_.has_value() == false)
+            return;
+        // 등록 실행 중에는 닫지 않는다. 결과를 dialog가 보고해야 하고 store 저장은
+        // 취소할 수 없다.
+        if (discovery_dialog_->register_operation_id != 0)
+            return;
+
+        if (discovery_dialog_->scan_cancellation.has_value())
+            discovery_dialog_->scan_cancellation->request_cancellation();
+        discovery_dialog_.reset();
+    }
+
+    void logic_controller::handle_discovery_dialog_scroll(const float delta)
+    {
+        if (discovery_dialog_.has_value() == false)
+            return;
+
+        const float content { static_cast<float>(discovery_dialog_->result.candidates.size()) * layout_discovery_dialog_row_height };
+        float maximum { content - layout_discovery_dialog_list_height };
+        if (maximum < 0.0f)
+            maximum = 0.0f;
+        float offset { discovery_dialog_->scroll_offset + delta };
+        if (offset < 0.0f)
+            offset = 0.0f;
+        if (offset > maximum)
+            offset = maximum;
+        discovery_dialog_->scroll_offset = offset;
+    }
+
     void logic_controller::handle_open_settings()
     {
         // 환경설정은 문서 수준 값이라 열린 문서가 있어야 편집할 수 있다 (REQ-017).
@@ -995,8 +1191,11 @@ namespace gitman {
             return;
         shutting_down_ = true;
         cancellation_source_.request_cancellation();
-        // 변경 작업은 작업별 token을 쓰므로 전역 취소와 별도로 전파한다.
+        // 변경 작업은 작업별 token을 쓰므로 전역 취소와 별도로 전파한다. 탐색도
+        // 작업별 token이라 함께 취소한다.
         cancel_running_changes();
+        if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
+            discovery_dialog_->scan_cancellation->request_cancellation();
 
         // 종료 저장은 취소 전파 뒤에도 한 번 나간다. runtime의 종료 순서가 이 요청이
         // worker inbox에 들어간 뒤에 inbox를 닫으므로 join 안에서 끝까지 실행된다.
@@ -1271,6 +1470,33 @@ namespace gitman {
                 snapshot->switch_dialog = { std::move(dialog) };
                 break;
             }
+        }
+
+        if (discovery_dialog_.has_value())
+        {
+            discovery_dialog_view dialog {};
+            dialog.scan_root = discovery_dialog_->scan_root;
+            dialog.loading = discovery_dialog_->loading;
+            dialog.executing = discovery_dialog_->register_operation_id != 0;
+            dialog.message = discovery_dialog_->message;
+            dialog.rows.reserve(discovery_dialog_->result.candidates.size());
+            bool any_checked { false };
+            for (std::size_t index = 0; index < discovery_dialog_->result.candidates.size(); ++index)
+            {
+                discovery_row_view row {};
+                row.candidate = discovery_dialog_->result.candidates[index];
+                row.checked = discovery_dialog_->checked[index];
+                any_checked = any_checked || row.checked;
+                dialog.rows.push_back(std::move(row));
+            }
+            dialog.can_confirm = dialog.loading == false && dialog.executing == false && any_checked;
+
+            const float content { static_cast<float>(dialog.rows.size()) * layout_discovery_dialog_row_height };
+            float maximum { content - layout_discovery_dialog_list_height };
+            if (maximum < 0.0f)
+                maximum = 0.0f;
+            dialog.scroll_offset = discovery_dialog_->scroll_offset > maximum ? maximum : discovery_dialog_->scroll_offset;
+            snapshot->discovery_dialog = { std::move(dialog) };
         }
 
         if (settings_dialog_.has_value())

@@ -14,6 +14,7 @@ add_executable(gitman_tests
     command_line_builder_tests.cpp
     dependency_versions_tests.cpp
     directory_enumerator_tests.cpp
+    discovery_dialog_tests.cpp
     discovery_domain_tests.cpp
     discovery_integration_tests.cpp
     discovery_service_tests.cpp

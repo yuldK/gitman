@@ -46,6 +46,7 @@ namespace gitman::ui {
         toolbar_generate_document,
         toolbar_toggle_path_display,
         toolbar_settings,
+        toolbar_discover,
         notice,
         card_list,
         card_scrollbar,
@@ -85,6 +86,13 @@ namespace gitman::ui {
         settings_svn_clear,
         settings_dialog_confirm,
         settings_dialog_cancel,
+        // 탐색 후보 선택 등록 dialog다 (REQ-004, 단계 8). 후보 행의 정체성은
+        // switch dialog처럼 owner의 값에 index를 담아 구분한다.
+        discovery_dialog,
+        discovery_dialog_panel,
+        discovery_dialog_item,
+        discovery_dialog_confirm,
+        discovery_dialog_cancel,
     };
 
     struct ui_element_id

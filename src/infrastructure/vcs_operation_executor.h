@@ -37,6 +37,10 @@ namespace gitman {
         void execute_change(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_switch_candidates(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_generate_document(const operation_request& request, const std::function<void(logic_message)>& emit);
+        // 탐색 dialog의 깊이 1 탐색과 선택 등록이다 (REQ-004, 단계 8). 단계 5의
+        // service를 그대로 조립한다.
+        void execute_discover_projects(const operation_request& request, const std::function<void(logic_message)>& emit);
+        void execute_register_projects(const operation_request& request, const std::function<void(logic_message)>& emit);
 
         project_store* store_ { nullptr };
         process_runner* runner_ { nullptr };

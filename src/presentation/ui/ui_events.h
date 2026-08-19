@@ -83,6 +83,9 @@ namespace gitman::ui {
         // 파일을 고른 뒤 `set_settings_executable_intent`를 logic에 보낸다.
         show_git_executable_picker,
         show_svn_executable_picker,
+        // 탐색 등록의 스캔 폴더 선택이다 (REQ-004). 폴더를 고르면
+        // `begin_discovery_intent`를 logic에 보낸다.
+        show_discovery_folder_picker,
         window_minimize,
         window_toggle_maximize,
         window_close,

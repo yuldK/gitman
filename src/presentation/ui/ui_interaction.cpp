@@ -63,9 +63,11 @@ namespace gitman::ui {
                     // 위로 굴리면 내용이 위로 간다.
                     const float delta { -(value.delta / 120.0f) * input_wheel_scroll_step };
 
-                    // switch dialog가 열려 있으면 휠은 후보 목록을 스크롤한다.
+                    // switch·탐색 dialog가 열려 있으면 휠은 그 후보 목록을 스크롤한다.
                     if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)
                         return { input_action { logic_message { switch_dialog_scroll_intent { delta } } } };
+                    if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::discovery_dialog }) != nullptr)
+                        return { input_action { logic_message { discovery_dialog_scroll_intent { delta } } } };
 
                     // 하단 로그 pane 위의 휠은 목록이 아니라 로그를 스크롤한다.
                     if (tree_ != nullptr)
@@ -281,6 +283,8 @@ namespace gitman::ui {
                 return {};
             }
             // 열린 dialog·overlay가 있으면 닫기가 먼저다.
+            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::discovery_dialog }) != nullptr)
+                return { input_action { logic_message { cancel_discovery_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_settings_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)

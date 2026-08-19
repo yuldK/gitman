@@ -9,6 +9,7 @@
 #include "platform/win32/win32_app_runtime.h"
 #include "platform/win32/win32_clipboard.h"
 
+#include "domain/path_syntax.h"
 #include "presentation/log_presentation.h"
 #include "presentation/ui/caption_element.h"
 #include "presentation/ui/ui_events.h"
@@ -50,6 +51,51 @@ namespace gitman::win32 {
             const COMDLG_FILTERSPEC filter { L"Gitman 문서 (*.version-list)", L"*.version-list" };
             static_cast<void>(dialog->SetFileTypes(1, &filter));
             static_cast<void>(dialog->SetTitle(L".version-list 문서 열기"));
+            if (SUCCEEDED(dialog->Show(owner)))
+            {
+                IShellItem* item { nullptr };
+                if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr)
+                {
+                    PWSTR path { nullptr };
+                    if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path != nullptr)
+                    {
+                        auto converted { utf16_to_utf8(path) };
+                        if (converted.value.has_value())
+                            chosen = { std::move(*converted.value) };
+                        CoTaskMemFree(path);
+                    }
+                    item->Release();
+                }
+            }
+            dialog->Release();
+            return chosen;
+        }
+
+        // 탐색 등록의 스캔 폴더를 고르는 Win32 폴더 dialog다. UI thread 전용이다.
+        [[nodiscard]] std::optional<std::u8string> choose_discovery_folder(const HWND owner, const std::u8string& initial)
+        {
+            IFileOpenDialog* dialog { nullptr };
+            if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))) || dialog == nullptr)
+                return std::nullopt;
+
+            std::optional<std::u8string> chosen {};
+            FILEOPENDIALOGOPTIONS options { 0 };
+            if (SUCCEEDED(dialog->GetOptions(&options)))
+                static_cast<void>(dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM));
+            static_cast<void>(dialog->SetTitle(L"저장소를 탐색할 폴더 선택"));
+            if (initial.empty() == false)
+            {
+                // 시작 폴더 지정 실패는 무해하다. 사용자가 dialog에서 직접 이동한다.
+                if (auto converted { utf8_to_utf16(initial) }; converted.value.has_value())
+                {
+                    IShellItem* start { nullptr };
+                    if (SUCCEEDED(SHCreateItemFromParsingName(converted.value->c_str(), nullptr, IID_PPV_ARGS(&start))) && start != nullptr)
+                    {
+                        static_cast<void>(dialog->SetFolder(start));
+                        start->Release();
+                    }
+                }
+            }
             if (SUCCEEDED(dialog->Show(owner)))
             {
                 IShellItem* item { nullptr };
@@ -627,6 +673,17 @@ namespace gitman::win32 {
                     {
                         if (const std::optional<generate_document_intent> intent { show_version_list_generation_dialog(window_) }; intent.has_value())
                             runtime_->post_logic(logic_message { *intent });
+                    }
+                    return;
+                case ui::ui_command::show_discovery_folder_picker:
+                    if (runtime_ != nullptr)
+                    {
+                        // 시작 폴더는 현재 문서가 있는 폴더다. 없으면 기본 위치다.
+                        std::u8string initial {};
+                        if (const std::shared_ptr<const view_snapshot> view { runtime_->acquire_view() }; view != nullptr)
+                            initial = std::u8string { windows_parent_directory(view->document_path) };
+                        if (std::optional<std::u8string> folder { choose_discovery_folder(window_, initial) }; folder.has_value())
+                            runtime_->post_logic(logic_message { begin_discovery_intent { std::move(*folder) } });
                     }
                     return;
                 case ui::ui_command::show_git_executable_picker:

@@ -4,6 +4,7 @@
 #include "application/project_store.h"
 #include "application/repository_provider.h"
 #include "domain/diagnostic.h"
+#include "domain/discovery.h"
 #include "domain/operation_log.h"
 #include "domain/project.h"
 #include "domain/vcs_operation.h"
@@ -156,6 +157,32 @@ namespace gitman {
         float delta { 0.0f };
     };
 
+    // toolbar 탐색 버튼이 여는 탐색 후보 선택 등록 dialog다 (REQ-004, stage-8-plan
+    // 5.2). 스캔 루트는 UI thread의 폴더 선택 dialog가 채운다. 열면서 곧바로 깊이 1
+    // 탐색을 worker에 제출한다.
+    struct begin_discovery_intent
+    {
+        std::u8string scan_root {};
+    };
+
+    // 후보 행의 체크 상태 전환이다. 제외 사유가 있는 후보는 무시된다.
+    struct toggle_discovery_candidate_intent
+    {
+        std::size_t index { 0 };
+    };
+
+    // 선택 후보의 등록 실행이다. 단계 5의 원자적 선택 등록 API로 문서를 갱신한다.
+    struct confirm_discovery_intent
+    {};
+
+    struct cancel_discovery_dialog_intent
+    {};
+
+    struct discovery_dialog_scroll_intent
+    {
+        float delta { 0.0f };
+    };
+
     // toolbar의 환경설정 버튼이 여는 환경설정 dialog다 (REQ-017, stage-8-plan
     // 5.1). 문서 `settings`의 Git/SVN 실행 파일 경로를 편집한다.
     struct open_settings_intent
@@ -227,6 +254,11 @@ namespace gitman {
         switch_to,
         // remote-first 전환 후보 조회다. switch dialog가 요청한다 (단계 7).
         query_switch_candidates,
+        // 깊이 1 자식 탐색이다. 탐색 dialog가 요청하며 프로세스를 만들지 않는다
+        // (REQ-004, 단계 8). generate처럼 문서 lane에서 실행한다.
+        discover_projects,
+        // 선택 후보의 원자적 등록이다. save와 같은 lane에서 직렬화된다 (단계 8).
+        register_projects,
     };
 
     struct operation_request
@@ -247,6 +279,9 @@ namespace gitman {
         update_options options {};
         // switch_to 전용: 검증을 통과한 전환 대상이다.
         std::optional<switch_candidate> switch_target {};
+        // register_projects 전용: 사용자가 선택한 탐색 후보다. 문서와 revision은
+        // save처럼 `document`·`revision` 필드에 실린다.
+        std::vector<discovery_candidate> discovery_selection {};
         process_cancellation_token token {};
     };
 
@@ -317,6 +352,23 @@ namespace gitman {
         switch_candidate_result result {};
     };
 
+    // 깊이 1 탐색 결과다. 탐색 dialog 상태가 소비한다 (REQ-004).
+    struct discovery_completed_event
+    {
+        std::uint64_t operation_id { 0 };
+        discovery_result result {};
+    };
+
+    // 선택 등록 결과다. 성공 시 문서와 revision이 있고 logic이 활성 문서를 이것으로
+    // 바꾼다 (단계 5 계약). 실패(저장 충돌 포함)는 diagnostics로 사유를 알린다.
+    struct projects_registered_event
+    {
+        std::uint64_t operation_id { 0 };
+        std::optional<workspace_document> document {};
+        std::optional<workspace_revision_token> revision {};
+        std::vector<diagnostic> diagnostics {};
+    };
+
     struct shutdown_message
     {};
 
@@ -325,9 +377,10 @@ namespace gitman {
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
         toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
         log_scroll_intent, show_update_options_intent, set_update_submodules_intent, confirm_update_intent, cancel_update_options_intent, begin_switch_intent, select_switch_candidate_intent,
-        confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent,
-        confirm_settings_intent, cancel_settings_dialog_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event,
-        query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
+        confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent,
+        cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, confirm_settings_intent,
+        cancel_settings_dialog_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
+        document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, discovery_completed_event, projects_registered_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

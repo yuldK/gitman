@@ -14,7 +14,7 @@
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths, const bool settings_enabled)
+    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths, const bool document_open)
         : ui_element { ui_element_id { ui_element_kind::toolbar } }
         , show_open_button_ { show_open_button }
     {
@@ -55,11 +55,20 @@ namespace gitman::ui {
         // 환경설정은 문서 `settings`를 편집하므로 열린 문서가 있을 때만 활성이다
         // (REQ-017).
         auto settings { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_settings }, button_config { .glyph = codicons::icon_settings_gear }) };
-        settings->set_tooltip(settings_enabled ? std::u8string { u8"환경설정" } : std::u8string { u8"환경설정 (문서를 먼저 여세요)" });
-        settings->set_enabled(settings_enabled);
+        settings->set_tooltip(document_open ? std::u8string { u8"환경설정" } : std::u8string { u8"환경설정 (문서를 먼저 여세요)" });
+        settings->set_enabled(document_open);
         settings->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_settings_intent {} } } }; });
         settings_ = settings.get();
         add_child(std::move(settings));
+
+        // 탐색 등록은 열린 문서에 추가하는 경로다 (REQ-004, 단계 8). 스캔 폴더는
+        // UI thread의 폴더 선택이 고른다.
+        auto discover { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_discover }, button_config { .glyph = codicons::icon_search }) };
+        discover->set_tooltip(document_open ? std::u8string { u8"하위 폴더 저장소 탐색·등록" } : std::u8string { u8"하위 폴더 저장소 탐색·등록 (문서를 먼저 여세요)" });
+        discover->set_enabled(document_open);
+        discover->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_discovery_folder_picker } }; });
+        discover_ = discover.get();
+        add_child(std::move(discover));
     }
 
     void toolbar_element::arrange(const arrange_context& context)
@@ -89,6 +98,7 @@ namespace gitman::ui {
         place(open_document_, show_open_button_);
         place(generate_document_, true);
         place(toggle_path_display_, true);
+        place(discover_, true);
         place(settings_, true);
 
         const float label_width { next_x + button - label_left };

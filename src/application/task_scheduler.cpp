@@ -4,6 +4,31 @@
 #include <utility>
 
 namespace gitman {
+    namespace {
+        // 문서 단위 작업(load·generate·save·discover·register)은 0번 lane에서 서로
+        // 직렬화된다. register는 save와 같은 store 접근이라 반드시 직렬이어야 하고,
+        // discover는 generate와 같은 탐색이라 같은 정책을 따른다.
+        bool is_document_operation(const operation_kind kind) noexcept
+        {
+            switch (kind)
+            {
+            case operation_kind::load_document:
+            case operation_kind::generate_document:
+            case operation_kind::save_document:
+            case operation_kind::discover_projects:
+            case operation_kind::register_projects:
+                return true;
+            case operation_kind::query_local:
+            case operation_kind::refresh:
+            case operation_kind::update:
+            case operation_kind::switch_to:
+            case operation_kind::query_switch_candidates:
+                break;
+            }
+            return false;
+        }
+    } // namespace
+
     std::size_t operation_lane(const project_id& id, const std::size_t worker_count) noexcept
     {
         if (worker_count <= 1)
@@ -45,9 +70,7 @@ namespace gitman {
 
     bool task_scheduler::submit(operation_request request)
     {
-        // 문서 단위 작업(load·generate·save)은 0번 lane에서 서로 직렬화된다.
-        const bool document_operation { request.kind == operation_kind::load_document || request.kind == operation_kind::generate_document || request.kind == operation_kind::save_document };
-        const std::size_t lane { document_operation ? 0 : operation_lane(request.project.id, inboxes_.size()) };
+        const std::size_t lane { is_document_operation(request.kind) ? 0 : operation_lane(request.project.id, inboxes_.size()) };
         return inboxes_[lane]->post(std::move(request)) == messaging::post_result::posted;
     }
 

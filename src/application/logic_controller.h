@@ -70,6 +70,13 @@ namespace gitman {
         void handle_cancel_operation(const cancel_operation_intent& intent);
         void handle_operation_log(operation_log_event event);
         void handle_change_completed(change_completed_event event);
+        void handle_begin_discovery(const begin_discovery_intent& intent);
+        void handle_toggle_discovery_candidate(std::size_t index);
+        void handle_confirm_discovery();
+        void handle_cancel_discovery_dialog();
+        void handle_discovery_completed(discovery_completed_event event);
+        void handle_projects_registered(projects_registered_event event);
+        void handle_discovery_dialog_scroll(float delta);
         void handle_open_settings();
         void handle_set_settings_executable(set_settings_executable_intent intent);
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
@@ -158,6 +165,28 @@ namespace gitman {
         };
 
         std::optional<switch_dialog_state> switch_dialog_ {};
+
+        // 탐색 후보 선택 등록 dialog의 상태다 (REQ-004, stage-8-plan 5.2). 값이
+        // 있으면 dialog가 열려 있다.
+        struct discovery_dialog_state
+        {
+            std::u8string scan_root {};
+            // 진행 중인 탐색 작업의 id다. 0이면 탐색이 끝났다. 늦은 결과를 구분한다.
+            std::uint64_t scan_operation_id { 0 };
+            // 탐색 전용 취소 source다. dialog 취소와 종료가 신호한다.
+            std::optional<process_cancellation_source> scan_cancellation {};
+            bool loading { true };
+            discovery_result result {};
+            // 후보와 같은 길이의 체크 상태다. 제외 사유가 없는 후보만 참일 수 있다.
+            std::vector<bool> checked {};
+            // 진행 중인 등록 작업의 id다. 0이면 등록 실행 중이 아니다.
+            std::uint64_t register_operation_id { 0 };
+            // 탐색·등록 실패 사유다. 후보를 다시 고르면 지워진다.
+            std::u8string message {};
+            float scroll_offset { 0.0f };
+        };
+
+        std::optional<discovery_dialog_state> discovery_dialog_ {};
 
         // 환경설정 dialog의 경로 초안이다 (REQ-017). 값이 있으면 dialog가 열려
         // 있다. 저장 전까지 문서 settings를 건드리지 않는다.

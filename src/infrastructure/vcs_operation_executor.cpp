@@ -145,6 +145,18 @@ namespace gitman {
                 return;
             }
 
+            if (request.kind == operation_kind::discover_projects)
+            {
+                execute_discover_projects(request, emit);
+                return;
+            }
+
+            if (request.kind == operation_kind::register_projects)
+            {
+                execute_register_projects(request, emit);
+                return;
+            }
+
             if (request.kind == operation_kind::update || request.kind == operation_kind::switch_to)
             {
                 execute_change(request, emit);
@@ -188,6 +200,20 @@ namespace gitman {
                     document_generated_event failure {};
                     failure.operation_id = request.operation_id;
                     failure.document_path = request.document_path;
+                    failure.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::discover_projects)
+                {
+                    discovery_completed_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.result.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::register_projects)
+                {
+                    projects_registered_event failure {};
+                    failure.operation_id = request.operation_id;
                     failure.diagnostics.push_back(std::move(value));
                     emit(std::move(failure));
                 }
@@ -303,6 +329,52 @@ namespace gitman {
         event.document = std::move(generated.document);
         event.revision = std::move(generated.revision);
         event.diagnostics = std::move(generated.diagnostics);
+        emit(std::move(event));
+    }
+
+    void vcs_operation_executor::execute_discover_projects(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        discovery_completed_event event {};
+        event.operation_id = request.operation_id;
+
+        if (enumerator_ == nullptr || resolver_ == nullptr || request.document.has_value() == false)
+        {
+            diagnostic value {};
+            value.code = diagnostic_code::operation_failed;
+            value.severity = diagnostic_severity::error;
+            value.message
+                = enumerator_ == nullptr || resolver_ == nullptr ? std::u8string { u8"이 조립은 저장소 탐색을 지원하지 않습니다." } : std::u8string { u8"탐색할 문서 내용이 요청에 없습니다." };
+            event.result.diagnostics.push_back(std::move(value));
+            emit(std::move(event));
+            return;
+        }
+
+        discovery_service discovery { *enumerator_, *probe_, *resolver_ };
+        event.result = discovery.discover_children(request.scan_root, *request.document, request.token);
+        emit(std::move(event));
+    }
+
+    void vcs_operation_executor::execute_register_projects(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        projects_registered_event event {};
+        event.operation_id = request.operation_id;
+
+        if (resolver_ == nullptr || request.document.has_value() == false)
+        {
+            diagnostic value {};
+            value.code = diagnostic_code::operation_failed;
+            value.severity = diagnostic_severity::error;
+            value.message = resolver_ == nullptr ? std::u8string { u8"이 조립은 선택 등록을 지원하지 않습니다." } : std::u8string { u8"등록할 문서 내용이 요청에 없습니다." };
+            event.diagnostics.push_back(std::move(value));
+            emit(std::move(event));
+            return;
+        }
+
+        project_registration_service registration { *store_, *resolver_ };
+        project_registration_result registered { registration.register_candidates(*request.document, request.revision, request.discovery_selection) };
+        event.document = std::move(registered.saved_document);
+        event.revision = std::move(registered.revision);
+        event.diagnostics = std::move(registered.diagnostics);
         emit(std::move(event));
     }
 

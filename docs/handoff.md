@@ -4,10 +4,10 @@
 
 - 기준일: 2026-08-19
 - 완료 단계: 단계 0~6 전체 (2026-08-18 사용자가 단계 7 개시를 지시하며 단계 6을 최종 승인), **단계 7 구현·검증 완료** (사용자 위임 자동 진행, 완료 보고 제출)
-- 현재 단계: 단계 8(안정화와 배포) `S8-D4` 완료, 검수 대기
+- 현재 단계: 단계 8(안정화와 배포) `S8-D5` 완료, 검수 대기
 - 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다. 단계 7은 사용자가 커밋까지의 자동 진행을 위임했으나, **단계 8부터는 자동 진행 위임을 종료한다 (2026-08-19 지시). 매 체크포인트 종료 시 검증 문서와 제안 커밋 메시지를 첨부해 검수를 요청하고, 사용자 승인·커밋 후에만 다음 구간을 진행한다**
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S8-D4` 검수·커밋 후 `S8-D5` 안정화·실측
+- 다음 허용 작업: `S8-D5` 검수·커밋 후 `S8-V1` 최종 검증 (배포 문서화 포함)
 - 검증 방식 (2026-08-19 지시): 체크포인트는 영향 범위 테스트만 실행하고, 전체 CTest matrix는 단계 최종 검증(`S8-V1`)에서 실행한다
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia 앱 (custom caption, 카드 목록, refresh, 문서 열기·생성, drag & drop 순서 변경, 창 배치 저장), embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 등록, messaging component와 3-thread 조립, **카드별 로그와 하단 로그 뷰, update 실행 UI(submodule option·취소), switch dialog(remote-first·이중 검증·tracking 확인)**, test와 install 구성
 - 기준 문서: `docs/stage-7-plan.md`, `docs/ui-element-design.md`, `docs/decisions/ADR-005-thread-messaging.md`
@@ -121,7 +121,8 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S8-D1` 환경설정 화면 | 승인 완료, 커밋됨 | test 11개, 전체 596/596. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d1.md` |
 | `S8-D2` 탐색 후보 선택 등록 dialog | 승인 완료, 커밋됨 | test 14개, 전체 610/610. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d2.md` |
 | `S8-D3` 로그 pane 개선 | 승인 완료, 커밋됨 | test 4개(614), 영향 범위 55 case 통과. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d3.md` |
-| `S8-D4` file association | 완료, 검수 대기 | test 7개(621), 영향 범위 27 case + 임시 registry 실측 통과. `docs/verification/2026-08-19-stage-8-d4.md` |
+| `S8-D4` file association | 승인 완료, 커밋됨 | test 7개(621), 영향 범위 27 case + 임시 registry 실측 통과. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d4.md` |
+| `S8-D5` 안정화·실측 | 완료, 검수 대기 | test 5개(626, network 2개는 기본 skip). GitHub 실측 2회 통과. 수동 항목 5건은 `S8-V1`. `docs/verification/2026-08-19-stage-8-d5.md` |
 
 ### 8.0.1 단계 7 진행 원장 (완료)
 
@@ -266,6 +267,7 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - `svnversion`은 `svn`과 다른 실행 파일이라 `--non-interactive`를 받지 않는다. SVN 공통 인자를 붙이면 인자 오류로 실패하므로 이 명령만 요청을 직접 만든다.
 - `svn status`의 경로는 앞 7칸(항목·속성·잠금·이력·switched·잠금 토큰·tree conflict)을 상태 칸으로 보고 그 뒤 공백을 모두 건너뛴 지점부터 읽는다. 계획의 "고정 9칸"보다 배포판별 패딩 차이에 강하다. switched는 색인 4, tree conflict는 색인 6이다.
 - SVN 원격 조회는 현재 URL을 `info --show-item url`로 다시 물어본 뒤 원격 HEAD 리비전과 비교한다. `ahead`와 `diverged`는 SVN에 없어 `behind`와 `up_to_date`만 나오고 `ahead_count`는 항상 0이다.
+- GitHub 실측(`S8-D5`)에서 확인: production은 사용자 credential helper를 그대로 쓰므로(ADR-003) 자격 증명이 저장된 호스트에서는 존재하지 않는 저장소가 404("Repository not found" → 저장소 없음)로 끝난다. helper 조회가 빗나가는 경우에만 `authentication_required`가 나온다. network test는 URL에 다른 username을 박아 이 경로를 강제하며 `GITMAN_NETWORK_TESTS=1`일 때만 실행된다.
 - 실제 SVN 환경에 붙일 때 확인할 것은 네 가지다. 실제 실행 경로 전부, `status`의 실제 칸 패딩, 원격 인증·연결 실패 메시지의 오류 코드, `info --show-item`이 값 외의 줄을 내는 배포판 여부다. 어긋나면 파서 한 곳을 고친 뒤 `tests/fixtures/vcs/svn/`의 fixture를 실제 출력으로 교체하면 된다.
 - SVN fixture는 실제 출력을 캡처할 수 없어 Apache Subversion 공식 문서의 출력 계약을 근거로 작성했다. 출처와 "실제 출력과 대조하지 않았다"는 사실을 파일 안 `#` 주석에 남겼고 test 도우미가 그 줄을 버린다. SVN은 상태 줄을 `#`로 시작하지 않는다.
 - SVN 통합 test 2개는 서로 배타적이다. 이 호스트에서는 "SVN이 없어도 앱이 동작한다"가 실행되고 실제 `svn.exe` test는 skip된다. SVN이 설치된 호스트에서는 반대가 된다. 실제 작업 복사본을 만들려면 `svnadmin`이 필요해 단계 8로 남겼다.

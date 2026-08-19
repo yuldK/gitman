@@ -23,6 +23,7 @@ add_executable(gitman_tests
     file_association_tests.cpp
     git_command_builder_tests.cpp
     git_integration_tests.cpp
+    git_network_tests.cpp
     git_remote_query_tests.cpp
     git_repository_provider_tests.cpp
     git_status_parser_tests.cpp
@@ -52,6 +53,7 @@ add_executable(gitman_tests
     renderer_policy_tests.cpp
     secret_masking_tests.cpp
     settings_dialog_tests.cpp
+    stabilization_tests.cpp
     status_presentation_tests.cpp
     svn_command_builder_tests.cpp
     svn_integration_tests.cpp

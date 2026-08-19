@@ -60,6 +60,67 @@ namespace gitman {
         return std::u8string { reinterpret_cast<const char8_t*>(text), 8 };
     }
 
+    std::vector<log_display_line> build_log_display_lines(const std::deque<operation_log_record>& records, const log_stream_filter filter)
+    {
+        std::vector<log_display_line> lines {};
+        // 연속된 progress record의 진행 중인 run이다. run이 끝나면 마지막 record만
+        // 표시 줄이 되고 나머지는 접힌 수로 남는다 (stage-8-plan 5.3).
+        std::size_t progress_run { 0 };
+        const operation_log_record* last_progress { nullptr };
+        const auto flush_run = [&lines, &progress_run, &last_progress]() {
+            if (progress_run == 0)
+                return;
+            log_display_line line {};
+            line.record = *last_progress;
+            line.collapsed = progress_run - 1;
+            lines.push_back(std::move(line));
+            progress_run = 0;
+            last_progress = nullptr;
+        };
+
+        for (const operation_log_record& record : records)
+        {
+            if (log_entry_matches_filter(record.entry, filter) == false)
+                continue;
+            if (record.entry.progress)
+            {
+                ++progress_run;
+                last_progress = &record;
+                continue;
+            }
+            flush_run();
+            log_display_line line {};
+            line.record = record;
+            lines.push_back(std::move(line));
+        }
+        flush_run();
+        return lines;
+    }
+
+    std::size_t log_display_line_count(const std::deque<operation_log_record>& records, const log_stream_filter filter) noexcept
+    {
+        std::size_t count { 0 };
+        bool in_progress_run { false };
+        for (const operation_log_record& record : records)
+        {
+            if (log_entry_matches_filter(record.entry, filter) == false)
+                continue;
+            if (record.entry.progress)
+            {
+                // run 전체가 표시 줄 하나다. run의 첫 record에서만 센다.
+                if (in_progress_run == false)
+                {
+                    ++count;
+                    in_progress_run = true;
+                }
+                continue;
+            }
+            in_progress_run = false;
+            ++count;
+        }
+        return count;
+    }
+
     std::u8string format_log_copy_text(const log_view_model& log)
     {
         std::u8string text {};

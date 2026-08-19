@@ -8,6 +8,7 @@
 #include "presentation/status_presentation.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -68,13 +69,25 @@ namespace gitman {
         errors,
     };
 
+    // 로그 뷰 본문의 표시 줄 하나다 (stage-8-plan 5.3). 같은 작업의 연속된 progress
+    // record는 마지막 하나로 접히고, collapsed가 이 줄로 접힌 앞선 record 수다.
+    struct log_display_line
+    {
+        operation_log_record record {};
+        std::size_t collapsed { 0 };
+    };
+
     // 선택 카드 전용 하단 로그 뷰의 불변 표시 모델이다 (REQ-008). records는 필터를
     // 통과한 것만 담고 scroll_offset은 이미 범위 안으로 고정된 논리 픽셀 값이다.
+    // lines는 records에서 progress 접기를 적용한 표시 목록이다. 렌더링과 스크롤
+    // 높이는 lines를, 복사는 records를 기준으로 한다 (buffer 보존, stage-8-plan
+    // 5.3).
     struct log_view_model
     {
         project_id card {};
         std::u8string title {};
         std::vector<operation_log_record> records {};
+        std::vector<log_display_line> lines {};
         log_stream_filter filter { log_stream_filter::all };
         bool auto_scroll { true };
         float scroll_offset { 0.0f };

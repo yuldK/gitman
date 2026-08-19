@@ -78,10 +78,17 @@ namespace gitman::ui {
                 empty_label_ = empty_label.get();
                 add_child(std::move(empty_label));
 
-                // 선택 카드가 있을 때만 하단 로그 pane을 둔다 (REQ-008).
+                // 선택 카드가 있을 때만 하단 로그 pane을 둔다 (REQ-008). 스크롤
+                // 막대의 thumb 계산에 본문 높이가 필요해 layout을 미리 구한다
+                // (arrange의 계산과 같은 함수·같은 조건이다).
                 if (view.log.has_value())
                 {
-                    auto log_pane { std::make_unique<log_view_element>(*view.log) };
+                    const float scale { view.scale > 0.0f ? view.scale : 1.0f };
+                    const list_layout layout { compute_list_layout(view.window_height, scale, view.notices.empty() == false, true) };
+                    float body_height { layout.log_height - layout_log_header_height * scale };
+                    if (body_height < 0.0f)
+                        body_height = 0.0f;
+                    auto log_pane { std::make_unique<log_view_element>(*view.log, body_height, scale) };
                     log_pane_ = log_pane.get();
                     add_child(std::move(log_pane));
                 }

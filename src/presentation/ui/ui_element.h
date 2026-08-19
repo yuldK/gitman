@@ -62,6 +62,8 @@ namespace gitman::ui {
         log_autoscroll,
         log_copy,
         log_clear,
+        // 로그 pane 본문의 시각적 스크롤 막대다 (단계 8).
+        log_scrollbar,
         // Git update 확인 overlay다 (단계 7). 배경 클릭은 닫기이고 panel이 클릭을
         // 흡수한다.
         update_overlay,

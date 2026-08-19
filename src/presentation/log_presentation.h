@@ -4,8 +4,11 @@
 #include "presentation/view_snapshot.h"
 
 #include <chrono>
+#include <cstddef>
+#include <deque>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace gitman {
     // 필터 규칙을 logic(뷰 구성)과 UI(버튼 tooltip)가 한 곳에서 공유한다
@@ -21,6 +24,16 @@ namespace gitman {
     [[nodiscard]] std::u8string format_log_timestamp(std::chrono::system_clock::time_point time);
 
     // 클립보드 복사용 텍스트다. 현재 뷰에 표시 중인(필터 적용 후) record를 CRLF로
-    // 잇는다. UI thread는 이 결과를 그대로 클립보드에 넣는다.
+    // 잇는다. UI thread는 이 결과를 그대로 클립보드에 넣는다. progress 접기는
+    // 표시 전용이라 복사에는 적용하지 않는다 (stage-8-plan 5.3).
     [[nodiscard]] std::u8string format_log_copy_text(const log_view_model& log);
+
+    // 필터 적용 후 record에서 progress 접기를 계산한 표시 목록이다. 연속된
+    // progress record는 마지막 하나만 남고 접힌 수가 표식으로 남는다. 뷰 구성과
+    // 스크롤 높이 계산이 같은 규칙을 써야 그리기와 한계가 어긋나지 않는다.
+    [[nodiscard]] std::vector<log_display_line> build_log_display_lines(const std::deque<operation_log_record>& records, log_stream_filter filter);
+
+    // 위 함수가 만들 표시 줄 수만 센다. 스크롤 한계 계산처럼 자주 불리는 경로가
+    // 목록을 만들지 않게 한다.
+    [[nodiscard]] std::size_t log_display_line_count(const std::deque<operation_log_record>& records, log_stream_filter filter) noexcept;
 } // namespace gitman

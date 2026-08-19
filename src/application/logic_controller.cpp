@@ -563,10 +563,8 @@ namespace gitman {
         if (buffer == nullptr)
             return 0.0f;
 
-        std::size_t count { 0 };
-        for (const operation_log_record& record : buffer->records())
-            if (log_entry_matches_filter(record.entry, log_filter_))
-                ++count;
+        // 스크롤 한계는 progress 접기 후의 표시 줄 수 기준이다 (stage-8-plan 5.3).
+        const std::size_t count { log_display_line_count(buffer->records(), log_filter_) };
         return static_cast<float>(count) * layout_log_line_height + layout_log_text_inset * 2.0f;
     }
 
@@ -1392,6 +1390,8 @@ namespace gitman {
                 for (const operation_log_record& record : card.log.records())
                     if (log_entry_matches_filter(record.entry, log_filter_))
                         log.records.push_back(record);
+                // 렌더링·스크롤은 접힌 표시 목록을, 복사는 records를 쓴다.
+                log.lines = build_log_display_lines(card.log.records(), log_filter_);
                 log.filter = log_filter_;
                 log.auto_scroll = log_auto_scroll_;
                 log.truncated = card.log.dropped_count() > 0;

@@ -2,13 +2,20 @@
 
 #include "presentation/ui/ui_element.h"
 
+#include <functional>
+
 namespace gitman::ui {
-    // 카드 목록의 세로 스크롤 막대다. 표시뿐 아니라 클릭·끌기로 스크롤 위치를 바꾼다.
+    // 세로 스크롤 막대다. 표시뿐 아니라 클릭·끌기로 스크롤 위치를 바꾼다.
     // 좌표 변화량만 메시지로 바꾸므로(상대 이동) tree가 다시 빌드되어도 끌기가
     // 이어진다. 값은 모두 물리 픽셀이며 scroll intent만 논리 픽셀로 되돌린다.
+    // 어느 대상을 스크롤할지는 id와 message factory가 정한다 (카드 목록, 로그 pane).
     class scrollbar_element final : public ui_element
     {
     public:
+        using scroll_message_factory = std::function<logic_message(float delta)>;
+
+        scrollbar_element(ui_element_id id, scroll_message_factory make_message, float content_height, float viewport_height, float scroll_offset, float scale);
+        // 카드 목록용 기존 조립이다 (`card_scrollbar` + `scroll_intent`).
         scrollbar_element(float content_height, float viewport_height, float scroll_offset, float scale);
 
         void arrange(const arrange_context& context) override;
@@ -21,6 +28,7 @@ namespace gitman::ui {
         // thumb를 pixels(물리)만큼 움직이는 스크롤 변화량이다 (논리 픽셀).
         [[nodiscard]] float scroll_delta_for(float pixels) const noexcept;
 
+        scroll_message_factory make_message_ {};
         float content_height_ { 0.0f };
         float viewport_height_ { 0.0f };
         float scroll_ { 0.0f };

@@ -11,8 +11,18 @@
 #include <utility>
 
 namespace gitman::ui {
-    scrollbar_element::scrollbar_element(const float content_height, const float viewport_height, const float scroll_offset, const float scale)
-        : ui_element { ui_element_id { ui_element_kind::card_scrollbar } }
+    namespace {
+        // 카드 목록용 기본 factory다. 함수 포인터로 두면 위임 생성자가 한 줄에 든다.
+        logic_message make_card_scroll_message(const float delta)
+        {
+            return logic_message { scroll_intent { delta } };
+        }
+    } // namespace
+
+    scrollbar_element::scrollbar_element(
+        const ui_element_id id, scroll_message_factory make_message, const float content_height, const float viewport_height, const float scroll_offset, const float scale)
+        : ui_element { id }
+        , make_message_ { std::move(make_message) }
         , content_height_ { content_height }
         , viewport_height_ { viewport_height }
         , scroll_ { scroll_offset }
@@ -26,7 +36,7 @@ namespace gitman::ui {
             if (draggable() == false || (context.y >= thumb_top_ && context.y <= thumb_top_ + thumb_height_))
                 return {};
             const float delta { scroll_delta_for(context.y - (thumb_top_ + thumb_height_ * 0.5f)) };
-            return { input_action { logic_message { scroll_intent { delta } } } };
+            return { input_action { make_message_(delta) } };
         };
         target.on_move = [this](const ui_action_context& previous, const ui_action_context& current) -> std::vector<input_action> {
             if (draggable() == false)
@@ -34,10 +44,14 @@ namespace gitman::ui {
             const float delta { scroll_delta_for(current.y - previous.y) };
             if (delta == 0.0f)
                 return {};
-            return { input_action { logic_message { scroll_intent { delta } } } };
+            return { input_action { make_message_(delta) } };
         };
         set_pointer_drag_target(std::move(target));
     }
+
+    scrollbar_element::scrollbar_element(const float content_height, const float viewport_height, const float scroll_offset, const float scale)
+        : scrollbar_element { ui_element_id { ui_element_kind::card_scrollbar }, &make_card_scroll_message, content_height, viewport_height, scroll_offset, scale }
+    {}
 
     void scrollbar_element::arrange(const arrange_context& context)
     {

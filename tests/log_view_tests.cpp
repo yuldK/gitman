@@ -6,10 +6,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -31,6 +33,13 @@ namespace {
         entry.kind = kind;
         entry.severity = severity;
         entry.text = text;
+        return entry;
+    }
+
+    gitman::operation_log_entry make_progress_entry(const std::u8string_view text)
+    {
+        gitman::operation_log_entry entry { make_entry(text, gitman::log_entry_kind::standard_error) };
+        entry.progress = true;
         return entry;
     }
 
@@ -292,6 +301,114 @@ TEST_CASE("An empty log disables copy and clear and a plain view has no pane", "
     plain.log.reset();
     const auto without { gitman::ui::build_ui_tree(plain) };
     REQUIRE(without->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::log_pane }) == nullptr);
+}
+
+TEST_CASE("Consecutive progress records collapse to the last one for display", "[log][presentation]")
+{
+    std::deque<gitman::operation_log_record> records {};
+    const auto push = [&records](gitman::operation_log_entry entry) {
+        gitman::operation_log_record record {};
+        record.sequence = records.size() + 1;
+        record.entry = std::move(entry);
+        records.push_back(std::move(record));
+    };
+    push(make_entry(u8"시작", gitman::log_entry_kind::lifecycle));
+    push(make_progress_entry(u8"진행 1"));
+    push(make_progress_entry(u8"진행 2"));
+    push(make_progress_entry(u8"진행 3"));
+    push(make_entry(u8"중간", gitman::log_entry_kind::standard_output));
+    push(make_progress_entry(u8"진행 4"));
+    push(make_entry(u8"끝", gitman::log_entry_kind::lifecycle));
+
+    const std::vector<gitman::log_display_line> lines { gitman::build_log_display_lines(records, gitman::log_stream_filter::all) };
+    REQUIRE(lines.size() == 5u);
+    REQUIRE(lines[0].record.entry.text == u8"시작");
+    // run의 마지막 record만 남고 접힌 수가 표식으로 남는다.
+    REQUIRE(lines[1].record.entry.text == u8"진행 3");
+    REQUIRE(lines[1].collapsed == 2u);
+    REQUIRE(lines[2].record.entry.text == u8"중간");
+    // 길이 1의 run은 접히지 않는다.
+    REQUIRE(lines[3].record.entry.text == u8"진행 4");
+    REQUIRE(lines[3].collapsed == 0u);
+    REQUIRE(lines[4].record.entry.text == u8"끝");
+
+    // 줄 끝이 progress run이어도 마지막 run이 flush된다. count 함수는 build와
+    // 같은 수를 센다.
+    push(make_progress_entry(u8"진행 5"));
+    push(make_progress_entry(u8"진행 6"));
+    const std::vector<gitman::log_display_line> tail { gitman::build_log_display_lines(records, gitman::log_stream_filter::all) };
+    REQUIRE(tail.size() == 6u);
+    REQUIRE(tail.back().record.entry.text == u8"진행 6");
+    REQUIRE(tail.back().collapsed == 1u);
+    REQUIRE(gitman::log_display_line_count(records, gitman::log_stream_filter::all) == tail.size());
+
+    // 필터를 통과하지 못한 record는 run 계산에도 들어가지 않는다. progress는
+    // stderr라 output 필터에서 전부 사라진다.
+    const std::vector<gitman::log_display_line> filtered { gitman::build_log_display_lines(records, gitman::log_stream_filter::output) };
+    REQUIRE(filtered.size() == 3u);
+    REQUIRE(gitman::log_display_line_count(records, gitman::log_stream_filter::output) == 3u);
+}
+
+TEST_CASE("The view snapshot carries collapsed lines and the scroll limit follows them", "[log][logic]")
+{
+    log_fixture fixture {};
+    // 진행 표시 40줄과 일반 출력 1줄을 쏟는다. 표시 줄은 진행 1 + 일반 1만 는다.
+    gitman::operation_log_event bulk {};
+    bulk.operation_id = fixture.submitter.requests.back().operation_id;
+    bulk.id.value = u8"alpha";
+    for (int index = 0; index < 40; ++index)
+        bulk.entries.push_back(make_progress_entry(u8"진행"));
+    bulk.entries.push_back(make_entry(u8"완료", gitman::log_entry_kind::standard_output));
+    fixture.controller.handle(std::move(bulk));
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    // 기존 3줄(시작·stdout·stderr) + 접힌 진행 1줄 + 완료 1줄.
+    REQUIRE(view->log->lines.size() == 5u);
+    REQUIRE(view->log->lines[3].collapsed == 39u);
+    // 복사용 records는 접지 않는다 (buffer 보존).
+    REQUIRE(view->log->records.size() == 44u);
+
+    // 표시 줄 5개는 pane 화면(논리 134px)보다 짧아 스크롤 여유가 없다. 위로
+    // 굴려도 자동 스크롤이 꺼질 뿐 offset은 0이다.
+    fixture.controller.handle(gitman::log_scroll_intent { -48.0f });
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == 0.0f);
+}
+
+TEST_CASE("A long log shows the pane scrollbar and dragging it scrolls the log", "[log][ui]")
+{
+    log_fixture fixture {};
+    gitman::operation_log_event bulk {};
+    bulk.operation_id = fixture.submitter.requests.back().operation_id;
+    bulk.id.value = u8"alpha";
+    for (int index = 0; index < 60; ++index)
+        bulk.entries.push_back(make_entry(u8"line", gitman::log_entry_kind::standard_output));
+    fixture.controller.handle(std::move(bulk));
+
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const gitman::ui::ui_element* const scrollbar { tree->find({ gitman::ui::ui_element_kind::log_scrollbar, gitman::project_id { u8"alpha" } }) };
+    REQUIRE(scrollbar != nullptr);
+    REQUIRE(scrollbar->visible());
+
+    // 끌기는 log_scroll_intent로 흐른다 (자동 스크롤 규칙이 유지되는 경로).
+    const gitman::ui::pointer_drag_target* const drag { scrollbar->pointer_drag() };
+    REQUIRE(drag != nullptr);
+    const gitman::ui::ui_action_context previous { scrollbar->id(), 400.0f, 500.0f, false };
+    const gitman::ui::ui_action_context current { scrollbar->id(), 400.0f, 490.0f, false };
+    const std::vector<gitman::ui::input_action> actions { drag->on_move(previous, current) };
+    REQUIRE(actions.size() == 1u);
+    const gitman::logic_message message { first_logic_message(actions) };
+    const auto* const intent { std::get_if<gitman::log_scroll_intent>(&message) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->delta < 0.0f);
+}
+
+TEST_CASE("A short log hides the pane scrollbar", "[log][ui]")
+{
+    log_fixture fixture {};
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const gitman::ui::ui_element* const scrollbar { tree->find({ gitman::ui::ui_element_kind::log_scrollbar, gitman::project_id { u8"alpha" } }) };
+    REQUIRE(scrollbar != nullptr);
+    REQUIRE(scrollbar->visible() == false);
 }
 
 TEST_CASE("The wheel over the log pane scrolls the log instead of the list", "[log][ui]")

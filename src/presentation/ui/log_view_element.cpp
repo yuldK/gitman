@@ -6,6 +6,7 @@
 #include "presentation/ui/button_element.h"
 #include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/label_element.h"
+#include "presentation/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -34,7 +35,7 @@ namespace gitman::ui {
         }
     } // namespace
 
-    log_view_element::log_view_element(log_view_model log)
+    log_view_element::log_view_element(log_view_model log, const float body_viewport_height, const float scale)
         : ui_element { ui_element_id { ui_element_kind::log_pane } }
         , log_ { std::move(log) }
     {
@@ -84,6 +85,19 @@ namespace gitman::ui {
         clear->set_enabled(log_.records.empty() == false);
         clear_ = clear.get();
         add_child(std::move(clear));
+
+        // 본문의 시각적 스크롤 막대다 (stage-8-plan 5.3). 내용·화면 높이는 접힌
+        // 표시 줄 기준이라 logic의 스크롤 한계와 같은 값을 쓴다. 끌기는
+        // log_scroll_intent로 흘러 자동 스크롤 규칙(위로 끌면 꺼짐)이 유지된다.
+        const float effective_scale { scale > 0.0f ? scale : 1.0f };
+        const float content_height { (static_cast<float>(log_.lines.size()) * layout_log_line_height + layout_log_text_inset * 2.0f) * effective_scale };
+        const float scroll_physical { log_.scroll_offset * effective_scale };
+        const ui_element_id scrollbar_id { ui_element_kind::log_scrollbar, log_.card };
+        const scrollbar_element::scroll_message_factory make_log_scroll { [](const float delta) { return logic_message { log_scroll_intent { delta } }; } };
+        auto scrollbar { std::make_unique<scrollbar_element>(scrollbar_id, make_log_scroll, content_height, body_viewport_height, scroll_physical, effective_scale) };
+        scrollbar->set_visible(content_height > body_viewport_height && body_viewport_height > 0.0f);
+        scrollbar_ = scrollbar.get();
+        add_child(std::move(scrollbar));
     }
 
     void log_view_element::arrange(const arrange_context& context)
@@ -122,6 +136,17 @@ namespace gitman::ui {
         body_ = { context.slot.x, context.slot.y + header_height, context.slot.width, context.slot.height - header_height };
         if (body_.height < 0.0f)
             body_.height = 0.0f;
+
+        // 막대는 본문 오른쪽 안쪽에 세로로 선다 (카드 목록과 같은 배치 규칙).
+        const float hit_width { layout_scrollbar_hit_width * scale };
+        const float inset { layout_scrollbar_right_inset * scale };
+        const float vertical_inset { layout_scrollbar_vertical_inset * scale };
+        const float track_left { body_.x + body_.width - inset - hit_width };
+        float track_height { body_.height - vertical_inset * 2.0f };
+        if (track_height < 0.0f)
+            track_height = 0.0f;
+        scrollbar_->arrange({ { track_left, body_.y + vertical_inset, hit_width, track_height }, scale });
+        scrollbar_reserved_ = scrollbar_->visible() ? hit_width + inset : 0.0f;
     }
 
     void log_view_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -164,22 +189,40 @@ namespace gitman::ui {
         // 시각 열의 폭은 고정 형식(HH:MM:SS)이라 한 번만 잰다.
         const float time_width { measure_text(u8"00:00:00", font) + inset };
         const float top { body.y + inset - log_.scroll_offset * scale };
+        // 막대가 보이면 글자가 그 아래로 지나가지 않게 폭을 줄인다.
+        const float text_limit { body.x + body.width - inset - scrollbar_reserved_ };
 
-        for (std::size_t index = 0; index < log_.records.size(); ++index)
+        for (std::size_t index = 0; index < log_.lines.size(); ++index)
         {
             const float line_top { top + static_cast<float>(index) * line_height };
             if (line_top + line_height < body.y || line_top > body.y + body.height)
                 continue;
 
-            const operation_log_record& record { log_.records[index] };
+            const log_display_line& line { log_.lines[index] };
             const float baseline { line_top + centered_text_baseline(font, line_height) };
             SkPaint time_paint { solid_paint(context.palette.primary_foreground) };
             time_paint.setAlphaf(0.45f);
-            draw_text(context.canvas, format_log_timestamp(record.entry.time), body.x + inset, baseline, font, time_paint);
+            draw_text(context.canvas, format_log_timestamp(line.record.entry.time), body.x + inset, baseline, font, time_paint);
 
-            const SkPaint text_paint { solid_paint(record_color(context.palette, record.entry)) };
+            const SkPaint text_paint { solid_paint(record_color(context.palette, line.record.entry)) };
             const float text_left { body.x + inset + time_width };
-            static_cast<void>(draw_text_within(context.canvas, record.entry.text, text_left, baseline, body.x + body.width - inset - text_left, font, text_paint));
+            // 접힌 진행 표시는 마지막 줄 뒤에 접힌 수를 붙여 한 줄로 보인다
+            // (stage-8-plan 5.3). buffer에는 원본이 남아 복사·진단이 보존된다.
+            std::u8string text { line.record.entry.text };
+            if (line.collapsed > 0)
+            {
+                text += u8" (진행 표시 ";
+                std::u8string digits {};
+                std::size_t remaining { line.collapsed };
+                do
+                {
+                    digits.insert(digits.begin(), static_cast<char8_t>(u8'0' + remaining % 10));
+                    remaining /= 10;
+                } while (remaining > 0);
+                text += digits;
+                text += u8"줄 접힘)";
+            }
+            static_cast<void>(draw_text_within(context.canvas, text, text_left, baseline, text_limit - text_left, font, text_paint));
         }
         context.canvas.restore();
     }

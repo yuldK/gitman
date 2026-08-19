@@ -20,6 +20,10 @@
 | CTest Release (ASan 17개 실계측 포함) | **585/585 통과** |
 | `check_source_style.ps1` | 350 파일 통과 |
 | `verify_skia_root.ps1` | Debug·Release 전 항목 통과 |
+| VS2026 Release 빌드와 smoke 3종 | **통과** |
+| VS2026 CTest Debug | **585/585 통과** |
+| `/analyze` (`vs2022-analysis`) | **무경고** |
+| 렌더링 픽셀 비교 (변경 전 기준선 대비) | **409,440 px 전부 일치, 차이 0** |
 
 실행 파일 크기는 vcpkg 시절 7,185,920 byte에서 **6,510,080 byte**로 675,840 byte 줄었다. 사용하지 않는 Skia 기능을 끈 결과다.
 
@@ -75,14 +79,45 @@ Windows 시스템 라이브러리 `d3dcompiler`, `FontSub`, `Usp10`도 imported 
 
 `cmake/dependencies.cmake`가 함수 본문에서 `CMAKE_CURRENT_LIST_DIR`로 하위 파일을 include하려다 실패했다. 이 변수는 함수 정의 위치가 아니라 **호출 시점의 파일 기준**으로 평가된다. include 시점의 경로를 `GITMAN_DEPENDENCIES_DIRECTORY`에 붙잡아 두고 세 파일을 파일 범위에서 include하도록 바꾸었다. 파일을 include하는 것 자체에는 부작용이 없고, Catch2를 실제로 구성할지는 `BUILD_TESTS`가 정한다.
 
+### 5.4 하나의 Skia 빌드가 두 generator를 모두 지원한다
+
+vcpkg를 쓰던 시절에는 generator마다 전용 triplet(v143·v145)으로 의존성을 각각
+빌드했다. 지금은 `build_skia.ps1`을 실행한 셸의 MSVC로 한 번 빌드한 산출물을 두
+generator가 공유한다.
+
+VS2022(MSVC 14.44)로 빌드한 Skia를 VS2026(MSVC 14.51)이 링크하고, 실행과 CTest
+585개가 모두 통과함을 확인했다. MSVC의 v14x 계열 이진 호환이 전제이며, 정적 CRT를
+양쪽 모두 `/MT`·`/MTd`로 맞추는 것이 조건이다.
+
 ### 5.3 Debug 구성의 expat
 
 Debug 구성(`is_official_build=false`)에서 `skia_use_jpeg_gainmaps`의 기본값 `is_skia_dev_build`가 참이 되어 `optional("xml")`이 켜지고 expat external을 요구했다. `skia_use_jpeg_gainmaps = false`를 세 args 파일에 모두 추가했다. vcpkg port도 같은 값을 끄고 있었다.
 
-## 6. 남은 작업
+## 6. 렌더링 동등성 검증
 
-1. VS2026 toolset에서의 재현 (`vs2026`, `vs2026-tests` preset).
-2. `/analyze` 구성(`vs2022-analysis`) 무경고 확인.
-3. 창 기반 한국어·Codicon 렌더링 육안 검증. 자동 test는 통과했으나 실제 화면 확인이 남아 있다.
-4. 텍스트 처리 구성(harfbuzz + libgrapheme) 도입은 별도 작업(`N6`)이다.
-5. 실사용 환경의 `chromium.googlesource.com` 접근 가능 여부 확인. 텍스트 구성에만 영향이 있다.
+`harfbuzz`와 `icu`를 끈 Skia가 기존과 같은 화면을 그리는지가 이번 변경의 유일한
+기능적 위험이었다. 변경 전 커밋(`019afd4`)을 별도 worktree에 두고 vcpkg로 빌드한
+기준선 실행 파일을 만든 뒤, 같은 조건에서 창을 캡처해 픽셀 단위로 비교했다.
+
+| 항목 | 값 |
+| --- | --- |
+| 비교 대상 | `019afd4` (vcpkg 빌드) vs `4aacaf6` (직접 빌드 Skia) |
+| 캡처 조건 | `--renderer=cpu`, 853 x 480, `PrintWindow` |
+| 비교 픽셀 | 409,440 |
+| 다른 픽셀 | **0** |
+| 최대 채널 차이 | **0** |
+
+한국어 문자열("열린 문서가 없습니다. 오른쪽 위 버튼으로 .version-list 문서를
+여세요.")과 caption의 Codicon 글리프가 기준선과 완전히 같게 그려진다.
+`drawSimpleText`가 shaping engine 없이 한국어를 처리한다는 조사 결과가 실측으로
+확인되었다.
+
+Direct3D 렌더러의 캡처도 CPU 렌더러와 동일했다.
+
+## 7. 남은 작업
+
+1. 텍스트 처리 구성(harfbuzz + libgrapheme) 도입은 별도 작업(`N6`)이다.
+2. 실사용 환경의 `chromium.googlesource.com` 접근 가능 여부 확인. 텍스트 구성에만
+   영향이 있다.
+3. `unicodetools` submodule의 sparse-checkout 적용 여부 결정. 텍스트 구성에만
+   영향이 있다.

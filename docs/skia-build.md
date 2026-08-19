@@ -120,6 +120,18 @@ ninja -C third_party\skia\out\gitman-release skia
 | `extra_cflags = [ "/MT" ]` / `[ "/MTd" ]` | Gitman의 `CMAKE_MSVC_RUNTIME_LIBRARY`와 맞춰야 한다. 어긋나면 LNK2038로 드러난다 |
 | `skia_enable_fontmgr_win` | 명시하지 않는다. Windows 기본값 `true`이며 `SkFontMgr_New_DirectWrite`가 여기에 의존한다 |
 
+## 5.1 toolset과 Skia 빌드의 관계
+
+Skia는 `build_skia.ps1`을 실행한 셸의 MSVC로 빌드된다. vcpkg를 쓰던 시절에는
+generator마다 전용 triplet(v143·v145)으로 의존성을 각각 빌드했지만, 지금은 한 번
+빌드한 산출물을 두 generator가 공유한다.
+
+MSVC는 v14x 계열 안에서 이진 호환을 보장하므로 이것이 성립한다. VS2022(MSVC
+14.44)로 빌드한 Skia를 VS2026(MSVC 14.51)이 링크하고 실행하는 것까지 실측으로
+확인했다. 정적 CRT를 양쪽 모두 `/MT`·`/MTd`로 맞추는 것이 전제다.
+
+MSVC의 주 버전이 바뀌어 이진 호환이 끊기면 Skia를 다시 빌드한다.
+
 ## 6. 텍스트 처리 구성 (선택)
 
 현재 Gitman은 `drawSimpleText`와 `measureText`만 사용해 shaping engine이 필요하지 않다. `SkShaper`나 `SkParagraph`를 도입할 때 이 구성을 쓴다.

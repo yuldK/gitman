@@ -25,8 +25,15 @@
   `docs/skia-build.md`를 작성했다. 빌드 스크립트는 사용자가 손으로 실행하며
   CMake와 CTest는 호출하지 않는다.
 - 검증: configure·Release·Debug 빌드와 install 성공, smoke 3종 통과, CTest
-  Debug **585/585**, Release **585/585**(ASan 17 실계측 포함), source style 350
-  파일 통과. `bin/gitman.exe` 6,510,080 byte (이전 7,185,920 byte).
+  VS2022 Debug **585/585**, VS2022 Release **585/585**(ASan 17 실계측 포함),
+  VS2026 Debug **585/585**, `/analyze` 무경고, source style 351 파일 통과.
+  `bin/gitman.exe` 6,510,080 byte (이전 7,185,920 byte).
+- **렌더링 동등성을 픽셀 단위로 확인했다.** 변경 전 커밋을 별도 worktree에서
+  vcpkg로 빌드해 기준선을 만들고 같은 조건에서 창을 캡처해 비교한 결과
+  409,440 픽셀 전부 일치했다(최대 채널 차이 0). harfbuzz·icu 없이도 한국어와
+  Codicon이 기존과 동일하게 그려진다.
+- VS2022로 빌드한 Skia를 VS2026이 그대로 링크·실행함을 확인했다. generator마다
+  의존성을 따로 빌드하던 vcpkg triplet 구성이 필요 없어졌다.
 - 상세는 `docs/verification/2026-08-19-vcpkg-removal.md`.
 
 ### 영향 요구사항

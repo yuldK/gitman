@@ -14,6 +14,10 @@ namespace gitman {
         std::optional<std::u8string> workspace_document_path {};
         bool smoke_test { false };
         bool simulate_direct3d_failure { false };
+        // `.version-list` file association의 등록·제거만 수행하고 종료한다
+        // (REQ-016, 단계 8). 창을 만들지 않는다.
+        bool register_file_association { false };
+        bool unregister_file_association { false };
     };
 
     struct application_options_result

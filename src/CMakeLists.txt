@@ -106,6 +106,8 @@ add_library(gitman_lib STATIC
     # infrastructure: application 계약의 구현이다 (JSON, VCS, 프로세스).
     infrastructure/command_line_builder.cpp
     infrastructure/command_line_builder.h
+    infrastructure/file_association.cpp
+    infrastructure/file_association.h
     infrastructure/git_command_builder.cpp
     infrastructure/git_command_builder.h
     infrastructure/git_repository_provider.cpp
@@ -224,6 +226,8 @@ add_library(gitman_lib STATIC
     platform/win32/win32_clipboard.h
     platform/win32/win32_directory_enumerator.cpp
     platform/win32/win32_directory_enumerator.h
+    platform/win32/win32_file_association.cpp
+    platform/win32/win32_file_association.h
     platform/win32/win32_process_runner.cpp
     platform/win32/win32_process_runner.h
     platform/win32/win32_text_transcoder.cpp
@@ -241,6 +245,7 @@ target_link_libraries(gitman_lib
         gitman_project_options
         nlohmann_json::nlohmann_json
         unofficial::skia::skia
+        advapi32
         d3d12
         dwrite
         dwmapi

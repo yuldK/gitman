@@ -227,6 +227,25 @@ TEST_CASE("The settings dialog elements register the picker commands and intents
     REQUIRE(svn_clear->enabled() == false);
 }
 
+TEST_CASE("The settings dialog association buttons request the UI commands", "[ui][settings-ui][association]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+
+    const std::vector<gitman::ui::input_action> associate { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_associate }) };
+    REQUIRE(associate.size() == 1u);
+    const auto* const associate_command { std::get_if<gitman::ui::ui_command>(&associate.front()) };
+    REQUIRE(associate_command != nullptr);
+    REQUIRE(*associate_command == gitman::ui::ui_command::register_file_association);
+
+    const std::vector<gitman::ui::input_action> dissociate { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_dissociate }) };
+    REQUIRE(dissociate.size() == 1u);
+    const auto* const dissociate_command { std::get_if<gitman::ui::ui_command>(&dissociate.front()) };
+    REQUIRE(dissociate_command != nullptr);
+    REQUIRE(*dissociate_command == gitman::ui::ui_command::unregister_file_association);
+}
+
 TEST_CASE("The toolbar settings button opens the dialog only with a document", "[ui][settings-ui]")
 {
     settings_fixture fixture {};

@@ -8,6 +8,7 @@
 #include "platform/win32/version_list_generation_dialog.h"
 #include "platform/win32/win32_app_runtime.h"
 #include "platform/win32/win32_clipboard.h"
+#include "platform/win32/win32_file_association.h"
 
 #include "domain/path_syntax.h"
 #include "presentation/log_presentation.h"
@@ -675,6 +676,10 @@ namespace gitman::win32 {
                             runtime_->post_logic(logic_message { *intent });
                     }
                     return;
+                case ui::ui_command::register_file_association:
+                case ui::ui_command::unregister_file_association:
+                    execute_file_association_command(command == ui::ui_command::register_file_association);
+                    return;
                 case ui::ui_command::show_discovery_folder_picker:
                     if (runtime_ != nullptr)
                     {
@@ -719,6 +724,30 @@ namespace gitman::win32 {
                     PostMessageW(window_, WM_CLOSE, 0, 0);
                     return;
                 }
+            }
+
+            // 환경설정 dialog의 연결 등록·해제다 (REQ-016). registry 작업은 짧은
+            // 로컬 I/O라 UI thread에서 곧바로 수행하고, 파일 선택 dialog처럼 시스템
+            // dialog로 결과를 알린다.
+            void execute_file_association_command(const bool register_association)
+            {
+                const file_association_outcome outcome { register_association ? register_file_association(current_executable_path()) : unregister_file_association() };
+                if (outcome.succeeded)
+                {
+                    MessageBoxW(window_, register_association ? L".version-list 문서가 이 프로그램에 연결되었습니다." : L".version-list 연결이 제거되었습니다.", L"Gitman 환경설정",
+                        MB_OK | MB_ICONINFORMATION);
+                    return;
+                }
+                std::wstring message { register_association ? L"연결 등록에 실패했습니다." : L"연결 제거에 실패했습니다." };
+                for (const diagnostic& value : outcome.diagnostics)
+                {
+                    if (auto converted { utf8_to_utf16(value.message) }; converted.value.has_value())
+                    {
+                        message += L"\n";
+                        message += *converted.value;
+                    }
+                }
+                MessageBoxW(window_, message.c_str(), L"Gitman 환경설정", MB_OK | MB_ICONERROR);
             }
 
             // 비클라이언트 클릭을 caption 버튼 element에 등록된 액션으로 실행한다.

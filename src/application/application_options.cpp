@@ -62,6 +62,18 @@ namespace gitman {
                 continue;
             }
 
+            if (argument == u8"--register-file-association")
+            {
+                options.register_file_association = true;
+                continue;
+            }
+
+            if (argument == u8"--unregister-file-association")
+            {
+                options.unregister_file_association = true;
+                continue;
+            }
+
             if (argument.starts_with(u8"--"))
                 return { std::nullopt, u8"알 수 없는 명령줄 인자가 있습니다: " + arguments[index] };
             if (options.workspace_document_path.has_value())
@@ -81,6 +93,13 @@ namespace gitman {
             return {
                 std::nullopt,
                 u8"--simulate-direct3d-failure는 smoke test에서만 사용할 수 있습니다.",
+            };
+        }
+        if (options.register_file_association && options.unregister_file_association)
+        {
+            return {
+                std::nullopt,
+                u8"연결 등록과 제거는 함께 지정할 수 없습니다.",
             };
         }
         return { options, {} };

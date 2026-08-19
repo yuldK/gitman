@@ -139,6 +139,18 @@ namespace gitman::ui {
             [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_executable_intent { repository_kind::subversion } } } }; });
         add_child(std::move(svn_clear));
 
+        // file association 등록·제거다 (REQ-016). registry 작업은 UI thread의
+        // ui_command로 수행되고 결과는 시스템 dialog로 알린다.
+        auto associate { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_associate }, std::u8string { u8"연결 등록" }, false) };
+        associate->set_tooltip(u8".version-list 문서를 이 프로그램에 연결합니다 (현재 사용자)");
+        associate->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::register_file_association } }; });
+        add_child(std::move(associate));
+
+        auto dissociate { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_dissociate }, std::u8string { u8"연결 해제" }, false) };
+        dissociate->set_tooltip(u8"이 프로그램이 등록한 .version-list 연결을 제거합니다");
+        dissociate->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::unregister_file_association } }; });
+        add_child(std::move(dissociate));
+
         auto confirm { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_dialog_confirm }, std::u8string { u8"저장" }, true) };
         confirm->set_enabled(dialog_.can_confirm);
         confirm->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { confirm_settings_intent {} } } }; });
@@ -166,7 +178,7 @@ namespace gitman::ui {
 
         const float padding { panel_padding * scale };
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
-        if (children.size() >= 7)
+        if (children.size() >= 9)
         {
             // 행 버튼은 행 label 줄의 오른쪽에 나란히 둔다 (panel의 draw_row 배치와
             // 같은 좌표 기준이다).
@@ -182,8 +194,11 @@ namespace gitman::ui {
             const float button_width { action_button_width * scale };
             const float button_height { action_button_height * scale };
             const float button_top { top + height - padding - button_height };
-            children[5]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[6]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
+            // 아래 왼쪽은 연결 등록·해제, 오른쪽은 저장·취소다.
+            children[5]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
+            children[6]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[7]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[8]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
         }
     }
 

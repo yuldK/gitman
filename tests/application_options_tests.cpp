@@ -51,6 +51,24 @@ TEST_CASE("Duplicate or unknown renderer options are rejected", "[options]")
     REQUIRE_FALSE(gitman::parse_application_options(unknown).options.has_value());
 }
 
+TEST_CASE("File association flags are parsed and mutually exclusive", "[options][association]")
+{
+    const std::vector<std::u8string> register_arguments { u8"gitman.exe", u8"--register-file-association" };
+    const auto registered { gitman::parse_application_options(register_arguments) };
+    REQUIRE(registered.options.has_value());
+    REQUIRE(registered.options->register_file_association);
+    REQUIRE_FALSE(registered.options->unregister_file_association);
+
+    const std::vector<std::u8string> unregister_arguments { u8"gitman.exe", u8"--unregister-file-association" };
+    const auto unregistered { gitman::parse_application_options(unregister_arguments) };
+    REQUIRE(unregistered.options.has_value());
+    REQUIRE(unregistered.options->unregister_file_association);
+
+    // 등록과 제거를 함께 지정하면 의도가 모호하므로 거부한다.
+    const std::vector<std::u8string> both { u8"gitman.exe", u8"--register-file-association", u8"--unregister-file-association" };
+    REQUIRE_FALSE(gitman::parse_application_options(both).options.has_value());
+}
+
 TEST_CASE("Workspace launch path is optional", "[options][workspace]")
 {
     const std::vector<std::u8string> arguments {

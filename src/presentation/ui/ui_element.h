@@ -88,6 +88,9 @@ namespace gitman::ui {
         settings_svn_clear,
         settings_dialog_confirm,
         settings_dialog_cancel,
+        // 환경설정 dialog의 file association 등록·제거 버튼이다 (REQ-016, 단계 8).
+        settings_associate,
+        settings_dissociate,
         // 탐색 후보 선택 등록 dialog다 (REQ-004, 단계 8). 후보 행의 정체성은
         // switch dialog처럼 owner의 값에 index를 담아 구분한다.
         discovery_dialog,

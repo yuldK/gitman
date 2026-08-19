@@ -86,6 +86,10 @@ namespace gitman::ui {
         // 탐색 등록의 스캔 폴더 선택이다 (REQ-004). 폴더를 고르면
         // `begin_discovery_intent`를 logic에 보낸다.
         show_discovery_folder_picker,
+        // `.version-list` file association 등록·제거다 (REQ-016). registry는 Win32
+        // 자원이고 앱 상태와 무관해 UI thread가 곧바로 수행하고 결과를 알린다.
+        register_file_association,
+        unregister_file_association,
         window_minimize,
         window_toggle_maximize,
         window_close,

@@ -20,6 +20,7 @@ add_executable(gitman_tests
     discovery_service_tests.cpp
     domain_model_tests.cpp
     embedded_assets_tests.cpp
+    file_association_tests.cpp
     git_command_builder_tests.cpp
     git_integration_tests.cpp
     git_remote_query_tests.cpp

@@ -168,6 +168,8 @@ add_library(gitman_lib STATIC
     presentation/ui/log_view_element.h
     presentation/ui/scrollbar_element.cpp
     presentation/ui/scrollbar_element.h
+    presentation/ui/settings_dialog_element.cpp
+    presentation/ui/settings_dialog_element.h
     presentation/ui/switch_dialog_element.cpp
     presentation/ui/switch_dialog_element.h
     presentation/ui/toolbar_element.cpp

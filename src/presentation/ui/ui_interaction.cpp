@@ -281,6 +281,8 @@ namespace gitman::ui {
                 return {};
             }
             // 열린 dialog·overlay가 있으면 닫기가 먼저다.
+            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr)
+                return { input_action { logic_message { cancel_settings_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_switch_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::update_overlay }) != nullptr)

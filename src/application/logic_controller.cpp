@@ -112,6 +112,16 @@ namespace gitman {
             return false;
         }
 
+        // 환경설정 경로 초안의 형식 검증이다 (stage-8-plan 5.1). 파일 선택 dialog가
+        // 존재하는 파일만 돌려주므로 logic은 blocking I/O 없이 형식만 본다. 빈 값은
+        // 자동 탐색이라 항상 유효하다.
+        std::u8string_view settings_executable_error(const std::u8string_view path) noexcept
+        {
+            if (path.empty() || is_absolute_windows_path(path))
+                return u8"";
+            return u8"실행 파일 경로는 절대 경로여야 합니다.";
+        }
+
         card_view_state derive_card_state(const card_view_inputs& inputs) noexcept
         {
             if (inputs.enabled == false)
@@ -236,6 +246,16 @@ namespace gitman {
                     switch_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, switch_dialog_scroll_intent>)
                     handle_switch_dialog_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, open_settings_intent>)
+                    handle_open_settings();
+                else if constexpr (std::is_same_v<value_type, set_settings_executable_intent>)
+                    handle_set_settings_executable(std::move(value));
+                else if constexpr (std::is_same_v<value_type, clear_settings_executable_intent>)
+                    handle_clear_settings_executable(value);
+                else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
+                    handle_confirm_settings();
+                else if constexpr (std::is_same_v<value_type, cancel_settings_dialog_intent>)
+                    settings_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -382,9 +402,11 @@ namespace gitman {
         scroll_offset_ = 0.0f;
         document_ = std::move(document);
         revision_ = std::move(revision);
-        // 이전 문서의 카드를 가리키던 overlay와 dialog는 의미가 없다.
+        // 이전 문서의 카드를 가리키던 overlay와 dialog는 의미가 없다. 환경설정
+        // 초안도 이전 문서의 settings 기준이라 함께 버린다.
         update_overlay_card_.reset();
         switch_dialog_.reset();
+        settings_dialog_.reset();
 
         // 문서가 배치를 담고 있으면 UI thread가 한 번 적용하도록 게시 번호를 올린다.
         window_placement_ = document_->window;
@@ -766,6 +788,65 @@ namespace gitman {
             card->refresh_queued = false;
             request_refresh(*card);
         }
+    }
+
+    void logic_controller::handle_open_settings()
+    {
+        // 환경설정은 문서 수준 값이라 열린 문서가 있어야 편집할 수 있다 (REQ-017).
+        if (shutting_down_ || document_.has_value() == false)
+            return;
+
+        settings_dialog_state dialog {};
+        dialog.git_path = document_->settings.git_executable;
+        dialog.svn_path = document_->settings.svn_executable;
+        settings_dialog_ = { std::move(dialog) };
+    }
+
+    void logic_controller::handle_set_settings_executable(set_settings_executable_intent intent)
+    {
+        // 닫힌 뒤 도착한 파일 선택 결과는 버린다.
+        if (settings_dialog_.has_value() == false)
+            return;
+
+        if (intent.tool == repository_kind::git)
+            settings_dialog_->git_path = std::move(intent.path);
+        else if (intent.tool == repository_kind::subversion)
+            settings_dialog_->svn_path = std::move(intent.path);
+    }
+
+    void logic_controller::handle_clear_settings_executable(const clear_settings_executable_intent& intent)
+    {
+        if (settings_dialog_.has_value() == false)
+            return;
+
+        if (intent.tool == repository_kind::git)
+            settings_dialog_->git_path.clear();
+        else if (intent.tool == repository_kind::subversion)
+            settings_dialog_->svn_path.clear();
+    }
+
+    void logic_controller::handle_confirm_settings()
+    {
+        if (settings_dialog_.has_value() == false || shutting_down_ || document_.has_value() == false)
+            return;
+        // 버튼 비활성과 별개로 늦게 도착한 확인도 막는다 (view의 can_confirm과 같은
+        // 판정이다).
+        if (settings_executable_error(settings_dialog_->git_path).empty() == false || settings_executable_error(settings_dialog_->svn_path).empty() == false)
+            return;
+
+        const bool changed { document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path };
+        if (changed)
+        {
+            document_->settings.git_executable = settings_dialog_->git_path;
+            document_->settings.svn_executable = settings_dialog_->svn_path;
+            request_save();
+            // 도구 경로가 바뀌었으니 모든 활성 카드를 새 settings로 재조회한다.
+            // 요청마다 settings 사본이 실리므로 저장 완료를 기다릴 필요가 없다.
+            for (card_state& card : cards_)
+                if (card.project.enabled)
+                    request_refresh(card);
+        }
+        settings_dialog_.reset();
     }
 
     void logic_controller::handle_begin_switch(const begin_switch_intent& intent)
@@ -1190,6 +1271,23 @@ namespace gitman {
                 snapshot->switch_dialog = { std::move(dialog) };
                 break;
             }
+        }
+
+        if (settings_dialog_.has_value())
+        {
+            settings_dialog_view dialog {};
+            dialog.git_path = settings_dialog_->git_path;
+            dialog.svn_path = settings_dialog_->svn_path;
+            // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
+            // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
+            const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
+            const std::u8string_view svn_error { settings_executable_error(settings_dialog_->svn_path) };
+            if (git_error.empty() == false)
+                dialog.message = std::u8string { u8"Git: " } + std::u8string { git_error };
+            else if (svn_error.empty() == false)
+                dialog.message = std::u8string { u8"SVN: " } + std::u8string { svn_error };
+            dialog.can_confirm = git_error.empty() && svn_error.empty();
+            snapshot->settings_dialog = { std::move(dialog) };
         }
 
         if (document_loading_)

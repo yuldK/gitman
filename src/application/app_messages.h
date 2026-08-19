@@ -156,6 +156,32 @@ namespace gitman {
         float delta { 0.0f };
     };
 
+    // toolbar의 환경설정 버튼이 여는 환경설정 dialog다 (REQ-017, stage-8-plan
+    // 5.1). 문서 `settings`의 Git/SVN 실행 파일 경로를 편집한다.
+    struct open_settings_intent
+    {};
+
+    // 환경설정 dialog의 경로 초안 변경이다. UI thread의 파일 선택 dialog가 고른
+    // 경로를 담아 보낸다. 파일 선택 dialog가 존재하는 파일만 돌려주므로 logic은
+    // 형식(절대 경로)만 다시 검증한다.
+    struct set_settings_executable_intent
+    {
+        repository_kind tool { repository_kind::git };
+        std::u8string path {};
+    };
+
+    // 경로 초안을 비운다. 빈 값은 자동 탐색을 뜻한다 (REQ-017).
+    struct clear_settings_executable_intent
+    {
+        repository_kind tool { repository_kind::git };
+    };
+
+    struct confirm_settings_intent
+    {};
+
+    struct cancel_settings_dialog_intent
+    {};
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -299,8 +325,9 @@ namespace gitman {
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
         toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
         log_scroll_intent, show_update_options_intent, set_update_submodules_intent, confirm_update_intent, cancel_update_options_intent, begin_switch_intent, select_switch_candidate_intent,
-        confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event,
-        document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
+        confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent,
+        confirm_settings_intent, cancel_settings_dialog_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event,
+        query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

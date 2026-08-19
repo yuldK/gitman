@@ -69,6 +69,39 @@ namespace gitman::win32 {
             dialog->Release();
             return chosen;
         }
+
+        // 환경설정의 실행 파일을 고르는 Win32 파일 dialog다. UI thread 전용이다.
+        // FOS_FILEMUSTEXIST 기본 동작으로 존재하는 파일만 돌아오므로 logic은 형식
+        // 검증만 다시 한다 (stage-8-plan 5.1).
+        [[nodiscard]] std::optional<std::u8string> choose_executable_file(const HWND owner, const wchar_t* const title)
+        {
+            IFileOpenDialog* dialog { nullptr };
+            if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))) || dialog == nullptr)
+                return std::nullopt;
+
+            std::optional<std::u8string> chosen {};
+            const COMDLG_FILTERSPEC filter { L"실행 파일 (*.exe)", L"*.exe" };
+            static_cast<void>(dialog->SetFileTypes(1, &filter));
+            static_cast<void>(dialog->SetTitle(title));
+            if (SUCCEEDED(dialog->Show(owner)))
+            {
+                IShellItem* item { nullptr };
+                if (SUCCEEDED(dialog->GetResult(&item)) && item != nullptr)
+                {
+                    PWSTR path { nullptr };
+                    if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path != nullptr)
+                    {
+                        auto converted { utf16_to_utf8(path) };
+                        if (converted.value.has_value())
+                            chosen = { std::move(*converted.value) };
+                        CoTaskMemFree(path);
+                    }
+                    item->Release();
+                }
+            }
+            dialog->Release();
+            return chosen;
+        }
         // ─────────────────────────────────────────────────────────────────────
         // 창 크기 정책. 값만 바꾸면 되도록 한곳에 모아 둔다 (논리 96 DPI 기준 px).
         //
@@ -594,6 +627,20 @@ namespace gitman::win32 {
                     {
                         if (const std::optional<generate_document_intent> intent { show_version_list_generation_dialog(window_) }; intent.has_value())
                             runtime_->post_logic(logic_message { *intent });
+                    }
+                    return;
+                case ui::ui_command::show_git_executable_picker:
+                    if (runtime_ != nullptr)
+                    {
+                        if (std::optional<std::u8string> path { choose_executable_file(window_, L"Git 실행 파일 선택") }; path.has_value())
+                            runtime_->post_logic(logic_message { set_settings_executable_intent { repository_kind::git, std::move(*path) } });
+                    }
+                    return;
+                case ui::ui_command::show_svn_executable_picker:
+                    if (runtime_ != nullptr)
+                    {
+                        if (std::optional<std::u8string> path { choose_executable_file(window_, L"SVN 실행 파일 선택") }; path.has_value())
+                            runtime_->post_logic(logic_message { set_settings_executable_intent { repository_kind::subversion, std::move(*path) } });
                     }
                     return;
                 case ui::ui_command::copy_selected_log:

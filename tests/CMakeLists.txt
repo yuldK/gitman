@@ -49,6 +49,7 @@ add_executable(gitman_tests
     project_schema_tests.cpp
     renderer_policy_tests.cpp
     secret_masking_tests.cpp
+    settings_dialog_tests.cpp
     status_presentation_tests.cpp
     svn_command_builder_tests.cpp
     svn_integration_tests.cpp

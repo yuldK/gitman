@@ -79,6 +79,10 @@ namespace gitman::ui {
         // 하단 로그 뷰의 표시 중 내용을 클립보드에 넣는다. 클립보드는 Win32 자원이라
         // UI thread 전용이다.
         copy_selected_log,
+        // 환경설정 dialog의 찾아보기다 (REQ-017). Win32 파일 선택 dialog로 실행
+        // 파일을 고른 뒤 `set_settings_executable_intent`를 logic에 보낸다.
+        show_git_executable_picker,
+        show_svn_executable_picker,
         window_minimize,
         window_toggle_maximize,
         window_close,

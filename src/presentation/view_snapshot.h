@@ -113,6 +113,18 @@ namespace gitman {
         float scroll_offset { 0.0f };
     };
 
+    // 환경설정 dialog의 불변 표시 모델이다 (REQ-017, stage-8-plan 5.1). 경로가
+    // 비어 있으면 자동 탐색을 뜻하고 element가 안내 문구를 대신 그린다. message와
+    // can_confirm은 logic이 초안 검증에서 계산해 UI는 그대로 그린다.
+    struct settings_dialog_view
+    {
+        std::u8string git_path {};
+        std::u8string svn_path {};
+        // 검증 오류다. 비어 있으면 표시하지 않는다.
+        std::u8string message {};
+        bool can_confirm { true };
+    };
+
     // logic thread가 게시하고 UI thread가 그대로 그리는 불변 snapshot이다 (ADR-004).
     // 렌더러와 input thread가 같은 layout을 계산할 수 있도록 창 크기와 스크롤 값을
     // 함께 담는다.
@@ -145,6 +157,8 @@ namespace gitman {
         std::optional<update_overlay_view> update_overlay {};
         // 값이 있으면 switch dialog가 화면을 덮는다.
         std::optional<switch_dialog_view> switch_dialog {};
+        // 값이 있으면 환경설정 dialog가 화면을 덮는다.
+        std::optional<settings_dialog_view> settings_dialog {};
         bool shutting_down { false };
     };
 } // namespace gitman

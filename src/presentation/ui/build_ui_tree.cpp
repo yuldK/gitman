@@ -6,6 +6,7 @@
 #include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/label_element.h"
 #include "presentation/ui/log_view_element.h"
+#include "presentation/ui/settings_dialog_element.h"
 #include "presentation/ui/switch_dialog_element.h"
 #include "presentation/ui/toolbar_element.h"
 #include "presentation/ui/update_overlay_element.h"
@@ -47,7 +48,10 @@ namespace gitman::ui {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
 
                 std::u8string document_text { view.document_path.empty() ? std::u8string { u8"문서 없음" } : view.document_path };
-                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), view.empty_state == view_empty_state::no_document, view.document_generating, view.relative_paths) };
+                // 환경설정은 문서 settings 편집이라 문서가 실제로 열려 있어야 한다.
+                const bool settings_enabled { view.empty_state != view_empty_state::no_document && view.empty_state != view_empty_state::document_loading };
+                const bool show_open_button { view.empty_state == view_empty_state::no_document };
+                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), show_open_button, view.document_generating, view.relative_paths, settings_enabled) };
                 toolbar_ = toolbar.get();
                 add_child(std::move(toolbar));
 
@@ -99,6 +103,12 @@ namespace gitman::ui {
                     switch_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
+                if (view.settings_dialog.has_value())
+                {
+                    auto dialog { std::make_unique<settings_dialog_element>(*view.settings_dialog) };
+                    settings_dialog_ = dialog.get();
+                    add_child(std::move(dialog));
+                }
             }
 
             void arrange(const arrange_context& context) override
@@ -123,6 +133,8 @@ namespace gitman::ui {
                     update_overlay_->arrange({ context.slot, scale });
                 if (switch_dialog_ != nullptr)
                     switch_dialog_->arrange({ context.slot, scale });
+                if (settings_dialog_ != nullptr)
+                    settings_dialog_->arrange({ context.slot, scale });
                 const float empty_height { 22.0f * scale };
                 const float empty_top { layout.content_top + (layout.viewport_height - empty_height) / 2.0f };
                 const rect_f empty_slot { layout_margin * scale * 2.0f, empty_top, context.slot.width - layout_margin * 4.0f * scale, empty_height };
@@ -144,6 +156,7 @@ namespace gitman::ui {
             ui_element* log_pane_ { nullptr };
             ui_element* update_overlay_ { nullptr };
             ui_element* switch_dialog_ { nullptr };
+            ui_element* settings_dialog_ { nullptr };
         };
     } // namespace
 

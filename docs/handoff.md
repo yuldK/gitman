@@ -4,10 +4,10 @@
 
 - 기준일: 2026-08-19
 - 완료 단계: 단계 0~6 전체 (2026-08-18 사용자가 단계 7 개시를 지시하며 단계 6을 최종 승인), **단계 7 구현·검증 완료** (사용자 위임 자동 진행, 완료 보고 제출)
-- 현재 단계: 단계 8(안정화와 배포) `S8-P0` 계획 수립, 사용자 승인 대기
+- 현재 단계: 단계 8(안정화와 배포) `S8-D1` 완료, 검수 대기
 - 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다. 단계 7은 사용자가 커밋까지의 자동 진행을 위임했으나, **단계 8부터는 자동 진행 위임을 종료한다 (2026-08-19 지시). 매 체크포인트 종료 시 검증 문서와 제안 커밋 메시지를 첨부해 검수를 요청하고, 사용자 승인·커밋 후에만 다음 구간을 진행한다**
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S8-P0` 계획 승인·커밋 후 `S8-D1` 환경설정 화면
+- 다음 허용 작업: `S8-D1` 검수·커밋 후 `S8-D2` 탐색 후보 선택 등록 dialog
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia 앱 (custom caption, 카드 목록, refresh, 문서 열기·생성, drag & drop 순서 변경, 창 배치 저장), embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 등록, messaging component와 3-thread 조립, **카드별 로그와 하단 로그 뷰, update 실행 UI(submodule option·취소), switch dialog(remote-first·이중 검증·tracking 확인)**, test와 install 구성
 - 기준 문서: `docs/stage-7-plan.md`, `docs/ui-element-design.md`, `docs/decisions/ADR-005-thread-messaging.md`
 - 직전 단계 기준 문서: `docs/stage-6-plan.md`
@@ -116,7 +116,8 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 
 | 체크포인트 | 상태 | 비고 |
 | --- | --- | --- |
-| `S8-P0` 계획 | 수립, 사용자 승인 대기 | 사용자 결정 3건(SVN 미설치 유지, GitHub 공개 저장소 실측, UI 이월 3건 포함)과 검수 방식 지시(매 체크포인트 검수, 제안 커밋 메시지 첨부) 반영. `docs/stage-8-plan.md` |
+| `S8-P0` 계획 | 승인 완료, 커밋됨 | 사용자 결정 3건(SVN 미설치 유지, GitHub 공개 저장소 실측, UI 이월 3건 포함)과 검수 방식 지시(매 체크포인트 검수, 제안 커밋 메시지 첨부) 반영. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/stage-8-plan.md` |
+| `S8-D1` 환경설정 화면 | 완료, 검수 대기 | test 11개, 전체 596/596. `docs/verification/2026-08-19-stage-8-d1.md` |
 
 ### 8.0.1 단계 7 진행 원장 (완료)
 

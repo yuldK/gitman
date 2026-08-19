@@ -70,6 +70,10 @@ namespace gitman {
         void handle_cancel_operation(const cancel_operation_intent& intent);
         void handle_operation_log(operation_log_event event);
         void handle_change_completed(change_completed_event event);
+        void handle_open_settings();
+        void handle_set_settings_executable(set_settings_executable_intent intent);
+        void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
+        void handle_confirm_settings();
         void handle_begin_switch(const begin_switch_intent& intent);
         void handle_select_switch_candidate(std::size_t index);
         void handle_confirm_switch();
@@ -154,6 +158,16 @@ namespace gitman {
         };
 
         std::optional<switch_dialog_state> switch_dialog_ {};
+
+        // 환경설정 dialog의 경로 초안이다 (REQ-017). 값이 있으면 dialog가 열려
+        // 있다. 저장 전까지 문서 settings를 건드리지 않는다.
+        struct settings_dialog_state
+        {
+            std::u8string git_path {};
+            std::u8string svn_path {};
+        };
+
+        std::optional<settings_dialog_state> settings_dialog_ {};
         float window_width_ { 0.0f };
         float window_height_ { 0.0f };
         float scale_ { 1.0f };

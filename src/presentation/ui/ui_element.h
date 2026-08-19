@@ -45,6 +45,7 @@ namespace gitman::ui {
         toolbar_open_document,
         toolbar_generate_document,
         toolbar_toggle_path_display,
+        toolbar_settings,
         notice,
         card_list,
         card_scrollbar,
@@ -74,6 +75,16 @@ namespace gitman::ui {
         switch_dialog_item,
         switch_dialog_confirm,
         switch_dialog_cancel,
+        // 환경설정 dialog다 (REQ-017, 단계 8). 배경 클릭은 닫기이고 panel이 클릭을
+        // 흡수한다.
+        settings_dialog,
+        settings_dialog_panel,
+        settings_git_browse,
+        settings_git_clear,
+        settings_svn_browse,
+        settings_svn_clear,
+        settings_dialog_confirm,
+        settings_dialog_cancel,
     };
 
     struct ui_element_id

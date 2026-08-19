@@ -14,7 +14,7 @@
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths)
+    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths, const bool settings_enabled)
         : ui_element { ui_element_id { ui_element_kind::toolbar } }
         , show_open_button_ { show_open_button }
     {
@@ -51,6 +51,15 @@ namespace gitman::ui {
             ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_path_display_intent {} } } }; });
         toggle_path_display_ = toggle_path_display.get();
         add_child(std::move(toggle_path_display));
+
+        // 환경설정은 문서 `settings`를 편집하므로 열린 문서가 있을 때만 활성이다
+        // (REQ-017).
+        auto settings { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_settings }, button_config { .glyph = codicons::icon_settings_gear }) };
+        settings->set_tooltip(settings_enabled ? std::u8string { u8"환경설정" } : std::u8string { u8"환경설정 (문서를 먼저 여세요)" });
+        settings->set_enabled(settings_enabled);
+        settings->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_settings_intent {} } } }; });
+        settings_ = settings.get();
+        add_child(std::move(settings));
     }
 
     void toolbar_element::arrange(const arrange_context& context)
@@ -80,6 +89,7 @@ namespace gitman::ui {
         place(open_document_, show_open_button_);
         place(generate_document_, true);
         place(toggle_path_display_, true);
+        place(settings_, true);
 
         const float label_width { next_x + button - label_left };
         document_label_->arrange({ { label_left, context.slot.y, label_width < 0.0f ? 0.0f : label_width, context.slot.height }, scale });

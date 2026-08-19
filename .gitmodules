@@ -1,0 +1,24 @@
+[submodule "third_party/skia"]
+	path = third_party/skia
+	url = https://github.com/google/skia.git
+[submodule "third_party/skia-externals/d3d12allocator"]
+	path = third_party/skia-externals/d3d12allocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator.git
+[submodule "third_party/skia-externals/spirv-cross"]
+	path = third_party/skia-externals/spirv-cross
+	url = https://github.com/KhronosGroup/SPIRV-Cross.git
+[submodule "third_party/skia-externals/spirv-headers"]
+	path = third_party/skia-externals/spirv-headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers.git
+[submodule "third_party/skia-externals/harfbuzz"]
+	path = third_party/skia-externals/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
+[submodule "third_party/skia-externals/libgrapheme"]
+	path = third_party/skia-externals/libgrapheme
+	url = https://github.com/FRIGN/libgrapheme.git
+[submodule "third_party/skia-externals/unicodetools"]
+	path = third_party/skia-externals/unicodetools
+	url = https://github.com/unicode-org/unicodetools.git
+[submodule "third_party/skia-externals/icu"]
+	path = third_party/skia-externals/icu
+	url = https://chromium.googlesource.com/chromium/deps/icu.git

@@ -1,5 +1,45 @@
 # 변경 이력
 
+## 2026-08-19 - 의존성 구성 재편 설계와 Skia 수동 빌드 실측
+
+### 사용자 지시
+
+- 실사용 환경이 조직 프록시로 통제되어 curl 방식의 자동 취득이 불가능하다. 사람이
+  브라우저로 접근하는 것은 모두 가능하다. GitHub에 소스만 제공하고 그 환경에서
+  빌드해 쓴다.
+- vcpkg를 완전히 제거한다.
+- 의존성은 벤더링하지 않고 submodule로 둔다.
+- Catch2는 test 프로젝트를 만들 때만 유효성을 확인하고, 일반 빌드에서는 없어도
+  상관없게 한다.
+- harfbuzz·ICU를 포함한 Skia가 필요할 것이므로 처리 방안을 제시한다.
+- Skia를 submodule로 함께 두고 실측한다.
+
+### 반영 내용
+
+- ADR-006을 초안으로 작성했다. vcpkg를 제거하고 의존성을 submodule로 두며, Skia는
+  사용자가 1회 직접 빌드한 산출물을 CMake가 연결만 하는 구성이다.
+- `docs/dependency-provisioning-design.md`에 파일 단위 구현 설계를 작성했다.
+- **Skia 수동 빌드를 실측했다 (S-1~S-3 전부 성공)**. Gitman은 `drawSimpleText`와
+  `measureText`만 쓰고 shaping·codec·PDF·SVG를 쓰지 않아, 최소 구성이 external
+  3개로 성립했다. `skia.lib` 52.4 MB (vcpkg 산출물은 538.0 MB).
+- full ICU가 Windows에서만 `icudtl.dat`를 런타임 파일로 읽어 단일 exe 원칙과
+  충돌함을 확인하고, `skia_use_libgrapheme`로 대체 가능함을 실측했다. 상세는
+  `docs/verification/2026-08-19-skia-manual-build.md`.
+- submodule 8개를 고정 commit으로 등록하고, D3D 패치와 GN args 파일을 저장소에
+  넣었다.
+- `scripts/check_source_style.ps1`의 제외 디렉터리에 `third_party`를 추가했다.
+
+### 영향 요구사항
+
+- NFR-001 (빌드 재현성), ADR-002의 취득 수단
+
+### 다음 작업 제한
+
+- ADR-006과 설계 문서는 초안이며 검수 대기 상태다.
+- 다음 작업은 설계의 `N2`(CMake에서 vcpkg 제거와 Skia imported target 연결)다.
+- 텍스트 구성(harfbuzz + libgrapheme) 도입은 `N6`이며 최소 구성 완료 후에 한다.
+
+
 ## 2026-08-19 - 단계 7 `S7-V1` 최종 검증
 
 ### 사용자 지시

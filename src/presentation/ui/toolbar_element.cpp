@@ -11,10 +11,45 @@
 #include "include/core/SkRect.h"
 
 #include <memory>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths, const bool document_open)
+    namespace {
+        // 정렬 버튼은 이름 → 상태 → 문서 순서를 순환한다. custom(문서 순서)은 카드
+        // drag & drop이 자동 전환하는 값이기도 하다 (view_snapshot 참고).
+        constexpr card_sort_key next_sort_key(const card_sort_key key) noexcept
+        {
+            switch (key)
+            {
+            case card_sort_key::name:
+                return card_sort_key::status;
+            case card_sort_key::status:
+                return card_sort_key::custom;
+            case card_sort_key::custom:
+                break;
+            }
+            return card_sort_key::name;
+        }
+
+        std::u8string_view sort_tooltip(const card_sort_key key) noexcept
+        {
+            switch (key)
+            {
+            case card_sort_key::name:
+                return u8"이름순 정렬 (누르면 상태순)";
+            case card_sort_key::status:
+                return u8"상태순 정렬 (누르면 문서 순서)";
+            case card_sort_key::custom:
+                break;
+            }
+            return u8"문서 순서 정렬 (누르면 이름순)";
+        }
+    } // namespace
+
+    toolbar_element::toolbar_element(
+        std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths, const bool document_open, const card_sort_key sort)
         : ui_element { ui_element_id { ui_element_kind::toolbar } }
         , show_open_button_ { show_open_button }
     {
@@ -51,6 +86,16 @@ namespace gitman::ui {
             ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_path_display_intent {} } } }; });
         toggle_path_display_ = toggle_path_display.get();
         add_child(std::move(toggle_path_display));
+
+        // 정렬 전환이다. 기본값(이름순)이 아니면 강조 배경으로 상태를 보여 준다.
+        auto sort_button {
+            std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_sort }, button_config { .glyph = codicons::icon_sort_precedence, .active = sort != card_sort_key::name }),
+        };
+        sort_button->set_tooltip(std::u8string { sort_tooltip(sort) });
+        sort_button->set_action(
+            ui_trigger::left_click, [sort](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_sort_intent { next_sort_key(sort) } } } }; });
+        sort_ = sort_button.get();
+        add_child(std::move(sort_button));
 
         // 환경설정은 문서 `settings`를 편집하므로 열린 문서가 있을 때만 활성이다
         // (REQ-017).
@@ -98,6 +143,7 @@ namespace gitman::ui {
         place(open_document_, show_open_button_);
         place(generate_document_, true);
         place(toggle_path_display_, true);
+        place(sort_, true);
         place(discover_, true);
         place(settings_, true);
 

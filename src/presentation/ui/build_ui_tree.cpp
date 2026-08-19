@@ -52,7 +52,7 @@ namespace gitman::ui {
                 // 환경설정·탐색 등록은 열린 문서가 필요한 기능이다.
                 const bool document_open { view.empty_state != view_empty_state::no_document && view.empty_state != view_empty_state::document_loading };
                 const bool show_open_button { view.empty_state == view_empty_state::no_document };
-                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), show_open_button, view.document_generating, view.relative_paths, document_open) };
+                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), show_open_button, view.document_generating, view.relative_paths, document_open, view.sort) };
                 toolbar_ = toolbar.get();
                 add_child(std::move(toolbar));
 

@@ -95,6 +95,27 @@ TEST_CASE("The generate document button stays visible and follows the busy state
     REQUIRE(busy_button->tooltip().empty() == false);
 }
 
+TEST_CASE("The sort button shows the current key in its tooltip", "[ui][tree]")
+{
+    // 기본은 이름순이고 tooltip이 현재 기준과 다음 기준을 함께 안내한다.
+    const auto name_tree { gitman::ui::build_ui_tree(make_view(2)) };
+    const auto* const button { name_tree->find({ gitman::ui::ui_element_kind::toolbar_sort }) };
+    REQUIRE(button != nullptr);
+    REQUIRE(button->visible());
+    REQUIRE(button->enabled());
+    REQUIRE(button->tooltip() == u8"이름순 정렬 (누르면 상태순)");
+
+    gitman::view_snapshot status_view { make_view(2) };
+    status_view.sort = gitman::card_sort_key::status;
+    const auto status_tree { gitman::ui::build_ui_tree(status_view) };
+    REQUIRE(status_tree->find({ gitman::ui::ui_element_kind::toolbar_sort })->tooltip() == u8"상태순 정렬 (누르면 문서 순서)");
+
+    gitman::view_snapshot custom_view { make_view(2) };
+    custom_view.sort = gitman::card_sort_key::custom;
+    const auto custom_tree { gitman::ui::build_ui_tree(custom_view) };
+    REQUIRE(custom_tree->find({ gitman::ui::ui_element_kind::toolbar_sort })->tooltip() == u8"문서 순서 정렬 (누르면 이름순)");
+}
+
 TEST_CASE("Only cards near the viewport become elements", "[ui][tree]")
 {
     const auto tree { gitman::ui::build_ui_tree(make_view(300)) };

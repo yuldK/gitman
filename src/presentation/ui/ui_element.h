@@ -45,6 +45,7 @@ namespace gitman::ui {
         toolbar_open_document,
         toolbar_generate_document,
         toolbar_toggle_path_display,
+        toolbar_sort,
         toolbar_settings,
         toolbar_discover,
         notice,

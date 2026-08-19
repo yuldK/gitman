@@ -134,6 +134,28 @@ TEST_CASE("Clicks resolve to intents through the tree", "[ui][interaction]")
     }
 }
 
+TEST_CASE("The sort button cycles name, status, and document order", "[ui][interaction]")
+{
+    const auto expect_next = [](const gitman::card_sort_key current, const gitman::card_sort_key expected) {
+        gitman::view_snapshot view { make_view(1) };
+        view.sort = current;
+        const auto tree { gitman::ui::build_ui_tree(view) };
+        gitman::ui::interaction_controller controller {};
+        controller.set_tree(tree);
+
+        const auto actions { click(controller, bounds_of(*tree, gitman::ui::ui_element_kind::toolbar_sort)) };
+        const auto* const message { as_message(actions) };
+        REQUIRE(message != nullptr);
+        const auto* const intent { std::get_if<gitman::set_sort_intent>(message) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->key == expected);
+    };
+
+    expect_next(gitman::card_sort_key::name, gitman::card_sort_key::status);
+    expect_next(gitman::card_sort_key::status, gitman::card_sort_key::custom);
+    expect_next(gitman::card_sort_key::custom, gitman::card_sort_key::name);
+}
+
 TEST_CASE("A press that leaves its target produces nothing", "[ui][interaction]")
 {
     const auto tree { make_tree(1) };

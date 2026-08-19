@@ -4,10 +4,10 @@
 
 - 기준일: 2026-08-19
 - 완료 단계: 단계 0~6 전체 (2026-08-18 사용자가 단계 7 개시를 지시하며 단계 6을 최종 승인), **단계 7 구현·검증 완료** (사용자 위임 자동 진행, 완료 보고 제출)
-- 현재 단계: 단계 8(안정화와 배포) `S8-D5` 완료, 검수 대기
+- 현재 단계: 단계 8(안정화와 배포) `S8-V1` 최종 검증 제출, 사용자 검수 대기. 승인되면 계획(plan.md 8장)의 전체 단계 0~8이 완료된다
 - 진행 방식: 단계 5부터 production code와 test code를 한 검수 구간으로 통합했다. 단계 7은 사용자가 커밋까지의 자동 진행을 위임했으나, **단계 8부터는 자동 진행 위임을 종료한다 (2026-08-19 지시). 매 체크포인트 종료 시 검증 문서와 제안 커밋 메시지를 첨부해 검수를 요청하고, 사용자 승인·커밋 후에만 다음 구간을 진행한다**
 - 감사 결함 수정: 사용자 지시로 단계 4 진행 전에 단계 2·3을 독립 감사하고 발견 사항을 해소했다. 상세는 `docs/verification/2026-08-16-stage-2-3-audit-fix.md`
-- 다음 허용 작업: `S8-D5` 검수·커밋 후 `S8-V1` 최종 검증 (배포 문서화 포함)
+- 다음 허용 작업: `S8-V1` 검수·커밋. 이후는 수동 검증 5건 확인과 후속 항목(`docs/verification/2026-08-19-stage-8.md` 7~8장)의 별도 지시
 - 검증 방식 (2026-08-19 지시): 체크포인트는 영향 범위 테스트만 실행하고, 전체 CTest matrix는 단계 최종 검증(`S8-V1`)에서 실행한다
 - 실제 구현: CMake, vcpkg manifest, Win32/Skia 앱 (custom caption, 카드 목록, refresh, 문서 열기·생성, drag & drop 순서 변경, 창 배치 저장), embedded Codicons, `.version-list` 도메인 및 JSON 저장소, 범용 프로세스 실행 계층, Git/SVN 도구 발견과 조회·update·switch 전체, 깊이 1 탐색과 등록, messaging component와 3-thread 조립, **카드별 로그와 하단 로그 뷰, update 실행 UI(submodule option·취소), switch dialog(remote-first·이중 검증·tracking 확인)**, test와 install 구성
 - 기준 문서: `docs/stage-7-plan.md`, `docs/ui-element-design.md`, `docs/decisions/ADR-005-thread-messaging.md`
@@ -122,7 +122,8 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 | `S8-D2` 탐색 후보 선택 등록 dialog | 승인 완료, 커밋됨 | test 14개, 전체 610/610. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d2.md` |
 | `S8-D3` 로그 pane 개선 | 승인 완료, 커밋됨 | test 4개(614), 영향 범위 55 case 통과. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d3.md` |
 | `S8-D4` file association | 승인 완료, 커밋됨 | test 7개(621), 영향 범위 27 case + 임시 registry 실측 통과. 2026-08-19 사용자가 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d4.md` |
-| `S8-D5` 안정화·실측 | 완료, 검수 대기 | test 5개(626, network 2개는 기본 skip). GitHub 실측 2회 통과. 수동 항목 5건은 `S8-V1`. `docs/verification/2026-08-19-stage-8-d5.md` |
+| `S8-D5` 안정화·실측 | 승인 완료, 커밋됨 | test 5개(626, network 2개는 기본 skip). GitHub 실측 2회 통과. 2026-08-19 사용자가 `S8-V1` 진행을 지시하며 승인. `docs/verification/2026-08-19-stage-8-d5.md` |
+| `S8-V1` 단계 8 최종 검증 | 완료, 검수 대기 | 전체 matrix 626/626 세 구성, `docs/deployment.md`, association 실측, 마일스톤 대조. 수동 검증 5건은 사용자 검수 항목. `docs/verification/2026-08-19-stage-8.md` |
 
 ### 8.0.1 단계 7 진행 원장 (완료)
 

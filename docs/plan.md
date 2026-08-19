@@ -53,7 +53,7 @@
 | 단계 6 사전: 메시지 구조 설계 | 승인 완료 - 2026-08-17, ADR-005로 기록 | `docs/decisions/ADR-005-thread-messaging.md` |
 | 단계 6: GUI와 상태 연결 | 완료 - 2026-08-18 사용자가 단계 7 개시를 지시하며 최종 승인 | `docs/verification/2026-08-17-stage-6.md` |
 | 단계 7: 작업 UI와 로그 | 구현 완료 - `S7-V1` 최종 검증 후 사용자 보고 | `docs/verification/2026-08-19-stage-7.md` |
-| 단계 8: 안정화와 배포 | `S8-P0` 계획 수립 - 사용자 승인 대기 | `docs/stage-8-plan.md` |
+| 단계 8: 안정화와 배포 | 구현 완료 - `S8-V1` 최종 검증 후 사용자 보고 | `docs/verification/2026-08-19-stage-8.md` |
 
 ## 2. 목표와 범위
 

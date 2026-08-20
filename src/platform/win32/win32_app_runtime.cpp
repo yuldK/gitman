@@ -205,8 +205,12 @@ namespace gitman::win32 {
     void app_runtime::publish_snapshots(logic_controller& controller)
     {
         const std::shared_ptr<const view_snapshot> view { controller.make_view_snapshot() };
-        static_cast<void>(assembly_->view_slot.publish(view));
+        // wake 신호는 view 게시에 붙어 있고 tree slot에는 신호가 없다. tree를 먼저
+        // 게시해야 wake를 받은 UI thread가 이전 tree로 그리는 일이 없다 — view를
+        // 먼저 게시하면 tree 빌드가 끝나기 전에 paint가 끼어들어 화면이 다음
+        // 이벤트까지 한 박자 늦는다 (텍스트 입력에서 실측된 race).
         static_cast<void>(assembly_->tree_slot.publish(ui::build_ui_tree(*view)));
+        static_cast<void>(assembly_->view_slot.publish(view));
     }
 
     void app_runtime::logic_thread_main()

@@ -25,22 +25,34 @@ namespace gitman {
         }
     } // namespace
 
-    vcs_command_limits vcs_limits_for(const vcs_command_class command_class) noexcept
+    vcs_timeout_overrides vcs_timeouts_from_settings(const workspace_settings& settings) noexcept
     {
+        vcs_timeout_overrides overrides {};
+        const std::optional<std::int32_t>& seconds { settings.query_timeout_seconds };
+        if (seconds.has_value() && *seconds >= minimum_query_timeout_seconds && *seconds <= maximum_query_timeout_seconds)
+            overrides.query = std::chrono::milliseconds { *seconds * 1000 };
+        return overrides;
+    }
+
+    vcs_command_limits vcs_limits_for(const vcs_command_class command_class, const vcs_timeout_overrides& overrides) noexcept
+    {
+        // 조회 기본값 600초는 대형 저장소의 status·fetch가 5~10분 걸리는 실측을
+        // 반영한 값이다 (field-feedback-design 1.2).
         switch (command_class)
         {
         case vcs_command_class::tool_probe:
             return { std::chrono::milliseconds { 5000 }, 64u * kibibyte };
         case vcs_command_class::local_query:
-            return { std::chrono::milliseconds { 30000 }, 8u * mebibyte };
         case vcs_command_class::remote_query:
-            return { std::chrono::milliseconds { 120000 }, 8u * mebibyte };
+            return { overrides.query.value_or(std::chrono::milliseconds { 600000 }), 8u * mebibyte };
         case vcs_command_class::update:
-            return { std::chrono::milliseconds { 600000 }, 32u * mebibyte };
+            // 실측 최대 3시간까지 걸리는 update를 가늠해 자르지 않는다. 종료는
+            // 사용자의 명시적 취소가 담당한다 (field-feedback-design 1.2).
+            return { std::nullopt, 32u * mebibyte };
         case vcs_command_class::switch_target:
             return { std::chrono::milliseconds { 300000 }, 8u * mebibyte };
         }
-        return { std::chrono::milliseconds { 30000 }, 8u * mebibyte };
+        return { std::chrono::milliseconds { 600000 }, 8u * mebibyte };
     }
 
     std::vector<process_environment_override> git_environment_overrides()
@@ -102,9 +114,9 @@ namespace gitman {
     }
 
     process_request make_vcs_process_request(const repository_kind kind, const std::u8string_view executable, const std::u8string_view working_directory, std::vector<std::u8string> arguments,
-        const vcs_command_class command_class, const std::size_t maximum_record_bytes)
+        const vcs_command_class command_class, const std::size_t maximum_record_bytes, const vcs_timeout_overrides& timeouts)
     {
-        const vcs_command_limits limits { vcs_limits_for(command_class) };
+        const vcs_command_limits limits { vcs_limits_for(command_class, timeouts) };
 
         process_request request {};
         request.executable = executable;

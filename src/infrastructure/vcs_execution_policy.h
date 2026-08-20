@@ -1,10 +1,12 @@
 #pragma once
 
 #include "application/process_request.h"
+#include "domain/project.h"
 #include "domain/repository_snapshot.h"
 
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -28,11 +30,27 @@ namespace gitman {
 
     struct vcs_command_limits
     {
-        std::chrono::milliseconds timeout {};
+        // 값이 없으면 무제한이다. 취소만으로 종료를 제어한다 (update가 해당).
+        std::optional<std::chrono::milliseconds> timeout {};
         std::size_t maximum_captured_bytes_per_stream {};
     };
 
-    [[nodiscard]] vcs_command_limits vcs_limits_for(vcs_command_class command_class) noexcept;
+    // 문서 settings가 지정하는 조회(상태 확인) 제한 시간 override다
+    // (field-feedback-design 1.3). local/remote 조회에 함께 적용되며 값이 없으면
+    // 기본값을 쓴다. update는 무제한이라 설정화하지 않고, tool_probe/switch도
+    // 설정 대상이 아니다.
+    struct vcs_timeout_overrides
+    {
+        std::optional<std::chrono::milliseconds> query {};
+
+        [[nodiscard]] bool operator==(const vcs_timeout_overrides&) const noexcept = default;
+    };
+
+    // settings의 초 단위 값을 override로 바꾼다. 허용 범위(10~3600초)를 벗어난
+    // 값은 파서가 걸러 두지만, 여기서도 무시해 어떤 경로로 와도 상한이 지켜진다.
+    [[nodiscard]] vcs_timeout_overrides vcs_timeouts_from_settings(const workspace_settings& settings) noexcept;
+
+    [[nodiscard]] vcs_command_limits vcs_limits_for(vcs_command_class command_class, const vcs_timeout_overrides& overrides = {}) noexcept;
 
     // Git을 비대화형으로 강제하는 환경 override다. 값이 없는 항목은 부모 환경에서
     // 삭제해 askpass GUI 경로까지 막는다. 로캘은 강제하지 않는다. 사용자 결정에 따라
@@ -56,5 +74,5 @@ namespace gitman {
     // 명령(경로 두 개를 한 줄에 담는 `status --porcelain=v2`의 rename 항목 등)만 값을
     // 올려 레코드가 중간에서 끊기지 않게 한다.
     [[nodiscard]] process_request make_vcs_process_request(repository_kind kind, std::u8string_view executable, std::u8string_view working_directory, std::vector<std::u8string> arguments,
-        vcs_command_class command_class, std::size_t maximum_record_bytes = default_process_record_byte_limit);
+        vcs_command_class command_class, std::size_t maximum_record_bytes = default_process_record_byte_limit, const vcs_timeout_overrides& timeouts = {});
 } // namespace gitman

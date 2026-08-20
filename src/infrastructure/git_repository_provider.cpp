@@ -308,11 +308,12 @@ namespace gitman {
         return project.path.normalized.empty() ? std::u8string_view { project.path.original } : std::u8string_view { project.path.normalized };
     }
 
-    git_repository_provider::git_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log) noexcept
+    git_repository_provider::git_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log, vcs_timeout_overrides timeouts) noexcept
         : tool_ { std::move(tool) }
         , runner_ { &runner }
         , probe_ { &probe }
         , log_ { log }
+        , timeouts_ { timeouts }
     {}
 
     const vcs_tool_info& git_repository_provider::tool() const noexcept
@@ -385,7 +386,7 @@ namespace gitman {
             return result;
         }
 
-        const vcs_command_result layout_result { run_vcs_command(*runner_, make_git_layout_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result layout_result { run_vcs_command(*runner_, make_git_layout_request(tool_.executable, working_directory, timeouts_), token, log_) };
         const git_repository_layout layout { parse_git_repository_layout(layout_result.standard_output_lines) };
         const vcs_failure_kind layout_failure { classify_vcs_failure(repository_kind::git, layout_result) };
 
@@ -426,7 +427,7 @@ namespace gitman {
 
         result.snapshot.repository_root = layout.work_tree_root;
 
-        const vcs_command_result status_result { run_vcs_command(*runner_, make_git_status_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result status_result { run_vcs_command(*runner_, make_git_status_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (status_result.succeeded() == false)
         {
             // 저장소인 것은 확인했지만 상태를 읽지 못했다. 상태를 단정하지 않는다.
@@ -531,7 +532,7 @@ namespace gitman {
             return result;
         }
 
-        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (remote_result.succeeded() == false)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
@@ -572,7 +573,7 @@ namespace gitman {
             return result;
         }
 
-        const vcs_command_result fetch_result { run_vcs_command(*runner_, make_git_fetch_request(tool_.executable, working_directory, target.remote), token, log_) };
+        const vcs_command_result fetch_result { run_vcs_command(*runner_, make_git_fetch_request(tool_.executable, working_directory, target.remote, timeouts_), token, log_) };
         if (fetch_result.succeeded() == false)
         {
             // offline, 인증 필요와 그 밖의 실패를 구분한다. 판정 근거는 로캘 독립 신호뿐이며
@@ -586,7 +587,7 @@ namespace gitman {
         // 원격에 실제로 닿은 시각이다. 비교 대상이 없더라도 확인 자체는 성공했다.
         result.snapshot.remote_checked_at = std::chrono::system_clock::now();
 
-        const vcs_command_result verify_result { run_vcs_command(*runner_, make_git_verify_reference_request(tool_.executable, working_directory, target.tracking_reference), token, log_) };
+        const vcs_command_result verify_result { run_vcs_command(*runner_, make_git_verify_reference_request(tool_.executable, working_directory, target.tracking_reference, timeouts_), token, log_) };
         if (verify_result.process.completion != process_completion::exited)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, verify_result) };
@@ -618,7 +619,7 @@ namespace gitman {
             return result;
         }
 
-        const vcs_command_result count_result { run_vcs_command(*runner_, make_git_ahead_behind_request(tool_.executable, working_directory, target.tracking_reference), token, log_) };
+        const vcs_command_result count_result { run_vcs_command(*runner_, make_git_ahead_behind_request(tool_.executable, working_directory, target.tracking_reference, timeouts_), token, log_) };
         const git_ahead_behind counts { parse_git_ahead_behind(count_result.first_output_line()) };
         if (count_result.succeeded() == false)
         {
@@ -770,7 +771,7 @@ namespace gitman {
 
         // remote 목록은 새로 고칠 대상을 고르는 데도, tracking ref를 remote와 branch로
         // 나누는 데도 필요하다.
-        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (remote_result.succeeded() == false)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
@@ -783,7 +784,7 @@ namespace gitman {
         std::u8string refreshed_remote { select_git_candidate_fetch_remote(remotes, project.preferred_remote.value_or(std::u8string {})) };
         if (refreshed_remote.empty() == false)
         {
-            const vcs_command_result fetch_result { run_vcs_command(*runner_, make_git_fetch_request(tool_.executable, working_directory, refreshed_remote), token, log_) };
+            const vcs_command_result fetch_result { run_vcs_command(*runner_, make_git_fetch_request(tool_.executable, working_directory, refreshed_remote, timeouts_), token, log_) };
             if (fetch_result.succeeded() == false)
             {
                 // 원격을 새로 고치지 못해도 목록 자체는 만든다. 이미 받아 둔 tracking
@@ -794,7 +795,7 @@ namespace gitman {
             }
         }
 
-        const vcs_command_result reference_result { run_vcs_command(*runner_, make_git_reference_list_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result reference_result { run_vcs_command(*runner_, make_git_reference_list_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (reference_result.succeeded() == false)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, reference_result) };
@@ -880,7 +881,7 @@ namespace gitman {
         }
 
         const std::u8string_view working_directory { git_working_directory(project) };
-        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (remote_result.succeeded() == false)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
@@ -905,7 +906,7 @@ namespace gitman {
         std::vector<submodule_status> submodules {};
         if (options.update_submodules)
         {
-            const vcs_command_result submodule_result { run_vcs_command(*runner_, make_git_submodule_status_request(tool_.executable, working_directory), token, log_) };
+            const vcs_command_result submodule_result { run_vcs_command(*runner_, make_git_submodule_status_request(tool_.executable, working_directory, timeouts_), token, log_) };
             if (submodule_result.succeeded() == false)
             {
                 const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, submodule_result) };
@@ -1004,7 +1005,7 @@ namespace gitman {
         }
 
         const std::u8string_view working_directory { git_working_directory(project) };
-        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result remote_result { run_vcs_command(*runner_, make_git_remote_list_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (remote_result.succeeded() == false)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, remote_result) };
@@ -1015,7 +1016,7 @@ namespace gitman {
 
         // 실행 직전에는 fetch하지 않는다. 전환은 이미 받아 둔 ref로만 하며 `--no-guess`가
         // 목록에 없던 대상으로의 암묵 전환을 막는다.
-        const vcs_command_result reference_result { run_vcs_command(*runner_, make_git_reference_list_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result reference_result { run_vcs_command(*runner_, make_git_reference_list_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (reference_result.succeeded() == false)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, reference_result) };
@@ -1024,7 +1025,7 @@ namespace gitman {
             return result;
         }
 
-        const vcs_command_result worktree_result { run_vcs_command(*runner_, make_git_worktree_list_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result worktree_result { run_vcs_command(*runner_, make_git_worktree_list_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (worktree_result.succeeded() == false)
         {
             // 어떤 branch가 다른 worktree에 잡혀 있는지 모르는 채로 전환하지 않는다.

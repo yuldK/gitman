@@ -455,6 +455,50 @@ TEST_CASE("Project store round-trips workspace settings and unknown keys", "[wor
     REQUIRE(u8_equal(reloaded.document->settings.svn_executable, u8"D:/tools/svn/bin/svn.exe"));
 }
 
+TEST_CASE("Project store writes and removes the query timeout setting", "[workspace][store][save][settings]")
+{
+    constexpr std::u8string_view source {
+        u8R"({
+    "schema_version": 1,
+    "settings": {
+        "query_timeout_seconds": 900
+    },
+    "projects": []
+})",
+    };
+
+    fake_workspace_document_file_system file_system {};
+    file_system.set_file(fake_document_path, source);
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE(loaded.document.has_value());
+    REQUIRE(loaded.document->settings.query_timeout_seconds == 900);
+
+    // 값을 바꾸면 그대로 저장된다.
+    loaded.document->settings.query_timeout_seconds = 1800;
+    const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+    const std::u8string* output { file_system.file_bytes(fake_document_path) };
+    REQUIRE(output != nullptr);
+    REQUIRE(output->find(u8"\"query_timeout_seconds\": 1800") != std::u8string::npos);
+
+    // 기본값으로 되돌리면 필드를 지운다. 남기면 다음 열기에서 이전 값이 되살아난다.
+    gitman::project_store_load_result changed { store.load(fake_document_path) };
+    REQUIRE(changed.document.has_value());
+    changed.document->settings.query_timeout_seconds.reset();
+    const gitman::project_store_save_result cleared { store.save(fake_document_path, *changed.document, changed.revision) };
+    REQUIRE(cleared.succeeded());
+    output = file_system.file_bytes(fake_document_path);
+    REQUIRE(output != nullptr);
+    REQUIRE(output->find(u8"query_timeout_seconds") == std::u8string::npos);
+
+    const gitman::project_store_load_result reloaded { store.load(fake_document_path) };
+    REQUIRE(reloaded.document.has_value());
+    REQUIRE(reloaded.document->settings.query_timeout_seconds.has_value() == false);
+}
+
 TEST_CASE("Project store does not add a settings field to documents that lack one", "[workspace][store][save][settings]")
 {
     constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };

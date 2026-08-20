@@ -9,6 +9,7 @@
 #include "domain/repository_snapshot.h"
 #include "domain/vcs_operation.h"
 #include "domain/vcs_tool.h"
+#include "infrastructure/vcs_execution_policy.h"
 
 #include <string>
 #include <vector>
@@ -40,7 +41,7 @@ namespace gitman {
     class svn_repository_provider final : public repository_provider
     {
     public:
-        svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* log = nullptr) noexcept;
+        svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* log = nullptr, vcs_timeout_overrides timeouts = {}) noexcept;
 
         [[nodiscard]] const vcs_tool_info& tool() const noexcept;
         void set_tool(vcs_tool_info tool);
@@ -64,5 +65,7 @@ namespace gitman {
         process_runner* runner_ { nullptr };
         const vcs_file_probe* probe_ { nullptr };
         process_output_sink* log_ { nullptr };
+        // 문서 settings의 조회 제한 시간이다. 요청마다 builder로 전달된다 (1.3).
+        vcs_timeout_overrides timeouts_ {};
     };
 } // namespace gitman

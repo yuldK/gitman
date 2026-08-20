@@ -37,26 +37,26 @@ namespace gitman {
         return u8"url";
     }
 
-    process_request make_svn_info_item_request(const std::u8string_view executable, const std::u8string_view working_directory, const svn_info_item item, const std::u8string_view target)
+    process_request make_svn_info_item_request(const std::u8string_view executable, const std::u8string_view working_directory, const svn_info_item item, const std::u8string_view target, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments { make_arguments(u8"info") };
         arguments.push_back(std::u8string { u8"--show-item" });
         arguments.push_back(std::u8string { svn_info_item_name(item) });
         if (target.empty() == false)
             arguments.push_back(std::u8string { target });
-        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
-    process_request make_svn_status_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_svn_status_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         // 대상을 주지 않으면 작업 디렉터리를 기준으로 상대 경로를 낸다. 카드가 그대로
         // 보여 줄 수 있는 형태다.
-        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, make_arguments(u8"status"), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, make_arguments(u8"status"), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
-    process_request make_svnversion_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_svnversion_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
-        const vcs_command_limits limits { vcs_limits_for(vcs_command_class::local_query) };
+        const vcs_command_limits limits { vcs_limits_for(vcs_command_class::local_query, timeouts) };
 
         // 공통 인자를 붙이지 않는 유일한 명령이다. 나머지 실행 정책은 같게 맞춘다.
         process_request request {};
@@ -81,17 +81,17 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::switch_target);
     }
 
-    process_request make_svn_remote_info_item_request(const std::u8string_view executable, const std::u8string_view working_directory, const svn_info_item item, const std::u8string_view url)
+    process_request make_svn_remote_info_item_request(const std::u8string_view executable, const std::u8string_view working_directory, const svn_info_item item, const std::u8string_view url, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments { make_arguments(u8"info") };
         arguments.push_back(std::u8string { u8"--show-item" });
         arguments.push_back(std::u8string { svn_info_item_name(item) });
         arguments.push_back(std::u8string { url });
-        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::remote_query);
+        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::remote_query, default_process_record_byte_limit, timeouts);
     }
 
-    process_request make_svn_remote_revision_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url)
+    process_request make_svn_remote_revision_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url, const vcs_timeout_overrides& timeouts)
     {
-        return make_svn_remote_info_item_request(executable, working_directory, svn_info_item::revision, url);
+        return make_svn_remote_info_item_request(executable, working_directory, svn_info_item::revision, url, timeouts);
     }
 } // namespace gitman

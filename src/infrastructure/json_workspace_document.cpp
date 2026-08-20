@@ -181,7 +181,7 @@ namespace gitman {
 
         bool is_known_settings_field(const std::string_view field) noexcept
         {
-            return field == "git_executable" || field == "svn_executable" || field == "show_relative_paths";
+            return field == "git_executable" || field == "svn_executable" || field == "show_relative_paths" || field == "query_timeout_seconds";
         }
 
         std::u8string settings_field_pointer(const std::string_view field)
@@ -236,6 +236,25 @@ namespace gitman {
                     settings.git_executable = std::move(executable);
                 else
                     settings.svn_executable = std::move(executable);
+            }
+
+            // 상태 확인 제한 시간이다 (field-feedback-design 1.3). 값이 나빠도 문서
+            // 열기를 막지 않는다 — 경고만 남기고 기본값을 쓴다.
+            const auto timeout { source->find("query_timeout_seconds") };
+            if (timeout != source->end() && timeout->is_null() == false)
+            {
+                if (timeout->is_number_integer() == false)
+                {
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"settings의 제한 시간은 정수(초)여야 합니다. 기본값을 사용합니다.",
+                        document_path, settings_field_pointer("query_timeout_seconds"));
+                }
+                else if (const std::int64_t seconds { timeout->get<std::int64_t>() }; seconds < minimum_query_timeout_seconds || seconds > maximum_query_timeout_seconds)
+                {
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"settings의 제한 시간은 10~3600초여야 합니다. 기본값을 사용합니다.",
+                        document_path, settings_field_pointer("query_timeout_seconds"));
+                }
+                else
+                    settings.query_timeout_seconds = static_cast<std::int32_t>(seconds);
             }
 
             const auto relative_paths { source->find("show_relative_paths") };

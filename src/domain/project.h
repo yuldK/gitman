@@ -52,6 +52,11 @@ namespace gitman {
         std::vector<std::u8string> svn_switch_targets {};
     };
 
+    // 문서가 지정할 수 있는 조회 제한 시간의 허용 범위다 (field-feedback-design
+    // 1.3). 벗어난 값은 파서가 경고와 함께 무시하고 기본값을 쓴다.
+    inline constexpr std::int32_t minimum_query_timeout_seconds { 10 };
+    inline constexpr std::int32_t maximum_query_timeout_seconds { 3600 };
+
     // 문서 수준 환경설정이다. `.version-list`의 optional `settings` object에 대응하며
     // 값이 없으면 전부 기본값(자동 탐색)이다. 후속 단계가 항목을 계속 추가한다.
     struct workspace_settings
@@ -63,6 +68,10 @@ namespace gitman {
         // 카드의 경로를 문서가 있는 폴더 기준 상대 경로로 표시한다. toolbar 토글이
         // 바꾸고 문서에 남는다.
         bool show_relative_paths { false };
+        // 상태 확인(로컬·원격 조회) 명령의 제한 시간(초)이다. 값이 없으면 실행
+        // 정책의 기본값(600초)을 쓴다. 대형 저장소의 status가 5~10분 걸리는 실측을
+        // 반영한 항목이다 (field-feedback-design 1장).
+        std::optional<std::int32_t> query_timeout_seconds {};
 
         [[nodiscard]] bool operator==(const workspace_settings&) const noexcept = default;
         [[nodiscard]] bool is_default() const noexcept;

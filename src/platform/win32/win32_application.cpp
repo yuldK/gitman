@@ -40,6 +40,10 @@ namespace gitman::win32 {
         constexpr UINT ui_command_request_message { WM_APP + 2 };
         // tooltip 지연이 끝나는 시점에 한 번 다시 그리기 위한 timer다.
         constexpr UINT_PTR tooltip_timer_id { 1 };
+        // 초점을 받은 텍스트 박스의 caret이 다음에 뒤집히는 시점에 다시 그리기 위한
+        // timer다. 매 render가 남은 시간을 다시 계산해 걸므로 반복 timer가 아니어도
+        // 깜빡임이 이어진다.
+        constexpr UINT_PTR caret_timer_id { 2 };
 
         // `.version-list` 문서를 고르는 Win32 파일 dialog다. UI thread 전용이다.
         [[nodiscard]] std::optional<std::u8string> choose_workspace_document(const HWND owner)
@@ -287,9 +291,9 @@ namespace gitman::win32 {
                     open_dropped_workspace_document(reinterpret_cast<HDROP>(word_parameter));
                     return 0;
                 case WM_TIMER:
-                    if (word_parameter == tooltip_timer_id)
+                    if (word_parameter == tooltip_timer_id || word_parameter == caret_timer_id)
                     {
-                        KillTimer(window_, tooltip_timer_id);
+                        KillTimer(window_, word_parameter);
                         InvalidateRect(window_, nullptr, FALSE);
                         return 0;
                     }
@@ -359,6 +363,15 @@ namespace gitman::win32 {
                             runtime_->post_raw_input(ui::key_pressed_event { key, (GetKeyState(VK_CONTROL) & 0x8000) != 0 });
                             return 0;
                         }
+                    }
+                    break;
+                case WM_CHAR:
+                    // 텍스트 박스 입력이다 (field-feedback-design 1.3). surrogate 쌍은
+                    // 현재 입력 대상(숫자)에 없으므로 BMP 문자만 넘긴다.
+                    if (runtime_ != nullptr && (word_parameter < 0xD800u || word_parameter > 0xDFFFu))
+                    {
+                        runtime_->post_raw_input(ui::character_typed_event { static_cast<char32_t>(word_parameter) });
+                        return 0;
                     }
                     break;
                 case WM_NCCALCSIZE:
@@ -1002,7 +1015,25 @@ namespace gitman::win32 {
                 }
 
                 schedule_tooltip_repaint(tree.get(), state.interaction);
+                schedule_caret_repaint(state.interaction);
                 return renderer_->render(state, error);
+            }
+
+            // 초점을 받은 텍스트 박스가 있으면 caret이 다음에 뒤집히는 시점에 다시
+            // 그리도록 timer를 건다. 위상은 초점 시각 기준이라 render가 몇 번
+            // 겹쳐도 뒤집힘 시점은 같다.
+            void schedule_caret_repaint(const ui::interaction_snapshot& interaction) noexcept
+            {
+                if (interaction.focused_input == ui::ui_element_id {} || interaction.focus_started_at.has_value() == false)
+                {
+                    KillTimer(window_, caret_timer_id);
+                    return;
+                }
+
+                const auto elapsed { std::chrono::steady_clock::now() - *interaction.focus_started_at };
+                const auto phase { elapsed % ui::caret_blink_interval };
+                const auto remaining { std::chrono::duration_cast<std::chrono::milliseconds>(ui::caret_blink_interval - phase) };
+                SetTimer(window_, caret_timer_id, static_cast<UINT>(remaining.count() + 15), nullptr);
             }
 
             // hover가 tooltip 지연에 아직 도달하지 않았으면 지연이 끝나는 시점에 한 번

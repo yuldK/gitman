@@ -74,6 +74,27 @@ namespace gitman {
             return u8"실행 파일 경로는 절대 경로여야 합니다.";
         }
 
+        // 상태 확인 제한 시간 텍스트 박스의 초안을 초 값으로 바꾼다. 초안에는
+        // 숫자만 담기므로(handle_edit_settings_timeout) 자리올림만 하면 된다. 빈
+        // 초안은 기본값이라 값이 없다.
+        std::optional<std::int32_t> parse_settings_timeout(const std::u8string_view text) noexcept
+        {
+            if (text.empty())
+                return std::nullopt;
+            std::int32_t value { 0 };
+            for (const char8_t digit : text)
+                value = value * 10 + static_cast<std::int32_t>(digit - u8'0');
+            return value;
+        }
+
+        std::u8string_view settings_timeout_error(const std::u8string_view text) noexcept
+        {
+            const std::optional<std::int32_t> value { parse_settings_timeout(text) };
+            if (value.has_value() == false || (*value >= minimum_query_timeout_seconds && *value <= maximum_query_timeout_seconds))
+                return u8"";
+            return u8"제한 시간은 10~3600초 사이여야 합니다.";
+        }
+
         card_view_state derive_card_state(const card_view_inputs& inputs) noexcept
         {
             if (inputs.enabled == false)
@@ -209,6 +230,8 @@ namespace gitman {
                     handle_set_settings_executable(std::move(value));
                 else if constexpr (std::is_same_v<value_type, clear_settings_executable_intent>)
                     handle_clear_settings_executable(value);
+                else if constexpr (std::is_same_v<value_type, edit_settings_timeout_intent>)
+                    handle_edit_settings_timeout(value);
                 else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
                     handle_confirm_settings();
                 else if constexpr (std::is_same_v<value_type, cancel_settings_dialog_intent>)
@@ -935,6 +958,11 @@ namespace gitman {
         settings_dialog_state dialog {};
         dialog.git_path = document_->settings.git_executable;
         dialog.svn_path = document_->settings.svn_executable;
+        if (document_->settings.query_timeout_seconds.has_value())
+        {
+            const std::string digits { std::to_string(*document_->settings.query_timeout_seconds) };
+            dialog.timeout_text.append(digits.begin(), digits.end());
+        }
         settings_dialog_ = { std::move(dialog) };
     }
 
@@ -961,20 +989,44 @@ namespace gitman {
             settings_dialog_->svn_path.clear();
     }
 
+    void logic_controller::handle_edit_settings_timeout(const edit_settings_timeout_intent& intent)
+    {
+        // 닫힌 뒤 도착한 키 입력은 버린다.
+        if (settings_dialog_.has_value() == false)
+            return;
+
+        std::u8string& text { settings_dialog_->timeout_text };
+        if (intent.character == U'\b')
+        {
+            if (text.empty() == false)
+                text.pop_back();
+            return;
+        }
+        // 숫자만 받는 텍스트 박스다. 최대값(3600)이 4자리라 그 이상은 버린다.
+        if (intent.character >= U'0' && intent.character <= U'9' && text.size() < 4)
+            text.push_back(static_cast<char8_t>(intent.character));
+    }
+
     void logic_controller::handle_confirm_settings()
     {
         if (settings_dialog_.has_value() == false || shutting_down_ || document_.has_value() == false)
             return;
         // 버튼 비활성과 별개로 늦게 도착한 확인도 막는다 (view의 can_confirm과 같은
         // 판정이다).
-        if (settings_executable_error(settings_dialog_->git_path).empty() == false || settings_executable_error(settings_dialog_->svn_path).empty() == false)
+        if (settings_executable_error(settings_dialog_->git_path).empty() == false || settings_executable_error(settings_dialog_->svn_path).empty() == false
+            || settings_timeout_error(settings_dialog_->timeout_text).empty() == false)
             return;
 
-        const bool changed { document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path };
+        const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout_text) };
+        const bool changed {
+            document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path
+                || document_->settings.query_timeout_seconds != timeout,
+        };
         if (changed)
         {
             document_->settings.git_executable = settings_dialog_->git_path;
             document_->settings.svn_executable = settings_dialog_->svn_path;
+            document_->settings.query_timeout_seconds = timeout;
             request_save();
             // 도구 경로가 바뀌었으니 모든 활성 카드를 새 settings로 재조회한다.
             // 요청마다 settings 사본이 실리므로 저장 완료를 기다릴 필요가 없다.
@@ -1441,15 +1493,19 @@ namespace gitman {
             settings_dialog_view dialog {};
             dialog.git_path = settings_dialog_->git_path;
             dialog.svn_path = settings_dialog_->svn_path;
+            dialog.timeout_text = settings_dialog_->timeout_text;
             // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
             const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
             const std::u8string_view svn_error { settings_executable_error(settings_dialog_->svn_path) };
+            const std::u8string_view timeout_error { settings_timeout_error(settings_dialog_->timeout_text) };
             if (git_error.empty() == false)
                 dialog.message = std::u8string { u8"Git: " } + std::u8string { git_error };
             else if (svn_error.empty() == false)
                 dialog.message = std::u8string { u8"SVN: " } + std::u8string { svn_error };
-            dialog.can_confirm = git_error.empty() && svn_error.empty();
+            else if (timeout_error.empty() == false)
+                dialog.message = std::u8string { timeout_error };
+            dialog.can_confirm = git_error.empty() && svn_error.empty() && timeout_error.empty();
             snapshot->settings_dialog = { std::move(dialog) };
         }
 

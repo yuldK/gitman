@@ -22,39 +22,57 @@
 
 ### 1.2 결정
 
-명령 부류의 기본 상한을 실측에 맞게 올리고, 문서 설정으로 조정할 수 있게 한다
-(2026-08-20 검수: 설정 항목까지 추가).
+명령 부류의 기본 상한을 실측에 맞게 고치고, 상태 확인은 문서 설정으로 조정할
+수 있게 한다 (2026-08-20 검수: 설정 항목까지 추가 → 2026-08-20 재검수 반영).
 
 | 부류 | 현재 | 변경 | 근거 |
 |---|---|---|---|
-| `local_query` | 30초 | **600초** | status 실측 5~10분 |
-| `remote_query` | 120초 | **600초** | 대형 저장소 fetch도 같은 규모 |
-| `tool_probe` / `update` / `switch_target` | 5/600/300초 | 유지 | 문제 보고 없음 |
+| `local_query` | 30초 | **600초** (설정 가능) | status 실측 5~10분 |
+| `remote_query` | 120초 | **600초** (설정 가능) | 대형 저장소 fetch도 같은 규모 |
+| `update` | 600초 | **무제한** | 실측 최대 3시간. 가늠해 자르지 않고 종료는 명시적 취소가 담당 (재검수 지시) |
+| `tool_probe` / `switch_target` | 5/300초 | 유지 | 문제 보고 없음 |
 
 `local_query`에는 `rev-parse` 같은 빠른 명령도 섞여 있어, 진짜로 걸린 프로세스의
-실패 감지가 최대 10분까지 늦어진다. 이는 감수한다 — worker lane은 project 단위라
-다른 저장소 작업을 막지 않고, 취소(token)는 타임아웃과 무관하게 즉시 동작한다.
+실패 감지가 늦어진다. 이는 감수한다 — worker lane은 project 단위라 다른 저장소
+작업을 막지 않고, 취소(token)는 타임아웃과 무관하게 즉시 동작한다.
 
 ### 1.3 설정 항목
 
-`workspace_settings`(문서 `settings` object)에 optional 필드 2개를 추가한다.
-`git_executable`과 같은 규칙으로 schema version은 올리지 않는다.
+`workspace_settings`(문서 `settings` object)에 optional 필드 1개를 추가한다.
+로컬·원격 조회에 함께 적용되며, `git_executable`과 같은 규칙으로 schema
+version은 올리지 않는다. (재검수 반영: 항목을 "상태 확인" 하나로 통합, update는
+무제한이라 설정 대상이 아니다.)
 
 ```json
 "settings": {
-    "local_query_timeout_seconds": 600,
-    "remote_query_timeout_seconds": 600
+    "query_timeout_seconds": 600
 }
 ```
 
 - 없으면 1.2의 새 기본값. 허용 범위 **10~3600초**, 벗어나거나 타입이 다르면
   경고 진단만 남기고 기본값을 쓴다(문서 열기는 실패하지 않는다).
-- `tool_probe`/`update`/`switch_target`은 설정화하지 않는다(문제 보고 없음).
 - 반영 경로: `vcs_limits_for`/`make_vcs_process_request`가 override를 받도록
   확장하고, provider에 설정값이 전달되는 기존 경로(실행 파일 경로와 동일)를 쓴다.
-- 환경설정 다이얼로그에 "상태 확인 제한 시간(초)" / "원격 조회 제한 시간(초)"
-  숫자 입력을 추가한다.
-- 테스트: 기본값 상수 단정 갱신, override 반영/범위 검증/직렬화 왕복.
+- 환경설정 다이얼로그에 "상태 확인 제한 시간 (초)" 행을 추가한다. 값 칸은
+  **숫자만 받는 텍스트 박스**다 (재검수 지시). 이를 위해 문자 입력 경로를
+  신설한다: `WM_CHAR` → `character_typed_event` → (환경설정 dialog가 열려 있을
+  때만) `edit_settings_timeout_intent` → logic이 숫자(0~9)와 backspace만 초안에
+  반영. 빈 초안 = 기본값(안내 문구 표시), 범위 밖 값은 검증 메시지와 함께 저장
+  버튼 비활성(실행 파일 경로 검증과 같은 패턴).
+- **초점과 caret** (추가 지시): `interaction_snapshot::focused_input`을 신설한다.
+  초점은 **텍스트 박스를 눌러야** 생긴다(재검수 지시: 열릴 때 자동 초점 없음).
+  다른 곳을 누르거나 dialog가 닫히면 풀린다. 초점을 받은 동안 글 끝에서 caret이
+  **깜빡이고**(반주기 530ms, 초점 시각이 위상 기준이라 받는 순간 켜짐) 테두리를
+  강조한다. 다시 그리기는 UI thread의 caret timer가 다음 뒤집힘 시점에
+  일으킨다(tooltip timer와 같은 패턴). 문자 입력은 초점을 가진 칸으로만 간다.
+  커서 이동·선택은 만들지 않는다(끝에서만 지우고 붙임).
+- **즉시 갱신** (추가 지시): 키 입력이 한 박자 늦게 보이던 원인은
+  `publish_snapshots`가 view(wake 신호)를 먼저 게시하고 tree를 나중에 게시하는
+  race였다 — wake를 받은 UI thread가 이전 tree로 그린 뒤 새 tree에는 신호가
+  없어 다음 이벤트까지 기다렸다. 게시 순서를 tree → view로 바꿔 wake 시점에
+  항상 최신 tree가 있게 한다.
+- 테스트: 기본값 상수 단정 갱신, override 반영/범위 검증/직렬화 왕복, 문자
+  입력 편집·범위 차단·저장 반영.
 
 ## 2. 미추적(untracked) 경험 개선
 

@@ -41,6 +41,7 @@ namespace gitman::ui {
         [[nodiscard]] std::vector<input_action> run_trigger(const ui_element& element, ui_trigger trigger, float x, float y, bool control);
         void update_hover(float x, float y, std::chrono::steady_clock::time_point time);
         void clear_press() noexcept;
+        void update_input_focus();
 
         interaction_config config_ {};
         std::shared_ptr<const ui_tree> tree_ {};
@@ -67,6 +68,10 @@ namespace gitman::ui {
 
         // 키보드 탐색의 초점이다. 선택의 진실은 logic이 소유한다 (ADR-004).
         std::optional<project_id> focused_ {};
+
+        // 환경설정 dialog의 열림 상태다. 열리는 순간 텍스트 박스에 초점을 주고
+        // 닫히면 거두기 위한 edge 감지용이다.
+        bool settings_dialog_open_ { false };
     };
 
     // input thread의 소비 루프다. raw input 채널이 닫히면 반환한다. tree는 처리

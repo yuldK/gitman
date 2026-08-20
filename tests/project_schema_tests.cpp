@@ -174,6 +174,35 @@ TEST_CASE("Settings executables must be absolute or empty", "[workspace][schema]
     REQUIRE(u8_equal(unc_result.document->settings.svn_executable, u8"\\\\build\\tools\\svn.exe"));
 }
 
+TEST_CASE("The settings query timeout accepts the allowed range and warns otherwise", "[workspace][schema][settings]")
+{
+    // 정상 범위(10~3600초)의 값은 그대로 읽는다 (field-feedback-design 1.3).
+    constexpr std::u8string_view valid { u8"{\"schema_version\":1,\"settings\":{\"query_timeout_seconds\":900},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result valid_result { gitman::parse_workspace_document_json(valid, test_document_path) };
+    REQUIRE_FALSE(valid_result.has_errors());
+    REQUIRE_FALSE(valid_result.has_warnings());
+    REQUIRE(valid_result.document.has_value());
+    REQUIRE(valid_result.document->settings.query_timeout_seconds == 900);
+    REQUIRE_FALSE(valid_result.document->settings.is_default());
+
+    // 범위 밖·잘못된 타입은 경고만 남기고 기본값(값 없음)을 쓴다. 문서 열기는
+    // 실패하지 않는다.
+    constexpr std::u8string_view out_of_range { u8"{\"schema_version\":1,\"settings\":{\"query_timeout_seconds\":9999},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result range_result { gitman::parse_workspace_document_json(out_of_range, test_document_path) };
+    REQUIRE_FALSE(range_result.has_errors());
+    REQUIRE(range_result.has_warnings());
+    REQUIRE(range_result.document.has_value());
+    REQUIRE(range_result.document->settings.query_timeout_seconds.has_value() == false);
+    REQUIRE(find_diagnostic(range_result, gitman::diagnostic_code::invalid_project_field, u8"/settings/query_timeout_seconds") != nullptr);
+
+    constexpr std::u8string_view wrong_type { u8"{\"schema_version\":1,\"settings\":{\"query_timeout_seconds\":\"600\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result type_result { gitman::parse_workspace_document_json(wrong_type, test_document_path) };
+    REQUIRE_FALSE(type_result.has_errors());
+    REQUIRE(type_result.document.has_value());
+    REQUIRE(type_result.document->settings.query_timeout_seconds.has_value() == false);
+    REQUIRE(find_diagnostic(type_result, gitman::diagnostic_code::invalid_project_field, u8"/settings/query_timeout_seconds") != nullptr);
+}
+
 TEST_CASE("Schema parser accepts minimal and empty documents", "[workspace][schema]")
 {
     constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };

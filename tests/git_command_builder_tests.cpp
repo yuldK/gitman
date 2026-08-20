@@ -85,7 +85,7 @@ TEST_CASE("Remote enumeration does not ask for URLs", "[infrastructure][git][com
     // `-v`를 쓰지 않는다. URL이 필요하지 않고, URL에 자격 증명이 들어 있으면 로그로
     // 흘러나갈 수 있다.
     REQUIRE(command_arguments(request) == std::vector<std::u8string> { u8"remote" });
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
 }
 
 TEST_CASE("Fetch requests prune and separate the remote name", "[infrastructure][git][command]")
@@ -96,7 +96,7 @@ TEST_CASE("Fetch requests prune and separate the remote name", "[infrastructure]
     const std::vector<std::u8string> expected { u8"fetch", u8"--prune", u8"--", u8"origin" };
     REQUIRE(command_arguments(request) == expected);
     // 원격을 실제로 확인하는 유일한 조회 명령이라 한도가 다르다.
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 120000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
@@ -108,7 +108,7 @@ TEST_CASE("Reference checks avoid the path separator of rev-parse", "[infrastruc
     // ref만 넘긴다.
     const std::vector<std::u8string> expected { u8"rev-parse", u8"--verify", u8"--quiet", u8"refs/remotes/origin/main" };
     REQUIRE(command_arguments(request) == expected);
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
 }
 
 TEST_CASE("Ahead behind requests compare HEAD with the tracking reference", "[infrastructure][git][command]")
@@ -139,8 +139,8 @@ TEST_CASE("Pull requests only fast forward", "[infrastructure][git][command]")
         REQUIRE(argument != u8"--no-ff");
     }
 
-    // 변경 명령은 한도가 다르다.
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
+    // 변경 명령은 한도가 다르다. update는 무제한이며 취소가 종료를 제어한다.
+    REQUIRE(request.timeout.has_value() == false);
     REQUIRE(request.maximum_captured_bytes_per_stream == 32u * 1024u * 1024u);
     REQUIRE(gitman::validate_process_request(request).empty());
 }
@@ -159,11 +159,11 @@ TEST_CASE("Submodule requests survey before they change anything", "[infrastruct
     const gitman::process_request survey { gitman::make_git_submodule_status_request(git_executable, working_directory) };
     REQUIRE(command_arguments(survey) == std::vector<std::u8string> { u8"submodule", u8"status", u8"--recursive" });
     // 조사는 네트워크를 쓰지 않는 로컬 조회다.
-    REQUIRE(*survey.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(*survey.timeout == std::chrono::milliseconds { 600000 });
 
     const gitman::process_request update { gitman::make_git_submodule_update_request(git_executable, working_directory) };
     REQUIRE(command_arguments(update) == std::vector<std::u8string> { u8"submodule", u8"update", u8"--init", u8"--recursive" });
-    REQUIRE(*update.timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(update.timeout.has_value() == false);
     REQUIRE(gitman::validate_process_request(update).empty());
 }
 
@@ -182,7 +182,7 @@ TEST_CASE("Switch candidate requests read every reference at once", "[infrastruc
     };
     REQUIRE(command_arguments(request) == expected);
     // 네트워크를 쓰지 않는 로컬 조회다. 후보 목록은 이미 받아 둔 ref로 만든다.
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
@@ -191,7 +191,7 @@ TEST_CASE("Worktree requests use the machine readable form", "[infrastructure][g
     const gitman::process_request request { gitman::make_git_worktree_list_request(git_executable, working_directory) };
 
     REQUIRE(command_arguments(request) == std::vector<std::u8string> { u8"worktree", u8"list", u8"--porcelain" });
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 

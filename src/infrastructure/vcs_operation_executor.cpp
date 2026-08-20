@@ -268,13 +268,13 @@ namespace gitman {
         repository_change_result result {};
         if (kind == repository_kind::subversion)
         {
-            svn_repository_provider provider { tools.subversion, *runner_, *probe_, &log };
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, &log, vcs_timeouts_from_settings(request.settings) };
             result = request.kind == operation_kind::update ? provider.update(request.project, request.options, request.token)
                                                             : provider.switch_to(request.project, *request.switch_target, request.token);
         }
         else
         {
-            git_repository_provider provider { tools.git, *runner_, *probe_, &log };
+            git_repository_provider provider { tools.git, *runner_, *probe_, &log, vcs_timeouts_from_settings(request.settings) };
             result = request.kind == operation_kind::update ? provider.update(request.project, request.options, request.token)
                                                             : provider.switch_to(request.project, *request.switch_target, request.token);
         }
@@ -294,12 +294,12 @@ namespace gitman {
         event.id = request.project.id;
         if (kind == repository_kind::subversion)
         {
-            svn_repository_provider provider { tools.subversion, *runner_, *probe_ };
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
             event.result = provider.query_switch_candidates(request.project, request.token);
         }
         else
         {
-            git_repository_provider provider { tools.git, *runner_, *probe_ };
+            git_repository_provider provider { tools.git, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
             event.result = provider.query_switch_candidates(request.project, request.token);
         }
         emit(std::move(event));
@@ -385,7 +385,7 @@ namespace gitman {
 
         if (kind == repository_kind::subversion)
         {
-            svn_repository_provider provider { tools.subversion, *runner_, *probe_ };
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
             repository_query_result local { provider.query_local(request.project, request.token) };
             if (request.kind == operation_kind::query_local)
             {
@@ -399,7 +399,7 @@ namespace gitman {
 
         // automatic에서 표식이 없는 경로도 Git provider가 `not_a_repository`를 그대로
         // 보고하므로 기본 provider는 Git이다.
-        git_repository_provider provider { tools.git, *runner_, *probe_ };
+        git_repository_provider provider { tools.git, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
         repository_query_result local { provider.query_local(request.project, request.token) };
         if (request.kind == operation_kind::query_local)
         {

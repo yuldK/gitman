@@ -151,6 +151,10 @@ namespace gitman {
     {
         std::u8string git_path {};
         std::u8string svn_path {};
+        // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design 1.3).
+        // 숫자만 담기며, 비어 있으면 기본값(600초)을 뜻해 element가 안내 문구를
+        // 대신 그린다.
+        std::u8string timeout_text {};
         // 검증 오류다. 비어 있으면 표시하지 않는다.
         std::u8string message {};
         bool can_confirm { true };

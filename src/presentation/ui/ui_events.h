@@ -68,7 +68,15 @@ namespace gitman::ui {
         bool control { false };
     };
 
-    using raw_input_event = std::variant<pointer_moved_event, pointer_pressed_event, pointer_released_event, pointer_left_event, mouse_wheel_event, key_pressed_event>;
+    // WM_CHAR가 만드는 문자 입력이다 (field-feedback-design 1.3). 텍스트 박스가
+    // 있는 dialog가 열려 있을 때만 소비되고 그 밖에는 무시된다. backspace는
+    // U+0008로 온다.
+    struct character_typed_event
+    {
+        char32_t character { 0 };
+    };
+
+    using raw_input_event = std::variant<pointer_moved_event, pointer_pressed_event, pointer_released_event, pointer_left_event, mouse_wheel_event, key_pressed_event, character_typed_event>;
 
     // UI thread에서만 실행할 수 있는 명령이다. dialog와 창 조작은 업무 상태가
     // 아니므로 logic을 거치지 않는다 (docs/ui-element-design.md 6.4).

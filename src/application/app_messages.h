@@ -198,6 +198,15 @@ namespace gitman {
         repository_kind tool { repository_kind::git };
     };
 
+    // 환경설정 dialog의 상태 확인 제한 시간 텍스트 박스 입력이다
+    // (field-feedback-design 1.3). 키 입력 문자가 그대로 오며 logic이 숫자만
+    // 초안에 반영한다: 0~9는 뒤에 붙이고 backspace(U+0008)는 마지막 자리를
+    // 지운다. 그 밖의 문자는 무시한다. 빈 초안은 기본값을 뜻한다.
+    struct edit_settings_timeout_intent
+    {
+        char32_t character { 0 };
+    };
+
     struct confirm_settings_intent
     {};
 
@@ -373,7 +382,8 @@ namespace gitman {
         toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
         log_scroll_intent, show_update_options_intent, set_update_submodules_intent, confirm_update_intent, cancel_update_options_intent, begin_switch_intent, select_switch_candidate_intent,
         confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent,
-        cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, confirm_settings_intent,
+        cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent,
+        confirm_settings_intent,
         cancel_settings_dialog_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
         document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, discovery_completed_event, projects_registered_event, shutdown_message>;
 

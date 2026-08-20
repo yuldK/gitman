@@ -56,11 +56,12 @@ namespace gitman {
         }
     } // namespace
 
-    svn_repository_provider::svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log) noexcept
+    svn_repository_provider::svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log, vcs_timeout_overrides timeouts) noexcept
         : tool_ { std::move(tool) }
         , runner_ { &runner }
         , probe_ { &probe }
         , log_ { log }
+        , timeouts_ { timeouts }
     {}
 
     const vcs_tool_info& svn_repository_provider::tool() const noexcept
@@ -149,7 +150,7 @@ namespace gitman {
 
         for (const info_field& field : fields)
         {
-            const vcs_command_result info_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, field.item), token, log_) };
+            const vcs_command_result info_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, field.item, {}, timeouts_), token, log_) };
             if (info_result.succeeded() == false)
             {
                 const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, info_result) };
@@ -175,7 +176,7 @@ namespace gitman {
         result.snapshot.current_reference = relative_url;
         result.snapshot.local_revision = revision;
 
-        const vcs_command_result status_result { run_vcs_command(*runner_, make_svn_status_request(tool_.executable, working_directory), token, log_) };
+        const vcs_command_result status_result { run_vcs_command(*runner_, make_svn_status_request(tool_.executable, working_directory, timeouts_), token, log_) };
         if (status_result.succeeded() == false)
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, status_result) };
@@ -199,7 +200,7 @@ namespace gitman {
             return result;
         }
 
-        const vcs_command_result version_result { run_vcs_command(*runner_, make_svnversion_request(tool_.auxiliary_executable, working_directory), token, log_) };
+        const vcs_command_result version_result { run_vcs_command(*runner_, make_svnversion_request(tool_.auxiliary_executable, working_directory, timeouts_), token, log_) };
         const svn_version_info version { version_result.succeeded() ? parse_svnversion(version_result.first_output_line()) : svn_version_info {} };
         if (version.parsed == false)
         {
@@ -266,7 +267,7 @@ namespace gitman {
 
         // 현재 URL을 다시 물어본다. snapshot의 상대 URL과 저장소 루트를 이어 붙이는
         // 것보다 규칙이 하나 적고, 명시적 조회에서만 실행된다.
-        const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url), token, log_) };
+        const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url, {}, timeouts_), token, log_) };
         const std::u8string url { url_result.succeeded() ? parse_svn_info_item(url_result.standard_output_lines) : std::u8string {} };
         if (url.empty())
         {
@@ -276,7 +277,7 @@ namespace gitman {
             return result;
         }
 
-        const vcs_command_result head_result { run_vcs_command(*runner_, make_svn_remote_revision_request(tool_.executable, working_directory, url), token, log_) };
+        const vcs_command_result head_result { run_vcs_command(*runner_, make_svn_remote_revision_request(tool_.executable, working_directory, url, timeouts_), token, log_) };
         if (head_result.succeeded() == false)
         {
             // offline, 인증 필요와 그 밖의 실패를 구분한다. SVN은 번역된 메시지에도
@@ -471,7 +472,7 @@ namespace gitman {
         const std::u8string_view working_directory { svn_working_directory(project) };
         // 현재 URL을 다시 물어본다. 상대 URL과 저장소 루트를 이어 붙이는 것보다 규칙이
         // 하나 적다. `query_remote`와 같은 방식이다.
-        const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url), token, log_) };
+        const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url, {}, timeouts_), token, log_) };
         const std::u8string current_url { url_result.succeeded() ? parse_svn_info_item(url_result.standard_output_lines) : std::u8string {} };
         if (current_url.empty())
         {
@@ -509,7 +510,7 @@ namespace gitman {
         for (const identity_field& field : identity_fields)
         {
             const vcs_command_result identity_result {
-                run_vcs_command(*runner_, make_svn_remote_info_item_request(tool_.executable, working_directory, field.item, target.target), token, log_),
+                run_vcs_command(*runner_, make_svn_remote_info_item_request(tool_.executable, working_directory, field.item, target.target, timeouts_), token, log_),
             };
             if (identity_result.succeeded() == false)
             {

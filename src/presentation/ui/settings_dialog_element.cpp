@@ -10,6 +10,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -18,15 +19,88 @@ namespace gitman::ui {
     namespace {
         // panel의 논리 치수다. 이 dialog에서만 쓰므로 이 파일에 둔다.
         constexpr float panel_width { 460.0f };
-        constexpr float panel_height { 232.0f };
+        constexpr float panel_height { 284.0f };
         constexpr float panel_padding { 14.0f };
-        // 행 배치: 제목 아래에서 시작해 행마다 label 한 줄과 경로 한 줄을 그린다.
+        // 행 배치: 제목 아래에서 시작해 행마다 label 한 줄과 값 한 줄을 그린다.
         constexpr float first_row_top { 40.0f };
         constexpr float row_height { 52.0f };
         constexpr float row_button_width { 68.0f };
         constexpr float row_button_height { 22.0f };
+        constexpr float timeout_input_width { 140.0f };
         constexpr float action_button_width { 88.0f };
         constexpr float action_button_height { 28.0f };
+        constexpr std::size_t row_count { 3 };
+
+        // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design
+        // 1.3). 키 입력은 dialog가 열려 있는 동안 interaction이 그대로 intent로
+        // 보내고 logic이 숫자만 초안에 반영한다. 상태가 없어 클릭·초점 개념이
+        // 필요하지 않다 — dialog의 유일한 입력 칸이다.
+        class timeout_input_element final : public ui_element
+        {
+        public:
+            explicit timeout_input_element(std::u8string text)
+                : ui_element { ui_element_id { ui_element_kind::settings_timeout_input } }
+                , text_ { std::move(text) }
+            {
+                set_tooltip(u8"숫자만 입력합니다 (10~3600초). 비우면 기본값 600초입니다.");
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context& context, const interaction_snapshot& interaction) const override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const bool focused { interaction.focused_input == id() };
+                const rect_f box { bounds() };
+                const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
+                const float radius { 3.0f * scale };
+                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(with_alpha(context.palette.primary_foreground, 0.08f)));
+                // 초점을 받은 칸은 테두리를 강조해 입력이 이곳으로 간다는 것을 보인다.
+                SkPaint border { solid_paint(focused ? context.palette.positive_accent : with_alpha(context.palette.primary_foreground, 0.35f)) };
+                border.setStyle(SkPaint::kStroke_Style);
+                border.setStrokeWidth(1.0f * scale);
+                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
+
+                const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const float text_left { box.x + 7.0f * scale };
+                const float baseline { box.y + centered_text_baseline(font, box.height) };
+
+                float caret_left { text_left };
+                if (text_.empty())
+                {
+                    // 빈 값은 기본값이다. 초점이 없을 때만 안내를 흐리게 그린다.
+                    if (focused == false)
+                    {
+                        SkPaint placeholder { solid_paint(context.palette.primary_foreground) };
+                        placeholder.setAlphaf(0.5f);
+                        draw_text(context.canvas, u8"600 (기본값)", text_left, baseline, font, placeholder);
+                    }
+                }
+                else
+                {
+                    draw_text(context.canvas, text_, text_left, baseline, font, solid_paint(context.palette.primary_foreground));
+                    caret_left += measure_text(text_, font) + 1.0f * scale;
+                }
+
+                // caret은 초점을 받은 동안 글 끝에서 깜빡인다. 초점을 받은 시각이
+                // 위상 기준이라 받는 순간에는 항상 켜져 있다. 다시 그리기는 UI
+                // thread의 caret timer가 반주기마다 일으킨다. 커서 이동은 지원하지
+                // 않으므로 위치는 항상 끝이다.
+                const bool caret_on { focused && interaction.focus_started_at.has_value() && ((context.now - *interaction.focus_started_at) / caret_blink_interval) % 2 == 0 };
+                if (caret_on)
+                {
+                    const float caret_top { box.y + 4.0f * scale };
+                    context.canvas.drawRect(
+                        SkRect::MakeXYWH(caret_left, caret_top, 1.0f * scale, box.height - 8.0f * scale), solid_paint(context.palette.primary_foreground));
+                }
+            }
+
+        private:
+            std::u8string text_ {};
+        };
 
         // panel 배경이다. 클릭을 흡수해 배경 닫기로 흐르지 않게 하고 제목, 행 label,
         // 경로 값, 검증 메시지를 그린다. 버튼은 dialog가 직접 배치하는 자식이다.
@@ -64,13 +138,17 @@ namespace gitman::ui {
                 static_cast<void>(draw_text_within(
                     context.canvas, u8"환경설정", box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
 
-                draw_row(context, 0, u8"Git 실행 파일", git_path_);
-                draw_row(context, 1, u8"SVN 실행 파일", svn_path_);
+                draw_row(context, 0, u8"Git 실행 파일", git_path_, u8"자동 탐색 (지정되지 않음)");
+                draw_row(context, 1, u8"SVN 실행 파일", svn_path_, u8"자동 탐색 (지정되지 않음)");
+                // 대형 저장소는 status만 5~10분 걸릴 수 있어 제한 시간을 문서 단위로
+                // 조정한다 (field-feedback-design 1장). 값 칸은 텍스트 박스 element가
+                // 대신 그린다.
+                draw_row(context, 2, u8"상태 확인 제한 시간 (초)", u8"", u8"");
 
                 if (message_.empty() == false)
                 {
                     const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
-                    const float message_top { box.y + (first_row_top + row_height * 2.0f) * scale };
+                    const float message_top { box.y + (first_row_top + row_height * static_cast<float>(row_count)) * scale };
                     static_cast<void>(
                         draw_text_within(context.canvas, message_, box.x + padding, message_top + 10.0f * scale, box.width - padding * 2.0f, body_font, solid_paint(context.palette.warning_accent)));
                 }
@@ -79,7 +157,7 @@ namespace gitman::ui {
             }
 
         private:
-            void draw_row(draw_context& context, const std::size_t index, const std::u8string_view label, const std::u8string_view path) const
+            void draw_row(draw_context& context, const std::size_t index, const std::u8string_view label, const std::u8string_view value, const std::u8string_view placeholder) const
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
                 const rect_f box { bounds() };
@@ -93,10 +171,10 @@ namespace gitman::ui {
                 // 빈 값은 자동 탐색이다 (REQ-017). 값 대신 안내 문구를 흐리게 그린다.
                 const SkFont value_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
                 SkPaint value_paint { solid_paint(context.palette.primary_foreground) };
-                value_paint.setAlphaf(path.empty() ? 0.5f : 0.8f);
-                const std::u8string_view value { path.empty() ? std::u8string_view { u8"자동 탐색 (지정되지 않음)" } : path };
+                value_paint.setAlphaf(value.empty() ? 0.5f : 0.8f);
+                const std::u8string_view shown { value.empty() ? placeholder : value };
                 // 값 줄은 행 버튼(row_button_height) 아래에서 시작해 겹치지 않는다.
-                static_cast<void>(draw_text_within(context.canvas, value, box.x + padding, row_top + 33.0f * scale, box.width - padding * 2.0f, value_font, value_paint));
+                static_cast<void>(draw_text_within(context.canvas, shown, box.x + padding, row_top + 33.0f * scale, box.width - padding * 2.0f, value_font, value_paint));
             }
 
             std::u8string git_path_ {};
@@ -139,6 +217,9 @@ namespace gitman::ui {
             [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_executable_intent { repository_kind::subversion } } } }; });
         add_child(std::move(svn_clear));
 
+        // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design 1.3).
+        add_child(std::make_unique<timeout_input_element>(dialog_.timeout_text));
+
         // file association 등록·제거다 (REQ-016). registry 작업은 UI thread의
         // ui_command로 수행되고 결과는 시스템 dialog로 알린다.
         auto associate { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_associate }, std::u8string { u8"연결 등록" }, false) };
@@ -178,7 +259,7 @@ namespace gitman::ui {
 
         const float padding { panel_padding * scale };
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
-        if (children.size() >= 9)
+        if (children.size() >= 10)
         {
             // 행 버튼은 행 label 줄의 오른쪽에 나란히 둔다 (panel의 draw_row 배치와
             // 같은 좌표 기준이다).
@@ -191,14 +272,19 @@ namespace gitman::ui {
                 children[2 + row * 2]->arrange({ { left + width - padding - row_button, row_top, row_button, row_button_height * scale }, scale });
             }
 
+            // 제한 시간 텍스트 박스는 2행의 값 줄 자리에 둔다 (draw_row의 값 줄과
+            // 같은 좌표 기준이다).
+            const float timeout_row_top { top + (first_row_top + row_height * 2.0f) * scale };
+            children[5]->arrange({ { left + padding, timeout_row_top + 20.0f * scale, timeout_input_width * scale, row_button_height * scale }, scale });
+
             const float button_width { action_button_width * scale };
             const float button_height { action_button_height * scale };
             const float button_top { top + height - padding - button_height };
             // 아래 왼쪽은 연결 등록·해제, 오른쪽은 저장·취소다.
-            children[5]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
-            children[6]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[7]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[8]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
+            children[6]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
+            children[7]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[8]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[9]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
         }
     }
 

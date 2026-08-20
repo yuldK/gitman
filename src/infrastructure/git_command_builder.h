@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/process_request.h"
+#include "infrastructure/vcs_execution_policy.h"
 
 #include <cstddef>
 #include <string_view>
@@ -22,7 +23,7 @@ namespace gitman {
     // `--show-toplevel`은 bare 저장소와 git dir 안에서 실패하므로 반드시 마지막에 둔다.
     // Git은 인자를 순서대로 처리하며 실패 전까지의 값은 이미 출력하기 때문에, 실패한
     // 경우에도 앞의 세 값으로 배치를 판정할 수 있다.
-    [[nodiscard]] process_request make_git_layout_request(std::u8string_view executable, std::u8string_view working_directory);
+    [[nodiscard]] process_request make_git_layout_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
     // 로컬 작업 트리 상태를 조회한다. 네트워크에 접근하지 않으며 `branch.ab`는 이미
     // 받아 둔 remote tracking ref와의 비교라 fetch를 유발하지 않는다.
@@ -32,23 +33,23 @@ namespace gitman {
     // 잃는다. 반대로 줄 단위 출력에서는 Git이 제어 문자와 `"`, `\`가 들어간 경로를 C
     // 인용으로 감싸므로 줄 경계가 흔들리지 않고, 로그 뷰에도 사람이 읽을 수 있는 줄로
     // 남는다. 인용 해제는 `unquote_git_path`가 담당한다.
-    [[nodiscard]] process_request make_git_status_request(std::u8string_view executable, std::u8string_view working_directory);
+    [[nodiscard]] process_request make_git_status_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
     // 설정된 remote 이름을 한 줄에 하나씩 얻는다. `-v`를 쓰지 않는 이유는 URL이 필요하지
     // 않고, URL에 자격 증명이 들어 있으면 로그로 흘러나갈 수 있기 때문이다.
-    [[nodiscard]] process_request make_git_remote_list_request(std::u8string_view executable, std::u8string_view working_directory);
+    [[nodiscard]] process_request make_git_remote_list_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
     // 원격을 실제로 확인하는 유일한 조회 명령이다. `--prune`으로 지워진 remote branch의
     // 낡은 tracking ref를 함께 정리한다.
-    [[nodiscard]] process_request make_git_fetch_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view remote);
+    [[nodiscard]] process_request make_git_fetch_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view remote, const vcs_timeout_overrides& timeouts = {});
 
     // ref가 있는지 확인한다. 없으면 출력 없이 종료 코드만 실패이므로 메시지 언어와
     // 무관하게 판정할 수 있다.
-    [[nodiscard]] process_request make_git_verify_reference_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view reference);
+    [[nodiscard]] process_request make_git_verify_reference_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view reference, const vcs_timeout_overrides& timeouts = {});
 
     // `<ahead>\t<behind>` 한 줄을 얻는다. `HEAD`를 쓰면 branch 이름을 인자로 넘기지 않아도
     // 되고 이름에 특수 문자가 있어도 안전하다.
-    [[nodiscard]] process_request make_git_ahead_behind_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view target_reference);
+    [[nodiscard]] process_request make_git_ahead_behind_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view target_reference, const vcs_timeout_overrides& timeouts = {});
 
     enum class git_submodule_recursion
     {
@@ -65,7 +66,7 @@ namespace gitman {
         std::u8string_view executable, std::u8string_view working_directory, std::u8string_view remote, std::u8string_view branch, git_submodule_recursion recursion);
 
     // 등록된 submodule과 그 상태를 얻는다. 네트워크를 쓰지 않는다.
-    [[nodiscard]] process_request make_git_submodule_status_request(std::u8string_view executable, std::u8string_view working_directory);
+    [[nodiscard]] process_request make_git_submodule_status_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
     // parent pull이 성공한 뒤에만 실행한다.
     [[nodiscard]] process_request make_git_submodule_update_request(std::u8string_view executable, std::u8string_view working_directory);
@@ -77,10 +78,10 @@ namespace gitman {
     //
     // `%(symref)`는 `refs/remotes/<remote>/HEAD` 같은 심볼릭 항목을 이름 규칙이 아니라
     // 값으로 골라내려고 넣었다. 계획 4.8의 형식에 이 한 칸을 더한 것이다.
-    [[nodiscard]] process_request make_git_reference_list_request(std::u8string_view executable, std::u8string_view working_directory);
+    [[nodiscard]] process_request make_git_reference_list_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
     // 다른 worktree가 사용 중인 branch를 확인한다. 기계 판독 형식이라 로캘과 무관하다.
-    [[nodiscard]] process_request make_git_worktree_list_request(std::u8string_view executable, std::u8string_view working_directory);
+    [[nodiscard]] process_request make_git_worktree_list_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
     // 이미 있는 local branch로 전환한다. `--no-guess`로 선택하지 않은 remote branch로의
     // 암묵 전환을 막는다. `--discard-changes`, `--merge`, `--force`는 쓰지 않으므로

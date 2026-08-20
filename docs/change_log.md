@@ -1,5 +1,33 @@
 # 변경 이력
 
+## 2026-08-20 - 실환경 피드백 F2: 제한 시간 정책 개편
+
+### 사용자 지시
+
+- 대형 저장소는 상태 확인만 5~10분 걸려 실패한다. 이를 감안한다. (검수 답변:
+  기본값 상향 + 설정 항목까지 추가)
+- 재검수: 환경설정 UI가 깨졌다. 상태 확인은 숫자만 받는 텍스트 박스로 제공하고,
+  update는 실측 최대 3시간이니 가늠해 제한하지 말 것(명시적 취소로 충분).
+
+### 반영 내용
+
+- `local_query` 30초→600초, `remote_query` 120초→600초, **update는 무제한**
+  (process runner의 timeout 없는 요청 = INFINITE 대기 경로 사용).
+- 문서 `settings`에 `query_timeout_seconds`(10~3600초, 로컬·원격 조회 공통)를
+  추가했다. 잘못된 값은 경고만 남기고 기본값을 쓰며, 기본값 복원 시 필드를
+  지운다. `vcs_timeout_overrides`가 executor→provider→builder로 전달된다.
+- 환경설정 dialog에 숫자 전용 텍스트 박스 행을 추가했다. 문자 입력 경로를
+  신설했다: `WM_CHAR` → `character_typed_event` → (초점 칸으로)
+  `edit_settings_timeout_intent` → logic이 숫자·backspace만 초안에 반영, 범위
+  밖은 메시지와 함께 저장 차단.
+- 텍스트 박스 초점(`interaction_snapshot::focused_input`)과 caret을 추가했다.
+  초점은 박스 클릭으로만 생기고(자동 초점 없음), 초점 중 caret이 반주기
+  530ms로 깜빡인다(초점 시각이 위상 기준, caret timer가 재그리기).
+- 키 입력이 한 박자 늦게 보이던 게시 순서 race를 고쳤다: tree slot에는 wake
+  신호가 없으므로 tree를 먼저, view(wake)를 나중에 게시한다.
+- 검증: 신규·직접 영향 범위 한정 실행 통과(전체는 큰 단계 종료 시 실행).
+  상세는 `docs/verification/2026-08-20-feedback-f2-timeouts.md`.
+
 ## 2026-08-20 - `build_skia.ps1`의 gn·ninja 로컬 탐색
 
 ### 사용자 지시

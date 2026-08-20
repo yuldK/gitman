@@ -107,6 +107,13 @@ namespace gitman {
             if (had_relative_paths || settings.show_relative_paths)
                 value["show_relative_paths"] = settings.show_relative_paths;
 
+            // 제한 시간은 값이 없으면 기본값이라는 뜻이므로 필드를 지운다. 남겨 두면
+            // 다음 열기에서 이전 값이 되살아난다.
+            if (settings.query_timeout_seconds.has_value())
+                value["query_timeout_seconds"] = *settings.query_timeout_seconds;
+            else
+                value.erase("query_timeout_seconds");
+
             root["settings"] = std::move(value);
         }
 

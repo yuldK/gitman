@@ -80,6 +80,7 @@ namespace gitman {
         void handle_open_settings();
         void handle_set_settings_executable(set_settings_executable_intent intent);
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
+        void handle_edit_settings_timeout(const edit_settings_timeout_intent& intent);
         void handle_confirm_settings();
         void handle_begin_switch(const begin_switch_intent& intent);
         void handle_select_switch_candidate(std::size_t index);
@@ -193,6 +194,9 @@ namespace gitman {
         {
             std::u8string git_path {};
             std::u8string svn_path {};
+            // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design
+            // 1.3). 숫자만 담기며 비어 있으면 기본값이다.
+            std::u8string timeout_text {};
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};

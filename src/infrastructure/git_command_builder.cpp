@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace gitman {
-    process_request make_git_layout_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_git_layout_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"rev-parse" });
@@ -17,10 +17,10 @@ namespace gitman {
         arguments.push_back(std::u8string { u8"--is-inside-work-tree" });
         // bare 저장소에서 실패하는 인자다. 앞의 값을 잃지 않도록 마지막에 둔다.
         arguments.push_back(std::u8string { u8"--show-toplevel" });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
-    process_request make_git_status_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_git_status_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"status" });
@@ -29,17 +29,17 @@ namespace gitman {
         // 무시된 파일은 세지 않는다. 기본값이지만 Git 설정으로 바뀌지 않도록 명시한다.
         arguments.push_back(std::u8string { u8"--untracked-files=normal" });
         arguments.push_back(std::u8string { u8"--ignored=no" });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, git_status_record_byte_limit);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, git_status_record_byte_limit, timeouts);
     }
 
-    process_request make_git_remote_list_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_git_remote_list_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"remote" });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
-    process_request make_git_fetch_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view remote)
+    process_request make_git_fetch_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view remote, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"fetch" });
@@ -48,10 +48,10 @@ namespace gitman {
         // 끊어 준다.
         arguments.push_back(std::u8string { u8"--" });
         arguments.push_back(std::u8string { remote });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::remote_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::remote_query, default_process_record_byte_limit, timeouts);
     }
 
-    process_request make_git_verify_reference_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view reference)
+    process_request make_git_verify_reference_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view reference, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"rev-parse" });
@@ -61,7 +61,7 @@ namespace gitman {
         // 완전한 ref만 넘긴다.
         arguments.push_back(std::u8string { u8"--quiet" });
         arguments.push_back(std::u8string { reference });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
     process_request make_git_pull_request(
@@ -79,13 +79,13 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::update);
     }
 
-    process_request make_git_submodule_status_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_git_submodule_status_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"submodule" });
         arguments.push_back(std::u8string { u8"status" });
         arguments.push_back(std::u8string { u8"--recursive" });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
     process_request make_git_submodule_update_request(const std::u8string_view executable, const std::u8string_view working_directory)
@@ -98,7 +98,7 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::update);
     }
 
-    process_request make_git_reference_list_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_git_reference_list_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"for-each-ref" });
@@ -107,16 +107,16 @@ namespace gitman {
         // 후보 목록의 순서는 호출자가 remote 우선으로 다시 만든다.
         arguments.push_back(std::u8string { u8"refs/heads" });
         arguments.push_back(std::u8string { u8"refs/remotes" });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
-    process_request make_git_worktree_list_request(const std::u8string_view executable, const std::u8string_view working_directory)
+    process_request make_git_worktree_list_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         std::vector<std::u8string> arguments {};
         arguments.push_back(std::u8string { u8"worktree" });
         arguments.push_back(std::u8string { u8"list" });
         arguments.push_back(std::u8string { u8"--porcelain" });
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
     process_request make_git_switch_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view branch)
@@ -149,7 +149,7 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::switch_target);
     }
 
-    process_request make_git_ahead_behind_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view target_reference)
+    process_request make_git_ahead_behind_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view target_reference, const vcs_timeout_overrides& timeouts)
     {
         std::u8string range { u8"HEAD..." };
         range.append(target_reference);
@@ -159,6 +159,6 @@ namespace gitman {
         arguments.push_back(std::u8string { u8"--left-right" });
         arguments.push_back(std::u8string { u8"--count" });
         arguments.push_back(std::move(range));
-        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query);
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 } // namespace gitman

@@ -10,6 +10,7 @@
 #include "domain/vcs_operation.h"
 #include "domain/vcs_tool.h"
 #include "infrastructure/git_status_parser.h"
+#include "infrastructure/vcs_execution_policy.h"
 
 #include <string>
 #include <string_view>
@@ -123,7 +124,7 @@ namespace gitman {
     public:
         // `runner`, `probe`와 `log`는 provider보다 오래 살아 있어야 한다. `log`는 카드
         // 로그로 출력을 넘길 sink이며 단계 4에서는 test 수집 sink만 사용한다.
-        git_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* log = nullptr) noexcept;
+        git_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* log = nullptr, vcs_timeout_overrides timeouts = {}) noexcept;
 
         [[nodiscard]] const vcs_tool_info& tool() const noexcept;
         // 명시적 재조사 결과를 반영한다. 도구를 설치한 뒤 앱을 다시 시작하지 않아도
@@ -150,6 +151,8 @@ namespace gitman {
         process_runner* runner_ { nullptr };
         const vcs_file_probe* probe_ { nullptr };
         process_output_sink* log_ { nullptr };
+        // 문서 settings의 조회 제한 시간이다. 요청마다 builder로 전달된다 (1.3).
+        vcs_timeout_overrides timeouts_ {};
     };
 
     // 등록 경로로 사용할 절대 경로를 고른다. 해석된 경로가 있으면 그것을, 없으면 원문을

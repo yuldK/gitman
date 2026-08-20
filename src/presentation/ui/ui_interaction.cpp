@@ -43,6 +43,7 @@ namespace gitman::ui {
 
     std::vector<input_action> interaction_controller::process(const raw_input_event& event)
     {
+        update_input_focus();
         return std::visit(
             [this](const auto& value) -> std::vector<input_action> {
                 using value_type = std::decay_t<decltype(value)>;
@@ -81,6 +82,15 @@ namespace gitman::ui {
                 }
                 else if constexpr (std::is_same_v<value_type, key_pressed_event>)
                     return process_key(value);
+                else if constexpr (std::is_same_v<value_type, character_typed_event>)
+                {
+                    // 문자 입력은 초점을 가진 텍스트 박스로만 간다. 현재 유일한
+                    // 대상은 환경설정 dialog의 제한 시간 칸이다. 숫자 여부는 logic이
+                    // 거른다.
+                    if (snapshot_.focused_input.kind == ui_element_kind::settings_timeout_input)
+                        return { input_action { logic_message { edit_settings_timeout_intent { value.character } } } };
+                    return {};
+                }
                 else
                     return {};
             },
@@ -153,6 +163,19 @@ namespace gitman::ui {
         {
             clear_press();
             return {};
+        }
+
+        // 텍스트 박스를 누르면 초점을 주고, 다른 곳을 누르면 거둔다. 초점 시각은
+        // caret 깜빡임의 위상 기준이다.
+        if (hit->id().kind == ui_element_kind::settings_timeout_input)
+        {
+            snapshot_.focused_input = hit->id();
+            snapshot_.focus_started_at = event.time;
+        }
+        else
+        {
+            snapshot_.focused_input = {};
+            snapshot_.focus_started_at.reset();
         }
 
         pressed_id_ = hit->id();
@@ -318,6 +341,21 @@ namespace gitman::ui {
             snapshot_.hover_started_at.reset();
         else
             snapshot_.hover_started_at = time;
+    }
+
+    void interaction_controller::update_input_focus()
+    {
+        // 초점은 텍스트 박스를 눌러야 생긴다 (검수 지시: 열릴 때 자동 초점 없음).
+        // dialog가 닫히면 남아 있던 초점을 거둔다.
+        const bool open { tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr };
+        if (open == settings_dialog_open_)
+            return;
+        settings_dialog_open_ = open;
+        if (open == false)
+        {
+            snapshot_.focused_input = {};
+            snapshot_.focus_started_at.reset();
+        }
     }
 
     void interaction_controller::clear_press() noexcept

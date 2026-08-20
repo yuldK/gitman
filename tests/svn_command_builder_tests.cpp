@@ -23,7 +23,7 @@ TEST_CASE("SVN info requests ask for one machine readable value", "[infrastructu
     REQUIRE(request.arguments == expected);
     REQUIRE(request.executable == svn_executable);
     REQUIRE(request.working_directory == working_directory);
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
@@ -57,7 +57,7 @@ TEST_CASE("svnversion requests carry no shared arguments", "[infrastructure][svn
     REQUIRE(request.executable == svnversion_executable);
     REQUIRE(request.working_directory == working_directory);
     // 나머지 실행 정책은 다른 명령과 같다.
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 30000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
     REQUIRE(request.maximum_captured_bytes_per_stream == 8u * 1024u * 1024u);
     REQUIRE(request.text_encoding == gitman::process_text_encoding::active_code_page_fallback);
     REQUIRE(gitman::validate_process_request(request).empty());
@@ -70,7 +70,7 @@ TEST_CASE("SVN remote revision requests target the URL", "[infrastructure][svn][
     const std::vector<std::u8string> expected { u8"--non-interactive", u8"info", u8"--show-item", u8"revision", u8"https://svn.example.com/repo/trunk" };
     REQUIRE(request.arguments == expected);
     // 네트워크를 쓰는 유일한 조회다.
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 120000 });
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
@@ -83,8 +83,8 @@ TEST_CASE("SVN update requests never resolve conflicts on their own", "[infrastr
     // `--accept`를 주지 않으므로 충돌은 자동으로 해결되지 않고 그대로 남는다.
     for (const std::u8string& argument : request.arguments)
         REQUIRE(argument.starts_with(u8"--accept") == false);
-    // 변경 명령이라 한도가 다르다.
-    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
+    // 변경 명령이라 한도가 다르다. update는 무제한이며 취소가 종료를 제어한다.
+    REQUIRE(request.timeout.has_value() == false);
     REQUIRE(request.maximum_captured_bytes_per_stream == 32u * 1024u * 1024u);
     REQUIRE(gitman::validate_process_request(request).empty());
 }
@@ -118,7 +118,7 @@ TEST_CASE("SVN identity requests use the remote query limits", "[infrastructure]
     const gitman::process_request root { gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::repository_root, url) };
     REQUIRE(root.arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--show-item", u8"repos-root-url", std::u8string { url } });
     // 원격을 실제로 확인하므로 로컬 조회보다 넉넉한 한도를 쓴다.
-    REQUIRE(*root.timeout == std::chrono::milliseconds { 120000 });
+    REQUIRE(*root.timeout == std::chrono::milliseconds { 600000 });
     REQUIRE(gitman::validate_process_request(root).empty());
 
     const gitman::process_request uuid { gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::repository_uuid, url) };
@@ -127,7 +127,7 @@ TEST_CASE("SVN identity requests use the remote query limits", "[infrastructure]
     // 기존 원격 리비전 요청은 같은 조립을 쓰며 만들어 내는 명령이 달라지지 않는다.
     const gitman::process_request revision { gitman::make_svn_remote_revision_request(svn_executable, working_directory, url) };
     REQUIRE(revision.arguments == gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::revision, url).arguments);
-    REQUIRE(*revision.timeout == std::chrono::milliseconds { 120000 });
+    REQUIRE(*revision.timeout == std::chrono::milliseconds { 600000 });
 }
 
 TEST_CASE("SVN requests never enable interactive prompts", "[infrastructure][svn][command]")

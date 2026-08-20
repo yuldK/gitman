@@ -86,6 +86,8 @@ namespace gitman::ui {
         settings_git_clear,
         settings_svn_browse,
         settings_svn_clear,
+        // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design 1.3).
+        settings_timeout_input,
         settings_dialog_confirm,
         settings_dialog_cancel,
         // 환경설정 dialog의 file association 등록·제거 버튼이다 (REQ-016, 단계 8).
@@ -208,11 +210,20 @@ namespace gitman::ui {
         // 판정한다.
         std::optional<std::chrono::steady_clock::time_point> hover_started_at {};
         std::optional<drag_visual> drag {};
+        // 문자 입력을 받는 element다 (field-feedback-design 1.3). 값이 있으면 그
+        // element가 caret을 그린다. 텍스트 박스를 눌러야 초점을 받고, 다른 곳을
+        // 누르거나 dialog가 닫히면 풀린다.
+        ui_element_id focused_input {};
+        // 초점을 받은 시각이다. caret 깜빡임의 위상 기준이라 초점을 받는 순간
+        // caret이 켜진 상태로 시작한다.
+        std::optional<std::chrono::steady_clock::time_point> focus_started_at {};
 
         [[nodiscard]] bool operator==(const interaction_snapshot&) const = default;
     };
 
     inline constexpr std::chrono::milliseconds tooltip_delay { 500 };
+    // caret 깜빡임의 반주기다. 켜짐·꺼짐이 이 간격으로 번갈아 나타난다.
+    inline constexpr std::chrono::milliseconds caret_blink_interval { 530 };
 
     // 모든 화면 요소의 최상위 추상 클래스다 (docs/ui-element-design.md). 빌드 중에만
     // mutable이고 tree로 게시된 뒤에는 불변으로 취급하므로 여러 스레드가 동시에

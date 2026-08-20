@@ -37,10 +37,13 @@ namespace {
 
 TEST_CASE("Command limits match the approved per class values", "[infrastructure][vcs][policy]")
 {
+    // local/remote 조회 600초는 대형 저장소 실측을 반영한 기본값이다
+    // (field-feedback-design 1.2).
     REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::tool_probe).timeout == std::chrono::milliseconds { 5000 });
-    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::local_query).timeout == std::chrono::milliseconds { 30000 });
-    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::remote_query).timeout == std::chrono::milliseconds { 120000 });
-    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::update).timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::local_query).timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::remote_query).timeout == std::chrono::milliseconds { 600000 });
+    // update는 실측 최대 3시간까지 걸려 무제한이다. 종료는 명시적 취소가 담당한다.
+    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::update).timeout.has_value() == false);
     REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::switch_target).timeout == std::chrono::milliseconds { 300000 });
 
     REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::tool_probe).maximum_captured_bytes_per_stream == 64u * 1024u);
@@ -50,6 +53,33 @@ TEST_CASE("Command limits match the approved per class values", "[infrastructure
 
     // 알 수 없는 값도 사용 가능한 한도를 돌려주어 요청 검증을 통과시킨다.
     REQUIRE(gitman::vcs_limits_for(static_cast<gitman::vcs_command_class>(-1)).maximum_captured_bytes_per_stream > 0);
+}
+
+TEST_CASE("The settings timeout overrides only the query classes", "[infrastructure][vcs][policy]")
+{
+    // 문서 settings의 초 단위 값이 override로 바뀌어 로컬·원격 조회에 함께
+    // 적용된다 (field-feedback-design 1.3).
+    gitman::workspace_settings settings {};
+    settings.query_timeout_seconds = 900;
+    const gitman::vcs_timeout_overrides overrides { gitman::vcs_timeouts_from_settings(settings) };
+    REQUIRE(overrides.query == std::chrono::milliseconds { 900000 });
+    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::local_query, overrides).timeout == std::chrono::milliseconds { 900000 });
+    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::remote_query, overrides).timeout == std::chrono::milliseconds { 900000 });
+    // 설정화하지 않은 부류는 override의 영향을 받지 않는다.
+    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::update, overrides).timeout.has_value() == false);
+    REQUIRE(gitman::vcs_limits_for(gitman::vcs_command_class::tool_probe, overrides).timeout == std::chrono::milliseconds { 5000 });
+
+    // 범위 밖 값은 어떤 경로로 와도 무시된다.
+    gitman::workspace_settings out_of_range {};
+    out_of_range.query_timeout_seconds = 9999;
+    REQUIRE(gitman::vcs_timeouts_from_settings(out_of_range).query.has_value() == false);
+
+    // 요청 생성에도 같은 override가 실린다.
+    const gitman::process_request request {
+        gitman::make_vcs_process_request(gitman::repository_kind::git, u8"C:\\tools\\git.exe", u8"D:\\repo", { std::u8string { u8"status" } }, gitman::vcs_command_class::local_query,
+            gitman::default_process_record_byte_limit, overrides),
+    };
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 900000 });
 }
 
 TEST_CASE("Git requests carry the non interactive environment", "[infrastructure][vcs][policy]")

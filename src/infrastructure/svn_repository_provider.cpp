@@ -361,8 +361,10 @@ namespace gitman {
             return update_block_reason::repository_unavailable;
         if (snapshot.working_tree.state == working_tree_state::conflicted)
             return update_block_reason::working_tree_conflicted;
-        if (snapshot.working_tree.state != working_tree_state::clean)
-            // `modified`와 `unknown`을 함께 막는다.
+        if (snapshot.working_tree.has_tracked_changes())
+            // 수정·충돌과 `unknown`을 막는다. 미추적 파일만 있는 상태는 막지
+            // 않는다 — `svn update`는 미버전 파일을 건드리지 않고 충돌 시 tree
+            // conflict로 남긴다 (field-feedback-design 2.2).
             return update_block_reason::working_tree_dirty;
         if (snapshot.has_switched_subtree.value_or(false))
             return update_block_reason::switched_subtree;

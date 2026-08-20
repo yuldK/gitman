@@ -76,7 +76,14 @@ namespace gitman {
         bool has_index_lock { false };
         bool is_detached { false };
 
+        // 전환(switch) 같은 전면 변경의 보호 판정이다. 미추적 파일을 포함해 어떤
+        // 변경이라도 있으면 안전하지 않다.
         [[nodiscard]] bool is_safe_for_change() const noexcept;
+        // update 차단 판정이다 (field-feedback-design 2.2). 추적 중인 파일의
+        // 변경(수정·충돌·진행 중 작업·index 잠금)만 세고, 미추적 파일만 있는
+        // 상태는 해당하지 않는다 — pull/update가 미추적을 덮어쓰게 되면 도구
+        // 스스로 중단하므로 앱이 선제 차단할 이유가 없다.
+        [[nodiscard]] bool has_tracked_changes() const noexcept;
     };
 
     // `git submodule status`가 보고하는 항목이다. 상태 문자를 그대로 노출하지 않고

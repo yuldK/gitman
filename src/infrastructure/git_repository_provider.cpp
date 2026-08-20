@@ -824,8 +824,11 @@ namespace gitman {
         if (snapshot.working_tree.is_detached)
             // 비교할 branch가 없어 fast-forward 대상을 정할 수 없다.
             return update_block_reason::detached_head;
-        if (snapshot.working_tree.state != working_tree_state::clean)
-            // `modified`와 `unknown`을 함께 막는다. ADR-003의 기본 보호 정책이다.
+        if (snapshot.working_tree.has_tracked_changes())
+            // 수정·충돌과 `unknown`을 막는다(ADR-003의 기본 보호 정책). 미추적
+            // 파일만 있는 상태는 막지 않는다 — pull이 미추적을 덮어쓰게 되면 Git
+            // 스스로 중단하고 작업 트리를 건드리지 않는다 (field-feedback-design
+            // 2.2).
             return update_block_reason::working_tree_dirty;
         if (snapshot.sync_state == remote_sync_state::diverged)
             return update_block_reason::diverged;

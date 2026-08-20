@@ -130,7 +130,8 @@ namespace gitman {
         case update_block_reason::working_tree_conflicted:
             return u8"충돌이 남아 있어 갱신하지 않았습니다.";
         case update_block_reason::working_tree_dirty:
-            return u8"커밋하지 않은 변경이 있어 갱신하지 않았습니다.";
+            // 미추적 파일만으로는 차단하지 않으므로(2.2) "수정"으로 정확히 말한다.
+            return u8"커밋하지 않은 수정이 있어 갱신하지 않았습니다.";
         case update_block_reason::operation_in_progress:
             return u8"진행 중인 merge, rebase 또는 cherry-pick이 있어 갱신하지 않았습니다.";
         case update_block_reason::index_locked:

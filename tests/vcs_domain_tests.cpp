@@ -106,6 +106,42 @@ TEST_CASE("Working tree safety refuses unknown and interrupted states", "[domain
     REQUIRE(summary.is_safe_for_change());
 }
 
+TEST_CASE("Tracked change detection ignores untracked only trees", "[domain][repository]")
+{
+    // update 차단 판정이다 (field-feedback-design 2.2). 미추적 파일만 있으면
+    // 차단하지 않지만, 전환용 is_safe_for_change는 여전히 보수적으로 막는다.
+    gitman::working_tree_summary untracked_only {};
+    untracked_only.state = gitman::working_tree_state::modified;
+    untracked_only.untracked_count = 3;
+    REQUIRE_FALSE(untracked_only.has_tracked_changes());
+    REQUIRE_FALSE(untracked_only.is_safe_for_change());
+
+    gitman::working_tree_summary clean {};
+    clean.state = gitman::working_tree_state::clean;
+    REQUIRE_FALSE(clean.has_tracked_changes());
+
+    // 조회하지 못한 상태는 변경이 있다고 가정한다.
+    gitman::working_tree_summary unknown {};
+    REQUIRE(unknown.has_tracked_changes());
+
+    gitman::working_tree_summary modified { untracked_only };
+    modified.modified_count = 1;
+    REQUIRE(modified.has_tracked_changes());
+
+    gitman::working_tree_summary conflicted {};
+    conflicted.state = gitman::working_tree_state::conflicted;
+    conflicted.conflicted_count = 1;
+    REQUIRE(conflicted.has_tracked_changes());
+
+    gitman::working_tree_summary interrupted { untracked_only };
+    interrupted.operation_in_progress = true;
+    REQUIRE(interrupted.has_tracked_changes());
+
+    gitman::working_tree_summary locked { untracked_only };
+    locked.has_index_lock = true;
+    REQUIRE(locked.has_tracked_changes());
+}
+
 TEST_CASE("Repository snapshots default to an unknown availability", "[domain][repository]")
 {
     const gitman::repository_snapshot snapshot {};

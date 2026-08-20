@@ -454,7 +454,15 @@ TEST_CASE("SVN update preflight refuses unsafe working copies", "[infrastructure
 
     gitman::repository_snapshot dirty { clean };
     dirty.working_tree.state = gitman::working_tree_state::modified;
+    dirty.working_tree.modified_count = 1;
     REQUIRE(gitman::evaluate_svn_update_preflight(dirty) == gitman::update_block_reason::working_tree_dirty);
+
+    // 미추적(미버전) 파일만 있는 작업 복사본은 막지 않는다 (field-feedback-design
+    // 2.2). `svn update`는 미버전 파일을 건드리지 않는다.
+    gitman::repository_snapshot untracked_only { clean };
+    untracked_only.working_tree.state = gitman::working_tree_state::modified;
+    untracked_only.working_tree.untracked_count = 2;
+    REQUIRE(gitman::evaluate_svn_update_preflight(untracked_only) == gitman::update_block_reason::none);
 
     gitman::repository_snapshot unknown { clean };
     unknown.working_tree.state = gitman::working_tree_state::unknown;

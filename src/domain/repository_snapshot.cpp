@@ -10,6 +10,15 @@ namespace gitman {
         return operation_in_progress == false && has_index_lock == false;
     }
 
+    bool working_tree_summary::has_tracked_changes() const noexcept
+    {
+        // 조회하지 못한 상태는 변경이 있다고 가정한다 (is_safe_for_change와 같은
+        // 이유).
+        if (state == working_tree_state::unknown || state == working_tree_state::conflicted)
+            return true;
+        return modified_count > 0 || conflicted_count > 0 || operation_in_progress || has_index_lock;
+    }
+
     std::u8string_view repository_kind_name(const repository_kind kind) noexcept
     {
         switch (kind)

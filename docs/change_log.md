@@ -1,5 +1,26 @@
 # 변경 이력
 
+## 2026-08-20 - 실환경 피드백 F3: 미추적 정책 완화
+
+### 사용자 지시
+
+- 미추적이 하나라도 있으면 업데이트가 실패하는 건 나쁜 경험이다. (검수 답변:
+  완화는 update만, 전환은 현행 차단 유지)
+
+### 반영 내용
+
+- `working_tree_summary::has_tracked_changes()`를 신설해 update preflight의
+  dirty 판정을 교체했다. 미추적 파일만 있으면 git pull/svn update가 진행되고,
+  수정·충돌·`unknown`·진행 중 작업·index 잠금은 그대로 차단된다. 도구 자체
+  보호(pull의 덮어쓰기 중단, svn update의 미버전 파일 보존)가 안전장치다.
+- 전환(switch)의 `is_safe_for_change()`는 그대로 — 미추적 포함 모든 변경을
+  막는다.
+- `working_tree_dirty` 문구를 "커밋하지 않은 수정이 있어 갱신하지 않았습니다"로
+  조정했다(미추적은 더는 이 사유를 만들지 않음).
+- 검증: 신규 3 case + 직접 영향 범위(update/provider/domain 109 case, 실측
+  integration 610 단정) 통과.
+  상세는 `docs/verification/2026-08-20-feedback-f3-untracked.md`.
+
 ## 2026-08-20 - 실환경 피드백 F2: 제한 시간 정책 개편
 
 ### 사용자 지시

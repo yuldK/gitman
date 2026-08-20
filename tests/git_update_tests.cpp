@@ -134,8 +134,10 @@ TEST_CASE("Update preflight refuses every unsafe repository state", "[infrastruc
         expectations.push_back({ u8"detached", snapshot, gitman::update_block_reason::detached_head });
     }
     {
+        // 추적 중인 파일의 수정만 막는다. 미추적 전용은 "allows" 테스트에 있다.
         gitman::repository_snapshot snapshot { ready_snapshot() };
         snapshot.working_tree.state = gitman::working_tree_state::modified;
+        snapshot.working_tree.modified_count = 1;
         expectations.push_back({ u8"dirty", snapshot, gitman::update_block_reason::working_tree_dirty });
     }
     {
@@ -167,6 +169,13 @@ TEST_CASE("Update preflight allows the states that update exists for", "[infrast
     gitman::repository_snapshot up_to_date { ready_snapshot() };
     up_to_date.sync_state = gitman::remote_sync_state::up_to_date;
     REQUIRE(gitman::evaluate_git_update_preflight(up_to_date) == gitman::update_block_reason::none);
+
+    // 미추적 파일만 있는 작업 트리는 막지 않는다 (field-feedback-design 2.2).
+    // pull이 미추적을 덮어쓰게 되면 Git 스스로 중단한다.
+    gitman::repository_snapshot untracked_only { ready_snapshot() };
+    untracked_only.working_tree.state = gitman::working_tree_state::modified;
+    untracked_only.working_tree.untracked_count = 5;
+    REQUIRE(gitman::evaluate_git_update_preflight(untracked_only) == gitman::update_block_reason::none);
 
     // 원격을 아직 확인하지 않은 상태도 막지 않는다. `--ff-only`가 최후의 방어선이다.
     gitman::repository_snapshot unknown_remote { ready_snapshot() };
@@ -330,6 +339,30 @@ TEST_CASE("Updates without a comparable remote are blocked", "[infrastructure][g
         REQUIRE(result.blocked_by == gitman::update_block_reason::no_remote_target);
         REQUIRE(count_commands(runner, u8"pull") == 0);
     }
+}
+
+TEST_CASE("An untracked only working tree still updates", "[infrastructure][git][update]")
+{
+    // `?` 항목만 있는 status로도 사전 검사를 통과해 pull까지 진행된다 (2.2).
+    const std::u8string untracked_status {
+        join_lines({ u8"# branch.oid 0123456789abcdef0123456789abcdef01234567", u8"# branch.head main", u8"# branch.upstream origin/main", u8"# branch.ab +0 -2", u8"? 새 파일.txt" }),
+    };
+
+    gitman::testing::fake_process_runner runner {};
+    push_local_query(runner, untracked_status);
+    runner.push_response({ gitman::process_completion::exited, 0, u8"origin\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, u8"Fast-forward\n", {} });
+    push_local_query(runner, untracked_status);
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::git_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
+
+    REQUIRE(result.executed);
+    REQUIRE(result.succeeded);
+    REQUIRE(result.blocked_by == gitman::update_block_reason::none);
+    REQUIRE(count_commands(runner, u8"pull") == 1);
 }
 
 TEST_CASE("A successful update pulls the named remote and branch", "[infrastructure][git][update]")

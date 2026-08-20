@@ -55,6 +55,29 @@ namespace gitman {
             }
             return value.empty() ? 0 : revision;
         }
+
+        svn_browser_query_error browser_error_for_failure(const vcs_failure_kind failure) noexcept
+        {
+            switch (failure)
+            {
+            case vcs_failure_kind::none:
+                return svn_browser_query_error::none;
+            case vcs_failure_kind::authentication_required:
+                return svn_browser_query_error::authentication_required;
+            case vcs_failure_kind::offline:
+                return svn_browser_query_error::offline;
+            case vcs_failure_kind::repository_not_found:
+                return svn_browser_query_error::repository_not_found;
+            case vcs_failure_kind::timed_out:
+                return svn_browser_query_error::timed_out;
+            case vcs_failure_kind::cancelled:
+                return svn_browser_query_error::cancelled;
+            case vcs_failure_kind::execution_failed:
+            case vcs_failure_kind::command_failed:
+                return svn_browser_query_error::failed;
+            }
+            return svn_browser_query_error::failed;
+        }
     } // namespace
 
     svn_repository_provider::svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log, vcs_timeout_overrides timeouts) noexcept
@@ -309,31 +332,7 @@ namespace gitman {
         return result;
     }
 
-    svn_switch_candidate_set build_svn_switch_candidates(const std::vector<std::u8string>& allowed_targets)
-    {
-        svn_switch_candidate_set result {};
-        for (const std::u8string& url : allowed_targets)
-        {
-            if (is_supported_svn_url(url) == false)
-            {
-                // 문서에 적혀 있어도 URL로 다룰 수 없는 값은 후보에 넣지 않는다.
-                result.rejected.push_back(url);
-                continue;
-            }
-            // 같은 URL이 여러 번 적혀 있어도 후보는 하나만 만든다.
-            if (std::ranges::any_of(result.candidates, [&url](const switch_candidate& candidate) { return candidate.target == url; }))
-                continue;
-
-            switch_candidate candidate {};
-            candidate.kind = switch_candidate_kind::subversion_url;
-            candidate.display_name = url;
-            candidate.target = url;
-            result.candidates.push_back(std::move(candidate));
-        }
-        return result;
-    }
-
-    switch_candidate_result svn_repository_provider::query_switch_candidates(const project_definition& project, const process_cancellation_token&) noexcept
+    switch_candidate_result svn_repository_provider::query_switch_candidates(const project_definition& project, const process_cancellation_token& token) noexcept
     {
         switch_candidate_result result {};
         if (available() == false)
@@ -343,17 +342,103 @@ namespace gitman {
             return result;
         }
 
-        // 후보는 문서의 허용 목록뿐이라 저장소를 조회하지 않는다. 이 동작은 어떤 process
-        // request도 만들지 않으며 `stale`도 될 수 없다.
-        svn_switch_candidate_set candidates { build_svn_switch_candidates(project.svn_switch_targets) };
-        for (const std::u8string& rejected : candidates.rejected)
+        try
         {
-            std::u8string message { u8"svn_switch_targets의 URL 형식을 해석할 수 없어 후보에서 제외했습니다: " };
-            message.append(rejected);
-            result.diagnostics.push_back(make_diagnostic(diagnostic_code::invalid_project_field, diagnostic_severity::warning, std::move(message), project));
+            const std::u8string_view working_directory { svn_working_directory(project) };
+            svn_repository_browser_info browser {};
+            struct browser_field
+            {
+                svn_info_item item {};
+                std::u8string* target {};
+            };
+            const browser_field fields[] {
+                { svn_info_item::repository_root, &browser.repository_root_url },
+                { svn_info_item::url, &browser.current_url },
+            };
+
+            for (const browser_field& field : fields)
+            {
+                const vcs_command_result info_result {
+                    run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, field.item, {}, timeouts_), token, log_),
+                };
+                if (info_result.succeeded() == false)
+                {
+                    const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, info_result) };
+                    result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, info_result), project));
+                    return result;
+                }
+                *field.target = parse_svn_info_item(info_result.standard_output_lines);
+                if (field.target->empty())
+                {
+                    result.diagnostics.push_back(make_diagnostic(diagnostic_code::vcs_output_unparsable, diagnostic_severity::error, std::u8string { u8"SVN 저장소 URL을 읽지 못했습니다." }, project));
+                    return result;
+                }
+            }
+
+            browser.repository_root_url = normalize_svn_browser_url(browser.repository_root_url);
+            browser.current_url = normalize_svn_browser_url(browser.current_url);
+            if (is_supported_svn_url(browser.repository_root_url) == false || is_supported_svn_url(browser.current_url) == false
+                || svn_browser_url_contains(browser.repository_root_url, browser.current_url) == false)
+            {
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::vcs_output_unparsable, diagnostic_severity::error, std::u8string { u8"현재 SVN URL이 저장소 루트 아래에 있지 않습니다." }, project));
+                return result;
+            }
+            result.svn_browser = std::move(browser);
+            return result;
         }
-        result.candidates = std::move(candidates.candidates);
-        return result;
+        catch (...)
+        {
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"SVN 저장소 브라우저를 여는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    svn_directory_query_result svn_repository_provider::query_directory(
+        const project_definition& project, const std::u8string_view repository_root_url, const std::u8string_view url, const process_cancellation_token& token) noexcept
+    {
+        svn_directory_query_result result {};
+        try
+        {
+            if (available() == false)
+            {
+                result.error = svn_browser_query_error::failed;
+                result.diagnostics.push_back(make_diagnostic(
+                    diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::subversion, tool_.availability) }, project));
+                return result;
+            }
+
+            const std::u8string root { normalize_svn_browser_url(repository_root_url) };
+            const std::u8string target { normalize_svn_browser_url(url) };
+            if (is_supported_svn_url(root) == false || is_supported_svn_url(target) == false || svn_browser_url_contains(root, target) == false)
+            {
+                result.error = svn_browser_query_error::failed;
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::switch_target_rejected, diagnostic_severity::error, std::u8string { u8"저장소 루트 밖의 SVN 디렉터리는 조회하지 않습니다." }, project));
+                return result;
+            }
+
+            const vcs_command_result list_result {
+                run_vcs_command(*runner_, make_svn_list_request(tool_.executable, svn_working_directory(project), target, timeouts_), token, log_),
+            };
+            if (list_result.succeeded() == false)
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, list_result) };
+                result.error = browser_error_for_failure(failure);
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, list_result), project));
+                return result;
+            }
+            result.directories = parse_svn_directory_list(list_result.standard_output_lines);
+            return result;
+        }
+        catch (...)
+        {
+            result.error = svn_browser_query_error::failed;
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"SVN 디렉터리를 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
     }
 
     local_changes_result svn_repository_provider::query_local_changes(const project_definition& project, const process_cancellation_token& token) noexcept
@@ -557,7 +642,7 @@ namespace gitman {
         // 현재 URL을 다시 물어본다. 상대 URL과 저장소 루트를 이어 붙이는 것보다 규칙이
         // 하나 적다. `query_remote`와 같은 방식이다.
         const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url, {}, timeouts_), token, log_) };
-        const std::u8string current_url { url_result.succeeded() ? parse_svn_info_item(url_result.standard_output_lines) : std::u8string {} };
+        const std::u8string current_url { url_result.succeeded() ? normalize_svn_browser_url(parse_svn_info_item(url_result.standard_output_lines)) : std::u8string {} };
         if (current_url.empty())
         {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, url_result) };
@@ -566,9 +651,9 @@ namespace gitman {
             return result;
         }
 
-        // 네트워크를 쓰기 전에 문서 허용 목록, URL 형식, 현재 위치와 작업 트리 상태를
-        // 먼저 본다. 여기서 걸리면 원격에 접속하지 않는다.
-        const switch_validation_result local_validation { validate_svn_switch_target(project.svn_switch_targets, target, before.snapshot, current_url) };
+        // 네트워크를 쓰기 전에 URL 형식, 현재 위치와 작업 트리 상태를 먼저 본다. 여기서
+        // 걸리면 원격에 접속하지 않는다. 문서의 svn_switch_targets는 읽고 보존만 한다.
+        const switch_validation_result local_validation { validate_svn_switch_target(target, before.snapshot, current_url) };
         if (local_validation.approved == false)
         {
             result.rejected_by = local_validation.rejection;

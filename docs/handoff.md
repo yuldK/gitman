@@ -48,7 +48,8 @@ vcpkg baseline은 `b9a5010d499952121b0f1a40eb98963c37da32dc`, Codicons tag commi
 - `update_submodules`는 기본 off이며, on이면 dirty 검사 후 recursive update를 parent 카드 작업으로 실행한다.
 - Git switch dialog는 remote branch를 먼저, local branch를 다음에 표시한다.
 - remote branch에 local tracking branch가 없으면 명시적인 사용자 확인 후 생성한다.
-- SVN switch는 JSON `svn_switch_targets` 허용 목록만 사용한다.
+- SVN switch는 repository root부터 `svn ls`를 lazy 실행하는 트리 브라우저에서
+  디렉터리를 고른다. JSON `svn_switch_targets`는 읽고 보존만 한다.
 - 모든 명령은 비대화형이며 앱은 자격 증명을 저장하지 않는다.
 
 상세 계약은 `docs/decisions/ADR-003-vcs-runtime-policy.md`를 따른다.
@@ -269,7 +270,11 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - `svn status`의 경로는 앞 7칸(항목·속성·잠금·이력·switched·잠금 토큰·tree conflict)을 상태 칸으로 보고 그 뒤 공백을 모두 건너뛴 지점부터 읽는다. 계획의 "고정 9칸"보다 배포판별 패딩 차이에 강하다. switched는 색인 4, tree conflict는 색인 6이다.
 - SVN 원격 조회는 현재 URL을 `info --show-item url`로 다시 물어본 뒤 원격 HEAD 리비전과 비교한다. `ahead`와 `diverged`는 SVN에 없어 `behind`와 `up_to_date`만 나오고 `ahead_count`는 항상 0이다.
 - GitHub 실측(`S8-D5`)에서 확인: production은 사용자 credential helper를 그대로 쓰므로(ADR-003) 자격 증명이 저장된 호스트에서는 존재하지 않는 저장소가 404("Repository not found" → 저장소 없음)로 끝난다. helper 조회가 빗나가는 경우에만 `authentication_required`가 나온다. network test는 URL에 다른 username을 박아 이 경로를 강제하며 `GITMAN_NETWORK_TESTS=1`일 때만 실행된다.
-- 실제 SVN 환경에 붙일 때 확인할 것은 네 가지다. 실제 실행 경로 전부, `status`의 실제 칸 패딩, 원격 인증·연결 실패 메시지의 오류 코드, `info --show-item`이 값 외의 줄을 내는 배포판 여부다. 어긋나면 파서 한 곳을 고친 뒤 `tests/fixtures/vcs/svn/`의 fixture를 실제 출력으로 교체하면 된다.
+- 실제 SVN 환경에 붙일 때 확인할 것은 다섯 가지다. 실제 실행 경로 전부,
+  `status`의 실제 칸 패딩, 원격 인증·연결 실패 메시지의 오류 코드,
+  `info --show-item`이 값 외의 줄을 내는 배포판 여부, 비verbose `svn ls`의
+  디렉터리 `/` 접미사와 공백·한글 이름 표기다. 어긋나면 파서 한 곳을 고친 뒤
+  `tests/fixtures/vcs/svn/`의 fixture를 실제 출력으로 교체하면 된다.
 - SVN fixture는 실제 출력을 캡처할 수 없어 Apache Subversion 공식 문서의 출력 계약을 근거로 작성했다. 출처와 "실제 출력과 대조하지 않았다"는 사실을 파일 안 `#` 주석에 남겼고 test 도우미가 그 줄을 버린다. SVN은 상태 줄을 `#`로 시작하지 않는다.
 - SVN 통합 test 2개는 서로 배타적이다. 이 호스트에서는 "SVN이 없어도 앱이 동작한다"가 실행되고 실제 `svn.exe` test는 skip된다. SVN이 설치된 호스트에서는 반대가 된다. 실제 작업 복사본을 만들려면 `svnadmin`이 필요해 단계 8로 남겼다.
 - SVN은 XML을 쓰지 않는다. `info --show-item`, 비verbose `status`, `svnversion` 조합으로 값을 얻으므로 XML 파서 dependency가 없고 ADR-002와 `vcpkg.json`은 변경하지 않는다.
@@ -286,8 +291,12 @@ ADR-004의 재사용 가능한 메시지 구조는 구현 차단 조건이다. �
 - Git 후보 목록에서 **remote 후보로 도달할 수 있는 local branch는 중복해 넣지 않는다.** upstream이 그 remote와 다른 local branch만 local 후보로 남는다. 계획 4.8의 "local-only"를 그대로 읽으면 그런 branch로 전환할 방법이 사라진다.
 - 후보를 새로 고칠 remote는 `preferred_remote` → `origin` → 유일한 remote 순서로만 고른다. 좁혀지지 않으면 fetch하지 않고 목록을 `stale`로 표시한다. upstream은 현재 branch에 종속된 값이라 쓰지 않는다.
 - `switch_to`는 실행 직전에 fetch하지 않는다. 이미 받아 둔 ref로만 전환하며 `--no-guess`가 목록에 없던 대상으로의 암묵 전환을 막는다.
-- SVN 후보 조회는 process request를 하나도 만들지 않는다. 후보가 문서의 `svn_switch_targets`뿐이기 때문이다.
-- SVN 전환 검증은 허용 목록·형식·현재 위치·작업 트리를 네트워크보다 먼저 본다. 저장소 root와 UUID는 양쪽 값이 모두 있고 같을 때만 통과시킨다.
+- SVN 전환 dialog 초기 조회는 로컬 `repos-root-url`·`url` 두 요청을 만들고,
+  펼친 노드마다 `svn ls` 원격 요청을 하나씩 만든다. 결과는 dialog 수명 동안
+  URL별로 cache한다.
+- SVN 전환 검증은 URL 형식·현재 위치·작업 트리를 네트워크보다 먼저 본다.
+  저장소 root와 UUID는 실행 직전 양쪽 값을 다시 읽어 모두 있고 같을 때만
+  통과시킨다. `svn_switch_targets`는 검증 입력이 아니다.
 - `git switch`는 `--`를 받아들이고, `--track` 뒤의 완전한 ref는 옵션 값이 아니라 시작 지점으로 해석된다. 호스트 Git 2.52.0 실측이다. `--no-guess`는 목록에 없는 이름을 `fatal: invalid reference`로 실패시킨다.
 - update는 사전 검사를 위해 **스스로 로컬 조회를 수행한다.** 계약에 snapshot 인자가 없고 오래된 값으로 보호 정책을 판단하면 안 되기 때문이다. 정상 경로의 명령 수는 Git이 6개(조회 2 + remote + pull + 재조회 2), submodule 옵션이 켜지면 8개다.
 - update 차단 사유의 우선순위는 도구 부재 → 저장소 아님 → 충돌 → 진행 중 작업 → `index.lock` → detached → dirty → diverged → 대상 없음이다. `working_tree_state::unknown`은 dirty와 함께 막는다.

@@ -25,7 +25,7 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 | REQ-004 | 바로 아래 자식 저장소를 발견하고 등록한다. | 깊이 1만 검사한다. | 후보 미리보기와 선택 등록을 제공한다. |
 | REQ-005 | 프로젝트를 가로형 카드로 표시한다. | Codicons `v0.0.46-24`를 사용한다. | 아이콘, 색상, 한국어 툴팁으로 상태를 구분한다. |
 | REQ-006 | Git pull과 SVN update를 실행한다. | Git은 `--ff-only`와 optional recursive submodule update를 제공한다. | 위험 상태와 인증 필요 상태에서 작업을 시작하지 않고 submodule 선택을 로그로 추적한다. |
-| REQ-007 | Git/SVN switch를 제공한다. | Git은 remote branch를 먼저, local branch를 다음에 조사하며 SVN은 JSON 허용 URL만 지원한다. | dialog 검증 실패 시 오류를 표시하고 명령을 생성하지 않는다. |
+| REQ-007 | Git/SVN switch를 제공한다. | Git은 remote branch를 먼저, local branch를 다음에 조사하며 SVN은 repository root부터 디렉터리를 lazy 조회한다. | dialog 검증 실패 시 오류를 표시하고 명령을 생성하지 않으며 SVN 대상은 실행 직전 root/UUID 일치를 다시 확인한다. |
 | REQ-008 | 선택 카드 전용 하단 로그를 표시한다. | 카드별 ring buffer와 sequence를 사용한다. | 병렬 작업 중에도 선택 카드의 로그만 순서대로 보인다. |
 | REQ-009 | C++과 Skia를 사용한다. | C++20과 Skia 148을 사용한다. | UI와 무관한 계층에 Skia 타입이 노출되지 않는다. |
 | REQ-010 | 코드 및 파일 규칙을 지킨다. | 상세 기준은 `docs/code_style.md`에 따른다. C++, CMake, PowerShell, JSON, XML 및 resource 코드에 공백 4칸을 적용하고, Allman 중괄호, namespace 내부 1단계 들여쓰기, `snake_case`, UTF-8, CRLF, 가능한 중괄호 초기화, 단일 문장 제어문의 중괄호 생략, 조건 연산자의 새 줄 시작, 생성자 초기화 목록의 줄바꿈 쉼표와 긴 표현식의 닫는 기호 줄 분리를 적용한다. | 자동 검사와 코드 리뷰에서 위반이 보고된다. |

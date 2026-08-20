@@ -1,12 +1,14 @@
 #pragma once
 
 #include "application/process_cancellation.h"
+#include "application/svn_repository_browser.h"
 #include "domain/diagnostic.h"
 #include "domain/local_changes.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "domain/vcs_operation.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -22,6 +24,9 @@ namespace gitman {
     struct switch_candidate_result
     {
         std::vector<switch_candidate> candidates {};
+        // SVN은 문서 후보 대신 저장소 실조회 브라우저를 쓴다. Git 결과에서는 비어
+        // 있고, SVN 초기 조회가 성공했을 때만 루트와 현재 URL이 있다.
+        std::optional<svn_repository_browser_info> svn_browser {};
         // fetch가 실패해 cache된 remote tracking ref만으로 만든 목록이다.
         bool stale { false };
         std::vector<diagnostic> diagnostics {};

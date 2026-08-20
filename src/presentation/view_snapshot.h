@@ -1,5 +1,6 @@
 #pragma once
 
+#include "application/svn_repository_browser.h"
 #include "domain/discovery.h"
 #include "domain/operation_log.h"
 #include "domain/project.h"
@@ -98,7 +99,11 @@ namespace gitman {
         bool loading { true };
         // fetch 실패로 cache된 tracking ref만으로 만든 목록이다.
         bool stale { false };
+        // true이면 candidates 대신 svn_rows를 그리는 저장소 브라우저다. 초기 저장소
+        // 정보 조회 중에도 true라 제목과 안내 문구가 SVN용으로 유지된다.
+        bool svn_browser { false };
         std::vector<switch_candidate> candidates {};
+        std::vector<svn_repository_browser_row> svn_rows {};
         std::optional<std::size_t> selected {};
         bool can_confirm { false };
         std::u8string confirm_label {};

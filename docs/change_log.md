@@ -1,5 +1,39 @@
 # 변경 이력
 
+## 2026-08-21 - 실환경 피드백 F6: SVN repo-browser
+
+### 사용자 지시
+
+- `docs/field-feedback-design.md`의 F6을 진행한다. 비어 있는 문서
+  `svn_switch_targets` 후보 대신 저장소를 직접 탐색하는 SVN 전환 다이얼로그를
+  만든다.
+
+### 반영 내용
+
+- SVN 전환 다이얼로그 초기 조회가 로컬 `svn info --show-item repos-root-url`과
+  `url`을 읽는다. root 행을 자동으로 펼치고, 노드마다 비recursive
+  `svn ls <url>`를 `remote_query` 제한으로 lazy 실행한다. `/`로 끝나는
+  디렉터리만 표시하고 파일은 버린다.
+- URL별 펼침·loading·loaded·failed 상태와 자식 cache를 순수 모듈로 분리했다.
+  현재 URL까지 조상을 응답 순서대로 자동 확장하며, 접었다 다시 펼친 loaded
+  노드는 process를 만들지 않는다. 다이얼로그가 닫히면 상태와 cache가 함께
+  폐기되고 늦은 응답은 operation id로 무시된다.
+- SVN UI는 들여쓰기, 펼침 글리프, 폴더/repository 아이콘, 현재 위치 강조,
+  `조회 중…`/노드별 오류 행을 갖는 넓은 트리 panel이다. 인증 오류는
+  `인증이 필요해 조회하지 못했습니다`로 구분한다. 현재 URL을 선택하면 [전환]
+  버튼이 비활성이고 다른 디렉터리를 선택해야 실행된다. Git dialog는 기존 후보
+  목록과 tracking branch 확인 흐름을 유지한다.
+- `validate_svn_switch_target`에서 문서 허용 목록 대조를 제거했다. URL 형식 필터와
+  작업 트리 보호는 유지하며, provider가 실행 직전에 대상 root/UUID를 원격
+  재조회해 저장소 동일성을 확인한다. `svn_switch_targets`는 JSON에서 계속 읽고
+  쓰되 후보·검증에는 사용하지 않는다.
+- Apache Subversion `svn list` 문서 계약 기반 fixture와 builder/parser,
+  provider, executor, 순수 트리 상태, logic/UI 테스트를 추가했다. 실제
+  `svn.exe`가 없는 호스트라 명령 실측은 후속 검증으로 유지한다.
+- 직접 영향 태그 159 case(1,475 단정) 중 158 통과, 실제 SVN 실행 1 skip.
+  Debug 앱 빌드와 CPU/auto smoke, source style 394 files도 통과했다. 상세는
+  `docs/verification/2026-08-21-feedback-f6-svn-browser.md`.
+
 ## 2026-08-20 - 실환경 피드백 F4: 로컬 변경 확인 다이얼로그
 
 ### 사용자 지시

@@ -63,7 +63,7 @@ namespace {
         gitman::logic_controller controller { submitter };
         std::uint64_t candidates_operation_id { 0 };
 
-        dialog_fixture()
+        explicit dialog_fixture(const gitman::repository_kind kind = gitman::repository_kind::git)
         {
             controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
             controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
@@ -75,6 +75,7 @@ namespace {
             project.display_name = u8"alpha";
             project.path.original = u8"C:\\work\\alpha";
             project.path.normalized = project.path.original;
+            project.hint = kind == gitman::repository_kind::subversion ? gitman::vcs_hint::subversion : gitman::vcs_hint::git;
             document.projects.push_back(std::move(project));
             loaded.document = { std::move(document) };
             controller.handle(std::move(loaded));
@@ -84,9 +85,9 @@ namespace {
             local.generation = 1;
             local.final_event = true;
             local.result.snapshot.project.value = u8"alpha";
-            local.result.snapshot.kind = gitman::repository_kind::git;
+            local.result.snapshot.kind = kind;
             local.result.snapshot.availability = gitman::repository_availability::ready;
-            local.result.snapshot.current_reference = u8"main";
+            local.result.snapshot.current_reference = kind == gitman::repository_kind::subversion ? u8"^/trunk" : u8"main";
             local.result.snapshot.working_tree.state = gitman::working_tree_state::clean;
             controller.handle(std::move(local));
             submitter.requests.clear();
@@ -103,6 +104,30 @@ namespace {
             event.id.value = u8"alpha";
             event.result.candidates = std::move(candidates);
             event.result.stale = stale;
+            controller.handle(std::move(event));
+        }
+
+        std::uint64_t deliver_svn_browser(const std::u8string_view root = u8"https://svn.example.com/repo", const std::u8string_view current = u8"https://svn.example.com/repo/trunk")
+        {
+            gitman::switch_candidates_event event {};
+            event.operation_id = candidates_operation_id;
+            event.id.value = u8"alpha";
+            event.result.svn_browser = { gitman::svn_repository_browser_info { std::u8string { root }, std::u8string { current } } };
+            controller.handle(std::move(event));
+            REQUIRE(submitter.requests.empty() == false);
+            REQUIRE(submitter.requests.back().kind == gitman::operation_kind::query_svn_directory);
+            return submitter.requests.back().operation_id;
+        }
+
+        void deliver_svn_directory(
+            const std::uint64_t operation_id, const std::u8string_view url, std::vector<std::u8string> directories, const gitman::svn_browser_query_error error = gitman::svn_browser_query_error::none)
+        {
+            gitman::svn_directory_event event {};
+            event.operation_id = operation_id;
+            event.id.value = u8"alpha";
+            event.url = url;
+            event.result.directories = std::move(directories);
+            event.result.error = error;
             controller.handle(std::move(event));
         }
     };
@@ -257,6 +282,76 @@ TEST_CASE("A rejected switch keeps the dialog open with the reason and an execut
     }
 }
 
+TEST_CASE("SVN switch dialog loads the repository tree and switches the selected directory", "[logic][switch-ui][svn]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser() };
+    const gitman::operation_request& root_request { fixture.submitter.requests.back() };
+    REQUIRE(root_request.svn_repository_root_url == u8"https://svn.example.com/repo");
+    REQUIRE(root_request.svn_directory_url == u8"https://svn.example.com/repo");
+
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_browser);
+        REQUIRE(view->switch_dialog->svn_rows.size() == 2u);
+        REQUIRE(view->switch_dialog->svn_rows[1].kind == gitman::svn_browser_row_kind::loading);
+        REQUIRE_FALSE(view->switch_dialog->can_confirm);
+    }
+
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"tags", u8"trunk" });
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_rows.size() == 4u);
+        REQUIRE(view->switch_dialog->svn_rows.back().current);
+        REQUIRE(view->switch_dialog->svn_rows.back().selected);
+        REQUIRE_FALSE(view->switch_dialog->can_confirm);
+        REQUIRE(view->switch_dialog->confirm_label == u8"전환");
+    }
+
+    constexpr std::u8string_view branch { u8"https://svn.example.com/repo/branches" };
+    fixture.controller.handle(gitman::select_svn_browser_node_intent { std::u8string { branch } });
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->can_confirm);
+
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::confirm_switch_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().kind == gitman::operation_kind::switch_to);
+    REQUIRE(fixture.submitter.requests.front().switch_target.has_value());
+    REQUIRE(fixture.submitter.requests.front().switch_target->target == branch);
+}
+
+TEST_CASE("SVN switch dialog keeps authentication failure on the queried node", "[logic][switch-ui][svn]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser() };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", {}, gitman::svn_browser_query_error::authentication_required);
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->svn_rows.size() == 2u);
+    REQUIRE(view->switch_dialog->svn_rows[1].kind == gitman::svn_browser_row_kind::error);
+    REQUIRE(view->switch_dialog->svn_rows[1].text == u8"인증이 필요해 조회하지 못했습니다");
+}
+
+TEST_CASE("Closing the SVN browser discards its cache and late directory result", "[logic][switch-ui][svn]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t old_root_operation { fixture.deliver_svn_browser() };
+    fixture.controller.handle(gitman::cancel_switch_dialog_intent {});
+    REQUIRE_FALSE(fixture.controller.make_view_snapshot()->switch_dialog.has_value());
+
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::begin_switch_intent { gitman::project_id { u8"alpha" } });
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().kind == gitman::operation_kind::query_switch_candidates);
+
+    // 이전 dialog의 node 응답은 새 dialog의 초기 loading 상태를 바꾸지 않는다.
+    fixture.deliver_svn_directory(old_root_operation, u8"https://svn.example.com/repo", { u8"ghost" });
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog.has_value());
+    REQUIRE(view->switch_dialog->loading);
+    REQUIRE(view->switch_dialog->svn_rows.empty());
+}
+
 TEST_CASE("The switch dialog tree wires rows and buttons and routes escape and the wheel", "[ui][switch-ui]")
 {
     gitman::view_snapshot view {};
@@ -309,6 +404,38 @@ TEST_CASE("The switch dialog tree wires rows and buttons and routes escape and t
 
     const gitman::logic_message wheel_message { first_logic_message(controller.process(gitman::ui::mouse_wheel_event { 400.0f, 300.0f, -120.0f })) };
     REQUIRE(std::get_if<gitman::switch_dialog_scroll_intent>(&wheel_message) != nullptr);
+}
+
+TEST_CASE("The SVN switch tree separates row selection from expansion", "[ui][switch-ui][svn]")
+{
+    gitman::view_snapshot view {};
+    view.window_width = 800.0f;
+    view.window_height = 600.0f;
+    view.scale = 1.0f;
+
+    gitman::switch_dialog_view dialog {};
+    dialog.card.value = u8"alpha";
+    dialog.title = u8"alpha";
+    dialog.loading = false;
+    dialog.svn_browser = true;
+    dialog.confirm_label = u8"전환";
+    dialog.svn_rows.push_back({ gitman::svn_browser_row_kind::directory, u8"https://svn.example.com/repo", u8"https://svn.example.com/repo", 0, true, true, false, false });
+    dialog.svn_rows.push_back({ gitman::svn_browser_row_kind::loading, u8"https://svn.example.com/repo", u8"조회 중…", 1 });
+    view.switch_dialog = { std::move(dialog) };
+
+    const auto tree { gitman::ui::build_ui_tree(view) };
+    {
+        const gitman::logic_message message { first_logic_message(click(*tree, gitman::ui::switch_dialog_svn_item_id(u8"https://svn.example.com/repo"))) };
+        const auto* const intent { std::get_if<gitman::select_svn_browser_node_intent>(&message) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->url == u8"https://svn.example.com/repo");
+    }
+    {
+        const gitman::logic_message message { first_logic_message(click(*tree, gitman::ui::switch_dialog_svn_expand_id(u8"https://svn.example.com/repo"))) };
+        const auto* const intent { std::get_if<gitman::toggle_svn_browser_node_intent>(&message) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->url == u8"https://svn.example.com/repo");
+    }
 }
 
 #define REQUIRE_GIT_AVAILABLE(fixture)                                                                                                                                                                 \

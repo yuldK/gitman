@@ -109,8 +109,8 @@ namespace gitman {
         float delta { 0.0f };
     };
 
-    // 카드의 switch 버튼이 여는 switch dialog다 (REQ-007, stage-7-plan 4.5). 열면
-    // 곧바로 remote-first 후보 조회를 제출한다.
+    // 카드의 switch 버튼이 여는 switch dialog다. Git은 remote-first 후보 조회를,
+    // SVN은 repository root/current URL 초기 조회를 곧바로 제출한다.
     struct begin_switch_intent
     {
         project_id id {};
@@ -119,6 +119,18 @@ namespace gitman {
     struct select_switch_candidate_intent
     {
         std::size_t index { 0 };
+    };
+
+    // SVN repo-browser의 디렉터리 행 선택과 펼침 글리프다. URL을 직접 담아 tree가
+    // 펼쳐지며 표시 행 index가 바뀌어도 같은 노드를 가리킨다.
+    struct select_svn_browser_node_intent
+    {
+        std::u8string url {};
+    };
+
+    struct toggle_svn_browser_node_intent
+    {
+        std::u8string url {};
     };
 
     // 확인 버튼이다. tracking branch가 필요한 후보는 첫 확인이 생성 안내를 띄우고
@@ -284,8 +296,10 @@ namespace gitman {
         update,
         // 실행 직전 재검증을 포함한 switch 실행이다 (단계 7).
         switch_to,
-        // remote-first 전환 후보 조회다. switch dialog가 요청한다 (단계 7).
+        // Git 후보 또는 SVN repo-browser 초기 정보 조회다. switch dialog가 요청한다.
         query_switch_candidates,
+        // SVN repo-browser에서 펼친 디렉터리 하나의 자식 목록 조회다 (F6).
+        query_svn_directory,
         // 로컬 변경 확인 dialog의 목록 조회다 (field-feedback-design 2.3).
         query_local_changes,
         // 목록에서 고른 항목 하나의 diff(미추적은 파일 내용) 조회다.
@@ -315,6 +329,10 @@ namespace gitman {
         update_options options {};
         // switch_to 전용: 검증을 통과한 전환 대상이다.
         std::optional<switch_candidate> switch_target {};
+        // query_svn_directory 전용: 브라우저 루트와 조회할 노드 URL이다. executor가
+        // 루트 밖 요청을 process 생성 전에 거부한다.
+        std::u8string svn_repository_root_url {};
+        std::u8string svn_directory_url {};
         // query_file_diff 전용: 목록에서 고른 항목이다.
         std::optional<local_change_entry> diff_target {};
         // register_projects 전용: 사용자가 선택한 탐색 후보다. 문서와 revision은
@@ -382,12 +400,20 @@ namespace gitman {
         repository_change_result result {};
     };
 
-    // remote-first 전환 후보 조회 결과다. switch dialog 상태가 소비한다.
+    // Git 후보 또는 SVN repo-browser 초기 정보 조회 결과다.
     struct switch_candidates_event
     {
         std::uint64_t operation_id { 0 };
         project_id id {};
         switch_candidate_result result {};
+    };
+
+    struct svn_directory_event
+    {
+        std::uint64_t operation_id { 0 };
+        project_id id {};
+        std::u8string url {};
+        svn_directory_query_result result {};
     };
 
     // 로컬 변경 목록 조회 결과다. 로컬 변경 확인 dialog 상태가 소비한다 (2.3).
@@ -428,17 +454,15 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent,
-        toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
-        log_scroll_intent, begin_switch_intent, select_switch_candidate_intent,
-        confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent,
-        cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent,
-        toggle_settings_submodules_intent, confirm_settings_intent,
+    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
+        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
+        begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
+        switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
+        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, confirm_settings_intent,
         cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent,
-        open_context_menu_intent, close_context_menu_intent,
-        window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
-        document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event,
-        shutdown_message>;
+        open_context_menu_intent, close_context_menu_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event,
+        query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event,
+        discovery_completed_event, projects_registered_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

@@ -70,7 +70,7 @@ namespace gitman {
         case switch_rejection::ambiguous_remote:
             return u8"여러 remote에 같은 이름의 branch가 있어 remote를 직접 선택해야 합니다.";
         case switch_rejection::target_not_allowed:
-            return u8"문서의 svn_switch_targets에 없는 URL입니다.";
+            return u8"지원하지 않는 SVN URL 형식입니다.";
         case switch_rejection::target_unreachable:
             return u8"전환 대상에 접근할 수 없습니다.";
         case switch_rejection::repository_mismatch:

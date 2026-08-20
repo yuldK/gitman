@@ -36,6 +36,7 @@ namespace gitman {
         // change_completed_event를 보낸다 (단계 7).
         void execute_change(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_switch_candidates(const operation_request& request, const std::function<void(logic_message)>& emit);
+        void execute_svn_directory(const operation_request& request, const std::function<void(logic_message)>& emit);
         // 로컬 변경 확인 dialog의 목록·diff 조회다 (field-feedback-design 2.3).
         void execute_local_changes(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_file_diff(const operation_request& request, const std::function<void(logic_message)>& emit);

@@ -128,17 +128,13 @@ namespace gitman {
         return std::ranges::find(supported_svn_schemes, scheme) != std::ranges::end(supported_svn_schemes);
     }
 
-    switch_validation_result validate_svn_switch_target(
-        const std::vector<std::u8string>& allowed_targets, const switch_candidate& target, const repository_snapshot& snapshot, const std::u8string_view current_url)
+    switch_validation_result validate_svn_switch_target(const switch_candidate& target, const repository_snapshot& snapshot, const std::u8string_view current_url)
     {
         if (target.kind != switch_candidate_kind::subversion_url || target.target.empty())
             return reject(switch_rejection::target_not_found);
-        if (contains(allowed_targets, target.target) == false)
-            // 저장소 layout을 자동으로 가정하지 않는다. 문서가 적어 둔 URL만 대상이다.
-            return reject(switch_rejection::target_not_allowed);
         if (is_supported_svn_url(target.target) == false)
         {
-            std::u8string message { u8"허용 목록의 URL 형식을 해석할 수 없습니다: " };
+            std::u8string message { u8"지원하지 않는 SVN URL 형식입니다: " };
             message.append(target.target);
             return reject(switch_rejection::target_not_allowed, std::move(message));
         }

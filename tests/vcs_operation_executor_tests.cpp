@@ -331,6 +331,30 @@ TEST_CASE("A candidate query without tools still emits its event", "[executor][a
     REQUIRE(fixture.runner.request_count() == 0u);
 }
 
+TEST_CASE("An SVN directory query crosses the executor boundary", "[executor][app][svn][browser]")
+{
+    executor_fixture fixture {};
+    fixture.probe.add_directory(u8"C:\\work\\repo");
+    fixture.probe.add_file(u8"C:\\tools\\svn.exe");
+    fixture.runner.push_response({ gitman::process_completion::exited, 0, u8"svn, version 1.14.5 (r1922182)\n", {} });
+    fixture.runner.push_response({ gitman::process_completion::exited, 0, u8"branches/\nREADME.txt\ntrunk/\n", {} });
+
+    gitman::operation_request request { make_query(u8"C:\\work\\repo", gitman::vcs_hint::subversion, gitman::operation_kind::query_svn_directory) };
+    request.settings.svn_executable = u8"C:\\tools\\svn.exe";
+    request.svn_repository_root_url = u8"https://svn.example.com/repo";
+    request.svn_directory_url = u8"https://svn.example.com/repo";
+    fixture.run(request);
+
+    REQUIRE(fixture.emitted.size() == 1u);
+    const auto* const event { std::get_if<gitman::svn_directory_event>(&fixture.emitted.front()) };
+    REQUIRE(event != nullptr);
+    REQUIRE(event->operation_id == 11u);
+    REQUIRE(event->url == request.svn_directory_url);
+    REQUIRE(event->result.directories == std::vector<std::u8string> { u8"branches", u8"trunk" });
+    REQUIRE(fixture.runner.request_count() == 2u);
+    REQUIRE(fixture.runner.request(1).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"ls", u8"https://svn.example.com/repo" });
+}
+
 TEST_CASE("Change operations stream their process output as log events before the final event", "[executor][app]")
 {
     executor_fixture fixture {};

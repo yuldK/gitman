@@ -317,3 +317,7 @@ UI로 바꾼다. Git 전환 다이얼로그는 현행 유지.
   상시 표시(선택 없으면 안내 제목의 빈 pane) ② update 확인 overlay 제거 —
   submodule 여부는 문서 `settings.update_submodules`(환경설정 토글, 기본
   off)가 정하고 update 버튼은 즉시 실행
+- 2026-08-21 F6 구현: `svn_switch_targets` 후보 경로를 제거하고, 로컬
+  root/current URL 초기 조회 → `svn ls` lazy 트리 → 실행 직전 root/UUID 재검증
+  흐름으로 교체. SVN 미설치 호스트라 builder/parser/provider/executor/logic/UI는
+  fixture·fake runner로 검증하고 실제 출력 대조는 후속 SVN 실측에 유지

@@ -48,10 +48,9 @@ namespace gitman {
     // 확인하며, 접근 가능 여부는 실제 조회가 판정한다.
     [[nodiscard]] bool is_supported_svn_url(std::u8string_view value) noexcept;
 
-    // 네트워크를 쓰기 전에 판정할 수 있는 SVN 검증이다. 허용 목록은 프로젝트 문서의
-    // `svn_switch_targets`이며 저장소 layout을 자동으로 가정하지 않는다.
-    [[nodiscard]] switch_validation_result validate_svn_switch_target(
-        const std::vector<std::u8string>& allowed_targets, const switch_candidate& target, const repository_snapshot& snapshot, std::u8string_view current_url);
+    // 네트워크를 쓰기 전에 판정할 수 있는 SVN 검증이다. URL 형식, 현재 위치와 작업
+    // 복사본 상태만 확인한다. 같은 저장소인지 여부는 직전 원격 identity 조회가 맡는다.
+    [[nodiscard]] switch_validation_result validate_svn_switch_target(const switch_candidate& target, const repository_snapshot& snapshot, std::u8string_view current_url);
 
     // 대상 URL을 조회해 얻은 저장소 값과 현재 작업 복사본을 대조한다. 어느 한쪽 값이라도
     // 비어 있으면 확인할 수 없으므로 통과시키지 않는다. 전환은 되돌리기 어려운 동작이라

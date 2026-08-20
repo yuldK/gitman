@@ -47,6 +47,9 @@ namespace gitman {
 
     // 값 하나만 내는 `--show-item` 출력에서 값을 꺼낸다. 빈 줄과 앞뒤 공백을 버린다.
     [[nodiscard]] std::u8string parse_svn_info_item(const std::vector<std::u8string>& lines);
+    // 비recursive `svn ls` 기본 출력에서 `/`로 끝나는 디렉터리 이름만 남긴다.
+    // 파일과 빈 줄은 버리고 서버가 준 순서를 보존한다.
+    [[nodiscard]] std::vector<std::u8string> parse_svn_directory_list(const std::vector<std::u8string>& lines);
     [[nodiscard]] svn_status_summary parse_svn_status(const std::vector<std::u8string>& lines);
     [[nodiscard]] svn_version_info parse_svnversion(std::u8string_view line);
 

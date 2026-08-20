@@ -22,17 +22,6 @@ namespace gitman {
     // 기능이 사라진다. 대신 조회가 그 사실을 진단으로 남긴다.
     [[nodiscard]] update_block_reason evaluate_svn_update_preflight(const repository_snapshot& snapshot) noexcept;
 
-    // 허용 목록을 그대로 후보로 옮긴다. 저장소 layout을 자동으로 가정하지 않으므로
-    // 프로세스를 하나도 만들지 않는 순수 함수다. 형식을 해석할 수 없는 값은 목록에서
-    // 빼고 `rejected`에 담아 호출자가 진단으로 남길 수 있게 한다.
-    struct svn_switch_candidate_set
-    {
-        std::vector<switch_candidate> candidates {};
-        std::vector<std::u8string> rejected {};
-    };
-
-    [[nodiscard]] svn_switch_candidate_set build_svn_switch_candidates(const std::vector<std::u8string>& allowed_targets);
-
     // SVN provider다. 구조는 Git provider와 같고 명령과 파서만 다르다. `S4-D4-CODE`가
     // 조회를, `S4-D5-CODE`가 update를, `S4-D6-CODE`가 switch를 구현했다.
     //
@@ -52,6 +41,8 @@ namespace gitman {
         [[nodiscard]] repository_query_result query_local(const project_definition& project, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] repository_query_result query_remote(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] switch_candidate_result query_switch_candidates(const project_definition& project, const process_cancellation_token& token) noexcept override;
+        [[nodiscard]] svn_directory_query_result query_directory(
+            const project_definition& project, std::u8string_view repository_root_url, std::u8string_view url, const process_cancellation_token& token) noexcept;
         [[nodiscard]] local_changes_result query_local_changes(const project_definition& project, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] file_diff_result query_file_diff(const project_definition& project, const local_change_entry& entry, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] repository_change_result update(const project_definition& project, const update_options& options, const process_cancellation_token& token) noexcept override;

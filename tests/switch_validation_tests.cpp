@@ -78,10 +78,6 @@ namespace {
     constexpr std::u8string_view trunk_url { u8"https://host/svn/repo/trunk" };
     constexpr std::u8string_view branch_url { u8"https://host/svn/repo/branches/x" };
 
-    std::vector<std::u8string> allowed_urls()
-    {
-        return { std::u8string { trunk_url }, std::u8string { branch_url }, u8"잘못된 값" };
-    }
 } // namespace
 
 TEST_CASE("Git switch rejects targets that are not on the list", "[application][switch][validation]")
@@ -274,42 +270,40 @@ TEST_CASE("Only known Subversion URL forms are accepted", "[application][switch]
     REQUIRE_FALSE(gitman::is_supported_svn_url(u8"https://host/a\tb"));
 }
 
-TEST_CASE("Subversion switch uses only the document allow list", "[application][switch][validation]")
+TEST_CASE("Subversion switch accepts supported URLs without a document allow list", "[application][switch][validation]")
 {
     const gitman::repository_snapshot snapshot { svn_snapshot() };
 
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), url_candidate(branch_url), snapshot, trunk_url).approved);
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), snapshot, trunk_url).approved);
+    // 문서의 svn_switch_targets와 무관하다. 같은 저장소인지는 뒤의 identity 조회가
+    // root와 UUID를 다시 대조한다.
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(u8"https://host/svn/repo/branches/y"), snapshot, trunk_url).approved);
 
-    // 저장소 layout을 자동으로 가정하지 않는다. 문서에 없는 URL은 형식이 옳아도 거부한다.
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), url_candidate(u8"https://host/svn/repo/branches/y"), snapshot, trunk_url).rejection == gitman::switch_rejection::target_not_allowed);
-    REQUIRE(gitman::validate_svn_switch_target({}, url_candidate(branch_url), snapshot, trunk_url).rejection == gitman::switch_rejection::target_not_allowed);
-
-    // 목록에 있어도 URL로 다룰 수 없으면 거부한다. 메시지에 값이 들어가 어느 항목인지 알 수 있다.
-    const gitman::switch_validation_result malformed { gitman::validate_svn_switch_target(allowed_urls(), url_candidate(u8"잘못된 값"), snapshot, trunk_url) };
+    // URL로 다룰 수 없는 값은 계속 process 생성 전에 거부한다.
+    const gitman::switch_validation_result malformed { gitman::validate_svn_switch_target(url_candidate(u8"잘못된 값"), snapshot, trunk_url) };
     REQUIRE(malformed.rejection == gitman::switch_rejection::target_not_allowed);
     REQUIRE(malformed.message.find(u8"잘못된 값") != std::u8string::npos);
 
-    // Git 후보를 SVN 검증에 넘기면 목록을 볼 필요도 없다.
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), local_candidate(u8"main"), snapshot, trunk_url).rejection == gitman::switch_rejection::target_not_found);
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), {}, snapshot, trunk_url).rejection == gitman::switch_rejection::target_not_found);
+    REQUIRE(gitman::validate_svn_switch_target(local_candidate(u8"main"), snapshot, trunk_url).rejection == gitman::switch_rejection::target_not_found);
+    REQUIRE(gitman::validate_svn_switch_target({}, snapshot, trunk_url).rejection == gitman::switch_rejection::target_not_found);
 }
 
 TEST_CASE("Subversion switch checks the working copy before the network", "[application][switch][validation]")
 {
     // 이미 그 URL에 있으면 전환할 이유가 없다.
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), url_candidate(branch_url), svn_snapshot(), branch_url).rejection == gitman::switch_rejection::already_on_target);
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), svn_snapshot(), branch_url).rejection == gitman::switch_rejection::already_on_target);
 
     gitman::repository_snapshot dirty { svn_snapshot() };
     dirty.working_tree.state = gitman::working_tree_state::modified;
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), url_candidate(branch_url), dirty, trunk_url).rejection == gitman::switch_rejection::working_tree_unsafe);
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), dirty, trunk_url).rejection == gitman::switch_rejection::working_tree_unsafe);
 
     gitman::repository_snapshot conflicted { svn_snapshot() };
     conflicted.working_tree.state = gitman::working_tree_state::conflicted;
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), url_candidate(branch_url), conflicted, trunk_url).rejection == gitman::switch_rejection::working_tree_unsafe);
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), conflicted, trunk_url).rejection == gitman::switch_rejection::working_tree_unsafe);
 
     gitman::repository_snapshot unavailable { svn_snapshot() };
     unavailable.availability = gitman::repository_availability::not_a_repository;
-    REQUIRE(gitman::validate_svn_switch_target(allowed_urls(), url_candidate(branch_url), unavailable, trunk_url).rejection == gitman::switch_rejection::repository_unavailable);
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), unavailable, trunk_url).rejection == gitman::switch_rejection::repository_unavailable);
 }
 
 TEST_CASE("Subversion switch compares both repository identities", "[application][switch][validation]")

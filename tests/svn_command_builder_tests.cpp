@@ -74,6 +74,22 @@ TEST_CASE("SVN remote revision requests target the URL", "[infrastructure][svn][
     REQUIRE(gitman::validate_process_request(request).empty());
 }
 
+TEST_CASE("SVN list requests use remote query limits without recursion", "[infrastructure][svn][command]")
+{
+    constexpr std::u8string_view url { u8"https://svn.example.com/repo/branches" };
+    const gitman::process_request request { gitman::make_svn_list_request(svn_executable, working_directory, url) };
+
+    REQUIRE(request.arguments == std::vector<std::u8string> { u8"--non-interactive", u8"ls", std::u8string { url } });
+    REQUIRE(request.working_directory == working_directory);
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(gitman::validate_process_request(request).empty());
+    for (const std::u8string& argument : request.arguments)
+    {
+        REQUIRE(argument != u8"--recursive");
+        REQUIRE(argument != u8"-R");
+    }
+}
+
 TEST_CASE("SVN update requests never resolve conflicts on their own", "[infrastructure][svn][command]")
 {
     const gitman::process_request request { gitman::make_svn_update_request(svn_executable, working_directory) };
@@ -136,6 +152,7 @@ TEST_CASE("SVN requests never enable interactive prompts", "[infrastructure][svn
         gitman::make_svn_info_item_request(svn_executable, working_directory, gitman::svn_info_item::url),
         gitman::make_svn_status_request(svn_executable, working_directory),
         gitman::make_svn_remote_revision_request(svn_executable, working_directory, u8"https://svn.example.com/repo"),
+        gitman::make_svn_list_request(svn_executable, working_directory, u8"https://svn.example.com/repo"),
         gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::repository_uuid, u8"https://svn.example.com/repo"),
         gitman::make_svn_update_request(svn_executable, working_directory),
         gitman::make_svn_switch_request(svn_executable, working_directory, u8"https://svn.example.com/repo/branches/x"),

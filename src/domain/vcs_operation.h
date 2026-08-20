@@ -20,7 +20,7 @@ namespace gitman {
         switch_candidate_kind kind { switch_candidate_kind::git_local_branch };
         // 사용자에게 보여 주는 이름이다. remote branch는 `origin/main` 형태다.
         std::u8string display_name {};
-        // 실제 전환 대상이다. Git은 완전한 ref, SVN은 허용 목록의 URL이다.
+        // 실제 전환 대상이다. Git은 완전한 ref, SVN은 repo-browser가 조회한 URL이다.
         std::u8string target {};
         // remote branch 후보에서만 채운다. 같은 이름이 여러 remote에 있어도 합치지
         // 않고 remote별 후보로 남겨 자동 선택을 막는다.
@@ -53,7 +53,7 @@ namespace gitman {
         tracking_branch_conflict,
         // 여러 remote에 같은 이름이 있어 자동으로 고를 수 없다.
         ambiguous_remote,
-        // SVN 허용 목록에 없는 URL이다.
+        // 지원하지 않는 SVN URL 형식이다.
         target_not_allowed,
         target_unreachable,
         // 저장소 root 또는 UUID가 다르다.

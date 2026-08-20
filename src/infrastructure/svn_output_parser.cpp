@@ -77,6 +77,21 @@ namespace gitman {
         return {};
     }
 
+    std::vector<std::u8string> parse_svn_directory_list(const std::vector<std::u8string>& lines)
+    {
+        std::vector<std::u8string> directories {};
+        for (const std::u8string& line : lines)
+        {
+            std::u8string_view value { line };
+            if (value.ends_with(u8'\r'))
+                value.remove_suffix(1);
+            if (value.size() <= 1 || value.ends_with(u8'/') == false)
+                continue;
+            directories.emplace_back(value.substr(0, value.size() - 1));
+        }
+        return directories;
+    }
+
     svn_status_summary parse_svn_status(const std::vector<std::u8string>& lines)
     {
         svn_status_summary summary {};

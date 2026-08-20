@@ -49,6 +49,8 @@ namespace gitman {
         vcs_hint hint { vcs_hint::automatic };
         bool enabled { true };
         std::optional<std::u8string> preferred_remote {};
+        // 이전 문서와의 round-trip 호환을 위해 읽고 보존한다. F6 repo-browser는 이
+        // 목록을 후보나 검증 입력으로 사용하지 않는다.
         std::vector<std::u8string> svn_switch_targets {};
     };
 

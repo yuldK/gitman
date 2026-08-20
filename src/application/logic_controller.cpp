@@ -1,5 +1,6 @@
 #include "application/logic_controller.h"
 
+#include "application/svn_repository_browser.h"
 #include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
 #include "presentation/log_presentation.h"
@@ -176,6 +177,10 @@ namespace gitman {
                     handle_begin_switch(value);
                 else if constexpr (std::is_same_v<value_type, select_switch_candidate_intent>)
                     handle_select_switch_candidate(value.index);
+                else if constexpr (std::is_same_v<value_type, select_svn_browser_node_intent>)
+                    handle_select_svn_browser_node(value.url);
+                else if constexpr (std::is_same_v<value_type, toggle_svn_browser_node_intent>)
+                    handle_toggle_svn_browser_node(value.url);
                 else if constexpr (std::is_same_v<value_type, confirm_switch_intent>)
                     handle_confirm_switch();
                 else if constexpr (std::is_same_v<value_type, cancel_switch_dialog_intent>)
@@ -259,6 +264,8 @@ namespace gitman {
                     handle_change_completed(std::move(value));
                 else if constexpr (std::is_same_v<value_type, switch_candidates_event>)
                     handle_switch_candidates(std::move(value));
+                else if constexpr (std::is_same_v<value_type, svn_directory_event>)
+                    handle_svn_directory(std::move(value));
                 else if constexpr (std::is_same_v<value_type, discovery_completed_event>)
                     handle_discovery_completed(std::move(value));
                 else if constexpr (std::is_same_v<value_type, projects_registered_event>)
@@ -1014,8 +1021,8 @@ namespace gitman {
 
         const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout_text) };
         const bool changed {
-            document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path
-                || document_->settings.query_timeout_seconds != timeout || document_->settings.update_submodules != settings_dialog_->update_submodules,
+            document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path || document_->settings.query_timeout_seconds != timeout
+                || document_->settings.update_submodules != settings_dialog_->update_submodules,
         };
         if (changed)
         {
@@ -1041,8 +1048,8 @@ namespace gitman {
         if (card == nullptr || card->project.enabled == false)
             return;
 
-        // dialog를 열면서 곧바로 remote-first 후보 조회를 제출한다 (plan 5.3의 2).
-        // 조회는 카드를 busy로 만들지 않아 dialog가 열린 동안에도 UI가 멈추지 않는다.
+        // Git은 remote-first 후보를, SVN은 browser root/current URL을 조회한다. 조회는
+        // 카드를 busy로 만들지 않아 dialog가 열린 동안에도 UI가 멈추지 않는다.
         operation_request request { make_request(operation_kind::query_switch_candidates, card, card->generation) };
         const std::uint64_t operation_id { request.operation_id };
         if (submitter_->submit(std::move(request)) == false)
@@ -1051,6 +1058,7 @@ namespace gitman {
         switch_dialog_state dialog {};
         dialog.card = intent.id;
         dialog.candidates_operation_id = operation_id;
+        dialog.subversion = card->snapshot.kind == repository_kind::subversion;
         switch_dialog_ = { std::move(dialog) };
     }
 
@@ -1063,8 +1071,26 @@ namespace gitman {
         switch_dialog_->loading = false;
         switch_dialog_->candidates = std::move(event.result);
         switch_dialog_->selected.reset();
+        switch_dialog_->svn_browser.reset();
         switch_dialog_->tracking_confirm_pending = false;
         switch_dialog_->scroll_offset = 0.0f;
+
+        if (switch_dialog_->subversion == false)
+            return;
+
+        if (switch_dialog_->candidates.svn_browser.has_value() == false)
+        {
+            if (switch_dialog_->candidates.diagnostics.empty() == false)
+                switch_dialog_->message = switch_dialog_->candidates.diagnostics.front().message;
+            else
+                switch_dialog_->message = u8"SVN 저장소 정보를 조회하지 못했습니다.";
+            return;
+        }
+
+        switch_dialog_->svn_browser = { make_svn_repository_browser(*switch_dialog_->candidates.svn_browser) };
+        const std::u8string root_url { switch_dialog_->svn_browser->root_url };
+        if (begin_svn_browser_query(*switch_dialog_->svn_browser, root_url))
+            submit_svn_directory_query(root_url);
     }
 
     void logic_controller::handle_select_switch_candidate(const std::size_t index)
@@ -1080,9 +1106,29 @@ namespace gitman {
         switch_dialog_->message.clear();
     }
 
+    void logic_controller::handle_select_svn_browser_node(const std::u8string_view url)
+    {
+        if (switch_dialog_.has_value() == false || switch_dialog_->executing || switch_dialog_->loading || switch_dialog_->svn_browser.has_value() == false)
+            return;
+        if (select_svn_browser_node(*switch_dialog_->svn_browser, url) == false)
+            return;
+        switch_dialog_->message.clear();
+    }
+
+    void logic_controller::handle_toggle_svn_browser_node(const std::u8string_view url)
+    {
+        if (switch_dialog_.has_value() == false || switch_dialog_->executing || switch_dialog_->loading || switch_dialog_->svn_browser.has_value() == false)
+            return;
+        const std::optional<std::u8string> query_url { toggle_svn_browser_node(*switch_dialog_->svn_browser, url) };
+        switch_dialog_->message.clear();
+        handle_switch_dialog_scroll(0.0f);
+        if (query_url.has_value())
+            submit_svn_directory_query(*query_url);
+    }
+
     void logic_controller::handle_confirm_switch()
     {
-        if (switch_dialog_.has_value() == false || switch_dialog_->loading || switch_dialog_->executing || switch_dialog_->selected.has_value() == false)
+        if (switch_dialog_.has_value() == false || switch_dialog_->loading || switch_dialog_->executing)
             return;
 
         card_state* const card { find_card(switch_dialog_->card) };
@@ -1092,8 +1138,29 @@ namespace gitman {
             return;
         }
 
-        switch_candidate target { switch_dialog_->candidates.candidates[*switch_dialog_->selected] };
-        if (candidate_is_current(card->snapshot, target))
+        switch_candidate target {};
+        if (switch_dialog_->svn_browser.has_value())
+        {
+            const svn_repository_browser_state& browser { *switch_dialog_->svn_browser };
+            if (browser.selected_url.empty())
+                return;
+            target.kind = switch_candidate_kind::subversion_url;
+            target.display_name = browser.selected_url;
+            target.target = browser.selected_url;
+            if (target.target == browser.current_url)
+            {
+                switch_dialog_->message = u8"이미 현재 위치입니다. 다른 디렉터리를 선택하세요.";
+                return;
+            }
+        }
+        else
+        {
+            if (switch_dialog_->selected.has_value() == false || *switch_dialog_->selected >= switch_dialog_->candidates.candidates.size())
+                return;
+            target = switch_dialog_->candidates.candidates[*switch_dialog_->selected];
+        }
+
+        if (switch_dialog_->svn_browser.has_value() == false && candidate_is_current(card->snapshot, target))
         {
             switch_dialog_->message = u8"이미 현재 참조입니다. 다른 후보를 선택하세요.";
             return;
@@ -1124,13 +1191,72 @@ namespace gitman {
         }
     }
 
+    void logic_controller::handle_svn_directory(svn_directory_event event)
+    {
+        if (switch_dialog_.has_value() == false || switch_dialog_->svn_browser.has_value() == false || event.id != switch_dialog_->card)
+            return;
+
+        std::size_t query_index { switch_dialog_->directory_queries.size() };
+        for (std::size_t index = 0; index < switch_dialog_->directory_queries.size(); ++index)
+            if (switch_dialog_->directory_queries[index].operation_id == event.operation_id)
+            {
+                query_index = index;
+                break;
+            }
+        if (query_index == switch_dialog_->directory_queries.size())
+            return;
+
+        const std::u8string expected_url { switch_dialog_->directory_queries[query_index].url };
+        if (event.url != expected_url)
+            return;
+        switch_dialog_->directory_queries.erase(switch_dialog_->directory_queries.begin() + static_cast<std::ptrdiff_t>(query_index));
+
+        const std::optional<std::u8string> next_url { complete_svn_browser_query(*switch_dialog_->svn_browser, expected_url, event.result) };
+        handle_switch_dialog_scroll(0.0f);
+        if (next_url.has_value())
+            submit_svn_directory_query(*next_url);
+    }
+
+    void logic_controller::submit_svn_directory_query(std::u8string url)
+    {
+        if (switch_dialog_.has_value() == false || switch_dialog_->svn_browser.has_value() == false)
+            return;
+        card_state* const card { find_card(switch_dialog_->card) };
+        if (card == nullptr)
+            return;
+
+        operation_request request { make_request(operation_kind::query_svn_directory, card, card->generation) };
+        request.svn_repository_root_url = switch_dialog_->svn_browser->root_url;
+        request.svn_directory_url = url;
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)))
+        {
+            switch_dialog_->directory_queries.push_back({ operation_id, std::move(url) });
+            return;
+        }
+
+        svn_directory_query_result failure {};
+        failure.error = svn_browser_query_error::failed;
+        static_cast<void>(complete_svn_browser_query(*switch_dialog_->svn_browser, url, failure));
+    }
+
+    std::size_t logic_controller::switch_dialog_row_count() const
+    {
+        if (switch_dialog_.has_value() == false)
+            return 0;
+        if (switch_dialog_->svn_browser.has_value())
+            return build_svn_repository_browser_rows(*switch_dialog_->svn_browser).size();
+        return switch_dialog_->candidates.candidates.size();
+    }
+
     void logic_controller::handle_switch_dialog_scroll(const float delta)
     {
         if (switch_dialog_.has_value() == false)
             return;
 
-        const float content { static_cast<float>(switch_dialog_->candidates.candidates.size()) * layout_switch_dialog_row_height };
-        float maximum { content - layout_switch_dialog_list_height };
+        const float content { static_cast<float>(switch_dialog_row_count()) * layout_switch_dialog_row_height };
+        const float viewport { switch_dialog_list_height(switch_dialog_->subversion, window_height_ / scale_) };
+        float maximum { content - viewport };
         if (maximum < 0.0f)
             maximum = 0.0f;
         float offset { switch_dialog_->scroll_offset + delta };
@@ -1548,7 +1674,6 @@ namespace gitman {
             snapshot->log = { std::move(log) };
         }
 
-
         if (switch_dialog_.has_value())
         {
             for (const card_state& card : cards_)
@@ -1561,13 +1686,25 @@ namespace gitman {
                 dialog.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
                 dialog.loading = switch_dialog_->loading;
                 dialog.stale = switch_dialog_->candidates.stale;
+                dialog.svn_browser = switch_dialog_->subversion;
                 dialog.candidates = switch_dialog_->candidates.candidates;
+                if (switch_dialog_->svn_browser.has_value())
+                    dialog.svn_rows = build_svn_repository_browser_rows(*switch_dialog_->svn_browser);
                 dialog.selected = switch_dialog_->selected;
                 dialog.executing = switch_dialog_->executing;
                 dialog.message = switch_dialog_->message;
 
                 // 확인 버튼 상태와 label은 logic이 한곳에서 정한다 (plan 5.3의 4~5).
-                if (switch_dialog_->loading == false && switch_dialog_->selected.has_value() && switch_dialog_->executing == false)
+                if (switch_dialog_->svn_browser.has_value())
+                {
+                    const svn_repository_browser_state& browser { *switch_dialog_->svn_browser };
+                    dialog.confirm_label = u8"전환";
+                    if (switch_dialog_->loading == false && switch_dialog_->executing == false && browser.selected_url.empty() == false && browser.selected_url != browser.current_url)
+                        dialog.can_confirm = true;
+                    else if (browser.selected_url == browser.current_url && dialog.message.empty())
+                        dialog.message = u8"현재 위치입니다.";
+                }
+                else if (switch_dialog_->loading == false && switch_dialog_->selected.has_value() && switch_dialog_->executing == false)
                 {
                     const switch_candidate& candidate { switch_dialog_->candidates.candidates[*switch_dialog_->selected] };
                     if (candidate_is_current(card.snapshot, candidate))
@@ -1590,8 +1727,10 @@ namespace gitman {
                 if (dialog.confirm_label.empty())
                     dialog.confirm_label = u8"전환 실행";
 
-                const float content { static_cast<float>(dialog.candidates.size()) * layout_switch_dialog_row_height };
-                float maximum { content - layout_switch_dialog_list_height };
+                const std::size_t row_count { dialog.svn_browser ? dialog.svn_rows.size() : dialog.candidates.size() };
+                const float content { static_cast<float>(row_count) * layout_switch_dialog_row_height };
+                const float viewport { switch_dialog_list_height(dialog.svn_browser, window_height_ / scale_) };
+                float maximum { content - viewport };
                 if (maximum < 0.0f)
                     maximum = 0.0f;
                 dialog.scroll_offset = switch_dialog_->scroll_offset > maximum ? maximum : switch_dialog_->scroll_offset;

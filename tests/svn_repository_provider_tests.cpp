@@ -103,7 +103,8 @@ namespace {
     gitman::project_definition switch_project()
     {
         gitman::project_definition project { make_project() };
-        project.svn_switch_targets = { std::u8string { repository_url }, std::u8string { switch_target_url } };
+        // F6부터 이 필드는 문서 호환을 위해 보존만 하고 후보·검증에는 쓰지 않는다.
+        project.svn_switch_targets = { u8"읽되 무시할 값" };
         return project;
     }
 
@@ -567,27 +568,36 @@ TEST_CASE("SVN updates do nothing when the tool is missing", "[infrastructure][s
     REQUIRE(runner.request_count() == 0);
 }
 
-TEST_CASE("SVN switch candidates and an empty target build no request", "[infrastructure][svn][provider]")
+TEST_CASE("SVN switch browser initialization reads the root and current URL", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
+    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo/trunk\n", {} });
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
     const gitman::project_definition project { make_project() };
 
-    // 후보는 문서의 허용 목록뿐이라 저장소를 조회하지 않는다. 기본 프로젝트에는 허용
-    // 목록이 없으므로 후보도 없다.
-    REQUIRE(provider.query_switch_candidates(project, {}).candidates.empty());
+    const gitman::switch_candidate_result candidates { provider.query_switch_candidates(project, {}) };
+    REQUIRE(candidates.candidates.empty());
+    REQUIRE(candidates.svn_browser.has_value());
+    REQUIRE(candidates.svn_browser->repository_root_url == u8"https://svn.example.com/repo");
+    REQUIRE(candidates.svn_browser->current_url == u8"https://svn.example.com/repo/trunk");
+    REQUIRE(runner.request_count() == 2u);
+    REQUIRE(runner.request(0).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--show-item", u8"repos-root-url" });
+    REQUIRE(runner.request(1).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--show-item", u8"url" });
 
     const gitman::repository_change_result switched { provider.switch_to(project, {}, {}) };
     REQUIRE_FALSE(switched.executed);
     REQUIRE(switched.rejected_by == gitman::switch_rejection::target_not_found);
-    REQUIRE(runner.request_count() == 0);
+    REQUIRE(runner.request_count() == 2u);
 }
 
-TEST_CASE("SVN switch candidates come only from the document", "[infrastructure][svn][provider]")
+TEST_CASE("SVN switch browser ignores the preserved document target list", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
+    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo/trunk\n", {} });
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -597,15 +607,11 @@ TEST_CASE("SVN switch candidates come only from the document", "[infrastructure]
 
     const gitman::switch_candidate_result result { provider.query_switch_candidates(project, {}) };
 
-    // 저장소 layout을 자동으로 가정하지 않으므로 조회할 것이 없다.
-    REQUIRE(runner.request_count() == 0);
-    REQUIRE(result.candidates.size() == 2);
-    REQUIRE(result.candidates[0].kind == gitman::switch_candidate_kind::subversion_url);
-    REQUIRE(result.candidates[0].target == u8"https://svn.example.com/repo/trunk");
-    REQUIRE(result.candidates[1].target == u8"https://svn.example.com/repo/branches/x");
-    // 허용 목록은 원격을 확인해 만든 것이 아니므로 stale이 될 수 없다.
+    REQUIRE(runner.request_count() == 2u);
+    REQUIRE(result.candidates.empty());
+    REQUIRE(result.svn_browser.has_value());
     REQUIRE_FALSE(result.stale);
-    REQUIRE(has_diagnostic(result.diagnostics, gitman::diagnostic_code::invalid_project_field));
+    REQUIRE_FALSE(has_diagnostic(result.diagnostics, gitman::diagnostic_code::invalid_project_field));
 }
 
 TEST_CASE("SVN switch candidates need the tool as well", "[infrastructure][svn][provider]")
@@ -620,6 +626,7 @@ TEST_CASE("SVN switch candidates need the tool as well", "[infrastructure][svn][
 
     const gitman::switch_candidate_result result { provider.query_switch_candidates(project, {}) };
     REQUIRE(result.candidates.empty());
+    REQUIRE_FALSE(result.svn_browser.has_value());
     REQUIRE(has_diagnostic(result.diagnostics, gitman::diagnostic_code::vcs_tool_not_found));
     REQUIRE(runner.request_count() == 0);
 }
@@ -635,7 +642,7 @@ TEST_CASE("Rejected SVN switches never reach the network", "[infrastructure][svn
     };
 
     const expectation expectations[] {
-        { u8"허용 목록 밖", {}, url_target(u8"https://svn.example.com/repo/branches/y"), gitman::switch_rejection::target_not_allowed },
+        { u8"지원하지 않는 URL", {}, url_target(u8"잘못된 값"), gitman::switch_rejection::target_not_allowed },
         { u8"이미 대상", {}, url_target(repository_url), gitman::switch_rejection::already_on_target },
         { u8"dirty 작업 복사본", u8"M       trunk/a.txt\n", url_target(), gitman::switch_rejection::working_tree_unsafe },
     };
@@ -658,6 +665,59 @@ TEST_CASE("Rejected SVN switches never reach the network", "[infrastructure][svn
         REQUIRE(runner.request_count() == 8);
         REQUIRE(count_svn_commands(runner, u8"switch") == 0);
     }
+}
+
+TEST_CASE("SVN directory queries keep directories and use the requested URL", "[infrastructure][svn][provider][browser]")
+{
+    gitman::testing::fake_process_runner runner {};
+    runner.push_response({ gitman::process_completion::exited, 0, u8"branches/\nREADME.txt\ntrunk/\n", {} });
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::svn_directory_query_result result {
+        provider.query_directory(make_project(), u8"https://svn.example.com/repo", u8"https://svn.example.com/repo", {}),
+    };
+    REQUIRE(result.succeeded());
+    REQUIRE(result.directories == std::vector<std::u8string> { u8"branches", u8"trunk" });
+    REQUIRE(runner.request_count() == 1u);
+    REQUIRE(runner.request(0).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"ls", u8"https://svn.example.com/repo" });
+}
+
+TEST_CASE("SVN directory authentication failure is explicit and noninteractive", "[infrastructure][svn][provider][browser]")
+{
+    gitman::testing::fake_process_runner runner {};
+    runner.push_response({ gitman::process_completion::exited, 1, {}, u8"svn: E170001: 인증이 필요합니다\n" });
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::svn_directory_query_result result {
+        provider.query_directory(make_project(), u8"https://svn.example.com/repo", u8"https://svn.example.com/repo/private", {}),
+    };
+    REQUIRE_FALSE(result.succeeded());
+    REQUIRE(result.error == gitman::svn_browser_query_error::authentication_required);
+    REQUIRE(runner.request_count() == 1u);
+    REQUIRE(runner.request(0).arguments.front() == u8"--non-interactive");
+    for (const std::u8string& argument : runner.request(0).arguments)
+    {
+        REQUIRE(argument != u8"--username");
+        REQUIRE(argument != u8"--password");
+    }
+}
+
+TEST_CASE("SVN directory queries reject URLs outside the browser root", "[infrastructure][svn][provider][browser]")
+{
+    gitman::testing::fake_process_runner runner {};
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe };
+
+    const gitman::svn_directory_query_result result {
+        provider.query_directory(make_project(), u8"https://svn.example.com/repo", u8"https://svn.example.com/other", {}),
+    };
+    REQUIRE_FALSE(result.succeeded());
+    REQUIRE(runner.request_count() == 0u);
 }
 
 TEST_CASE("An SVN switch refuses a different repository", "[infrastructure][svn][provider]")

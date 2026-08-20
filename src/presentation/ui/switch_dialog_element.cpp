@@ -13,6 +13,7 @@
 #include "include/core/SkTypeface.h"
 
 #include <memory>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -21,8 +22,19 @@ namespace gitman::ui {
         constexpr float dialog_padding { 14.0f };
         constexpr float action_button_width { 120.0f };
         constexpr float action_button_height { 28.0f };
-        // panel 안 배치: 제목 아래 목록, 목록 아래 메시지 한 줄, 아래 버튼이다.
         constexpr float list_top_offset { 34.0f };
+        constexpr float tree_indent { 16.0f };
+        constexpr float tree_glyph_width { 16.0f };
+
+        float row_tree_indent(const std::size_t depth, const float row_width, const float scale) noexcept
+        {
+            const float logical_width { scale > 0.0f ? row_width / scale : row_width };
+            float maximum { logical_width - 126.0f };
+            if (maximum < 0.0f)
+                maximum = 0.0f;
+            const float requested { static_cast<float>(depth) * tree_indent };
+            return requested < maximum ? requested : maximum;
+        }
 
         std::u8string item_owner_value(const std::size_t index)
         {
@@ -36,6 +48,14 @@ namespace gitman::ui {
             } while (remaining > 0);
             value += digits;
             return value;
+        }
+
+        ui_element_id svn_status_id(const svn_repository_browser_row& row)
+        {
+            ui_element_id id { ui_element_kind::switch_dialog_svn_status };
+            id.owner.value = row.url;
+            id.owner.value.append(row.kind == svn_browser_row_kind::loading ? u8"#loading" : u8"#error");
+            return id;
         }
 
         char32_t candidate_glyph(const switch_candidate_kind kind) noexcept
@@ -52,7 +72,7 @@ namespace gitman::ui {
             return codicons::icon_git_branch;
         }
 
-        // 후보 한 행이다. hover·선택 강조와 종류 아이콘, stale 표시를 그린다.
+        // Git 후보 한 행이다. F6에서도 Git dialog의 표시와 동작은 그대로 유지한다.
         class candidate_row_element final : public ui_element
         {
         public:
@@ -111,8 +131,158 @@ namespace gitman::ui {
             bool selected_ { false };
         };
 
-        // panel이다. 클릭을 흡수하고 제목·안내·메시지를 그린다. 목록 행과 버튼은
-        // dialog가 직접 배치한다.
+        class svn_expand_element final : public ui_element
+        {
+        public:
+            svn_expand_element(std::u8string url, const bool expanded)
+                : ui_element { switch_dialog_svn_expand_id(url) }
+                , expanded_ { expanded }
+            {
+                set_action(ui_trigger::left_click,
+                    [url = std::move(url)](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_svn_browser_node_intent { url } } } }; });
+                set_tooltip(expanded_ ? u8"접기" : u8"펼치기");
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context& context, const interaction_snapshot&) const override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const rect_f box { bounds() };
+                if (context.codicon_typeface != nullptr)
+                {
+                    const SkFont font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
+                    const char32_t glyph { expanded_ ? codicons::icon_chevron_down : codicons::icon_chevron_right };
+                    draw_centered_glyph(context.canvas, glyph, box, font, solid_paint(context.palette.primary_foreground));
+                    return;
+                }
+
+                const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                draw_text(context.canvas, expanded_ ? std::u8string_view { u8"▾" } : std::u8string_view { u8"▸" }, box.x, box.y + centered_text_baseline(font, box.height), font,
+                    solid_paint(context.palette.primary_foreground));
+            }
+
+        private:
+            bool expanded_ { false };
+        };
+
+        class svn_directory_row_element final : public ui_element
+        {
+        public:
+            explicit svn_directory_row_element(svn_repository_browser_row row)
+                : ui_element { switch_dialog_svn_item_id(row.url) }
+                , row_ { std::move(row) }
+            {
+                set_action(ui_trigger::left_click,
+                    [url = row_.url](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_svn_browser_node_intent { url } } } }; });
+                if (row_.can_expand)
+                {
+                    set_action(ui_trigger::double_click,
+                        [url = row_.url](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_svn_browser_node_intent { url } } } }; });
+                    add_child(std::make_unique<svn_expand_element>(row_.url, row_.expanded));
+                }
+                set_tooltip(row_.url);
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+                if (children().empty() == false)
+                {
+                    const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                    const float indent { row_tree_indent(row_.depth, context.slot.width, scale) };
+                    const float left { context.slot.x + (6.0f + indent) * scale };
+                    children().front()->arrange({ { left, context.slot.y, tree_glyph_width * scale, context.slot.height }, scale });
+                }
+            }
+
+            void draw(draw_context& context, const interaction_snapshot& interaction) const override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const rect_f box { bounds() };
+                const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
+
+                if (row_.selected)
+                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.positive_accent, 0.18f)));
+                else if (interaction.hovered == id())
+                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
+                else if (row_.current)
+                    context.canvas.drawRect(body, solid_paint(with_alpha(context.palette.positive_accent, 0.08f)));
+
+                if (row_.current)
+                    context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y + 2.0f * scale, 2.0f * scale, box.height - 4.0f * scale), solid_paint(context.palette.positive_accent));
+
+                const float inset { 6.0f * scale };
+                const float indent { row_tree_indent(row_.depth, box.width, scale) };
+                float text_left { box.x + inset + (indent + tree_glyph_width) * scale };
+                if (context.codicon_typeface != nullptr)
+                {
+                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.5f * scale };
+                    SkPaint icon_paint { solid_paint(row_.current ? context.palette.positive_accent : context.palette.primary_foreground) };
+                    icon_paint.setAlphaf(row_.current ? 1.0f : 0.72f);
+                    const char32_t glyph { row_.depth == 0 ? codicons::icon_repo : (row_.expanded ? codicons::icon_folder_opened : codicons::icon_folder) };
+                    draw_centered_glyph(context.canvas, glyph, { text_left, box.y, 14.0f * scale, box.height }, icon_font, icon_paint);
+                    text_left += 18.0f * scale;
+                }
+
+                std::u8string text { row_.text };
+                if (row_.current)
+                    text.append(u8" (현재 위치)");
+                const SkFont font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
+                const SkPaint foreground { solid_paint(row_.current ? context.palette.positive_accent : context.palette.primary_foreground) };
+                static_cast<void>(draw_text_within(context.canvas, text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - inset - text_left, font, foreground));
+                draw_children(context, interaction);
+            }
+
+        private:
+            svn_repository_browser_row row_ {};
+        };
+
+        class svn_status_row_element final : public ui_element
+        {
+        public:
+            explicit svn_status_row_element(svn_repository_browser_row row)
+                : ui_element { svn_status_id(row) }
+                , row_ { std::move(row) }
+            {}
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context& context, const interaction_snapshot&) const override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const rect_f box { bounds() };
+                const float indent { row_tree_indent(row_.depth, box.width, scale) };
+                float text_left { box.x + (6.0f + indent + tree_glyph_width) * scale };
+                const bool failed { row_.kind == svn_browser_row_kind::error };
+                const std::uint32_t color { failed ? context.palette.warning_accent : context.palette.primary_foreground };
+                if (context.codicon_typeface != nullptr)
+                {
+                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
+                    SkPaint icon_paint { solid_paint(color) };
+                    if (failed == false)
+                        icon_paint.setAlphaf(0.6f);
+                    draw_centered_glyph(context.canvas, failed ? codicons::icon_warning : codicons::icon_loading, { text_left, box.y, 14.0f * scale, box.height }, icon_font, icon_paint);
+                    text_left += 18.0f * scale;
+                }
+                const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                SkPaint foreground { solid_paint(color) };
+                if (failed == false)
+                    foreground.setAlphaf(0.6f);
+                static_cast<void>(
+                    draw_text_within(context.canvas, row_.text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - 6.0f * scale - text_left, font, foreground));
+            }
+
+        private:
+            svn_repository_browser_row row_ {};
+        };
+
         class switch_panel_element final : public ui_element
         {
         public:
@@ -121,7 +291,8 @@ namespace gitman::ui {
                 , title_ { dialog.title }
                 , loading_ { dialog.loading }
                 , stale_ { dialog.stale }
-                , empty_ { dialog.candidates.empty() }
+                , svn_browser_ { dialog.svn_browser }
+                , empty_ { dialog.svn_browser ? dialog.svn_rows.empty() : dialog.candidates.empty() }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -132,7 +303,6 @@ namespace gitman::ui {
                 add_child(std::move(child));
             }
 
-            // 목록 영역이다. dialog가 배치 시점에 채우고 draw가 clip에 쓴다.
             rect_f list_area {};
 
             void arrange(const arrange_context& context) override
@@ -154,8 +324,9 @@ namespace gitman::ui {
 
                 const float padding { dialog_padding * scale };
                 const SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
-                std::u8string heading { std::u8string { u8"전환 - " } + title_ };
-                if (stale_)
+                std::u8string heading { svn_browser_ ? std::u8string { u8"SVN 저장소 전환 - " } : std::u8string { u8"전환 - " } };
+                heading += title_;
+                if (stale_ && svn_browser_ == false)
                     heading += u8" (일부 후보 미갱신)";
                 static_cast<void>(draw_text_within(
                     context.canvas, heading, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
@@ -165,11 +336,14 @@ namespace gitman::ui {
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.6f);
-                    const std::u8string_view note { loading_ ? std::u8string_view { u8"전환 후보를 조회하는 중입니다..." } : std::u8string_view { u8"전환할 수 있는 후보가 없습니다." } };
+                    std::u8string_view note {};
+                    if (svn_browser_)
+                        note = loading_ ? std::u8string_view { u8"SVN 저장소 정보를 조회하는 중입니다..." } : std::u8string_view { u8"SVN 저장소를 탐색할 수 없습니다." };
+                    else
+                        note = loading_ ? std::u8string_view { u8"전환 후보를 조회하는 중입니다..." } : std::u8string_view { u8"전환할 수 있는 후보가 없습니다." };
                     draw_text(context.canvas, note, list_area.x, list_area.y + 16.0f * scale, body_font, dim);
                 }
 
-                // 목록 행을 자기 영역으로 잘라 그린다. 행은 자식이라 함께 그려진다.
                 context.canvas.save();
                 context.canvas.clipRect(SkRect::MakeXYWH(list_area.x, list_area.y, list_area.width, list_area.height));
                 draw_children(context, interaction);
@@ -183,13 +357,27 @@ namespace gitman::ui {
                 }
             }
 
-            // 버튼은 목록 clip 밖에 그려져야 한다. 자식 순서 대신 clip 영역으로
-            // 구분하면 버튼이 잘리므로, 버튼은 panel 자식이 아니라 dialog 자식이다.
+            const ui_element* hit_test(const float x, const float y) const override
+            {
+                if (visible() == false)
+                    return nullptr;
+                if (list_area.contains(x, y))
+                {
+                    const std::span<const std::unique_ptr<ui_element>> rows { children() };
+                    for (std::size_t index = rows.size(); index > 0; --index)
+                        if (const ui_element* const hit { rows[index - 1]->hit_test(x, y) }; hit != nullptr)
+                            return hit;
+                }
+                if (interactive() && bounds().contains(x, y))
+                    return this;
+                return nullptr;
+            }
 
         private:
             std::u8string title_ {};
             bool loading_ { false };
             bool stale_ { false };
+            bool svn_browser_ { false };
             bool empty_ { false };
             std::u8string message_ {};
         };
@@ -202,20 +390,38 @@ namespace gitman::ui {
         return id;
     }
 
+    ui_element_id switch_dialog_svn_item_id(const std::u8string_view url)
+    {
+        return { ui_element_kind::switch_dialog_item, project_id { std::u8string { url } } };
+    }
+
+    ui_element_id switch_dialog_svn_expand_id(const std::u8string_view url)
+    {
+        return { ui_element_kind::switch_dialog_svn_expand, project_id { std::u8string { url } } };
+    }
+
     switch_dialog_element::switch_dialog_element(switch_dialog_view dialog)
         : ui_element { ui_element_id { ui_element_kind::switch_dialog } }
         , dialog_ { std::move(dialog) }
     {
-        // 배경 클릭은 취소다.
         set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_switch_dialog_intent {} } } }; });
 
         auto panel { std::make_unique<switch_panel_element>(dialog_) };
-        for (std::size_t index = 0; index < dialog_.candidates.size(); ++index)
+        if (dialog_.svn_browser)
         {
-            // 배치에서 화면 밖 행은 숨긴다. 생성은 전부 하되 그리기·hit는 배치가
-            // 거른다 (목록이 수백 행이면 카드 목록처럼 가시 범위 생성으로 바꾼다).
-            const bool selected { dialog_.selected.has_value() && *dialog_.selected == index };
-            panel->adopt(std::make_unique<candidate_row_element>(index, dialog_.candidates[index], selected));
+            for (const svn_repository_browser_row& row : dialog_.svn_rows)
+                if (row.kind == svn_browser_row_kind::directory)
+                    panel->adopt(std::make_unique<svn_directory_row_element>(row));
+                else
+                    panel->adopt(std::make_unique<svn_status_row_element>(row));
+        }
+        else
+        {
+            for (std::size_t index = 0; index < dialog_.candidates.size(); ++index)
+            {
+                const bool selected { dialog_.selected.has_value() && *dialog_.selected == index };
+                panel->adopt(std::make_unique<candidate_row_element>(index, dialog_.candidates[index], selected));
+            }
         }
         panel_ = panel.get();
         add_child(std::move(panel));
@@ -235,8 +441,8 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        float width { layout_switch_dialog_width * scale };
-        float height { layout_switch_dialog_height * scale };
+        float width { (dialog_.svn_browser ? layout_svn_browser_dialog_width : layout_switch_dialog_width) * scale };
+        float height { (dialog_.svn_browser ? layout_svn_browser_dialog_height : layout_switch_dialog_height) * scale };
         if (width > context.slot.width)
             width = context.slot.width;
         if (height > context.slot.height)
@@ -247,9 +453,9 @@ namespace gitman::ui {
 
         const float padding { dialog_padding * scale };
         auto* const panel { static_cast<switch_panel_element*>(panel_) };
-        panel->list_area = { left + padding, top + list_top_offset * scale, width - padding * 2.0f, layout_switch_dialog_list_height * scale };
+        const float list_height { switch_dialog_list_height(dialog_.svn_browser, context.slot.height / scale) * scale };
+        panel->list_area = { left + padding, top + list_top_offset * scale, width - padding * 2.0f, list_height };
 
-        // 후보 행 배치: 스크롤을 반영하고 목록 영역을 벗어난 행은 숨긴다.
         const float row_height { layout_switch_dialog_row_height * scale };
         const std::span<const std::unique_ptr<ui_element>> rows { panel_->children() };
         for (std::size_t index = 0; index < rows.size(); ++index)
@@ -260,7 +466,6 @@ namespace gitman::ui {
             rows[index]->arrange({ { panel->list_area.x, row_top, panel->list_area.width, row_height }, scale });
         }
 
-        // 버튼은 panel 오른쪽 아래다. dialog의 자식이라 목록 clip의 영향을 받지 않는다.
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
         if (children.size() >= 3)
         {

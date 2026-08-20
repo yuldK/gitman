@@ -93,6 +93,8 @@ add_library(gitman_lib STATIC
     application/project_store.h
     application/repository_provider.cpp
     application/repository_provider.h
+    application/svn_repository_browser.cpp
+    application/svn_repository_browser.h
     application/switch_validation_service.cpp
     application/switch_validation_service.h
     application/task_scheduler.cpp

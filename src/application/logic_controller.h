@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace gitman {
@@ -92,9 +93,14 @@ namespace gitman {
         void handle_confirm_settings();
         void handle_begin_switch(const begin_switch_intent& intent);
         void handle_select_switch_candidate(std::size_t index);
+        void handle_select_svn_browser_node(std::u8string_view url);
+        void handle_toggle_svn_browser_node(std::u8string_view url);
         void handle_confirm_switch();
         void handle_switch_candidates(switch_candidates_event event);
+        void handle_svn_directory(svn_directory_event event);
         void handle_switch_dialog_scroll(float delta);
+        void submit_svn_directory_query(std::u8string url);
+        [[nodiscard]] std::size_t switch_dialog_row_count() const;
         void install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics);
         void request_refresh(card_state& card);
         void request_save();
@@ -157,7 +163,9 @@ namespace gitman {
             // 후보 조회 작업의 id다. 늦은 결과를 구분한다.
             std::uint64_t candidates_operation_id { 0 };
             bool loading { true };
+            bool subversion { false };
             switch_candidate_result candidates {};
+            std::optional<svn_repository_browser_state> svn_browser {};
             std::optional<std::size_t> selected {};
             // tracking branch 생성의 두 단계 확인 중 첫 단계가 끝났다.
             bool tracking_confirm_pending { false };
@@ -166,6 +174,12 @@ namespace gitman {
             // 실행 거부·실패 사유다. 후보를 다시 고르면 지워진다.
             std::u8string message {};
             float scroll_offset { 0.0f };
+            struct directory_query
+            {
+                std::uint64_t operation_id { 0 };
+                std::u8string url {};
+            };
+            std::vector<directory_query> directory_queries {};
         };
 
         std::optional<switch_dialog_state> switch_dialog_ {};

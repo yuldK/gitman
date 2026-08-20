@@ -374,6 +374,7 @@ TEST_CASE("Project store preserves shadow fields and canonical output", "[worksp
         {
             "id": "alpha",
             "path": "C:/gitman-s2-d4/original repo/../repo",
+            "svn_switch_targets": ["https://svn.example.com/repo/legacy"],
             "future_project": "keep"
         }
     ]
@@ -404,6 +405,8 @@ TEST_CASE("Project store preserves shadow fields and canonical output", "[worksp
     REQUIRE(output->find(u8"\"future_top\": {") != std::u8string::npos);
     REQUIRE(output->find(u8"\"future_project\": \"keep\"") != std::u8string::npos);
     REQUIRE(output->find(u8"\"path\": \"C:/gitman-s2-d4/original repo/../repo\"") != std::u8string::npos);
+    REQUIRE(output->find(u8"\"svn_switch_targets\": [") != std::u8string::npos);
+    REQUIRE(output->find(u8"https://svn.example.com/repo/legacy") != std::u8string::npos);
     REQUIRE(output->find(u8"\"enabled\": false") != std::u8string::npos);
     REQUIRE(output->find(u8"\"display_name\"") == std::u8string::npos);
     REQUIRE(output->find(u8"\"vcs_hint\"") == std::u8string::npos);

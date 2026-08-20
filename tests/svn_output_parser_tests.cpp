@@ -63,6 +63,15 @@ TEST_CASE("Single value SVN output keeps only the value", "[infrastructure][svn]
     REQUIRE(gitman::parse_svn_info_item(lines_of({ u8"   " })).empty());
 }
 
+TEST_CASE("Documented SVN list output keeps directories only", "[infrastructure][svn][parser][fixture]")
+{
+    const std::vector<std::u8string> directories { gitman::parse_svn_directory_list(read_fixture_lines("ls-repository-root.txt")) };
+    REQUIRE(directories == std::vector<std::u8string> { u8"branches", u8"tags", u8"trunk", u8"공용 자료" });
+
+    // 빈 이름과 파일은 빠지고 서버가 준 디렉터리 순서는 유지된다.
+    REQUIRE(gitman::parse_svn_directory_list(lines_of({ u8"", u8"/", u8"a.txt", u8"z/", u8"a/", u8" 앞뒤 공백 /" })) == std::vector<std::u8string> { u8"z", u8"a", u8" 앞뒤 공백 " });
+}
+
 TEST_CASE("Captured SVN status states are parsed", "[infrastructure][svn][parser][fixture]")
 {
     const gitman::svn_status_summary status { gitman::parse_svn_status(read_fixture_lines("status-mixed-states.txt")) };

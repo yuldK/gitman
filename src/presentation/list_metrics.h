@@ -44,6 +44,20 @@ namespace gitman {
     inline constexpr float layout_switch_dialog_height { 320.0f };
     inline constexpr float layout_switch_dialog_row_height { 22.0f };
     inline constexpr float layout_switch_dialog_list_height { 190.0f };
+    inline constexpr float layout_svn_browser_dialog_width { 640.0f };
+    inline constexpr float layout_svn_browser_dialog_height { 430.0f };
+    inline constexpr float layout_svn_browser_list_height { 300.0f };
+
+    [[nodiscard]] inline float switch_dialog_list_height(const bool svn_browser, const float window_height) noexcept
+    {
+        const float dialog_height { svn_browser ? layout_svn_browser_dialog_height : layout_switch_dialog_height };
+        const float preferred { svn_browser ? layout_svn_browser_list_height : layout_switch_dialog_list_height };
+        const float panel_height { window_height < dialog_height ? window_height : dialog_height };
+        float available { panel_height - 130.0f };
+        if (available < layout_switch_dialog_row_height)
+            available = layout_switch_dialog_row_height;
+        return available < preferred ? available : preferred;
+    }
     // 로컬 변경 확인 dialog의 치수다 (field-feedback-design 2.3). 상단 목록과 하단
     // diff pane의 스크롤 한계를 logic과 element가 같은 값으로 계산하도록 여기에 둔다.
     inline constexpr float layout_local_changes_dialog_width { 560.0f };

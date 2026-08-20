@@ -58,8 +58,13 @@ Git과 SVN은 외부 실행 파일이며 설치 버전, 인증, 저장소 상태
 - 여러 remote에 같은 branch가 있으면 자동 선택하지 않고 dialog에서 remote를 명시적으로 선택하게 한다.
 - Git 실행에는 `--no-guess`와 완전한 ref를 사용하여 선택하지 않은 remote branch로 암묵 전환하지 않는다.
 - detached HEAD, `--discard-changes`, `--merge`, 기존 local branch의 강제 reset은 지원하지 않는다.
-- SVN 최초 버전은 프로젝트 JSON의 `svn_switch_targets`에 등록된 URL만 선택할 수 있다.
-- SVN URL은 형식, 접근 가능 여부, repository UUID와 root 일치를 검증한다.
+- SVN switch dialog는 작업 복사본에서 repository root URL과 현재 URL을 읽고,
+  root부터 `svn ls`를 lazy 실행하는 디렉터리 트리로 대상을 고른다. 저장소 layout
+  이름(`trunk/branches/tags`)은 가정하지 않는다.
+- 프로젝트 JSON의 `svn_switch_targets`는 문서 호환을 위해 읽고 보존하되 후보와
+  검증에는 사용하지 않는다 (2026-08-20 실환경 피드백 결정).
+- SVN URL은 형식, 접근 가능 여부, repository UUID와 root 일치를 실행 직전에
+  다시 검증한다.
 - 검증 실패 시 dialog 오류만 갱신하고 process request를 생성하지 않는다.
 
 ### 인증과 프로세스
@@ -77,9 +82,12 @@ Git과 SVN은 외부 실행 파일이며 설치 버전, 인증, 저장소 상태
 
 충돌 해결 UI와 터미널 입력이 없는 앱에서 자동 이력 변경은 복구가 어렵다. fast-forward가 불가능하면 오류로 종료한다.
 
-### SVN 서버 레이아웃 자동 탐색
+### SVN 고정 허용 목록과 layout 추측
 
-모든 저장소가 `trunk/branches/tags`를 사용하지 않으므로 JSON 허용 목록을 먼저 채택한다.
+초기 구현은 모든 저장소가 `trunk/branches/tags`를 사용하지 않는다는 이유로 JSON
+허용 목록을 채택했다. 실환경에서는 이 필드를 채우는 경로가 없어 기능이 사라졌다.
+F6에서 root 전체를 실제 조회하는 트리 브라우저로 교체했다. 특정 layout을 추측하지
+않으면서도 문서에 후보를 중복 관리하지 않는다.
 
 ### 앱 내 자격 증명 입력
 
@@ -101,7 +109,8 @@ Git과 SVN은 외부 실행 파일이며 설치 버전, 인증, 저장소 상태
 - upstream, same-name remote branch, preferred remote, origin, local-only 순서의 최신 기준 선택을 fixture로 검사한다.
 - remote가 있지만 비교 branch가 없을 때 local 상태로 fallback하지 않는지 확인한다.
 - remote branch를 local보다 먼저 표시하고 remote branch 선택 시 정확한 tracking branch command를 생성하는지 확인한다.
-- 존재하지 않는 branch, ambiguous remote와 허용되지 않은 SVN URL에서 switch request가 생성되지 않는지 확인한다.
+- 존재하지 않는 branch, ambiguous remote, 형식이 잘못된 SVN URL과 다른 저장소
+  URL에서 switch request가 생성되지 않는지 확인한다.
 - submodule option이 꺼지면 submodule command를 실행하지 않고, 켜지면 dirty preflight와 recursive update를 수행하는지 확인한다.
 - 인증 cache가 없는 환경에서 prompt 없이 제한 시간 안에 오류로 종료되는지 확인한다.
 

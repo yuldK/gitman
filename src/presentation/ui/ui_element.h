@@ -69,6 +69,8 @@ namespace gitman::ui {
         switch_dialog,
         switch_dialog_panel,
         switch_dialog_item,
+        switch_dialog_svn_expand,
+        switch_dialog_svn_status,
         switch_dialog_confirm,
         switch_dialog_cancel,
         // 환경설정 dialog다 (REQ-017, 단계 8). 배경 클릭은 닫기이고 panel이 클릭을

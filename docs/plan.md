@@ -154,9 +154,10 @@ SVN의 `switch`는 Git 브랜치 이름 전환과 달리 작업 복사본의 저
 
 - Git: 로컬 브랜치, 원격 추적 브랜치, detached HEAD 여부, 업스트림
 - SVN: 현재 URL, 저장소 루트, 상대 URL, 작업 복사본 리비전, 혼합 리비전 여부
-- SVN 전환 대상: 사용자가 JSON에 명시한 허용 URL 목록 또는 저장소 레이아웃에서 안전하게 발견한 후보
+- SVN 전환 대상: repository root부터 실제 조회한 디렉터리 (JSON
+  `svn_switch_targets`는 호환을 위해 보존만 함)
 
-Git과 SVN 모두 전환은 switch dialog에서만 시작한다. Git은 remote와 remote branch를 먼저 조사해 `원격 브랜치` 그룹을 위에 표시하고, 그 뒤 local-only branch를 표시한다. remote branch에 대응하는 local tracking branch가 없으면 명시적 확인 후 tracking branch를 생성한다. 여러 remote의 같은 이름은 자동 선택하지 않는다. SVN은 임의 URL 대신 등록 후보만 선택하며 저장소 layout을 자동 가정하지 않는다.
+Git과 SVN 모두 전환은 switch dialog에서만 시작한다. Git은 remote와 remote branch를 먼저 조사해 `원격 브랜치` 그룹을 위에 표시하고, 그 뒤 local-only branch를 표시한다. remote branch에 대응하는 local tracking branch가 없으면 명시적 확인 후 tracking branch를 생성한다. 여러 remote의 같은 이름은 자동 선택하지 않는다. SVN은 repository root부터 실제 디렉터리를 lazy 조회하며 저장소 layout을 자동 가정하지 않는다.
 
 Git 대상은 유효한 ref인지, 실제로 존재하는지, 현재 브랜치와 다른지, 다른 worktree에서 사용 중인지 확인한다. SVN 대상은 URL 형식, 접근 가능 여부, 동일 저장소 UUID 및 저장소 루트 여부를 확인한다. 공통으로 dirty, conflict, 진행 중 작업 등 보호 정책을 검증한다. 검증 실패 시 dialog에 한국어 오류 메시지를 표시하고 확인 버튼을 비활성화하며 `switch` 명령을 생성하지 않는다. 검증 통과 뒤에도 로직 스레드가 실행 직전에 다시 검사하여 검사와 실행 사이 상태 변경을 방어한다.
 
@@ -371,7 +372,8 @@ UI와 무관한 계층은 Skia 타입을 노출하지 않는다. Git과 SVN의 �
 ### 5.3 전환 작업
 
 1. 사용자가 카드의 switch 버튼을 눌러 switch dialog를 연다.
-2. Git remote branch를 먼저, local branch를 다음으로 조회하거나 허용된 SVN URL 후보를 비동기로 조회한다.
+2. Git remote branch를 먼저, local branch를 다음으로 조회하거나 SVN repository
+   root부터 펼친 디렉터리를 비동기로 lazy 조회한다.
 3. 선택 후보가 바뀔 때마다 대상 형식, 존재 여부, 저장소 일치 여부와 작업 트리 위험 상태를 검증한다.
 4. 검증 중에는 확인 버튼을 비활성화하고, 실패하면 dialog에 오류 메시지를 표시하며 명령을 만들지 않는다.
 5. 검증이 통과하면 선택 대상과 영향을 표시하고 확인 버튼을 활성화한다.
@@ -594,7 +596,8 @@ gitman/
 - 상태와 동작 아이콘은 VS Code Codicons `v0.0.46-24`에 고정한다.
 - Git/SVN 전환은 유효성 검사가 포함된 switch dialog에서만 수행한다.
 - Git 최신 상태는 remote-first, remote 없음은 local 기준으로 판정한다.
-- Git 전환 후보는 remote branch 우선, local branch 후순위이며 SVN 전환은 JSON 허용 URL만 대상으로 한다.
+- Git 전환 후보는 remote branch 우선, local branch 후순위이며 SVN 전환은
+  repository root에서 실제 조회한 디렉터리를 대상으로 한다.
 - `git pull --ff-only`를 사용하고 자동 stash, merge, rebase는 수행하지 않는다.
 - Git update에는 기본 off인 recursive submodule option을 제공한다.
 - 시작 시 local snapshot을 먼저 표시하되 최신 여부는 단정하지 않는다. 전체 또는 카드별 refresh에서 remote-first로 판정하고 remote가 없을 때만 local 기준을 사용한다.
@@ -627,7 +630,7 @@ gitman/
 | 범용 메시지 구조의 성급한 구현 | 다른 프로젝트 재사용 실패 | 단계 6 전 사용자 설계 검수와 구현 차단 gate |
 | Codicon 폰트 또는 매핑 불일치 | 잘못된 아이콘 표시 | 동일 버전 자산 고정, 생성 헤더 검증, 폴백 텍스트 |
 | 병렬 카드 로그 혼합 | 잘못된 작업 진단 | project ID와 sequence, 카드별 ring buffer, 선택 필터 |
-| SVN 레이아웃 오판 | 잘못된 URL 전환 | 허용 목록, 사전 확인, 레이아웃 자동 가정 금지 |
+| SVN 레이아웃 오판 | 잘못된 URL 전환 | root 기반 실조회, 실행 직전 root/UUID 확인, 레이아웃 자동 가정 금지 |
 | 경로와 로그의 비밀 노출 | 보안 사고 | 인자 배열 실행, 민감 정보 마스킹, 진단 로그 검토 |
 
 ## 12. 최초 마일스톤 완료 정의

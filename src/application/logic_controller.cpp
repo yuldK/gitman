@@ -4,7 +4,6 @@
 #include "presentation/list_metrics.h"
 #include "presentation/log_presentation.h"
 
-#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <type_traits>
@@ -42,44 +41,6 @@ namespace gitman {
             return false;
         }
 
-        bool name_before(const card_view_model& left, const card_view_model& right) noexcept
-        {
-            const std::size_t common { left.display_name.size() < right.display_name.size() ? left.display_name.size() : right.display_name.size() };
-            for (std::size_t index = 0; index < common; ++index)
-            {
-                const char8_t left_value { ascii_lowercase(left.display_name[index]) };
-                const char8_t right_value { ascii_lowercase(right.display_name[index]) };
-                if (left_value != right_value)
-                    return left_value < right_value;
-            }
-            if (left.display_name.size() != right.display_name.size())
-                return left.display_name.size() < right.display_name.size();
-            return left.id.value < right.id.value;
-        }
-
-        bool status_before(const card_view_model& left, const card_view_model& right) noexcept;
-
-        // 상태 정렬은 손볼 일이 많은 카드를 위로 올린다.
-        int state_rank(const card_view_state state) noexcept
-        {
-            switch (state)
-            {
-            case card_view_state::failed:
-                return 0;
-            case card_view_state::warning:
-                return 1;
-            case card_view_state::loading:
-                return 2;
-            case card_view_state::running:
-                return 3;
-            case card_view_state::ready:
-                return 4;
-            case card_view_state::disabled:
-                return 5;
-            }
-            return 6;
-        }
-
         // card_state에서 표시 상태를 정한다. 우선순위: 비활성 → 실행 중 → 초기 조회
         // 전 → 조회 불가 → 오류 → 주의 → 정상.
         struct card_view_inputs
@@ -91,15 +52,6 @@ namespace gitman {
             remote_sync_state sync_state { remote_sync_state::unknown };
             working_tree_state tree_state { working_tree_state::unknown };
         };
-
-        bool status_before(const card_view_model& left, const card_view_model& right) noexcept
-        {
-            const int left_rank { state_rank(left.state) };
-            const int right_rank { state_rank(right.state) };
-            if (left_rank != right_rank)
-                return left_rank < right_rank;
-            return name_before(left, right);
-        }
 
         // dialog 수준에서 곧바로 판정할 수 있는 검증이다. 존재·저장소 일치 같은
         // 나머지 검증은 provider가 실행 직전에 다시 수행한다 (REQ-007).
@@ -175,11 +127,6 @@ namespace gitman {
                 }
                 else if constexpr (std::is_same_v<value_type, toggle_path_display_intent>)
                     handle_toggle_path_display();
-                else if constexpr (std::is_same_v<value_type, set_sort_intent>)
-                {
-                    sort_ = value.key;
-                    scroll_selected_into_view();
-                }
                 else if constexpr (std::is_same_v<value_type, reorder_card_intent>)
                     handle_reorder_card(value);
                 else if constexpr (std::is_same_v<value_type, request_update_intent>)
@@ -499,13 +446,9 @@ namespace gitman {
         std::size_t to { target + (intent.place_after ? 1u : 0u) };
         if (from < to)
             --to;
+        // 위치가 그대로면 문서도 그대로다. 저장할 것이 없다.
         if (from == to)
-        {
-            // 위치가 그대로여도 사용자가 순서를 확정한 것이므로 문서 순서 보기로
-            // 전환한다.
-            sort_ = card_sort_key::custom;
             return;
-        }
 
         card_state moved { std::move(cards_[from]) };
         cards_.erase(cards_.begin() + static_cast<std::ptrdiff_t>(from));
@@ -517,7 +460,6 @@ namespace gitman {
         for (const card_state& card : cards_)
             document_->projects.push_back(card.project);
 
-        sort_ = card_sort_key::custom;
         request_save();
     }
 
@@ -1345,11 +1287,7 @@ namespace gitman {
             ordered.push_back(std::move(model));
         }
 
-        // custom은 문서(카드) 순서를 그대로 둔다.
-        if (sort_ == card_sort_key::name)
-            std::sort(ordered.begin(), ordered.end(), name_before);
-        else if (sort_ == card_sort_key::status)
-            std::sort(ordered.begin(), ordered.end(), status_before);
+        // 카드는 항상 문서의 프로젝트 순서 그대로다. drag & drop이 문서를 바꾼다.
         return ordered;
     }
 
@@ -1359,7 +1297,6 @@ namespace gitman {
         snapshot->document_path = document_path_;
         snapshot->selected = selected_;
         snapshot->filter_text = filter_;
-        snapshot->sort = sort_;
         snapshot->notices = notices_;
         // 저장 실패는 문서 진단보다 먼저 보인다. UI는 첫 notice만 표시한다.
         if (save_notice_.empty() == false)

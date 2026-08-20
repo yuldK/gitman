@@ -45,7 +45,6 @@ namespace gitman::ui {
         toolbar_open_document,
         toolbar_generate_document,
         toolbar_toggle_path_display,
-        toolbar_sort,
         toolbar_settings,
         toolbar_discover,
         notice,
@@ -136,6 +135,10 @@ namespace gitman::ui {
         project_id dragged_project {};
         // drag ghost에 표시할 이름이다. 비어 있으면 project id를 대신 쓴다.
         std::u8string label {};
+        // drag 시작 시 포인터와 출발 element 원점의 차이다. 떠 있는 카드가 잡은
+        // 지점 그대로 포인터를 따라오게 한다 (field-feedback-design 4.1).
+        float grab_offset_x { 0.0f };
+        float grab_offset_y { 0.0f };
 
         [[nodiscard]] bool operator==(const drag_payload&) const = default;
     };

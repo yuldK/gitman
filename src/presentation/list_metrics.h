@@ -79,4 +79,15 @@ namespace gitman {
 
     // 스크롤을 [0, 최대]로 고정한다. 내용이 화면보다 작으면 0이다.
     [[nodiscard]] float clamp_scroll_offset(float offset, float content_height, float viewport_height) noexcept;
+
+    // 카드 drag 중의 삽입 위치다. `dragged_index`를 뺀 나머지 목록 기준의 위치
+    // [0, card_count - 1]을 돌려주며, 경계는 각 카드의 세로 중앙이다(위 절반이면 그
+    // 카드 앞, 아래 절반이면 뒤). 여백을 벌려 그리는 쪽과 drop 대상 계산이 이 한
+    // 함수를 같이 쓰므로 벌어진 자리와 실제 놓이는 자리가 어긋나지 않는다.
+    [[nodiscard]] std::size_t card_drag_insertion_slot(float pointer_y, float list_top, float scroll, std::size_t dragged_index, std::size_t card_count, float scale) noexcept;
+
+    // drag 중 `card_index` 카드가 원래 배치에서 세로로 옮겨 그려질 거리다 (물리
+    // 픽셀). dragged 카드가 빠진 자리는 닫히고 `insertion_slot` 자리는 카드 한 장
+    // 크기로 벌어진다. dragged 카드 자신은 0이다(목록에서는 그리지 않는다).
+    [[nodiscard]] float card_drag_offset(std::size_t card_index, std::size_t dragged_index, std::size_t insertion_slot, float scale) noexcept;
 } // namespace gitman

@@ -50,18 +50,13 @@ namespace gitman {
         std::u8string text {};
     };
 
-    struct set_sort_intent
-    {
-        card_sort_key key { card_sort_key::name };
-    };
-
     // 카드 경로를 전체 경로와 문서 기준 상대 경로 사이에서 바꾼다. 표시 방식은 문서
     // `settings`에 남으므로 처리 시 저장이 예약된다.
     struct toggle_path_display_intent
     {};
 
     // 카드 drag & drop이 만드는 순서 변경이다. `id` 카드를 `target` 카드의 앞 또는
-    // 뒤로 옮긴다. 처리 시 정렬이 custom(문서 순서)으로 바뀌고 문서 저장이 예약된다.
+    // 뒤로 옮긴다. 카드는 항상 문서 순서로 표시되므로 처리 시 문서 저장이 예약된다.
     struct reorder_card_intent
     {
         project_id id {};
@@ -374,7 +369,7 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, set_sort_intent,
+    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent,
         toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
         log_scroll_intent, show_update_options_intent, set_update_submodules_intent, confirm_update_intent, cancel_update_options_intent, begin_switch_intent, select_switch_candidate_intent,
         confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent,

@@ -53,10 +53,12 @@ TEST_CASE("The built tree contains toolbar, cards, and their buttons", "[ui][tre
     REQUIRE(update->enabled() == false);
     REQUIRE(update->tooltip().empty() == false);
 
-    // 카드 body는 순서 변경의 drag 출발지이자 도착지다.
+    // 카드 body는 순서 변경의 drag 출발지다. drop 대상은 목록이다 (4.1).
     const auto* const draggable { tree->find(card_id(gitman::ui::ui_element_kind::card_body, u8"card-1")) };
     REQUIRE(draggable->drag() != nullptr);
-    REQUIRE(draggable->drop() != nullptr);
+    REQUIRE(draggable->drop() == nullptr);
+    const auto* const list { tree->find({ gitman::ui::ui_element_kind::card_list }) };
+    REQUIRE(list->drop() != nullptr);
 
     // 버튼은 카드 body 위에 그려지므로 hit에서도 이긴다.
     const auto* const refresh { tree->find(card_id(gitman::ui::ui_element_kind::card_refresh, u8"card-0")) };
@@ -65,8 +67,10 @@ TEST_CASE("The built tree contains toolbar, cards, and their buttons", "[ui][tre
     const auto* const body { tree->find(card_id(gitman::ui::ui_element_kind::card_body, u8"card-0")) };
     REQUIRE(tree->hit_test(body->bounds().x + 1.0f, body->bounds().y + 1.0f) == body);
 
-    // 빈 영역은 root(선택 해제)다.
-    REQUIRE(tree->hit_test(799.0f, 599.0f)->id().kind == gitman::ui::ui_element_kind::root);
+    // 목록 안 빈 영역은 목록이 받고, 목록도 클릭이 선택 해제다.
+    const auto* const empty_hit { tree->hit_test(799.0f, 599.0f) };
+    REQUIRE(empty_hit->id().kind == gitman::ui::ui_element_kind::card_list);
+    REQUIRE(empty_hit->action(gitman::ui::ui_trigger::left_click) != nullptr);
 }
 
 TEST_CASE("The open document button appears only without a document", "[ui][tree]")
@@ -93,27 +97,6 @@ TEST_CASE("The generate document button stays visible and follows the busy state
     const auto* const busy_button { busy_tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document }) };
     REQUIRE(busy_button->enabled() == false);
     REQUIRE(busy_button->tooltip().empty() == false);
-}
-
-TEST_CASE("The sort button shows the current key in its tooltip", "[ui][tree]")
-{
-    // 기본은 이름순이고 tooltip이 현재 기준과 다음 기준을 함께 안내한다.
-    const auto name_tree { gitman::ui::build_ui_tree(make_view(2)) };
-    const auto* const button { name_tree->find({ gitman::ui::ui_element_kind::toolbar_sort }) };
-    REQUIRE(button != nullptr);
-    REQUIRE(button->visible());
-    REQUIRE(button->enabled());
-    REQUIRE(button->tooltip() == u8"이름순 정렬 (누르면 상태순)");
-
-    gitman::view_snapshot status_view { make_view(2) };
-    status_view.sort = gitman::card_sort_key::status;
-    const auto status_tree { gitman::ui::build_ui_tree(status_view) };
-    REQUIRE(status_tree->find({ gitman::ui::ui_element_kind::toolbar_sort })->tooltip() == u8"상태순 정렬 (누르면 문서 순서)");
-
-    gitman::view_snapshot custom_view { make_view(2) };
-    custom_view.sort = gitman::card_sort_key::custom;
-    const auto custom_tree { gitman::ui::build_ui_tree(custom_view) };
-    REQUIRE(custom_tree->find({ gitman::ui::ui_element_kind::toolbar_sort })->tooltip() == u8"문서 순서 정렬 (누르면 이름순)");
 }
 
 TEST_CASE("Only cards near the viewport become elements", "[ui][tree]")
@@ -159,4 +142,38 @@ TEST_CASE("Caption buttons in the tree match the Win32 non-client layout", "[ui]
 
     // caption 높이 상수는 목록 layout과도 일치해야 한다 (list_metrics 주석).
     REQUIRE(static_cast<float>(gitman::ui::default_caption_ui_metrics.height) == gitman::layout_caption_height);
+}
+
+TEST_CASE("Card drag slot and offset share one insertion formula", "[ui][tree][drag]")
+{
+    // 목록 top 76, scale 1: 카드 i의 content top = 10 + i*70, 높이 64다.
+    constexpr float list_top { 76.0f };
+    const auto slot = [](const float pointer_y, const std::size_t dragged) {
+        return gitman::card_drag_insertion_slot(pointer_y, list_top, 0.0f, dragged, 3u, 1.0f);
+    };
+
+    // 경계는 각 카드의 세로 중앙이다. card-2(화면 top 226, 중앙 258)의 위
+    // 절반이면 그 카드 앞(slot 1), 아래 절반이면 뒤(slot 2)다.
+    REQUIRE(slot(list_top + 10.0f + 2.0f * 70.0f + 5.0f, 0u) == 1u);
+    REQUIRE(slot(list_top + 10.0f + 2.0f * 70.0f + 60.0f, 0u) == 2u);
+    // 카드 사이 여백도 가장 가까운 삽입 위치로 간다.
+    REQUIRE(slot(list_top + 10.0f + 70.0f + 64.0f + 3.0f, 0u) == 1u);
+    // 목록 위·아래 밖은 처음·끝으로 고정된다.
+    REQUIRE(slot(list_top - 50.0f, 1u) == 0u);
+    REQUIRE(slot(list_top + 1000.0f, 1u) == 2u);
+    // 자기 자리 위 절반·아래 절반은 모두 제자리다.
+    REQUIRE(slot(list_top + 10.0f + 5.0f, 0u) == 0u);
+    REQUIRE(slot(list_top + 10.0f + 60.0f, 0u) == 0u);
+
+    // offset: card-0을 card-2 뒤(slot 2)로 끌면, 남은 카드 1·2가 한 slot 위로
+    // 올라가 빠진 자리를 닫고 끝의 여백이 벌어진다.
+    constexpr float pitch { 70.0f };
+    REQUIRE(gitman::card_drag_offset(1u, 0u, 2u, 1.0f) == -pitch);
+    REQUIRE(gitman::card_drag_offset(2u, 0u, 2u, 1.0f) == -pitch);
+    // card-2를 맨 앞(slot 0)으로 끌면 카드 0·1이 내려가 앞자리가 벌어진다.
+    REQUIRE(gitman::card_drag_offset(0u, 2u, 0u, 1.0f) == pitch);
+    REQUIRE(gitman::card_drag_offset(1u, 2u, 0u, 1.0f) == pitch);
+    // 제자리 여백(원래 위치)이면 아무 카드도 움직이지 않는다.
+    REQUIRE(gitman::card_drag_offset(1u, 0u, 0u, 1.0f) == 0.0f);
+    REQUIRE(gitman::card_drag_offset(2u, 0u, 0u, 1.0f) == 0.0f);
 }

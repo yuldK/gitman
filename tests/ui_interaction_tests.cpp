@@ -134,28 +134,6 @@ TEST_CASE("Clicks resolve to intents through the tree", "[ui][interaction]")
     }
 }
 
-TEST_CASE("The sort button cycles name, status, and document order", "[ui][interaction]")
-{
-    const auto expect_next = [](const gitman::card_sort_key current, const gitman::card_sort_key expected) {
-        gitman::view_snapshot view { make_view(1) };
-        view.sort = current;
-        const auto tree { gitman::ui::build_ui_tree(view) };
-        gitman::ui::interaction_controller controller {};
-        controller.set_tree(tree);
-
-        const auto actions { click(controller, bounds_of(*tree, gitman::ui::ui_element_kind::toolbar_sort)) };
-        const auto* const message { as_message(actions) };
-        REQUIRE(message != nullptr);
-        const auto* const intent { std::get_if<gitman::set_sort_intent>(message) };
-        REQUIRE(intent != nullptr);
-        REQUIRE(intent->key == expected);
-    };
-
-    expect_next(gitman::card_sort_key::name, gitman::card_sort_key::status);
-    expect_next(gitman::card_sort_key::status, gitman::card_sort_key::custom);
-    expect_next(gitman::card_sort_key::custom, gitman::card_sort_key::name);
-}
-
 TEST_CASE("A press that leaves its target produces nothing", "[ui][interaction]")
 {
     const auto tree { make_tree(1) };
@@ -293,7 +271,7 @@ TEST_CASE("Keyboard focus walks the visible cards", "[ui][interaction]")
     REQUIRE(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::enter }).empty());
 }
 
-TEST_CASE("Dragging a card onto another card produces a reorder intent", "[ui][interaction][drag]")
+TEST_CASE("Dragging a card lets the list insert it at the nearest slot", "[ui][interaction][drag]")
 {
     const auto tree { make_tree(3) };
     gitman::ui::interaction_controller controller { gitman::ui::interaction_config { 500ms, 4.0f, 6.0f } };
@@ -307,14 +285,17 @@ TEST_CASE("Dragging a card onto another card produces a reorder intent", "[ui][i
     REQUIRE(controller.process(gitman::ui::pointer_moved_event { source.x + 5.0f, source.y + 25.0f, at(20) }).empty());
     REQUIRE(controller.snapshot().drag.has_value());
     REQUIRE(controller.snapshot().drag->payload.dragged_project.value == u8"card-0");
+    // 떠 있는 카드가 잡은 지점 그대로 따라오도록 offset이 실린다.
+    REQUIRE(controller.snapshot().drag->payload.grab_offset_x == 5.0f);
+    REQUIRE(controller.snapshot().drag->payload.grab_offset_y == 5.0f);
 
-    SECTION("아래쪽 절반에 놓으면 뒤로 삽입한다")
+    SECTION("대상 카드의 아래쪽 절반은 그 카드 뒤로 삽입한다")
     {
-        // 대상 카드의 버튼 영역 위라도 카드가 drop 대상으로 잡힌다.
+        // 카드가 아니라 목록이 drop 대상이다. 버튼 영역 위라도 잡힌다.
         const float drop_x { target.x + target.width - 20.0f };
         const float drop_y { target.y + target.height - 5.0f };
         REQUIRE(controller.process(gitman::ui::pointer_moved_event { drop_x, drop_y, at(40) }).empty());
-        REQUIRE(controller.snapshot().drag->hovered_drop_target.owner.value == u8"card-2");
+        REQUIRE(controller.snapshot().drag->hovered_drop_target.kind == gitman::ui::ui_element_kind::card_list);
 
         const auto actions { controller.process(gitman::ui::pointer_released_event { drop_x, drop_y, gitman::ui::pointer_button::left, at(60) }) };
         const auto* const message { as_message(actions) };
@@ -326,18 +307,32 @@ TEST_CASE("Dragging a card onto another card produces a reorder intent", "[ui][i
         REQUIRE(intent->place_after);
     }
 
-    SECTION("위쪽 절반에 놓으면 앞으로 삽입한다")
+    SECTION("대상 카드의 위쪽 절반은 그 카드 앞(= 이전 카드 뒤)으로 삽입한다")
     {
         const auto actions { controller.process(gitman::ui::pointer_released_event { target.x + 5.0f, target.y + 5.0f, gitman::ui::pointer_button::left, at(60) }) };
         const auto* const intent { std::get_if<gitman::reorder_card_intent>(as_message(actions)) };
         REQUIRE(intent != nullptr);
-        REQUIRE(intent->place_after == false);
+        REQUIRE(intent->id.value == u8"card-0");
+        REQUIRE(intent->target.value == u8"card-1");
+        REQUIRE(intent->place_after);
     }
 
-    SECTION("자기 자신 위에서는 drop 대상이 없다")
+    SECTION("카드 사이 여백에 놓아도 그 자리로 삽입한다")
+    {
+        const gitman::ui::rect_f middle { bounds_of(*tree, gitman::ui::ui_element_kind::card_body, u8"card-1") };
+        const float gap_y { middle.y + middle.height + 3.0f };
+        const auto actions { controller.process(gitman::ui::pointer_released_event { middle.x + 5.0f, gap_y, gitman::ui::pointer_button::left, at(60) }) };
+        const auto* const intent { std::get_if<gitman::reorder_card_intent>(as_message(actions)) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->target.value == u8"card-1");
+        REQUIRE(intent->place_after);
+    }
+
+    SECTION("제자리에 놓으면 intent가 없다")
     {
         REQUIRE(controller.process(gitman::ui::pointer_moved_event { source.x + 5.0f, source.y + 30.0f, at(40) }).empty());
-        REQUIRE(controller.snapshot().drag->hovered_drop_target == gitman::ui::ui_element_id {});
+        // 목록이 drop을 받지만 위치가 그대로라 아무것도 만들지 않는다.
+        REQUIRE(controller.snapshot().drag->hovered_drop_target.kind == gitman::ui::ui_element_kind::card_list);
         REQUIRE(controller.process(gitman::ui::pointer_released_event { source.x + 5.0f, source.y + 30.0f, gitman::ui::pointer_button::left, at(60) }).empty());
     }
 }

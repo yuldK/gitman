@@ -29,6 +29,44 @@
 
 - NFR-001 (빌드 재현성), ADR-006의 취득 경계
 
+## 2026-08-20 - 실환경 피드백 F1b: 드래그 UX 개선
+
+### 사용자 지시
+
+- 드래그하면 카드 전체가 딸려가면서 기존 자리에서 빠지고, 다른 카드 사이에
+  두면 그 위치의 여백이 벌어지는 시각 표현으로 바꾼다.
+
+### 반영 내용
+
+- 떠 있는 카드가 잡은 지점 그대로 포인터를 따라오고 원래 slot은 닫힌다.
+  삽입 위치의 여백이 카드 한 장 크기로 벌어진다. tree는 불변 유지(ADR-004),
+  draw가 offset만 이동하며 여백·drop 위치는 같은 순수 함수를 쓴다
+  (`card_drag_insertion_slot`/`card_drag_offset`).
+- drop 대상을 카드별(위/아래 절반)에서 목록 수준(가장 가까운 삽입 위치)으로
+  바꿨다. 카드 사이 여백에 놓아도 동작하고 제자리 drop은 intent를 만들지
+  않는다. 목록 빈 영역 클릭의 선택 해제는 유지된다.
+- 검증: `[logic],[ui],[runtime]` 109 case 통과.
+  상세는 `docs/verification/2026-08-20-feedback-f1b-drag-ux.md`.
+
+## 2026-08-20 - 실환경 피드백 F1: 정렬 제거, 문서 순서 고정
+
+### 사용자 지시
+
+- 실환경 피드백 5건의 설계(`docs/field-feedback-design.md`)를 승인하고 F1부터
+  순차 진행. 열린 결정 3건은 검수 답변으로 확정(미추적 완화는 update만,
+  `svn_switch_targets`는 무시·보존, 타임아웃은 설정 항목까지).
+- F1: 정렬 기능이 쓸모없다 — 문서 등록 순서 그대로 보여주고 드래그로 바꾸면
+  문서에 반영되는 동작만 남긴다.
+
+### 반영 내용
+
+- 이름순/상태순 정렬과 toolbar 정렬 순환 버튼(`0fe4e69`, 후속 항목 1)을
+  제거했다. 카드는 항상 문서 `projects` 순서로 표시되고, drag & drop → 문서
+  갱신 → 저장은 기존 경로 그대로다.
+- `card_sort_key`/`set_sort_intent`/`view_snapshot::sort`/`toolbar_sort`와
+  정렬 비교자를 제거하고, 관련 테스트를 문서 순서 단정으로 재작성했다.
+- 검증: `[logic],[ui],[runtime]` 108 case 통과, 스타일 374 파일 통과.
+  상세는 `docs/verification/2026-08-20-feedback-f1-sort-removal.md`.
 
 ## 2026-08-19 - vcpkg 제거와 submodule 전환 (`N1`~`N5`)
 

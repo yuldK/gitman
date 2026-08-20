@@ -1,5 +1,8 @@
 #include "presentation/list_metrics.h"
 
+#include <cmath>
+#include <cstddef>
+
 namespace gitman {
     list_layout compute_list_layout(const float window_height, const float scale, const bool has_notice, const bool has_log_pane) noexcept
     {
@@ -60,5 +63,39 @@ namespace gitman {
         if (offset < 0.0f)
             return 0.0f;
         return offset > maximum ? maximum : offset;
+    }
+
+    std::size_t card_drag_insertion_slot(
+        const float pointer_y, const float list_top, const float scroll, const std::size_t dragged_index, const std::size_t card_count, const float scale) noexcept
+    {
+        if (card_count <= 1)
+            return 0;
+
+        const float pitch { (layout_card_height + layout_card_gap) * scale };
+        const float content_y { pointer_y - list_top + scroll };
+        // 원래 배치 기준 "몇 번째 카드 앞인가" [0, card_count]다. 카드 중앙보다
+        // 위면 그 카드 앞이 된다.
+        const float relative { content_y - card_content_top(0, scale) - layout_card_height * scale * 0.5f };
+        std::ptrdiff_t before { static_cast<std::ptrdiff_t>(std::floor(relative / pitch)) + 1 };
+        if (before < 0)
+            before = 0;
+        if (before > static_cast<std::ptrdiff_t>(card_count))
+            before = static_cast<std::ptrdiff_t>(card_count);
+
+        // dragged를 뺀 목록의 위치로 바꾼다.
+        if (before > static_cast<std::ptrdiff_t>(dragged_index))
+            --before;
+        return static_cast<std::size_t>(before);
+    }
+
+    float card_drag_offset(const std::size_t card_index, const std::size_t dragged_index, const std::size_t insertion_slot, const float scale) noexcept
+    {
+        if (card_index == dragged_index)
+            return 0.0f;
+
+        const float pitch { (layout_card_height + layout_card_gap) * scale };
+        const std::size_t remaining { card_index > dragged_index ? card_index - 1 : card_index };
+        const std::size_t slot { remaining + (remaining >= insertion_slot ? 1u : 0u) };
+        return (static_cast<float>(slot) - static_cast<float>(card_index)) * pitch;
     }
 } // namespace gitman

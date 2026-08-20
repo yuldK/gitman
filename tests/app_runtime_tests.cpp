@@ -106,10 +106,10 @@ TEST_CASE("A reorder intent persists the new order into the document file", "[ru
     const auto both_cards { [](const gitman::view_snapshot& value) { return value.cards.size() == 2u; } };
     REQUIRE(wait_for_view(runtime, std::chrono::milliseconds { 15000 }, both_cards) != nullptr);
 
-    // alpha를 beta 뒤로 옮긴다. 화면 순서가 바뀌고 문서 정렬이 custom이 된다.
+    // alpha를 beta 뒤로 옮긴다. 화면 순서 = 문서 순서가 함께 바뀐다.
     runtime.post_logic(gitman::logic_message { gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, true } });
     const auto reordered = [](const gitman::view_snapshot& value) {
-        return value.sort == gitman::card_sort_key::custom && value.cards.size() == 2u && value.cards.front().id.value == u8"beta" && value.cards.back().id.value == u8"alpha";
+        return value.cards.size() == 2u && value.cards.front().id.value == u8"beta" && value.cards.back().id.value == u8"alpha";
     };
     REQUIRE(wait_for_view(runtime, std::chrono::milliseconds { 15000 }, reordered) != nullptr);
 

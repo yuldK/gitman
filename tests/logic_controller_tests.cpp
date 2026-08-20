@@ -185,7 +185,7 @@ TEST_CASE("Refresh all touches every enabled card", "[logic][app]")
         REQUIRE(request.kind == gitman::operation_kind::refresh);
 }
 
-TEST_CASE("Filter and sort shape the visible cards deterministically", "[logic][app]")
+TEST_CASE("Cards keep the document order and the filter shapes the visible set", "[logic][app]")
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
@@ -194,21 +194,21 @@ TEST_CASE("Filter and sort shape the visible cards deterministically", "[logic][
     for (const std::u8string_view id : { std::u8string_view { u8"zulu" }, std::u8string_view { u8"Alpha" }, std::u8string_view { u8"beta" } })
         controller.handle(make_local_result(id, 1u));
 
+    // 카드는 항상 문서의 프로젝트 순서 그대로다.
     {
         const auto view { controller.make_view_snapshot() };
         REQUIRE(view->cards.size() == 3u);
-        REQUIRE(view->cards[0].display_name == u8"Alpha");
-        REQUIRE(view->cards[1].display_name == u8"beta");
-        REQUIRE(view->cards[2].display_name == u8"zulu");
+        REQUIRE(view->cards[0].display_name == u8"zulu");
+        REQUIRE(view->cards[1].display_name == u8"Alpha");
+        REQUIRE(view->cards[2].display_name == u8"beta");
     }
 
-    // 상태 정렬은 문제가 있는 카드를 위로 올린다.
+    // 상태가 나빠져도 순서는 그대로이고 표시 상태만 바뀐다.
     gitman::query_completed_event failed { make_local_result(u8"zulu", 1u) };
     failed.result.snapshot.availability = gitman::repository_availability::not_a_repository;
     controller.handle(gitman::refresh_card_intent { gitman::project_id { u8"zulu" } });
     failed.generation = 2u;
     controller.handle(std::move(failed));
-    controller.handle(gitman::set_sort_intent { gitman::card_sort_key::status });
     {
         const auto view { controller.make_view_snapshot() };
         REQUIRE(view->cards.front().display_name == u8"zulu");
@@ -291,7 +291,7 @@ TEST_CASE("Document diagnostics surface as notices", "[logic][app]")
     REQUIRE(view->notices.front() == u8"문서를 찾을 수 없습니다.");
 }
 
-TEST_CASE("Reordering a card rewrites document order, switches to custom sort, and saves", "[logic][app][reorder]")
+TEST_CASE("Reordering a card rewrites document order and saves", "[logic][app][reorder]")
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
@@ -303,7 +303,6 @@ TEST_CASE("Reordering a card rewrites document order, switches to custom sort, a
     controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"gamma" }, true });
 
     const auto view { controller.make_view_snapshot() };
-    REQUIRE(view->sort == gitman::card_sort_key::custom);
     REQUIRE(view->cards.size() == 3u);
     REQUIRE(view->cards[0].id.value == u8"beta");
     REQUIRE(view->cards[1].id.value == u8"gamma");
@@ -320,7 +319,7 @@ TEST_CASE("Reordering a card rewrites document order, switches to custom sort, a
     REQUIRE(request.document->projects[2].id.value == u8"alpha");
 }
 
-TEST_CASE("A drop that lands in place only switches to document order", "[logic][app][reorder]")
+TEST_CASE("A drop that lands in place changes nothing", "[logic][app][reorder]")
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
@@ -328,12 +327,11 @@ TEST_CASE("A drop that lands in place only switches to document order", "[logic]
     controller.handle(make_loaded_document({ make_project(u8"alpha"), make_project(u8"beta") }));
     submitter.requests.clear();
 
-    // alpha를 beta 앞에 놓아도 위치가 그대로다. 저장은 없고 정렬만 문서 순서가 된다.
+    // alpha를 beta 앞에 놓아도 위치가 그대로다. 문서가 그대로이니 저장도 없다.
     controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, false });
 
     REQUIRE(submitter.requests.empty());
     const auto view { controller.make_view_snapshot() };
-    REQUIRE(view->sort == gitman::card_sort_key::custom);
     REQUIRE(view->cards[0].id.value == u8"alpha");
     REQUIRE(view->cards[1].id.value == u8"beta");
 }
@@ -350,7 +348,7 @@ TEST_CASE("An unknown reorder participant is ignored", "[logic][app][reorder]")
     controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"ghost" }, false });
 
     REQUIRE(submitter.requests.empty());
-    REQUIRE(controller.make_view_snapshot()->sort == gitman::card_sort_key::name);
+    REQUIRE(controller.make_view_snapshot()->cards[0].id.value == u8"alpha");
 }
 
 TEST_CASE("Saves are serialized, coalesced, and report failures as a notice", "[logic][app][reorder]")

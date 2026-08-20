@@ -117,6 +117,11 @@ namespace gitman::ui {
 
     void ui_tree::draw_drag_visual(draw_context& context, const drag_visual& drag) const
     {
+        // 카드 drag는 card_list가 떠 있는 카드와 벌어진 여백으로 그린다
+        // (field-feedback-design 4.1). 여기서는 그 밖의 drag만 담당한다.
+        if (drag.payload.source.kind == ui_element_kind::card_body)
+            return;
+
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
 
         // 수락 중인 drop 대상을 먼저 강조한다.

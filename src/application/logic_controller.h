@@ -137,7 +137,6 @@ namespace gitman {
         std::u8string save_notice_ {};
         std::optional<project_id> selected_ {};
         std::u8string filter_ {};
-        card_sort_key sort_ { card_sort_key::name };
         // 하단 로그 뷰의 표시 상태다. 선택이 바뀌면 기본값으로 돌아간다.
         log_stream_filter log_filter_ { log_stream_filter::all };
         bool log_auto_scroll_ { true };

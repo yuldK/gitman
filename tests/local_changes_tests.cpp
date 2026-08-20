@@ -266,8 +266,10 @@ TEST_CASE("Opening the dialog queries the list and auto selects the first entry"
     REQUIRE(view->local_changes_dialog->rows.size() == 2u);
     REQUIRE(view->local_changes_dialog->rows[0].badge == u8"수정");
     REQUIRE(view->local_changes_dialog->rows[0].selected);
-    // 미추적 디렉터리는 배지에 표기가 붙는다.
-    REQUIRE(view->local_changes_dialog->rows[1].badge == u8"미추적 (디렉터리)");
+    // 미추적 디렉터리는 배지 안 folder 아이콘으로 표시한다 (3차 검수: 텍스트 표기
+    // 대신 directory 플래그가 아이콘을 정한다).
+    REQUIRE(view->local_changes_dialog->rows[1].badge == u8"미추적");
+    REQUIRE(view->local_changes_dialog->rows[1].directory);
     REQUIRE(view->local_changes_dialog->diff_loading);
 }
 

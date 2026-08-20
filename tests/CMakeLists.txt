@@ -12,6 +12,7 @@ add_executable(gitman_tests
     application_options_tests.cpp
     caption_layout_tests.cpp
     command_line_builder_tests.cpp
+    context_menu_tests.cpp
     dependency_versions_tests.cpp
     directory_enumerator_tests.cpp
     discovery_dialog_tests.cpp

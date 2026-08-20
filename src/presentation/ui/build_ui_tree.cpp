@@ -3,6 +3,7 @@
 #include "presentation/list_metrics.h"
 #include "presentation/ui/caption_element.h"
 #include "presentation/ui/card_list_element.h"
+#include "presentation/ui/context_menu_element.h"
 #include "presentation/ui/discovery_dialog_element.h"
 #include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/label_element.h"
@@ -123,6 +124,14 @@ namespace gitman::ui {
                     local_changes_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
+                // 컨텍스트 메뉴는 맨 마지막 자식이라 dialog 위에도 그려지고 hit
+                // test도 가장 먼저 걸린다 (field-feedback-design 3장).
+                if (view.context_menu.has_value())
+                {
+                    auto menu { std::make_unique<context_menu_element>(*view.context_menu) };
+                    context_menu_ = menu.get();
+                    add_child(std::move(menu));
+                }
             }
 
             void arrange(const arrange_context& context) override
@@ -151,6 +160,8 @@ namespace gitman::ui {
                     discovery_dialog_->arrange({ context.slot, scale });
                 if (local_changes_dialog_ != nullptr)
                     local_changes_dialog_->arrange({ context.slot, scale });
+                if (context_menu_ != nullptr)
+                    context_menu_->arrange({ context.slot, scale });
                 const float empty_height { 22.0f * scale };
                 const float empty_top { layout.content_top + (layout.viewport_height - empty_height) / 2.0f };
                 const rect_f empty_slot { layout_margin * scale * 2.0f, empty_top, context.slot.width - layout_margin * 4.0f * scale, empty_height };
@@ -174,6 +185,7 @@ namespace gitman::ui {
             ui_element* settings_dialog_ { nullptr };
             ui_element* discovery_dialog_ { nullptr };
             ui_element* local_changes_dialog_ { nullptr };
+            ui_element* context_menu_ { nullptr };
         };
     } // namespace
 

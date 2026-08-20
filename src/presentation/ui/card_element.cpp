@@ -60,6 +60,12 @@ namespace gitman::ui {
         set_action(
             ui_trigger::double_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_local_changes_intent { id } } } }; });
 
+        // 우클릭은 컨텍스트 메뉴다 (field-feedback-design 3장). 클릭 지점이 메뉴의
+        // 앵커가 되고 logic이 카드를 선택한 뒤 연다.
+        set_action(ui_trigger::right_click, [id = card_.id](const ui_action_context& context) -> std::vector<input_action> {
+            return { input_action { logic_message { open_context_menu_intent { id, context.x, context.y } } } };
+        });
+
         // 카드 body는 순서 변경의 drag 출발지다. drop 대상은 카드가 아니라 목록
         // 전체다 (card_list_element, field-feedback-design 4.1). 제외된 카드도 문서
         // 순서는 옮길 수 있다. lambda는 element가 소유하고 tree는 게시 후 불변이라

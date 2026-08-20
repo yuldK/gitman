@@ -227,6 +227,20 @@ namespace gitman {
         float delta { 0.0f };
     };
 
+    // 카드 body 우클릭이 여는 컨텍스트 메뉴다 (field-feedback-design 3장). 좌표는
+    // 우클릭 지점의 창 좌표(물리 픽셀) 앵커다. logic은 카드를 선택 카드로 만든 뒤
+    // 메뉴를 연다.
+    struct open_context_menu_intent
+    {
+        project_id id {};
+        float anchor_x { 0.0f };
+        float anchor_y { 0.0f };
+    };
+
+    // 바깥 클릭·Esc·항목 실행이 보내는 메뉴 닫기다.
+    struct close_context_menu_intent
+    {};
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -421,6 +435,7 @@ namespace gitman {
         cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent,
         toggle_settings_submodules_intent, confirm_settings_intent,
         cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent,
+        open_context_menu_intent, close_context_menu_intent,
         window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
         document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event,
         shutdown_message>;

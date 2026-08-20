@@ -64,6 +64,11 @@ namespace gitman::ui {
                     // 위로 굴리면 내용이 위로 간다.
                     const float delta { -(value.delta / 120.0f) * input_wheel_scroll_step };
 
+                    // 컨텍스트 메뉴가 떠 있는 동안 휠은 무시한다. 앵커에 붙은 메뉴
+                    // 아래로 목록이 흘러가면 대상 카드와 어긋난다.
+                    if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::context_menu }) != nullptr)
+                        return {};
+
                     // 로컬 변경 dialog가 열려 있으면 휠은 diff pane 위에서는 diff를,
                     // 그 밖에서는 목록을 스크롤한다.
                     if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::local_changes_dialog }) != nullptr)
@@ -274,6 +279,11 @@ namespace gitman::ui {
 
     std::vector<input_action> interaction_controller::process_key(const key_pressed_event& event)
     {
+        // 컨텍스트 메뉴가 열려 있으면 ↑/↓/Enter/Esc는 메뉴의 몫이다
+        // (field-feedback-design 3장). 카드 목록 탐색으로 흘러가지 않는다.
+        if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::context_menu }) != nullptr)
+            return process_menu_key(event);
+
         switch (event.key)
         {
         case key_code::arrow_down:
@@ -332,6 +342,65 @@ namespace gitman::ui {
         return {};
     }
 
+    std::vector<input_action> interaction_controller::process_menu_key(const key_pressed_event& event)
+    {
+        switch (event.key)
+        {
+        case key_code::arrow_down:
+        case key_code::arrow_up: {
+            const std::vector<ui_element_id> items { tree_->ids_of_kind(ui_element_kind::context_menu_item) };
+            if (items.empty())
+                return {};
+
+            // 현재 강조 위치다. 없으면 아래는 처음부터, 위는 끝부터 시작한다.
+            std::size_t current { items.size() };
+            for (std::size_t index = 0; index < items.size(); ++index)
+                if (items[index] == snapshot_.menu_highlight)
+                    current = index;
+
+            // 비활성 항목은 건너뛴다. 끝에 닿으면 제자리에 머문다.
+            const auto item_enabled = [this](const ui_element_id& id) {
+                const ui_element* const element { tree_->find(id) };
+                return element != nullptr && element->enabled();
+            };
+            if (event.key == key_code::arrow_down)
+            {
+                for (std::size_t index = current == items.size() ? 0 : current + 1; index < items.size(); ++index)
+                    if (item_enabled(items[index]))
+                    {
+                        snapshot_.menu_highlight = items[index];
+                        break;
+                    }
+            }
+            else
+            {
+                for (std::size_t index = current == items.size() ? items.size() : current; index > 0; --index)
+                    if (item_enabled(items[index - 1]))
+                    {
+                        snapshot_.menu_highlight = items[index - 1];
+                        break;
+                    }
+            }
+            return {};
+        }
+        case key_code::enter: {
+            if (snapshot_.menu_highlight == ui_element_id {})
+                return {};
+            const ui_element* const item { tree_->find(snapshot_.menu_highlight) };
+            if (item == nullptr || item->enabled() == false)
+                return {};
+            const rect_f box { item->bounds() };
+            return run_trigger(*item, ui_trigger::left_click, box.x + box.width / 2.0f, box.y + box.height / 2.0f, false);
+        }
+        case key_code::escape:
+            return { input_action { logic_message { close_context_menu_intent {} } } };
+        case key_code::f5:
+        case key_code::none:
+            break;
+        }
+        return {};
+    }
+
     std::vector<input_action> interaction_controller::run_trigger(const ui_element& element, const ui_trigger trigger, const float x, const float y, const bool control)
     {
         const ui_action* const action { element.action(trigger) };
@@ -358,13 +427,23 @@ namespace gitman::ui {
         // 초점은 텍스트 박스를 눌러야 생긴다 (검수 지시: 열릴 때 자동 초점 없음).
         // dialog가 닫히면 남아 있던 초점을 거둔다.
         const bool open { tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr };
-        if (open == settings_dialog_open_)
-            return;
-        settings_dialog_open_ = open;
-        if (open == false)
+        if (open != settings_dialog_open_)
         {
-            snapshot_.focused_input = {};
-            snapshot_.focus_started_at.reset();
+            settings_dialog_open_ = open;
+            if (open == false)
+            {
+                snapshot_.focused_input = {};
+                snapshot_.focus_started_at.reset();
+            }
+        }
+
+        // 컨텍스트 메뉴가 열리고 닫힐 때마다 키보드 강조를 지운다. 새 메뉴는 강조
+        // 없이 시작한다 (첫 ↓가 첫 활성 항목을 고른다).
+        const bool menu_open { tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::context_menu }) != nullptr };
+        if (menu_open != context_menu_open_)
+        {
+            context_menu_open_ = menu_open;
+            snapshot_.menu_highlight = {};
         }
     }
 

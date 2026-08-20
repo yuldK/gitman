@@ -192,6 +192,10 @@ namespace gitman {
                     handle_cancel_discovery_dialog();
                 else if constexpr (std::is_same_v<value_type, discovery_dialog_scroll_intent>)
                     handle_discovery_dialog_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, open_context_menu_intent>)
+                    handle_open_context_menu(value);
+                else if constexpr (std::is_same_v<value_type, close_context_menu_intent>)
+                    context_menu_.reset();
                 else if constexpr (std::is_same_v<value_type, open_local_changes_intent>)
                     handle_open_local_changes(value);
                 else if constexpr (std::is_same_v<value_type, select_local_change_intent>)
@@ -379,6 +383,7 @@ namespace gitman {
         switch_dialog_.reset();
         settings_dialog_.reset();
         local_changes_dialog_.reset();
+        context_menu_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -1136,6 +1141,21 @@ namespace gitman {
         switch_dialog_->scroll_offset = offset;
     }
 
+    void logic_controller::handle_open_context_menu(const open_context_menu_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        if (find_card(intent.id) == nullptr)
+        {
+            context_menu_.reset();
+            return;
+        }
+
+        // 우클릭한 카드를 선택 카드로 만든 뒤 연다 (로그 pane 연동 유지, 3장).
+        handle_select_card(select_card_intent { { intent.id } });
+        context_menu_ = { context_menu_state { intent.id, intent.anchor_x, intent.anchor_y } };
+    }
+
     void logic_controller::handle_open_local_changes(const open_local_changes_intent& intent)
     {
         if (shutting_down_)
@@ -1663,6 +1683,34 @@ namespace gitman {
                 dialog.rows.push_back(std::move(row));
             }
             snapshot->local_changes_dialog = { std::move(dialog) };
+        }
+
+        if (context_menu_.has_value())
+        {
+            for (const card_state& card : cards_)
+            {
+                if ((card.project.id == context_menu_->card) == false)
+                    continue;
+
+                context_menu_view menu {};
+                menu.owner = card.project.id;
+                menu.anchor_x = context_menu_->anchor_x;
+                menu.anchor_y = context_menu_->anchor_y;
+                menu.repository_path = card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized;
+
+                // 항목 활성 여부는 카드 버튼과 같은 판정이다 (3장: 버튼이 비활성이면
+                // 메뉴 항목도 비활성). 실행 중에는 update 버튼이 취소 버튼으로
+                // 바뀌므로 메뉴의 업데이트는 비활성이다.
+                const bool can_change { card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready };
+                const bool change_running { card.change_operation_id != 0 };
+                menu.items.push_back({ context_menu_entry::open_repository, u8"저장소 열기", true });
+                menu.items.push_back({ context_menu_entry::show_local_changes, u8"로컬 변경 확인", true });
+                menu.items.push_back({ context_menu_entry::refresh, u8"상태 갱신", true });
+                menu.items.push_back({ context_menu_entry::update, u8"업데이트", can_change && change_running == false });
+                menu.items.push_back({ context_menu_entry::switch_to, u8"전환…", can_change });
+                snapshot->context_menu = { std::move(menu) };
+                break;
+            }
         }
 
         if (document_loading_)

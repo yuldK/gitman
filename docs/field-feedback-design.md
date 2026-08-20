@@ -192,6 +192,17 @@ hit 대상이 될 수 없다. chip 클릭 대신 카드 body 더블 클릭을 �
 - `view_snapshot`에 `std::optional<context_menu_view> { owner, anchor, items }`.
 - 키보드: 메뉴 열림 중 ↑/↓/Enter/Esc를 메뉴가 흡수한다.
 
+구현 조정 (2026-08-20, F5):
+
+- 저장소 열기는 F4의 외부 열기 경로를 재사용한다 —
+  `external_open_target::explorer_folder`(`/select` 없이 폴더 자체)를 신설.
+- 키보드 강조는 입력 정규화 상태(`interaction_snapshot::menu_highlight`)로
+  두고, Enter는 강조 항목의 클릭 액션을 그대로 실행한다(외부 열기 포함).
+  ↑/↓는 비활성 항목을 건너뛴다.
+- 메뉴가 떠 있는 동안 휠은 무시한다(앵커 아래로 목록이 흘러가는 것 방지).
+- 실행 중 카드의 `업데이트` 항목은 비활성이다(버튼과 달리 메뉴에 취소 항목은
+  두지 않는다).
+
 ## 4. 정렬 제거 — 문서 순서 고정
 
 이름순/상태순 정렬과 toolbar 정렬 순환 버튼(커밋 `0fe4e69`)을 **제거**한다. 카드는

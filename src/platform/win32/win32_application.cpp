@@ -1028,7 +1028,8 @@ namespace gitman::win32 {
 
             // 외부 열기 요청을 shell로 실행한다 (field-feedback-design 2.3). VSCode는
             // PATH의 `code.cmd`를 사용하며 없으면 shell 오류를 무시하고 아무 일도
-            // 하지 않는다. 탐색기는 대상을 선택한 채 연다.
+            // 하지 않는다. 탐색기는 대상을 선택한 채 열고, 폴더 열기(컨텍스트
+            // 메뉴의 "저장소 열기")는 폴더 자체를 연다.
             void execute_open_external(const ui::open_external_request& request) const noexcept
             {
                 try
@@ -1036,6 +1037,12 @@ namespace gitman::win32 {
                     const auto wide { utf8_to_utf16(request.absolute_path) };
                     if (wide.value.has_value() == false || wide.value->empty())
                         return;
+
+                    if (request.target == ui::external_open_target::explorer_folder)
+                    {
+                        static_cast<void>(ShellExecuteW(window_, L"open", wide.value->c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+                        return;
+                    }
 
                     if (request.target == ui::external_open_target::explorer)
                     {

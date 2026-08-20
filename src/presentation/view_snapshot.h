@@ -144,6 +144,38 @@ namespace gitman {
         float diff_scroll { 0.0f };
     };
 
+    // 카드 컨텍스트 메뉴의 항목 종류다 (field-feedback-design 3장). element가 이
+    // 값으로 클릭 액션과 아이콘을 정한다.
+    enum class context_menu_entry
+    {
+        open_repository,
+        show_local_changes,
+        refresh,
+        update,
+        switch_to,
+    };
+
+    struct context_menu_item_view
+    {
+        context_menu_entry entry { context_menu_entry::open_repository };
+        std::u8string label {};
+        // 진행 중 작업으로 카드 버튼이 비활성이면 해당 항목도 비활성이다.
+        bool enabled { true };
+    };
+
+    // 카드 body 우클릭이 여는 컨텍스트 메뉴의 불변 표시 모델이다 (3장). anchor는
+    // 우클릭 지점의 창 좌표(물리 픽셀)이며, panel이 창 밖으로 나가면 element가
+    // 안쪽으로 민다.
+    struct context_menu_view
+    {
+        project_id owner {};
+        float anchor_x { 0.0f };
+        float anchor_y { 0.0f };
+        // "저장소 열기"가 탐색기로 여는 작업 복사본 절대 경로다.
+        std::u8string repository_path {};
+        std::vector<context_menu_item_view> items {};
+    };
+
     // 탐색 dialog의 후보 한 행이다. 제외 사유가 있는 후보는 체크할 수 없고 표시만
     // 된다 (stage-8-plan 5.2).
     struct discovery_row_view
@@ -221,6 +253,8 @@ namespace gitman {
         std::optional<settings_dialog_view> settings_dialog {};
         // 값이 있으면 로컬 변경 확인 dialog가 화면을 덮는다 (2.3).
         std::optional<local_changes_dialog_view> local_changes_dialog {};
+        // 값이 있으면 카드 컨텍스트 메뉴가 앵커 좌표에 떠 있다 (3장).
+        std::optional<context_menu_view> context_menu {};
         // 값이 있으면 탐색 후보 선택 등록 dialog가 화면을 덮는다.
         std::optional<discovery_dialog_view> discovery_dialog {};
         bool shutting_down { false };

@@ -101,6 +101,11 @@ namespace gitman::ui {
         local_changes_list_scrollbar,
         local_changes_diff_scrollbar,
         local_changes_dialog_close,
+        // 카드 컨텍스트 메뉴다 (field-feedback-design 3장). 전체 화면 overlay가
+        // 바깥 클릭을 흡수해 닫고, 항목 행은 owner 값에 index를 담아 구분한다.
+        context_menu,
+        context_menu_panel,
+        context_menu_item,
         // 탐색 후보 선택 등록 dialog다 (REQ-004, 단계 8). 후보 행의 정체성은
         // switch dialog처럼 owner의 값에 index를 담아 구분한다.
         discovery_dialog,
@@ -225,6 +230,9 @@ namespace gitman::ui {
         // 초점을 받은 시각이다. caret 깜빡임의 위상 기준이라 초점을 받는 순간
         // caret이 켜진 상태로 시작한다.
         std::optional<std::chrono::steady_clock::time_point> focus_started_at {};
+        // 컨텍스트 메뉴의 키보드(↑/↓) 강조 항목이다 (field-feedback-design 3장).
+        // 마우스 hover와 별개로 그려지고 Enter가 이 항목을 실행한다.
+        ui_element_id menu_highlight {};
 
         [[nodiscard]] bool operator==(const interaction_snapshot&) const = default;
     };

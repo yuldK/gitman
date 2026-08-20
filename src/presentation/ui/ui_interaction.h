@@ -38,6 +38,9 @@ namespace gitman::ui {
         [[nodiscard]] std::vector<input_action> process_press(const pointer_pressed_event& event);
         [[nodiscard]] std::vector<input_action> process_release(const pointer_released_event& event);
         [[nodiscard]] std::vector<input_action> process_key(const key_pressed_event& event);
+        // 컨텍스트 메뉴가 열린 동안의 키 처리다. ↑/↓는 활성 항목 사이를 오가고
+        // Enter는 강조 항목의 클릭 액션을 실행하며 Esc는 닫는다 (3장).
+        [[nodiscard]] std::vector<input_action> process_menu_key(const key_pressed_event& event);
         [[nodiscard]] std::vector<input_action> run_trigger(const ui_element& element, ui_trigger trigger, float x, float y, bool control);
         void update_hover(float x, float y, std::chrono::steady_clock::time_point time);
         void clear_press() noexcept;
@@ -72,6 +75,9 @@ namespace gitman::ui {
         // 환경설정 dialog의 열림 상태다. 열리는 순간 텍스트 박스에 초점을 주고
         // 닫히면 거두기 위한 edge 감지용이다.
         bool settings_dialog_open_ { false };
+
+        // 컨텍스트 메뉴의 열림 상태다. 여닫는 edge에서 키보드 강조를 지운다.
+        bool context_menu_open_ { false };
     };
 
     // input thread의 소비 루프다. raw input 채널이 닫히면 반환한다. tree는 처리

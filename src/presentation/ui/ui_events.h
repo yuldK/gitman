@@ -109,7 +109,10 @@ namespace gitman::ui {
     enum class external_open_target
     {
         vscode,
+        // 탐색기로 부모 폴더를 열고 대상을 선택한다 (`explorer /select,`).
         explorer,
+        // 탐색기로 폴더 자체를 연다. 컨텍스트 메뉴의 "저장소 열기"다 (3장).
+        explorer_folder,
     };
 
     struct open_external_request

@@ -68,7 +68,7 @@ Skia는 Debug와 Release를 각각 한 번씩 빌드합니다.
 .\scripts\verify_skia_root.ps1
 ```
 
-GN과 Ninja가 `PATH`에 없다면 `-GnPath`와 `-NinjaPath`로 실행 파일 경로를 지정합니다. 자세한 GN 옵션과 제한된 네트워크 환경에서의 준비 방법은 [Skia 준비 안내](docs/skia-build.md)를 참고합니다.
+GN과 Ninja는 스크립트가 `third_party\skia-tools`, Skia 트리, Visual Studio 설치본, `PATH` 순으로 찾습니다. 어디에도 없다면 `-FetchTools`로 Skia의 `bin/fetch-gn`·`bin/fetch-ninja`를 한 번 실행해 받거나, `-GnPath`와 `-NinjaPath`로 실행 파일 경로를 지정합니다. 자세한 GN 옵션과 제한된 네트워크 환경에서의 준비 방법은 [Skia 준비 안내](docs/skia-build.md)를 참고합니다.
 
 ### 3. 빌드 및 설치
 

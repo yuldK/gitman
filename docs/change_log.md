@@ -1,5 +1,35 @@
 # 변경 이력
 
+## 2026-08-20 - `build_skia.ps1`의 gn·ninja 로컬 탐색
+
+### 사용자 지시
+
+- 이 머신에는 `ninja`도 `gn`도 설치되어 있지 않다. `build_skia.ps1`이 로컬 경로를
+  기반으로 둘을 찾게 한다. Skia에서 받을 수 있으면 그렇게 한다.
+
+### 반영 내용
+
+- `scripts/build_skia.ps1`이 `gn`과 `ninja`를 정해진 로컬 자리에서 먼저 찾는다.
+  `third_party/skia-tools`, Skia의 `bin/fetch-*`가 두는 자리, Visual Studio가
+  CMake 지원과 함께 설치하는 `ninja`, 마지막이 `PATH` 순이다.
+- 자동 탐색은 1.13 미만의 `ninja`를 건너뛴다. `-NinjaPath`로 직접 준 것은 경고만
+  하고 그대로 쓴다.
+- `-FetchTools`를 새로 두었다. 어디에도 없을 때만 Skia의 `bin/fetch-gn`과
+  `bin/fetch-ninja`를 돌린다. **기본값이 아니다.** 자동 취득을 사람이 인자로
+  지시한 경우로 한정하는 것이 ADR-006이 그은 경계와 맞는다.
+- 실패 메시지가 찾아본 자리를 모두 적고 세 가지 조치(`-FetchTools`, 브라우저 취득,
+  경로 인자)를 안내한다.
+- 개발 머신 실측: `ninja`는 Visual Studio 18 설치본(1.13.2)을 그대로 찾았고, `gn`은
+  `bin/fetch-gn`으로 받아 `third_party/skia/bin/gn.exe`에서 찾았다. 이어서 `gn gen`이
+  89 target을 만들고 Release 빌드가 그대로 진행됨을 확인했다.
+- `docs/skia-build.md` 1·3장과 `README.md`의 준비 절차를 갱신했다. `.gitignore`에
+  `/third_party/skia-tools/`를 추가했다.
+
+### 영향 요구사항
+
+- NFR-001 (빌드 재현성), ADR-006의 취득 경계
+
+
 ## 2026-08-19 - vcpkg 제거와 submodule 전환 (`N1`~`N5`)
 
 ### 사용자 지시

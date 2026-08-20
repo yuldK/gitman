@@ -9,14 +9,31 @@ Gitman은 Skia를 자동으로 내려받거나 빌드하지 않는다. 사용자
 | 항목 | 비고 |
 | --- | --- |
 | submodule | `git submodule update --init` 한 번으로 Skia와 external을 모두 받는다 |
-| `gn` | Skia 빌드 생성기. 브라우저로 받아 PATH에 두거나 경로를 인자로 준다 |
-| `ninja` | 1.13 이상 |
+| `gn` | Skia 빌드 생성기. 스크립트가 로컬에서 찾는다 |
+| `ninja` | 1.13 이상. 스크립트가 로컬에서 찾는다 |
 | Python 3 | 3.9 이상. Skia의 GN 스크립트가 사용한다 |
 
-`gn`과 `ninja`만 submodule 밖에 있다. Skia의 `bin/fetch-gn`과 `bin/fetch-ninja`는 자동 다운로드를 수행하므로 **사용하지 않는다.** 두 실행 파일을 직접 받아 둔다.
+`gn`과 `ninja`만 submodule 밖에 있다. 둘은 PATH에 없는 것이 보통이므로 `build_skia.ps1`이 아래 순서로 찾는다. 대개 사용자가 할 일은 없다.
 
-- `ninja`: `github.com/ninja-build/ninja`의 releases에서 `ninja-win.zip`
-- `gn`: CIPD 패키지 페이지에서 `gn/gn/windows-amd64` 최신본
+| 순서 | `gn` | `ninja` |
+| --- | --- | --- |
+| 1 | `-GnPath` 인자 | `-NinjaPath` 인자 |
+| 2 | `third_party/skia-tools/gn.exe` | `third_party/skia-tools/ninja.exe` |
+| 3 | `third_party/skia/bin/gn.exe` | `third_party/skia/third_party/ninja/ninja.exe` |
+| 4 | `third_party/skia/third_party/gn/gn.exe` | `third_party/skia/bin/ninja.exe` |
+| 5 | - | Visual Studio 설치본 (`vswhere`로 찾는다) |
+| 6 | `PATH` | `PATH` |
+
+3~4는 Skia의 `bin/fetch-gn`·`bin/fetch-ninja`가 두는 자리다. Skia의 `.gitignore`가 그 경로를 모두 무시하므로 submodule이 dirty로 표시되지 않는다. 5는 Visual Studio가 CMake 지원과 함께 설치하는 `ninja`이며, 실측한 VS 2026 설치본은 1.13.2였다.
+
+자동 탐색은 1.13 미만의 `ninja`를 건너뛴다. `-NinjaPath`로 직접 준 것은 경고만 하고 그대로 쓴다.
+
+어느 자리에도 없으면 찾아본 자리를 모두 적어 실패한다. 다음 둘 중 하나로 한 번만 채우면 된다.
+
+- 브라우저로 받아 `third_party/skia-tools/`에 둔다. 저장소는 이 디렉터리를 추적하지 않는다.
+  - `ninja`: `github.com/ninja-build/ninja`의 releases에서 `ninja-win.zip`
+  - `gn`: CIPD 패키지 페이지에서 `gn/gn/windows-amd64` 최신본
+- `-FetchTools`를 준다. 없는 것만 Skia의 `bin/fetch-gn`·`bin/fetch-ninja`로 내려받는다. **자동 취득이므로 기본값이 아니다.** 사람이 인자로 지시했을 때만 동작하고, 취득이 통제된 환경에서는 실패한다. 그 환경에서는 위의 브라우저 경로를 쓴다.
 
 ## 2. submodule 초기화
 
@@ -56,11 +73,14 @@ scripts\build_skia.ps1 -Configuration Debug
 
 이 스크립트는 external 배치, 패치 적용, `gn gen`, `ninja`를 순서대로 수행한다. **CMake와 CTest는 이 스크립트를 호출하지 않는다.** 빌드 체계가 자동으로 취득하는 경로를 만들지 않기 위한 구분이다.
 
-`gn`이나 `ninja`가 PATH에 없으면 경로를 준다.
+`gn`과 `ninja`는 1장의 순서로 찾는다. 어느 자리에도 없으면 한 번 받거나 경로를 직접 준다.
 
 ```powershell
+scripts\build_skia.ps1 -Configuration Release -FetchTools
 scripts\build_skia.ps1 -Configuration Release -GnPath D:\tools\gn.exe -NinjaPath D:\tools\ninja.exe
 ```
+
+`-FetchTools`는 없는 것만 받는다. 받은 자리는 다음 실행에서 그대로 찾으므로 처음 한 번이면 된다.
 
 산출물은 `third_party/skia/out/gitman-release`와 `third_party/skia/out/gitman-debug`에 생긴다. 두 구성을 모두 빌드해야 Gitman의 Debug와 Release가 각각 링크된다.
 

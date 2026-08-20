@@ -172,38 +172,6 @@ namespace gitman {
                     log_auto_scroll_ = value.enabled;
                 else if constexpr (std::is_same_v<value_type, log_scroll_intent>)
                     handle_log_scroll(value.delta);
-                else if constexpr (std::is_same_v<value_type, show_update_options_intent>)
-                {
-                    // busy 카드는 버튼이 이미 비활성이지만 늦게 도착한 클릭도 막는다.
-                    const card_state* const card { find_card(value.id) };
-                    if (shutting_down_ == false && card != nullptr && card->project.enabled && card->busy == false)
-                    {
-                        update_overlay_card_ = { value.id };
-                        // ADR-003: submodule 갱신은 매번 명시적으로 켜는 기본 off다.
-                        update_overlay_submodules_ = false;
-                    }
-                }
-                else if constexpr (std::is_same_v<value_type, set_update_submodules_intent>)
-                {
-                    if (update_overlay_card_.has_value())
-                        update_overlay_submodules_ = value.enabled;
-                }
-                else if constexpr (std::is_same_v<value_type, confirm_update_intent>)
-                {
-                    if (update_overlay_card_.has_value())
-                    {
-                        card_state* const card { find_card(*update_overlay_card_) };
-                        update_overlay_card_.reset();
-                        if (card != nullptr && shutting_down_ == false)
-                        {
-                            update_options options {};
-                            options.update_submodules = update_overlay_submodules_;
-                            begin_change(*card, operation_kind::update, options, nullptr);
-                        }
-                    }
-                }
-                else if constexpr (std::is_same_v<value_type, cancel_update_options_intent>)
-                    update_overlay_card_.reset();
                 else if constexpr (std::is_same_v<value_type, begin_switch_intent>)
                     handle_begin_switch(value);
                 else if constexpr (std::is_same_v<value_type, select_switch_candidate_intent>)
@@ -224,6 +192,20 @@ namespace gitman {
                     handle_cancel_discovery_dialog();
                 else if constexpr (std::is_same_v<value_type, discovery_dialog_scroll_intent>)
                     handle_discovery_dialog_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, open_local_changes_intent>)
+                    handle_open_local_changes(value);
+                else if constexpr (std::is_same_v<value_type, select_local_change_intent>)
+                    handle_select_local_change(value.index);
+                else if constexpr (std::is_same_v<value_type, cancel_local_changes_dialog_intent>)
+                    local_changes_dialog_.reset();
+                else if constexpr (std::is_same_v<value_type, local_changes_scroll_intent>)
+                    handle_local_changes_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, local_changes_diff_scroll_intent>)
+                    handle_local_changes_diff_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, local_changes_event>)
+                    handle_local_changes(std::move(value));
+                else if constexpr (std::is_same_v<value_type, file_diff_event>)
+                    handle_file_diff(std::move(value));
                 else if constexpr (std::is_same_v<value_type, open_settings_intent>)
                     handle_open_settings();
                 else if constexpr (std::is_same_v<value_type, set_settings_executable_intent>)
@@ -232,6 +214,11 @@ namespace gitman {
                     handle_clear_settings_executable(value);
                 else if constexpr (std::is_same_v<value_type, edit_settings_timeout_intent>)
                     handle_edit_settings_timeout(value);
+                else if constexpr (std::is_same_v<value_type, toggle_settings_submodules_intent>)
+                {
+                    if (settings_dialog_.has_value())
+                        settings_dialog_->update_submodules = settings_dialog_->update_submodules == false;
+                }
                 else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
                     handle_confirm_settings();
                 else if constexpr (std::is_same_v<value_type, cancel_settings_dialog_intent>)
@@ -389,9 +376,9 @@ namespace gitman {
         // 이전 문서의 카드를 가리키던 overlay와 dialog는 의미가 없다. 환경설정
         // 초안도 이전 문서의 settings 기준이라 함께 버린다. 탐색 dialog는 진행 중
         // 탐색을 취소하고 닫는다.
-        update_overlay_card_.reset();
         switch_dialog_.reset();
         settings_dialog_.reset();
+        local_changes_dialog_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -512,12 +499,9 @@ namespace gitman {
 
     bool logic_controller::has_log_pane() const noexcept
     {
-        if (selected_.has_value() == false)
-            return false;
-        for (const card_state& card : cards_)
-            if (card.project.id == *selected_)
-                return true;
-        return false;
+        // 로그 pane은 항상 열려 있다 (2026-08-20 검수: 클릭해야 열리는 UX 제거).
+        // 선택 카드가 없으면 안내 제목의 빈 pane이다.
+        return true;
     }
 
     float logic_controller::log_content_height() const noexcept
@@ -633,7 +617,12 @@ namespace gitman {
         if (card == nullptr || card->project.enabled == false)
             return;
 
-        begin_change(*card, operation_kind::update, intent.options, nullptr);
+        // submodule 갱신 여부는 매번 묻지 않고 문서 settings가 정한다 (2026-08-20
+        // 검수: 확인 overlay 제거).
+        update_options options { intent.options };
+        if (document_.has_value())
+            options.update_submodules = document_->settings.update_submodules;
+        begin_change(*card, operation_kind::update, options, nullptr);
     }
 
     void logic_controller::handle_request_switch(const request_switch_intent& intent)
@@ -963,6 +952,7 @@ namespace gitman {
             const std::string digits { std::to_string(*document_->settings.query_timeout_seconds) };
             dialog.timeout_text.append(digits.begin(), digits.end());
         }
+        dialog.update_submodules = document_->settings.update_submodules;
         settings_dialog_ = { std::move(dialog) };
     }
 
@@ -1020,13 +1010,14 @@ namespace gitman {
         const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout_text) };
         const bool changed {
             document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path
-                || document_->settings.query_timeout_seconds != timeout,
+                || document_->settings.query_timeout_seconds != timeout || document_->settings.update_submodules != settings_dialog_->update_submodules,
         };
         if (changed)
         {
             document_->settings.git_executable = settings_dialog_->git_path;
             document_->settings.svn_executable = settings_dialog_->svn_path;
             document_->settings.query_timeout_seconds = timeout;
+            document_->settings.update_submodules = settings_dialog_->update_submodules;
             request_save();
             // 도구 경로가 바뀌었으니 모든 활성 카드를 새 settings로 재조회한다.
             // 요청마다 settings 사본이 실리므로 저장 완료를 기다릴 필요가 없다.
@@ -1143,6 +1134,147 @@ namespace gitman {
         if (offset > maximum)
             offset = maximum;
         switch_dialog_->scroll_offset = offset;
+    }
+
+    void logic_controller::handle_open_local_changes(const open_local_changes_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        card_state* const card { find_card(intent.id) };
+        if (card == nullptr)
+            return;
+
+        operation_request request { make_request(operation_kind::query_local_changes, card, card->generation) };
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+
+        local_changes_dialog_state dialog {};
+        dialog.card = intent.id;
+        dialog.title = card->project.display_name;
+        dialog.list_operation_id = operation_id;
+        local_changes_dialog_ = { std::move(dialog) };
+    }
+
+    void logic_controller::handle_local_changes(local_changes_event event)
+    {
+        // 닫힌 dialog나 다른 조회의 늦은 결과는 버린다.
+        if (local_changes_dialog_.has_value() == false || event.operation_id != local_changes_dialog_->list_operation_id)
+            return;
+
+        local_changes_dialog_->loading = false;
+        local_changes_dialog_->entries = std::move(event.result.entries);
+        local_changes_dialog_->list_scroll = 0.0f;
+        for (const diagnostic& value : event.result.diagnostics)
+            if (value.severity != diagnostic_severity::information)
+            {
+                local_changes_dialog_->message = value.message;
+                break;
+            }
+        if (local_changes_dialog_->entries.empty())
+        {
+            if (local_changes_dialog_->message.empty())
+                local_changes_dialog_->message = u8"표시할 로컬 변경이 없습니다.";
+            return;
+        }
+
+        // 첫 항목을 바로 선택해 diff까지 이어서 보여 준다.
+        local_changes_dialog_->selected = { 0 };
+        request_selected_file_diff();
+    }
+
+    void logic_controller::handle_select_local_change(const std::size_t index)
+    {
+        if (local_changes_dialog_.has_value() == false || local_changes_dialog_->loading)
+            return;
+        if (index >= local_changes_dialog_->entries.size() || local_changes_dialog_->selected == index)
+            return;
+
+        local_changes_dialog_->selected = { index };
+        request_selected_file_diff();
+    }
+
+    void logic_controller::request_selected_file_diff()
+    {
+        if (shutting_down_ || local_changes_dialog_.has_value() == false || local_changes_dialog_->selected.has_value() == false)
+            return;
+        card_state* const card { find_card(local_changes_dialog_->card) };
+        if (card == nullptr)
+            return;
+
+        operation_request request { make_request(operation_kind::query_file_diff, card, card->generation) };
+        request.diff_target = { local_changes_dialog_->entries[*local_changes_dialog_->selected] };
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+
+        local_changes_dialog_->diff_operation_id = operation_id;
+        local_changes_dialog_->diff_loading = true;
+        local_changes_dialog_->diff_rows.clear();
+        local_changes_dialog_->diff_notice.clear();
+        local_changes_dialog_->diff_scroll = 0.0f;
+    }
+
+    void logic_controller::handle_file_diff(file_diff_event event)
+    {
+        if (local_changes_dialog_.has_value() == false || event.operation_id != local_changes_dialog_->diff_operation_id)
+            return;
+
+        local_changes_dialog_->diff_loading = false;
+        local_changes_dialog_->diff_rows = build_two_way_diff(event.result.lines);
+        local_changes_dialog_->diff_scroll = 0.0f;
+
+        // 안내는 하나만 보여 준다. 오류 > 이진/디렉터리 > 생략 > 변화 없음 순서다.
+        std::u8string notice {};
+        for (const diagnostic& value : event.result.diagnostics)
+            if (value.severity != diagnostic_severity::information)
+            {
+                notice = value.message;
+                break;
+            }
+        if (notice.empty() && event.result.binary)
+            notice = u8"이진 파일 - 내용을 표시하지 않습니다.";
+        if (notice.empty() && event.result.directory)
+            notice = u8"미추적 디렉터리 - 내부 파일은 표시하지 않습니다.";
+        if (notice.empty() && event.result.truncated)
+            notice = u8"표시 상한(256 KiB)을 넘어 이후 내용을 생략했습니다.";
+        if (notice.empty() && local_changes_dialog_->diff_rows.empty())
+            notice = u8"표시할 차이가 없습니다.";
+        local_changes_dialog_->diff_notice = std::move(notice);
+    }
+
+    void logic_controller::handle_local_changes_scroll(const float delta)
+    {
+        if (local_changes_dialog_.has_value() == false)
+            return;
+
+        const float content { static_cast<float>(local_changes_dialog_->entries.size()) * layout_local_changes_row_height };
+        float maximum { content - layout_local_changes_list_height };
+        if (maximum < 0.0f)
+            maximum = 0.0f;
+        float offset { local_changes_dialog_->list_scroll + delta };
+        if (offset < 0.0f)
+            offset = 0.0f;
+        if (offset > maximum)
+            offset = maximum;
+        local_changes_dialog_->list_scroll = offset;
+    }
+
+    void logic_controller::handle_local_changes_diff_scroll(const float delta)
+    {
+        if (local_changes_dialog_.has_value() == false)
+            return;
+
+        const float content { static_cast<float>(local_changes_dialog_->diff_rows.size()) * layout_local_changes_diff_line_height };
+        float maximum { content - layout_local_changes_diff_height };
+        if (maximum < 0.0f)
+            maximum = 0.0f;
+        float offset { local_changes_dialog_->diff_scroll + delta };
+        if (offset < 0.0f)
+            offset = 0.0f;
+        if (offset > maximum)
+            offset = maximum;
+        local_changes_dialog_->diff_scroll = offset;
     }
 
     void logic_controller::append_lifecycle_log(card_state& card, const diagnostic_severity severity, std::u8string text)
@@ -1366,49 +1498,36 @@ namespace gitman {
 
         // 선택 카드의 로그 뷰다. 필터를 통과한 record만 담고 스크롤은 이미 고정된
         // 값이라 렌더러는 그대로 그린다 (REQ-008).
-        if (selected_.has_value())
         {
-            for (const card_state& card : cards_)
-            {
-                if ((card.project.id == *selected_) == false)
-                    continue;
+            // pane은 항상 열려 있다. 선택 카드가 없으면 안내 제목의 빈 모델을 게시한다.
+            log_view_model log {};
+            log.title = u8"카드를 선택하면 로그가 표시됩니다";
+            log.filter = log_filter_;
+            log.auto_scroll = log_auto_scroll_;
+            if (selected_.has_value())
+                for (const card_state& card : cards_)
+                {
+                    if ((card.project.id == *selected_) == false)
+                        continue;
 
-                log_view_model log {};
-                log.card = card.project.id;
-                log.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
-                for (const operation_log_record& record : card.log.records())
-                    if (log_entry_matches_filter(record.entry, log_filter_))
-                        log.records.push_back(record);
-                // 렌더링·스크롤은 접힌 표시 목록을, 복사는 records를 쓴다.
-                log.lines = build_log_display_lines(card.log.records(), log_filter_);
-                log.filter = log_filter_;
-                log.auto_scroll = log_auto_scroll_;
-                log.truncated = card.log.dropped_count() > 0;
+                    log.card = card.project.id;
+                    log.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
+                    for (const operation_log_record& record : card.log.records())
+                        if (log_entry_matches_filter(record.entry, log_filter_))
+                            log.records.push_back(record);
+                    // 렌더링·스크롤은 접힌 표시 목록을, 복사는 records를 쓴다.
+                    log.lines = build_log_display_lines(card.log.records(), log_filter_);
+                    log.truncated = card.log.dropped_count() > 0;
 
-                float maximum { log_content_height() - log_viewport_height() };
-                if (maximum < 0.0f)
-                    maximum = 0.0f;
-                log.scroll_offset = log_auto_scroll_ ? maximum : (log_scroll_offset_ > maximum ? maximum : log_scroll_offset_);
-                snapshot->log = { std::move(log) };
-                break;
-            }
+                    float maximum { log_content_height() - log_viewport_height() };
+                    if (maximum < 0.0f)
+                        maximum = 0.0f;
+                    log.scroll_offset = log_auto_scroll_ ? maximum : (log_scroll_offset_ > maximum ? maximum : log_scroll_offset_);
+                    break;
+                }
+            snapshot->log = { std::move(log) };
         }
 
-        if (update_overlay_card_.has_value())
-        {
-            for (const card_state& card : cards_)
-            {
-                if ((card.project.id == *update_overlay_card_) == false)
-                    continue;
-
-                update_overlay_view overlay {};
-                overlay.card = card.project.id;
-                overlay.title = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
-                overlay.update_submodules = update_overlay_submodules_;
-                snapshot->update_overlay = { std::move(overlay) };
-                break;
-            }
-        }
 
         if (switch_dialog_.has_value())
         {
@@ -1494,6 +1613,7 @@ namespace gitman {
             dialog.git_path = settings_dialog_->git_path;
             dialog.svn_path = settings_dialog_->svn_path;
             dialog.timeout_text = settings_dialog_->timeout_text;
+            dialog.update_submodules = settings_dialog_->update_submodules;
             // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
             const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
@@ -1507,6 +1627,42 @@ namespace gitman {
                 dialog.message = std::u8string { timeout_error };
             dialog.can_confirm = git_error.empty() && svn_error.empty() && timeout_error.empty();
             snapshot->settings_dialog = { std::move(dialog) };
+        }
+
+        if (local_changes_dialog_.has_value())
+        {
+            local_changes_dialog_view dialog {};
+            dialog.card = local_changes_dialog_->card;
+            dialog.title = local_changes_dialog_->title;
+            dialog.loading = local_changes_dialog_->loading;
+            dialog.message = local_changes_dialog_->message;
+            dialog.list_scroll = local_changes_dialog_->list_scroll;
+            dialog.diff_loading = local_changes_dialog_->diff_loading;
+            dialog.diff_rows = local_changes_dialog_->diff_rows;
+            dialog.diff_notice = local_changes_dialog_->diff_notice;
+            dialog.diff_scroll = local_changes_dialog_->diff_scroll;
+            std::u8string_view card_root {};
+            for (const card_state& card : cards_)
+                if (card.project.id == local_changes_dialog_->card)
+                {
+                    card_root = card.project.path.normalized.empty() ? std::u8string_view { card.project.path.original } : std::u8string_view { card.project.path.normalized };
+                    break;
+                }
+            dialog.rows.reserve(local_changes_dialog_->entries.size());
+            for (std::size_t index = 0; index < local_changes_dialog_->entries.size(); ++index)
+            {
+                const local_change_entry& entry { local_changes_dialog_->entries[index] };
+                local_change_row_view row {};
+                row.badge = std::u8string { local_change_kind_badge(entry.kind) };
+                row.untracked = entry.kind == local_change_kind::untracked;
+                // Git status는 미추적 디렉터리를 `/`로 끝나는 항목 하나로 접는다.
+                row.directory = entry.path.empty() == false && entry.path.back() == u8'/';
+                row.path = entry.path;
+                row.absolute_path = join_local_change_path(card_root, entry.path);
+                row.selected = local_changes_dialog_->selected == index;
+                dialog.rows.push_back(std::move(row));
+            }
+            snapshot->local_changes_dialog = { std::move(dialog) };
         }
 
         if (document_loading_)

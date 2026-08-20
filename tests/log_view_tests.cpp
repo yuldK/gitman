@@ -160,8 +160,14 @@ TEST_CASE("Selecting a card exposes its log in the view snapshot", "[log][logic]
     REQUIRE(view->log->records.size() == 3u);
     REQUIRE(view->log->auto_scroll);
 
+    // pane은 항상 열려 있다 (2026-08-20 검수). 선택을 해제하면 안내 제목의 빈
+    // 모델이 된다.
     fixture.controller.handle(gitman::select_card_intent {});
-    REQUIRE(fixture.controller.make_view_snapshot()->log.has_value() == false);
+    const auto empty_view { fixture.controller.make_view_snapshot() };
+    REQUIRE(empty_view->log.has_value());
+    REQUIRE(empty_view->log->card.value.empty());
+    REQUIRE(empty_view->log->records.empty());
+    REQUIRE(empty_view->log->title.empty() == false);
 }
 
 TEST_CASE("The log filter narrows the visible records and selection change resets it", "[log][logic]")

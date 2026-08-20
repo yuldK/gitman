@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <string>
 #include <string_view>
 
 namespace gitman {
@@ -10,6 +12,16 @@ namespace gitman {
         missing,
         file,
         directory,
+    };
+
+    // `read_prefix`의 결과다 (field-feedback-design 2.3). `kind`가 `file`일 때만
+    // `bytes`에 값이 있다. 디렉터리와 부재는 구분해 안내가 달라진다.
+    struct vcs_file_content
+    {
+        vcs_path_kind kind { vcs_path_kind::missing };
+        std::u8string bytes {};
+        // `maximum_bytes` 상한에 걸려 앞부분만 담았다.
+        bool truncated { false };
     };
 
     // Git이 진행 중인 작업을 보고하는 기계 판독 명령이 없어 git dir 안의 표식 파일
@@ -27,5 +39,10 @@ namespace gitman {
 
         // `absolute_path`는 절대 경로여야 한다. 예외를 던지지 않는다.
         [[nodiscard]] virtual vcs_path_kind probe(std::u8string_view absolute_path) const noexcept = 0;
+
+        // 파일 앞부분을 최대 `maximum_bytes`까지 읽는다. 미추적 파일의 내용 표시
+        // (field-feedback-design 2.3)처럼 VCS 명령이 없는 읽기에 쓴다. 인코딩을
+        // 해석하지 않고 바이트 그대로 돌려주며, 예외를 던지지 않는다.
+        [[nodiscard]] virtual vcs_file_content read_prefix(std::u8string_view absolute_path, std::size_t maximum_bytes) const noexcept = 0;
     };
 } // namespace gitman

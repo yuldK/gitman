@@ -36,6 +36,9 @@ namespace gitman {
         // change_completed_event를 보낸다 (단계 7).
         void execute_change(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_switch_candidates(const operation_request& request, const std::function<void(logic_message)>& emit);
+        // 로컬 변경 확인 dialog의 목록·diff 조회다 (field-feedback-design 2.3).
+        void execute_local_changes(const operation_request& request, const std::function<void(logic_message)>& emit);
+        void execute_file_diff(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_generate_document(const operation_request& request, const std::function<void(logic_message)>& emit);
         // 탐색 dialog의 깊이 1 탐색과 선택 등록이다 (REQ-004, 단계 8). 단계 5의
         // service를 그대로 조립한다.

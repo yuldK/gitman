@@ -78,6 +78,13 @@ namespace gitman {
         void handle_projects_registered(projects_registered_event event);
         void handle_discovery_dialog_scroll(float delta);
         void handle_open_settings();
+        void handle_open_local_changes(const open_local_changes_intent& intent);
+        void handle_select_local_change(std::size_t index);
+        void handle_local_changes(local_changes_event event);
+        void handle_file_diff(file_diff_event event);
+        void handle_local_changes_scroll(float delta);
+        void handle_local_changes_diff_scroll(float delta);
+        void request_selected_file_diff();
         void handle_set_settings_executable(set_settings_executable_intent intent);
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
         void handle_edit_settings_timeout(const edit_settings_timeout_intent& intent);
@@ -142,10 +149,6 @@ namespace gitman {
         log_stream_filter log_filter_ { log_stream_filter::all };
         bool log_auto_scroll_ { true };
         float log_scroll_offset_ { 0.0f };
-        // update 확인 overlay의 상태다. 값이 있으면 overlay가 열려 있다.
-        std::optional<project_id> update_overlay_card_ {};
-        bool update_overlay_submodules_ { false };
-
         // switch dialog의 상태다 (stage-7-plan 4.5). 값이 있으면 dialog가 열려 있다.
         struct switch_dialog_state
         {
@@ -197,9 +200,33 @@ namespace gitman {
             // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design
             // 1.3). 숫자만 담기며 비어 있으면 기본값이다.
             std::u8string timeout_text {};
+            // 업데이트 시 submodule 갱신 여부의 초안이다 (확인 overlay 대체).
+            bool update_submodules { false };
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};
+
+        // 로컬 변경 확인 dialog의 상태다 (field-feedback-design 2.3). 값이 있으면
+        // dialog가 열려 있다. 목록·diff는 각각의 조회 operation id로 늦은 결과를
+        // 걸러낸다.
+        struct local_changes_dialog_state
+        {
+            project_id card {};
+            std::u8string title {};
+            std::uint64_t list_operation_id { 0 };
+            std::uint64_t diff_operation_id { 0 };
+            bool loading { true };
+            std::vector<local_change_entry> entries {};
+            std::optional<std::size_t> selected {};
+            bool diff_loading { false };
+            std::vector<two_way_diff_row> diff_rows {};
+            std::u8string diff_notice {};
+            std::u8string message {};
+            float list_scroll { 0.0f };
+            float diff_scroll { 0.0f };
+        };
+
+        std::optional<local_changes_dialog_state> local_changes_dialog_ {};
         float window_width_ { 0.0f };
         float window_height_ { 0.0f };
         float scale_ { 1.0f };

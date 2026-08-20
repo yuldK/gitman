@@ -99,6 +99,7 @@ namespace gitman {
             const bool had_git { value.contains("git_executable") };
             const bool had_svn { value.contains("svn_executable") };
             const bool had_relative_paths { value.contains("show_relative_paths") };
+            const bool had_submodules { value.contains("update_submodules") };
 
             if (had_git || settings.git_executable.empty() == false)
                 value["git_executable"] = as_string(settings.git_executable);
@@ -106,6 +107,8 @@ namespace gitman {
                 value["svn_executable"] = as_string(settings.svn_executable);
             if (had_relative_paths || settings.show_relative_paths)
                 value["show_relative_paths"] = settings.show_relative_paths;
+            if (had_submodules || settings.update_submodules)
+                value["update_submodules"] = settings.update_submodules;
 
             // 제한 시간은 값이 없으면 기본값이라는 뜻이므로 필드를 지운다. 남겨 두면
             // 다음 열기에서 이전 값이 되살아난다.

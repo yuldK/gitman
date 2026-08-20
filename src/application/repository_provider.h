@@ -2,10 +2,12 @@
 
 #include "application/process_cancellation.h"
 #include "domain/diagnostic.h"
+#include "domain/local_changes.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "domain/vcs_operation.h"
 
+#include <string>
 #include <vector>
 
 namespace gitman {
@@ -22,6 +24,25 @@ namespace gitman {
         std::vector<switch_candidate> candidates {};
         // fetch가 실패해 cache된 remote tracking ref만으로 만든 목록이다.
         bool stale { false };
+        std::vector<diagnostic> diagnostics {};
+    };
+
+    // 로컬 변경 확인 dialog의 목록 조회 결과다 (field-feedback-design 2.3).
+    struct local_changes_result
+    {
+        std::vector<local_change_entry> entries {};
+        std::vector<diagnostic> diagnostics {};
+    };
+
+    // 항목 하나의 diff(또는 미추적 파일 내용) 조회 결과다. `binary`·`directory`가
+    // 참이면 `lines` 대신 안내 문구를 표시한다.
+    struct file_diff_result
+    {
+        std::vector<std::u8string> lines {};
+        // 표시 상한(local_change_diff_display_limit)에 걸려 앞부분만 담았다.
+        bool truncated { false };
+        bool binary { false };
+        bool directory { false };
         std::vector<diagnostic> diagnostics {};
     };
 
@@ -66,6 +87,11 @@ namespace gitman {
         [[nodiscard]] virtual repository_query_result query_remote(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token) noexcept = 0;
 
         [[nodiscard]] virtual switch_candidate_result query_switch_candidates(const project_definition& project, const process_cancellation_token& token) noexcept = 0;
+
+        // 로컬 변경 확인 dialog의 목록·diff 조회다 (field-feedback-design 2.3).
+        // 네트워크를 쓰지 않는다.
+        [[nodiscard]] virtual local_changes_result query_local_changes(const project_definition& project, const process_cancellation_token& token) noexcept = 0;
+        [[nodiscard]] virtual file_diff_result query_file_diff(const project_definition& project, const local_change_entry& entry, const process_cancellation_token& token) noexcept = 0;
 
         [[nodiscard]] virtual repository_change_result update(const project_definition& project, const update_options& options, const process_cancellation_token& token) noexcept = 0;
 

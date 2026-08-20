@@ -52,6 +52,8 @@ namespace gitman {
         [[nodiscard]] repository_query_result query_local(const project_definition& project, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] repository_query_result query_remote(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] switch_candidate_result query_switch_candidates(const project_definition& project, const process_cancellation_token& token) noexcept override;
+        [[nodiscard]] local_changes_result query_local_changes(const project_definition& project, const process_cancellation_token& token) noexcept override;
+        [[nodiscard]] file_diff_result query_file_diff(const project_definition& project, const local_change_entry& entry, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] repository_change_result update(const project_definition& project, const update_options& options, const process_cancellation_token& token) noexcept override;
         [[nodiscard]] repository_change_result switch_to(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token) noexcept override;
 

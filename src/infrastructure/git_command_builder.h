@@ -83,6 +83,10 @@ namespace gitman {
     // 다른 worktree가 사용 중인 branch를 확인한다. 기계 판독 형식이라 로캘과 무관하다.
     [[nodiscard]] process_request make_git_worktree_list_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
+    // 추적 파일 하나의 diff다 (field-feedback-design 2.3). `HEAD` 기준이라 staged와
+    // unstaged 변경이 한 번에 나온다. 미추적 파일은 diff 대신 파일을 직접 읽는다.
+    [[nodiscard]] process_request make_git_diff_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view path, const vcs_timeout_overrides& timeouts = {});
+
     // 이미 있는 local branch로 전환한다. `--no-guess`로 선택하지 않은 remote branch로의
     // 암묵 전환을 막는다. `--discard-changes`, `--merge`, `--force`는 쓰지 않으므로
     // 작업 트리에 변경이 남아 있으면 Git 자체가 거부한다.

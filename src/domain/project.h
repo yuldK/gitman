@@ -68,6 +68,10 @@ namespace gitman {
         // 카드의 경로를 문서가 있는 폴더 기준 상대 경로로 표시한다. toolbar 토글이
         // 바꾸고 문서에 남는다.
         bool show_relative_paths { false };
+        // 업데이트 시 submodule도 함께 갱신한다(git pull --recurse-submodules=
+        // on-demand). 매번 묻지 않고 이 값을 쓴다 (2026-08-20 검수). 기본 off는
+        // ADR-003의 보호 정책을 따른다.
+        bool update_submodules { false };
         // 상태 확인(로컬·원격 조회) 명령의 제한 시간(초)이다. 값이 없으면 실행
         // 정책의 기본값(600초)을 쓴다. 대형 저장소의 status가 5~10분 걸리는 실측을
         // 반영한 항목이다 (field-feedback-design 1장).

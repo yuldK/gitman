@@ -149,6 +149,19 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::switch_target);
     }
 
+    process_request make_git_diff_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view path, const vcs_timeout_overrides& timeouts)
+    {
+        std::vector<std::u8string> arguments {};
+        arguments.push_back(std::u8string { u8"diff" });
+        arguments.push_back(std::u8string { u8"HEAD" });
+        arguments.push_back(std::u8string { u8"--no-color" });
+        // 경로는 status 출력에서 오므로 옵션으로 해석되지 않게 끊어 준다.
+        arguments.push_back(std::u8string { u8"--" });
+        arguments.push_back(std::u8string { path });
+        // diff 한 줄이 기본 레코드 상한(8 KiB)을 넘을 수 있어 status와 같은 상한을 쓴다.
+        return make_vcs_process_request(repository_kind::git, executable, working_directory, std::move(arguments), vcs_command_class::local_query, git_status_record_byte_limit, timeouts);
+    }
+
     process_request make_git_ahead_behind_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view target_reference, const vcs_timeout_overrides& timeouts)
     {
         std::u8string range { u8"HEAD..." };

@@ -38,6 +38,8 @@ namespace gitman::win32 {
         // input thread가 요청한 `ui::ui_command`를 UI thread에서 실행하는 신호다.
         // wparam이 command 값이다.
         constexpr UINT ui_command_request_message { WM_APP + 2 };
+        // input thread가 큐에 넣은 외부 열기(VSCode·탐색기) 요청의 신호다 (2.3).
+        constexpr UINT open_external_request_message { WM_APP + 3 };
         // tooltip 지연이 끝나는 시점에 한 번 다시 그리기 위한 timer다.
         constexpr UINT_PTR tooltip_timer_id { 1 };
         // 초점을 받은 텍스트 박스의 caret이 다음에 뒤집히는 시점에 다시 그리기 위한
@@ -229,7 +231,7 @@ namespace gitman::win32 {
                 // smoke test는 스레드 없이 한 frame만 그린다. 실제 앱 모드에서만
                 // runtime(스레드 4종과 채널)을 조립한다.
                 if (options_.smoke_test == false)
-                    runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, ui_command_request_message);
+                    runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, ui_command_request_message, open_external_request_message);
                 return true;
             }
 
@@ -286,6 +288,11 @@ namespace gitman::win32 {
                     return 0;
                 case ui_command_request_message:
                     execute_ui_command(static_cast<ui::ui_command>(word_parameter));
+                    return 0;
+                case open_external_request_message:
+                    if (runtime_ != nullptr)
+                        for (const ui::open_external_request& request : runtime_->take_open_external_requests())
+                            execute_open_external(request);
                     return 0;
                 case WM_DROPFILES:
                     open_dropped_workspace_document(reinterpret_cast<HDROP>(word_parameter));
@@ -1017,6 +1024,37 @@ namespace gitman::win32 {
                 schedule_tooltip_repaint(tree.get(), state.interaction);
                 schedule_caret_repaint(state.interaction);
                 return renderer_->render(state, error);
+            }
+
+            // 외부 열기 요청을 shell로 실행한다 (field-feedback-design 2.3). VSCode는
+            // PATH의 `code.cmd`를 사용하며 없으면 shell 오류를 무시하고 아무 일도
+            // 하지 않는다. 탐색기는 대상을 선택한 채 연다.
+            void execute_open_external(const ui::open_external_request& request) const noexcept
+            {
+                try
+                {
+                    const auto wide { utf8_to_utf16(request.absolute_path) };
+                    if (wide.value.has_value() == false || wide.value->empty())
+                        return;
+
+                    if (request.target == ui::external_open_target::explorer)
+                    {
+                        std::wstring arguments { L"/select,\"" };
+                        arguments += *wide.value;
+                        arguments += L"\"";
+                        static_cast<void>(ShellExecuteW(window_, L"open", L"explorer.exe", arguments.c_str(), nullptr, SW_SHOWNORMAL));
+                        return;
+                    }
+
+                    std::wstring arguments { L"\"" };
+                    arguments += *wide.value;
+                    arguments += L"\"";
+                    // `code.cmd`는 cmd 창을 만들므로 숨겨서 실행한다. VSCode 자체는
+                    // 분리된 GUI 프로세스로 뜬다.
+                    static_cast<void>(ShellExecuteW(window_, L"open", L"code.cmd", arguments.c_str(), nullptr, SW_HIDE));
+                }
+                catch (...)
+                {}
             }
 
             // 초점을 받은 텍스트 박스가 있으면 caret이 다음에 뒤집히는 시점에 다시

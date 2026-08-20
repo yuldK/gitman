@@ -2,6 +2,7 @@
 
 #include "application/vcs_tool_registry.h"
 #include "domain/path_syntax.h"
+#include "infrastructure/local_change_reader.h"
 #include "infrastructure/svn_command_builder.h"
 #include "infrastructure/svn_output_parser.h"
 #include "infrastructure/vcs_command_runner.h"
@@ -353,6 +354,87 @@ namespace gitman {
         }
         result.candidates = std::move(candidates.candidates);
         return result;
+    }
+
+    local_changes_result svn_repository_provider::query_local_changes(const project_definition& project, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            local_changes_result result {};
+            if (available() == false)
+            {
+                result.diagnostics.push_back(make_diagnostic(
+                    diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::subversion, tool_.availability) }, project));
+                return result;
+            }
+
+            const std::u8string_view working_directory { svn_working_directory(project) };
+            if (is_absolute_windows_path(working_directory) == false || probe_->probe(working_directory) != vcs_path_kind::directory)
+            {
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code::path_missing, diagnostic_severity::error, std::u8string { u8"프로젝트 경로를 찾을 수 없습니다." }, project));
+                return result;
+            }
+
+            const vcs_command_result status_result { run_vcs_command(*runner_, make_svn_status_request(tool_.executable, working_directory, timeouts_), token, log_) };
+            if (status_result.succeeded() == false)
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, status_result) };
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, status_result), project));
+                return result;
+            }
+
+            result.entries = collect_svn_local_changes(parse_svn_status(status_result.standard_output_lines));
+            return result;
+        }
+        catch (...)
+        {
+            local_changes_result result {};
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"로컬 변경을 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    file_diff_result svn_repository_provider::query_file_diff(const project_definition& project, const local_change_entry& entry, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            file_diff_result result {};
+            const std::u8string_view working_directory { svn_working_directory(project) };
+            if (is_absolute_windows_path(working_directory) == false || probe_->probe(working_directory) != vcs_path_kind::directory)
+            {
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code::path_missing, diagnostic_severity::error, std::u8string { u8"프로젝트 경로를 찾을 수 없습니다." }, project));
+                return result;
+            }
+
+            // 미버전(미추적) 파일은 저장소가 모르는 파일이라 diff 대신 내용을 읽는다.
+            if (entry.kind == local_change_kind::untracked)
+                return read_untracked_file_diff(*probe_, working_directory, entry.path);
+
+            if (available() == false)
+            {
+                result.diagnostics.push_back(make_diagnostic(
+                    diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::subversion, tool_.availability) }, project));
+                return result;
+            }
+
+            const vcs_command_result diff_result { run_vcs_command(*runner_, make_svn_diff_request(tool_.executable, working_directory, entry.path, timeouts_), token, log_) };
+            if (diff_result.succeeded() == false)
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, diff_result) };
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, diff_result), project));
+                return result;
+            }
+
+            append_diff_lines_limited(result, diff_result.standard_output_lines);
+            return result;
+        }
+        catch (...)
+        {
+            file_diff_result result {};
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"diff를 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
     }
 
     update_block_reason evaluate_svn_update_preflight(const repository_snapshot& snapshot) noexcept

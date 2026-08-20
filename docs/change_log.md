@@ -1,5 +1,39 @@
 # 변경 이력
 
+## 2026-08-20 - 실환경 피드백 F4: 로컬 변경 확인 다이얼로그
+
+### 사용자 지시
+
+- 미추적이 무엇인지 보여 줘야 한다. 세로 분할(상단 미추적·변경 목록, 하단
+  diff viewer) 다이얼로그를 만든다. (설계 2.3 승인분)
+
+### 반영 내용
+
+- `query_local_changes`/`query_file_diff` 작업 2종과 provider 계약 확장.
+  목록은 status의 항목 경로를 보존해 만들고(git/svn 매핑 순수 함수), diff는
+  추적 파일이면 `git diff HEAD`/`svn diff`, 미추적이면
+  `vcs_file_probe::read_prefix`(신설 계약)로 내용을 읽어 "추가" 취급으로
+  표시한다. 이진(NUL)·미추적 디렉터리·256 KiB 초과는 안내 문구로 대체한다.
+- 다이얼로그: 상단 목록(종류 배지+경로, 자동 첫 항목 선택), 하단 **2-way diff
+  viewer**(좌 빨강/우 초록, `build_two_way_diff`로 짝짓기, 가시 범위만 그리기),
+  휠·끌기 스크롤 막대 분리, Esc/배경/닫기. 진입점은 카드 더블 클릭(상태 chip은
+  hit 불가 — 설계 조정 기록).
+- 재검수 반영: 미추적 행에 `$(file)`/`$(folder)` 아이콘(배지 라벨 안)과 흐림
+  처리, 행 오른쪽 `$(vscode)`/`$(folder-opened)` 외부 열기 아이콘(경로는 `…`
+  말줄임). 인자를 담는 `open_external_request` 경로(input thread → app_runtime
+  큐 → UI thread shell 실행)를 신설했다. diff의 탭은 4칸 공백으로 펼치고,
+  절대 경로 구분자를 `\`로 통일해 explorer `/select,`가 동작하게 했다.
+- 함께 반영한 UX 수정: 로그 pane을 상시 표시(선택 없으면 안내 제목의 빈
+  pane), update 확인 overlay를 제거하고 submodule 여부를 문서
+  `settings.update_submodules`(환경설정 토글, 기본 off)로 옮겼다 — update
+  버튼은 즉시 실행된다.
+- 환경설정 시각 위계: 제목에 `$(settings-gear)`+bold, 세부 기능 타이틀은
+  키 컬러+semi-bold(버튼·토글은 타이틀 줄 아래로), submodule은 상태가 보이는
+  토글 스위치, 본문은 흐리게(0.65/0.45).
+- 검증: 신규 14 case + overlay 테스트 재작성, 직접 영향
+  `[logic],[ui],[runtime],[schema],[store],[log]` 등 163 case 통과.
+  상세는 `docs/verification/2026-08-20-feedback-f4-local-changes.md`.
+
 ## 2026-08-20 - 실환경 피드백 F3: 미추적 정책 완화
 
 ### 사용자 지시

@@ -113,13 +113,15 @@ TEST_CASE("An update request submits a change operation with its own cancellatio
 {
     change_fixture fixture {};
     gitman::update_options options {};
+    // intent의 값은 무시되고 submodule 여부는 문서 settings가 정한다 (2026-08-20
+    // 검수: 확인 overlay 제거). 이 문서의 설정은 기본값(off)이다.
     options.update_submodules = true;
     fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, options });
 
     REQUIRE(fixture.submitter.requests.size() == 1u);
     const gitman::operation_request& request { fixture.submitter.requests.front() };
     REQUIRE(request.kind == gitman::operation_kind::update);
-    REQUIRE(request.options.update_submodules);
+    REQUIRE(request.options.update_submodules == false);
     REQUIRE(request.project.id.value == u8"alpha");
     REQUIRE(request.token.cancellable());
     REQUIRE_FALSE(request.token.cancelled());

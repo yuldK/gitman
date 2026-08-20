@@ -52,6 +52,8 @@ add_library(gitman_lib STATIC
     domain/diagnostic.h
     domain/discovery.cpp
     domain/discovery.h
+    domain/local_changes.cpp
+    domain/local_changes.h
     domain/operation.cpp
     domain/operation.h
     domain/operation_log.cpp
@@ -114,6 +116,8 @@ add_library(gitman_lib STATIC
     infrastructure/git_repository_provider.h
     infrastructure/git_status_parser.cpp
     infrastructure/git_status_parser.h
+    infrastructure/local_change_reader.cpp
+    infrastructure/local_change_reader.h
     infrastructure/json_project_store.cpp
     infrastructure/json_project_store.h
     infrastructure/json_workspace_document.cpp
@@ -168,6 +172,8 @@ add_library(gitman_lib STATIC
     presentation/ui/draw_primitives.h
     presentation/ui/label_element.cpp
     presentation/ui/label_element.h
+    presentation/ui/local_changes_dialog_element.cpp
+    presentation/ui/local_changes_dialog_element.h
     presentation/ui/log_view_element.cpp
     presentation/ui/log_view_element.h
     presentation/ui/scrollbar_element.cpp
@@ -178,8 +184,6 @@ add_library(gitman_lib STATIC
     presentation/ui/switch_dialog_element.h
     presentation/ui/toolbar_element.cpp
     presentation/ui/toolbar_element.h
-    presentation/ui/update_overlay_element.cpp
-    presentation/ui/update_overlay_element.h
     presentation/ui/ui_element.cpp
     presentation/ui/ui_element.h
     presentation/ui/ui_events.h
@@ -189,6 +193,8 @@ add_library(gitman_lib STATIC
     presentation/ui/ui_tree.h
 
     # presentation: 표시 모델과 theme이다.
+    presentation/diff_presentation.cpp
+    presentation/diff_presentation.h
     presentation/list_metrics.cpp
     presentation/list_metrics.h
     presentation/log_presentation.cpp

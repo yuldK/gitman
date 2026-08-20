@@ -169,6 +169,18 @@ namespace gitman {
                 return;
             }
 
+            if (request.kind == operation_kind::query_local_changes)
+            {
+                execute_local_changes(request, emit);
+                return;
+            }
+
+            if (request.kind == operation_kind::query_file_diff)
+            {
+                execute_file_diff(request, emit);
+                return;
+            }
+
             execute_query(request, emit);
         }
         catch (...)
@@ -226,6 +238,22 @@ namespace gitman {
                 else if (request.kind == operation_kind::query_switch_candidates)
                 {
                     switch_candidates_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.id = request.project.id;
+                    failure.result.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::query_local_changes)
+                {
+                    local_changes_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.id = request.project.id;
+                    failure.result.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::query_file_diff)
+                {
+                    file_diff_event failure {};
                     failure.operation_id = request.operation_id;
                     failure.id = request.project.id;
                     failure.result.diagnostics.push_back(std::move(value));
@@ -301,6 +329,59 @@ namespace gitman {
         {
             git_repository_provider provider { tools.git, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
             event.result = provider.query_switch_candidates(request.project, request.token);
+        }
+        emit(std::move(event));
+    }
+
+    void vcs_operation_executor::execute_local_changes(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        const vcs_tool_set tools { tools_for(request.settings, request.token) };
+        const repository_kind kind { decide_kind(request.project) };
+
+        local_changes_event event {};
+        event.operation_id = request.operation_id;
+        event.id = request.project.id;
+        if (kind == repository_kind::subversion)
+        {
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
+            event.result = provider.query_local_changes(request.project, request.token);
+        }
+        else
+        {
+            git_repository_provider provider { tools.git, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
+            event.result = provider.query_local_changes(request.project, request.token);
+        }
+        emit(std::move(event));
+    }
+
+    void vcs_operation_executor::execute_file_diff(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        file_diff_event event {};
+        event.operation_id = request.operation_id;
+        event.id = request.project.id;
+
+        if (request.diff_target.has_value() == false)
+        {
+            diagnostic value {};
+            value.code = diagnostic_code::operation_failed;
+            value.severity = diagnostic_severity::error;
+            value.message = u8"diff 대상이 요청에 없습니다.";
+            event.result.diagnostics.push_back(std::move(value));
+            emit(std::move(event));
+            return;
+        }
+
+        const vcs_tool_set tools { tools_for(request.settings, request.token) };
+        const repository_kind kind { decide_kind(request.project) };
+        if (kind == repository_kind::subversion)
+        {
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
+            event.result = provider.query_file_diff(request.project, *request.diff_target, request.token);
+        }
+        else
+        {
+            git_repository_provider provider { tools.git, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
+            event.result = provider.query_file_diff(request.project, *request.diff_target, request.token);
         }
         emit(std::move(event));
     }

@@ -3,7 +3,7 @@
 namespace gitman {
     bool workspace_settings::is_default() const noexcept
     {
-        return git_executable.empty() && svn_executable.empty() && show_relative_paths == false && query_timeout_seconds.has_value() == false;
+        return git_executable.empty() && svn_executable.empty() && show_relative_paths == false && update_submodules == false && query_timeout_seconds.has_value() == false;
     }
 
     bool window_placement::valid() const noexcept

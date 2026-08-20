@@ -55,6 +55,11 @@ namespace gitman::ui {
         // 활성이다. 흐림 표시는 draw가 card_.enabled로 판정한다.
         set_action(ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent { { id } } } } }; });
 
+        // 더블 클릭은 로컬 변경 확인 dialog다 (field-feedback-design 2.3). 카드 3번째
+        // 줄 chip은 element가 아니라 hit 대상이 될 수 없어 카드 수준 진입점을 쓴다.
+        set_action(
+            ui_trigger::double_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_local_changes_intent { id } } } }; });
+
         // 카드 body는 순서 변경의 drag 출발지다. drop 대상은 카드가 아니라 목록
         // 전체다 (card_list_element, field-feedback-design 4.1). 제외된 카드도 문서
         // 순서는 옮길 수 있다. lambda는 element가 소유하고 tree는 게시 후 불변이라
@@ -90,19 +95,11 @@ namespace gitman::ui {
         }
         else if (card_.can_change)
         {
-            if (card_.kind == repository_kind::subversion)
-            {
-                // SVN은 option이 없어 확인 없이 곧바로 실행한다.
-                update->set_tooltip(u8"업데이트 (svn update)");
-                update->set_action(
-                    ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { request_update_intent { id, {} } } } }; });
-            }
-            else
-            {
-                update->set_tooltip(u8"업데이트 (git pull --ff-only)");
-                update->set_action(ui_trigger::left_click,
-                    [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { show_update_options_intent { id } } } }; });
-            }
+            // 확인 overlay 없이 곧바로 실행한다 (2026-08-20 검수). submodule 갱신
+            // 여부는 문서 settings가 정하고 logic이 채운다.
+            update->set_tooltip(card_.kind == repository_kind::subversion ? std::u8string { u8"업데이트 (svn update)" } : std::u8string { u8"업데이트 (git pull --ff-only)" });
+            update->set_action(
+                ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { request_update_intent { id, {} } } } }; });
         }
         else
         {

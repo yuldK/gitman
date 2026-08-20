@@ -121,65 +121,63 @@ namespace {
     }
 } // namespace
 
-TEST_CASE("The update overlay opens with the default option and confirms into an update", "[logic][update-ui]")
+TEST_CASE("Update requests take the submodule choice from the document settings", "[logic][update-ui]")
 {
+    // 확인 overlay 없이 곧바로 실행되고, submodule 여부는 문서 settings가 정한다
+    // (2026-08-20 검수). 기본은 ADR-003의 off다.
     overlay_fixture fixture {};
-    fixture.controller.handle(gitman::show_update_options_intent { gitman::project_id { u8"alpha" } });
-    {
-        const auto view { fixture.controller.make_view_snapshot() };
-        REQUIRE(view->update_overlay.has_value());
-        REQUIRE(view->update_overlay->card.value == u8"alpha");
-        REQUIRE(view->update_overlay->title == u8"alpha");
-        // ADR-003: 기본 off다.
-        REQUIRE(view->update_overlay->update_submodules == false);
-    }
-
-    fixture.controller.handle(gitman::set_update_submodules_intent { true });
-    REQUIRE(fixture.controller.make_view_snapshot()->update_overlay->update_submodules);
-
-    fixture.controller.handle(gitman::confirm_update_intent {});
+    fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
     REQUIRE(fixture.submitter.requests.size() == 1u);
     REQUIRE(fixture.submitter.requests.front().kind == gitman::operation_kind::update);
-    REQUIRE(fixture.submitter.requests.front().options.update_submodules);
-    REQUIRE(fixture.controller.make_view_snapshot()->update_overlay.has_value() == false);
+    REQUIRE(fixture.submitter.requests.front().options.update_submodules == false);
 }
 
-TEST_CASE("The update overlay refuses busy cards and cancel closes it without work", "[logic][update-ui]")
+TEST_CASE("Update requests honor an enabled submodule setting", "[logic][update-ui]")
 {
-    overlay_fixture fixture {};
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+    gitman::document_loaded_event loaded {};
+    gitman::workspace_document document {};
+    document.document_path = u8"C:\\work\\p.version-list";
+    document.settings.update_submodules = true;
+    gitman::project_definition project {};
+    project.id.value = u8"alpha";
+    project.path.original = u8"C:\\work\\alpha";
+    project.path.normalized = project.path.original;
+    document.projects.push_back(std::move(project));
+    loaded.document = { std::move(document) };
+    controller.handle(std::move(loaded));
 
-    SECTION("취소는 아무 작업도 만들지 않는다")
-    {
-        fixture.controller.handle(gitman::show_update_options_intent { gitman::project_id { u8"alpha" } });
-        fixture.controller.handle(gitman::cancel_update_options_intent {});
-        REQUIRE(fixture.controller.make_view_snapshot()->update_overlay.has_value() == false);
-        REQUIRE(fixture.submitter.requests.empty());
-    }
+    gitman::query_completed_event local {};
+    local.id.value = u8"alpha";
+    local.generation = 1;
+    local.final_event = true;
+    local.result.snapshot.project.value = u8"alpha";
+    local.result.snapshot.kind = gitman::repository_kind::git;
+    local.result.snapshot.availability = gitman::repository_availability::ready;
+    local.result.snapshot.working_tree.state = gitman::working_tree_state::clean;
+    controller.handle(std::move(local));
+    submitter.requests.clear();
 
-    SECTION("busy 카드에는 overlay가 열리지 않는다")
-    {
-        fixture.controller.handle(gitman::refresh_card_intent { gitman::project_id { u8"alpha" } });
-        fixture.controller.handle(gitman::show_update_options_intent { gitman::project_id { u8"alpha" } });
-        REQUIRE(fixture.controller.make_view_snapshot()->update_overlay.has_value() == false);
-    }
+    controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
+    REQUIRE(submitter.requests.size() == 1u);
+    REQUIRE(submitter.requests.front().options.update_submodules);
 }
 
 TEST_CASE("The card update button routes by kind and running state", "[ui][update-ui]")
 {
-    SECTION("준비된 Git 카드는 확인 overlay를 연다")
+    SECTION("준비된 카드는 종류와 무관하게 곧바로 update를 요청한다")
     {
-        const auto tree { gitman::ui::build_ui_tree(make_card_view(make_ready_card(gitman::repository_kind::git))) };
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::card_update, gitman::project_id { u8"alpha" } })) };
-        REQUIRE(std::get_if<gitman::show_update_options_intent>(&message) != nullptr);
-    }
-
-    SECTION("SVN 카드는 곧바로 update를 요청한다")
-    {
-        const auto tree { gitman::ui::build_ui_tree(make_card_view(make_ready_card(gitman::repository_kind::subversion))) };
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::card_update, gitman::project_id { u8"alpha" } })) };
-        const auto* const intent { std::get_if<gitman::request_update_intent>(&message) };
-        REQUIRE(intent != nullptr);
-        REQUIRE(intent->options.update_submodules == false);
+        for (const gitman::repository_kind kind : { gitman::repository_kind::git, gitman::repository_kind::subversion })
+        {
+            const auto tree { gitman::ui::build_ui_tree(make_card_view(make_ready_card(kind))) };
+            const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::card_update, gitman::project_id { u8"alpha" } })) };
+            const auto* const intent { std::get_if<gitman::request_update_intent>(&message) };
+            REQUIRE(intent != nullptr);
+            REQUIRE(intent->id.value == u8"alpha");
+        }
     }
 
     SECTION("실행 중에는 중지 버튼이 되어 취소를 보낸다")
@@ -200,42 +198,6 @@ TEST_CASE("The card update button routes by kind and running state", "[ui][updat
         const auto tree { gitman::ui::build_ui_tree(make_card_view(card)) };
         REQUIRE(tree->find({ gitman::ui::ui_element_kind::card_update, gitman::project_id { u8"alpha" } })->enabled() == false);
     }
-}
-
-TEST_CASE("The overlay tree wires its option and buttons and escape cancels it", "[ui][update-ui]")
-{
-    gitman::view_snapshot view { make_card_view(make_ready_card(gitman::repository_kind::git)) };
-    gitman::update_overlay_view overlay {};
-    overlay.card.value = u8"alpha";
-    overlay.title = u8"alpha";
-    overlay.update_submodules = false;
-    view.update_overlay = { std::move(overlay) };
-    const auto tree { gitman::ui::build_ui_tree(view) };
-
-    {
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::update_overlay_submodule, gitman::project_id { u8"alpha" } })) };
-        const auto* const intent { std::get_if<gitman::set_update_submodules_intent>(&message) };
-        REQUIRE(intent != nullptr);
-        REQUIRE(intent->enabled);
-    }
-    {
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::update_overlay_confirm, gitman::project_id { u8"alpha" } })) };
-        REQUIRE(std::get_if<gitman::confirm_update_intent>(&message) != nullptr);
-    }
-    {
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::update_overlay_cancel, gitman::project_id { u8"alpha" } })) };
-        REQUIRE(std::get_if<gitman::cancel_update_options_intent>(&message) != nullptr);
-    }
-    {
-        // 배경 클릭도 취소다.
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::update_overlay })) };
-        REQUIRE(std::get_if<gitman::cancel_update_options_intent>(&message) != nullptr);
-    }
-
-    gitman::ui::interaction_controller controller {};
-    controller.set_tree(tree);
-    const gitman::logic_message escape_message { first_logic_message(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::escape })) };
-    REQUIRE(std::get_if<gitman::cancel_update_options_intent>(&escape_message) != nullptr);
 }
 
 #define REQUIRE_GIT_AVAILABLE(fixture)                                                                                                                                                                 \

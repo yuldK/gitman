@@ -189,4 +189,35 @@ namespace gitman {
                 return true;
         return false;
     }
+
+    std::vector<local_change_entry> collect_svn_local_changes(const svn_status_summary& status)
+    {
+        std::vector<local_change_entry> entries {};
+        entries.reserve(status.entries.size());
+        for (const svn_status_entry& entry : status.entries)
+        {
+            // 무시(`I`)와 외부 항목(`X`)은 변경 목록에 넣지 않는다.
+            if (entry.item_state == u8'I' || entry.item_state == u8'X')
+                continue;
+
+            local_change_entry change {};
+            change.path = entry.path;
+            if (entry.item_state == u8'C' || entry.property_state == u8'C' || entry.tree_conflict)
+                change.kind = local_change_kind::conflicted;
+            else if (entry.item_state == u8'?')
+                change.kind = local_change_kind::untracked;
+            else if (entry.item_state == u8'A')
+                change.kind = local_change_kind::added;
+            else if (entry.item_state == u8'D' || entry.item_state == u8'!')
+                change.kind = local_change_kind::deleted;
+            else if (entry.item_state == u8'R')
+                change.kind = local_change_kind::renamed;
+            else if (entry.item_state == u8'M' || entry.item_state == u8'~' || entry.property_state == u8'M')
+                change.kind = local_change_kind::modified;
+            else
+                change.kind = local_change_kind::other;
+            entries.push_back(std::move(change));
+        }
+        return entries;
+    }
 } // namespace gitman

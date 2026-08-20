@@ -103,9 +103,26 @@ namespace gitman::ui {
         window_close,
     };
 
+    // 인자가 필요한 외부 열기 명령이다 (field-feedback-design 2.3). `ui_command`는
+    // 인자를 담지 못하므로 별도 variant 항목으로 다닌다. UI thread가 shell로
+    // 실행한다.
+    enum class external_open_target
+    {
+        vscode,
+        explorer,
+    };
+
+    struct open_external_request
+    {
+        external_open_target target { external_open_target::explorer };
+        std::u8string absolute_path {};
+
+        [[nodiscard]] bool operator==(const open_external_request&) const noexcept = default;
+    };
+
     // element 액션과 interaction controller가 돌려주는 후속 조치다. 액션은 상태를
     // 직접 바꾸지 않고 이 메시지를 반환만 한다 (ADR-004).
-    using input_action = std::variant<std::monostate, logic_message, ui_command>;
+    using input_action = std::variant<std::monostate, logic_message, ui_command, open_external_request>;
 
     // 휠 한 눈금이 움직이는 논리 픽셀이다.
     inline constexpr float input_wheel_scroll_step { 48.0f };

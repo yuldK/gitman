@@ -5,6 +5,7 @@
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
 #include "domain/vcs_operation.h"
+#include "presentation/diff_presentation.h"
 #include "presentation/status_presentation.h"
 
 #include <chrono>
@@ -86,15 +87,6 @@ namespace gitman {
         bool truncated { false };
     };
 
-    // Git 카드의 update 확인 overlay다 (stage-7-plan 4.4). submodule option을
-    // 정한 뒤 실행하며, SVN 카드는 overlay 없이 곧바로 실행한다.
-    struct update_overlay_view
-    {
-        project_id card {};
-        std::u8string title {};
-        bool update_submodules { false };
-    };
-
     // switch dialog의 불변 표시 모델이다 (REQ-007, stage-7-plan 4.5). 후보 목록은
     // provider가 만든 순서 그대로다 (remote group 먼저). confirm_label과 message는
     // logic이 검증 상태에서 계산해 UI는 그대로 그린다.
@@ -116,6 +108,40 @@ namespace gitman {
         bool executing { false };
         // 후보 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
         float scroll_offset { 0.0f };
+    };
+
+    // 로컬 변경 확인 dialog의 목록 한 행이다 (field-feedback-design 2.3).
+    struct local_change_row_view
+    {
+        // "수정"·"미추적" 같은 종류 배지다.
+        std::u8string badge {};
+        std::u8string path {};
+        // 외부 열기(VSCode·탐색기)에 쓰는 절대 경로다.
+        std::u8string absolute_path {};
+        // 미추적 항목은 흐리게 그린다.
+        bool untracked { false };
+        bool directory { false };
+        bool selected { false };
+    };
+
+    // 로컬 변경 확인 dialog의 불변 표시 모델이다 (field-feedback-design 2.3).
+    // 상단이 변경 목록, 하단이 선택 항목의 diff viewer다. diff 줄의 색은 element가
+    // 줄 첫 문자로 판정한다.
+    struct local_changes_dialog_view
+    {
+        project_id card {};
+        std::u8string title {};
+        bool loading { true };
+        std::vector<local_change_row_view> rows {};
+        // 목록 수준 오류·안내다. 비어 있으면 표시하지 않는다.
+        std::u8string message {};
+        float list_scroll { 0.0f };
+        bool diff_loading { false };
+        // 2-way diff의 행이다 (diff_presentation::build_two_way_diff).
+        std::vector<two_way_diff_row> diff_rows {};
+        // 이진 파일·디렉터리·생략 같은 diff pane의 안내다.
+        std::u8string diff_notice {};
+        float diff_scroll { 0.0f };
     };
 
     // 탐색 dialog의 후보 한 행이다. 제외 사유가 있는 후보는 체크할 수 없고 표시만
@@ -155,6 +181,8 @@ namespace gitman {
         // 숫자만 담기며, 비어 있으면 기본값(600초)을 뜻해 element가 안내 문구를
         // 대신 그린다.
         std::u8string timeout_text {};
+        // 업데이트 시 submodule 갱신 여부의 초안이다 (확인 overlay 대체).
+        bool update_submodules { false };
         // 검증 오류다. 비어 있으면 표시하지 않는다.
         std::u8string message {};
         bool can_confirm { true };
@@ -187,12 +215,12 @@ namespace gitman {
         bool document_generating { false };
         // 선택 카드가 있으면 그 카드의 로그 뷰다. 없으면 하단 pane을 그리지 않는다.
         std::optional<log_view_model> log {};
-        // 값이 있으면 update 확인 overlay가 화면을 덮는다.
-        std::optional<update_overlay_view> update_overlay {};
         // 값이 있으면 switch dialog가 화면을 덮는다.
         std::optional<switch_dialog_view> switch_dialog {};
         // 값이 있으면 환경설정 dialog가 화면을 덮는다.
         std::optional<settings_dialog_view> settings_dialog {};
+        // 값이 있으면 로컬 변경 확인 dialog가 화면을 덮는다 (2.3).
+        std::optional<local_changes_dialog_view> local_changes_dialog {};
         // 값이 있으면 탐색 후보 선택 등록 dialog가 화면을 덮는다.
         std::optional<discovery_dialog_view> discovery_dialog {};
         bool shutting_down { false };

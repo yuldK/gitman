@@ -136,12 +136,17 @@ namespace gitman::testing {
 
     void fake_vcs_file_probe::add_file(const std::u8string_view path)
     {
-        entries_.push_back({ std::u8string { path }, vcs_path_kind::file });
+        entries_.push_back({ std::u8string { path }, vcs_path_kind::file, {} });
+    }
+
+    void fake_vcs_file_probe::add_file(const std::u8string_view path, const std::u8string_view content)
+    {
+        entries_.push_back({ std::u8string { path }, vcs_path_kind::file, std::u8string { content } });
     }
 
     void fake_vcs_file_probe::add_directory(const std::u8string_view path)
     {
-        entries_.push_back({ std::u8string { path }, vcs_path_kind::directory });
+        entries_.push_back({ std::u8string { path }, vcs_path_kind::directory, {} });
     }
 
     vcs_path_kind fake_vcs_file_probe::probe(const std::u8string_view absolute_path) const noexcept
@@ -150,5 +155,26 @@ namespace gitman::testing {
             if (path_equal(value.path, absolute_path))
                 return value.kind;
         return vcs_path_kind::missing;
+    }
+
+    vcs_file_content fake_vcs_file_probe::read_prefix(const std::u8string_view absolute_path, const std::size_t maximum_bytes) const noexcept
+    {
+        vcs_file_content content {};
+        for (const entry& value : entries_)
+        {
+            if (path_equal(value.path, absolute_path) == false)
+                continue;
+            content.kind = value.kind;
+            if (value.kind != vcs_path_kind::file)
+                return content;
+            content.bytes = value.content;
+            if (content.bytes.size() > maximum_bytes)
+            {
+                content.bytes.resize(maximum_bytes);
+                content.truncated = true;
+            }
+            return content;
+        }
+        return content;
     }
 } // namespace gitman::testing

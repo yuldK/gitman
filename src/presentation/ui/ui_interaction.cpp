@@ -64,6 +64,16 @@ namespace gitman::ui {
                     // 위로 굴리면 내용이 위로 간다.
                     const float delta { -(value.delta / 120.0f) * input_wheel_scroll_step };
 
+                    // 로컬 변경 dialog가 열려 있으면 휠은 diff pane 위에서는 diff를,
+                    // 그 밖에서는 목록을 스크롤한다.
+                    if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::local_changes_dialog }) != nullptr)
+                    {
+                        const ui_element* const diff { tree_->find(ui_element_id { ui_element_kind::local_changes_diff }) };
+                        if (diff != nullptr && diff->bounds().contains(value.x, value.y))
+                            return { input_action { logic_message { local_changes_diff_scroll_intent { delta } } } };
+                        return { input_action { logic_message { local_changes_scroll_intent { delta } } } };
+                    }
+
                     // switch·탐색 dialog가 열려 있으면 휠은 그 후보 목록을 스크롤한다.
                     if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)
                         return { input_action { logic_message { switch_dialog_scroll_intent { delta } } } };
@@ -306,14 +316,14 @@ namespace gitman::ui {
                 return {};
             }
             // 열린 dialog·overlay가 있으면 닫기가 먼저다.
+            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::local_changes_dialog }) != nullptr)
+                return { input_action { logic_message { cancel_local_changes_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::discovery_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_discovery_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_settings_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_switch_dialog_intent {} } } };
-            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::update_overlay }) != nullptr)
-                return { input_action { logic_message { cancel_update_options_intent {} } } };
             focused_.reset();
             return { input_action { logic_message { select_card_intent {} } } };
         case key_code::none:
@@ -368,7 +378,8 @@ namespace gitman::ui {
     }
 
     void run_ui_input_pump(messaging::channel<raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const ui_tree>>& tree_slot, messaging::channel<logic_message>& logic_inbox,
-        messaging::latest_slot<interaction_snapshot>& interaction_slot, const std::function<void(ui_command)>& execute_ui_command, const interaction_config config)
+        messaging::latest_slot<interaction_snapshot>& interaction_slot, const std::function<void(ui_command)>& execute_ui_command, const interaction_config config,
+        const std::function<void(open_external_request)>& execute_open_external)
     {
         interaction_controller controller { config };
         std::uint64_t tree_version { 0 };
@@ -393,6 +404,8 @@ namespace gitman::ui {
                     post_with_retry(logic_inbox, *message);
                 else if (const auto* const command { std::get_if<ui_command>(&action) }; command != nullptr && execute_ui_command)
                     execute_ui_command(*command);
+                else if (auto* const open { std::get_if<open_external_request>(&action) }; open != nullptr && execute_open_external)
+                    execute_open_external(std::move(*open));
 
             if ((controller.snapshot() == published) == false)
             {

@@ -76,7 +76,8 @@ namespace gitman::ui {
 
     // input thread의 소비 루프다. raw input 채널이 닫히면 반환한다. tree는 처리
     // 직전에 최신 것으로 갱신하고, interaction snapshot은 바뀔 때만 게시한다.
-    // `ui_command`는 UI thread 전용이라 callback으로 넘긴다.
+    // `ui_command`와 외부 열기 요청은 UI thread 전용이라 callback으로 넘긴다.
     void run_ui_input_pump(messaging::channel<raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const ui_tree>>& tree_slot, messaging::channel<logic_message>& logic_inbox,
-        messaging::latest_slot<interaction_snapshot>& interaction_slot, const std::function<void(ui_command)>& execute_ui_command, interaction_config config = {});
+        messaging::latest_slot<interaction_snapshot>& interaction_slot, const std::function<void(ui_command)>& execute_ui_command, interaction_config config = {},
+        const std::function<void(open_external_request)>& execute_open_external = {});
 } // namespace gitman::ui

@@ -425,3 +425,43 @@ TEST_CASE("Focus follows presses and carries the caret phase origin", "[ui][sett
     REQUIRE(interaction.process(gitman::ui::pointer_moved_event { 1.0f, 1.0f, at(80) }).empty());
     REQUIRE(interaction.snapshot().focused_input == gitman::ui::ui_element_id {});
 }
+
+TEST_CASE("The submodule toggle edits the draft and confirm saves it", "[logic][settings-ui][submodule]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->update_submodules == false);
+
+    // 토글 버튼이 intent를 보내고 초안이 뒤집힌다.
+    {
+        const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+        const std::vector<gitman::ui::input_action> actions { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_submodules_toggle }) };
+        const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+        REQUIRE(message != nullptr);
+        REQUIRE(std::holds_alternative<gitman::toggle_settings_submodules_intent>(*message));
+    }
+    fixture.controller.handle(gitman::toggle_settings_submodules_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->update_submodules);
+
+    // 저장하면 문서 settings에 남고, 이후 update 요청이 이 값을 쓴다.
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.submitter.requests.size() >= 1u);
+    const gitman::operation_request& save { fixture.submitter.requests[0] };
+    REQUIRE(save.kind == gitman::operation_kind::save_document);
+    REQUIRE(save.document->settings.update_submodules);
+
+    // 저장이 예약한 재조회(refresh)를 끝내 카드 busy를 풀고 update를 요청한다.
+    gitman::query_completed_event refreshed {};
+    refreshed.id.value = u8"alpha";
+    refreshed.generation = 2;
+    refreshed.final_event = true;
+    refreshed.result.snapshot.project.value = u8"alpha";
+    refreshed.result.snapshot.kind = gitman::repository_kind::git;
+    refreshed.result.snapshot.availability = gitman::repository_availability::ready;
+    fixture.controller.handle(std::move(refreshed));
+
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().options.update_submodules);
+}

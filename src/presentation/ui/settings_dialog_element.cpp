@@ -1,5 +1,6 @@
 #include "presentation/ui/settings_dialog_element.h"
 
+#include "gitman/generated/codicons.h"
 #include "presentation/ui/dialog_elements.h"
 #include "presentation/ui/draw_primitives.h"
 
@@ -19,17 +20,21 @@ namespace gitman::ui {
     namespace {
         // panel의 논리 치수다. 이 dialog에서만 쓰므로 이 파일에 둔다.
         constexpr float panel_width { 460.0f };
-        constexpr float panel_height { 284.0f };
+        constexpr float panel_height { 336.0f };
         constexpr float panel_padding { 14.0f };
         // 행 배치: 제목 아래에서 시작해 행마다 label 한 줄과 값 한 줄을 그린다.
         constexpr float first_row_top { 40.0f };
         constexpr float row_height { 52.0f };
         constexpr float row_button_width { 68.0f };
         constexpr float row_button_height { 22.0f };
+        // 행 버튼·토글을 세부 기능 타이틀 줄과 겹치지 않게 내리는 거리다.
+        constexpr float row_control_offset { 15.0f };
         constexpr float timeout_input_width { 140.0f };
+        constexpr float toggle_width { 38.0f };
+        constexpr float toggle_height { 20.0f };
         constexpr float action_button_width { 88.0f };
         constexpr float action_button_height { 28.0f };
-        constexpr std::size_t row_count { 3 };
+        constexpr std::size_t row_count { 4 };
 
         // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design
         // 1.3). 키 입력은 dialog가 열려 있는 동안 interaction이 그대로 intent로
@@ -102,6 +107,47 @@ namespace gitman::ui {
             std::u8string text_ {};
         };
 
+        // 켬·끔 상태가 한눈에 보이는 토글 스위치다. 트랙 색과 손잡이 위치가 현재
+        // 값을 보여 주고, 클릭이 값을 뒤집는 intent를 낸다.
+        class toggle_element final : public ui_element
+        {
+        public:
+            toggle_element(const ui_element_id id, const bool on, std::u8string tooltip, logic_message message)
+                : ui_element { id }
+                , on_ { on }
+            {
+                set_tooltip(std::move(tooltip));
+                set_action(ui_trigger::left_click, [message = std::move(message)](const ui_action_context&) -> std::vector<input_action> { return { input_action { message } }; });
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context& context, const interaction_snapshot& interaction) const override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const rect_f box { bounds() };
+                const float radius { box.height / 2.0f };
+
+                // 트랙: 켬이면 강조색, 끔이면 흐린 중립색이다. hover 시 살짝 밝힌다.
+                const bool hovered { interaction.hovered == id() };
+                ui_color track { on_ ? context.palette.positive_accent : context.palette.primary_foreground };
+                SkPaint track_paint { solid_paint(track) };
+                track_paint.setAlphaf(on_ ? (hovered ? 1.0f : 0.85f) : (hovered ? 0.4f : 0.28f));
+                context.canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), radius, radius), track_paint);
+
+                // 손잡이: 켬이면 오른쪽, 끔이면 왼쪽이다.
+                const float knob_radius { radius - 2.0f * scale };
+                const float knob_x { on_ ? box.x + box.width - radius : box.x + radius };
+                context.canvas.drawCircle(knob_x, box.y + radius, knob_radius, solid_paint(context.palette.surface_background));
+            }
+
+        private:
+            bool on_ { false };
+        };
+
         // panel 배경이다. 클릭을 흡수해 배경 닫기로 흐르지 않게 하고 제목, 행 label,
         // 경로 값, 검증 메시지를 그린다. 버튼은 dialog가 직접 배치하는 자식이다.
         class settings_panel_element final : public ui_element
@@ -111,6 +157,7 @@ namespace gitman::ui {
                 : ui_element { ui_element_id { ui_element_kind::settings_dialog_panel } }
                 , git_path_ { dialog.git_path }
                 , svn_path_ { dialog.svn_path }
+                , submodules_text_ { dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" } }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -134,9 +181,19 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { panel_padding * scale };
-                const SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                // 제목: `$(settings-gear)` codicon + bold로 제목임을 강조한다.
+                float title_left { box.x + padding };
+                if (context.codicon_typeface != nullptr)
+                {
+                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 13.0f * scale };
+                    draw_centered_glyph(context.canvas, codicons::icon_settings_gear, { title_left, box.y + padding - 2.0f * scale, 15.0f * scale, 17.0f * scale }, icon_font,
+                        solid_paint(context.palette.primary_foreground));
+                    title_left += 19.0f * scale;
+                }
+                SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                title_font.setEmbolden(true);
                 static_cast<void>(draw_text_within(
-                    context.canvas, u8"환경설정", box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
+                    context.canvas, u8"환경설정", title_left, box.y + padding + 11.0f * scale, box.x + box.width - padding - title_left, title_font, solid_paint(context.palette.primary_foreground)));
 
                 draw_row(context, 0, u8"Git 실행 파일", git_path_, u8"자동 탐색 (지정되지 않음)");
                 draw_row(context, 1, u8"SVN 실행 파일", svn_path_, u8"자동 탐색 (지정되지 않음)");
@@ -144,6 +201,9 @@ namespace gitman::ui {
                 // 조정한다 (field-feedback-design 1장). 값 칸은 텍스트 박스 element가
                 // 대신 그린다.
                 draw_row(context, 2, u8"상태 확인 제한 시간 (초)", u8"", u8"");
+                // 업데이트마다 묻지 않고 여기서 정한다 (2026-08-20 검수, ADR-003
+                // 기본 off 유지).
+                draw_row(context, 3, u8"업데이트 시 submodule 갱신", submodules_text_, u8"");
 
                 if (message_.empty() == false)
                 {
@@ -164,14 +224,17 @@ namespace gitman::ui {
                 const float padding { panel_padding * scale };
                 const float row_top { box.y + (first_row_top + row_height * static_cast<float>(index)) * scale };
 
-                const SkFont label_font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+                // 세부 기능 타이틀은 키 컬러 + semi-bold로 강조한다.
+                SkFont label_font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+                label_font.setEmbolden(true);
                 static_cast<void>(
-                    draw_text_within(context.canvas, label, box.x + padding, row_top + 11.0f * scale, box.width - padding * 2.0f, label_font, solid_paint(context.palette.primary_foreground)));
+                    draw_text_within(context.canvas, label, box.x + padding, row_top + 11.0f * scale, box.width - padding * 2.0f, label_font, solid_paint(context.palette.positive_accent)));
 
-                // 빈 값은 자동 탐색이다 (REQ-017). 값 대신 안내 문구를 흐리게 그린다.
+                // 타이틀이 아닌 본문은 흐리게 그려 위계를 만든다. 빈 값은 자동
+                // 탐색 안내 문구다 (REQ-017).
                 const SkFont value_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
                 SkPaint value_paint { solid_paint(context.palette.primary_foreground) };
-                value_paint.setAlphaf(value.empty() ? 0.5f : 0.8f);
+                value_paint.setAlphaf(value.empty() ? 0.45f : 0.65f);
                 const std::u8string_view shown { value.empty() ? placeholder : value };
                 // 값 줄은 행 버튼(row_button_height) 아래에서 시작해 겹치지 않는다.
                 static_cast<void>(draw_text_within(context.canvas, shown, box.x + padding, row_top + 33.0f * scale, box.width - padding * 2.0f, value_font, value_paint));
@@ -179,6 +242,7 @@ namespace gitman::ui {
 
             std::u8string git_path_ {};
             std::u8string svn_path_ {};
+            std::u8string submodules_text_ {};
             std::u8string message_ {};
         };
     } // namespace
@@ -220,6 +284,10 @@ namespace gitman::ui {
         // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design 1.3).
         add_child(std::make_unique<timeout_input_element>(dialog_.timeout_text));
 
+        // submodule 갱신 토글 스위치다 (2026-08-20 검수: 현재 값이 보이는 토글).
+        add_child(std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_submodules_toggle }, dialog_.update_submodules,
+            std::u8string { u8"업데이트 실행 시 submodule을 함께 갱신할지 정합니다" }, logic_message { toggle_settings_submodules_intent {} }));
+
         // file association 등록·제거다 (REQ-016). registry 작업은 UI thread의
         // ui_command로 수행되고 결과는 시스템 dialog로 알린다.
         auto associate { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_associate }, std::u8string { u8"연결 등록" }, false) };
@@ -259,15 +327,16 @@ namespace gitman::ui {
 
         const float padding { panel_padding * scale };
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
-        if (children.size() >= 10)
+        if (children.size() >= 11)
         {
-            // 행 버튼은 행 label 줄의 오른쪽에 나란히 둔다 (panel의 draw_row 배치와
-            // 같은 좌표 기준이다).
+            // 행 버튼은 행 오른쪽에 두되 세부 기능 타이틀 줄과 겹치지 않게 약간
+            // 내린다 (panel의 draw_row 배치와 같은 좌표 기준이다).
             const float row_button { row_button_width * scale };
             const float row_button_gap { 6.0f * scale };
+            const float control_offset { row_control_offset * scale };
             for (std::size_t row = 0; row < 2; ++row)
             {
-                const float row_top { top + (first_row_top + row_height * static_cast<float>(row)) * scale };
+                const float row_top { top + (first_row_top + row_height * static_cast<float>(row)) * scale + control_offset };
                 children[1 + row * 2]->arrange({ { left + width - padding - row_button * 2.0f - row_button_gap, row_top, row_button, row_button_height * scale }, scale });
                 children[2 + row * 2]->arrange({ { left + width - padding - row_button, row_top, row_button, row_button_height * scale }, scale });
             }
@@ -277,14 +346,18 @@ namespace gitman::ui {
             const float timeout_row_top { top + (first_row_top + row_height * 2.0f) * scale };
             children[5]->arrange({ { left + padding, timeout_row_top + 20.0f * scale, timeout_input_width * scale, row_button_height * scale }, scale });
 
+            // submodule 토글 스위치도 타이틀 줄 아래로 내려 오른쪽에 둔다.
+            const float submodules_row_top { top + (first_row_top + row_height * 3.0f) * scale + control_offset };
+            children[6]->arrange({ { left + width - padding - toggle_width * scale, submodules_row_top, toggle_width * scale, toggle_height * scale }, scale });
+
             const float button_width { action_button_width * scale };
             const float button_height { action_button_height * scale };
             const float button_top { top + height - padding - button_height };
             // 아래 왼쪽은 연결 등록·해제, 오른쪽은 저장·취소다.
-            children[6]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
-            children[7]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[8]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[9]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
+            children[7]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
+            children[8]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[9]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[10]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
         }
     }
 

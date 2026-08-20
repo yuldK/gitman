@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/local_changes.h"
 #include "domain/repository_snapshot.h"
 
 #include <cstdint>
@@ -119,6 +120,10 @@ namespace gitman {
     // 줄로 나뉘며 detached worktree와 bare 항목에는 `branch` 줄이 없다. 현재 worktree의
     // branch도 함께 나온다.
     [[nodiscard]] std::vector<std::u8string> parse_git_worktree_branches(const std::vector<std::u8string>& lines);
+
+    // status 항목을 로컬 변경 확인 dialog의 목록으로 옮긴다 (field-feedback-design
+    // 2.3). 무시(`!`)와 변화 없는 항목은 뺀다. rename 항목의 경로는 새 경로다.
+    [[nodiscard]] std::vector<local_change_entry> collect_git_local_changes(const git_status_summary& status);
 
     // 항목을 세어 카드가 쓰는 요약으로 옮긴다. 진행 중 작업과 `index.lock`은 표식
     // 파일로만 알 수 있으므로 호출자가 따로 채운다. 해석하지 못한 레코드가 있으면

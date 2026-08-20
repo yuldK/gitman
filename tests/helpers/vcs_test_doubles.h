@@ -49,15 +49,19 @@ namespace gitman::testing {
     {
     public:
         void add_file(std::u8string_view path);
+        // 내용을 함께 등록하면 `read_prefix`가 그 바이트를 돌려준다.
+        void add_file(std::u8string_view path, std::u8string_view content);
         void add_directory(std::u8string_view path);
 
         [[nodiscard]] vcs_path_kind probe(std::u8string_view absolute_path) const noexcept override;
+        [[nodiscard]] vcs_file_content read_prefix(std::u8string_view absolute_path, std::size_t maximum_bytes) const noexcept override;
 
     private:
         struct entry
         {
             std::u8string path {};
             vcs_path_kind kind { vcs_path_kind::file };
+            std::u8string content {};
         };
 
         std::vector<entry> entries_ {};

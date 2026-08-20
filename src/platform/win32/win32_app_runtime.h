@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace gitman {
     class logic_controller;
@@ -29,8 +30,9 @@ namespace gitman::win32 {
     {
     public:
         // ui_command_message는 input thread가 요청한 `ui::ui_command`를 UI thread로
-        // 나르는 창 메시지다. wparam이 command 값이다.
-        app_runtime(HWND window, UINT snapshot_message, UINT ui_command_message);
+        // 나르는 창 메시지다. wparam이 command 값이다. open_external_message는
+        // 인자를 담는 외부 열기 요청의 신호이며 내용은 내부 큐로 나른다 (2.3).
+        app_runtime(HWND window, UINT snapshot_message, UINT ui_command_message, UINT open_external_message = 0);
         app_runtime(const app_runtime&) = delete;
         app_runtime(app_runtime&&) = delete;
         app_runtime& operator=(const app_runtime&) = delete;
@@ -52,6 +54,8 @@ namespace gitman::win32 {
         [[nodiscard]] std::shared_ptr<const ui::ui_tree> acquire_ui_tree();
         // input thread가 게시한 최신 상호작용 상태다. hover·tooltip 그리기가 쓴다.
         [[nodiscard]] ui::interaction_snapshot acquire_interaction();
+        // input thread가 큐에 넣은 외부 열기 요청을 모두 꺼낸다 (UI thread 전용).
+        [[nodiscard]] std::vector<ui::open_external_request> take_open_external_requests();
 
     private:
         void logic_thread_main();

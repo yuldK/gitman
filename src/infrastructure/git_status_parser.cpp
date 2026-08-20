@@ -481,4 +481,42 @@ namespace gitman {
             summary.state = working_tree_state::clean;
         return summary;
     }
+
+    std::vector<local_change_entry> collect_git_local_changes(const git_status_summary& status)
+    {
+        std::vector<local_change_entry> entries {};
+        entries.reserve(status.entries.size());
+        for (const git_status_entry& entry : status.entries)
+        {
+            local_change_entry change {};
+            change.path = entry.path;
+            switch (entry.kind)
+            {
+            case git_status_entry_kind::ordinary:
+                if (entry.index_state == u8'.' && entry.work_tree_state == u8'.')
+                    continue;
+                // index와 작업 트리 중 어느 한쪽이라도 추가·삭제면 그것을 우선한다.
+                if (entry.index_state == u8'D' || entry.work_tree_state == u8'D')
+                    change.kind = local_change_kind::deleted;
+                else if (entry.index_state == u8'A' || entry.work_tree_state == u8'A')
+                    change.kind = local_change_kind::added;
+                else
+                    change.kind = local_change_kind::modified;
+                break;
+            case git_status_entry_kind::renamed_or_copied:
+                change.kind = local_change_kind::renamed;
+                break;
+            case git_status_entry_kind::unmerged:
+                change.kind = local_change_kind::conflicted;
+                break;
+            case git_status_entry_kind::untracked:
+                change.kind = local_change_kind::untracked;
+                break;
+            case git_status_entry_kind::ignored:
+                continue;
+            }
+            entries.push_back(std::move(change));
+        }
+        return entries;
+    }
 } // namespace gitman

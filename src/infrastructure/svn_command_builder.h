@@ -38,6 +38,10 @@ namespace gitman {
     // 원격 HEAD 리비전이다. 네트워크를 쓰는 유일한 조회다.
     [[nodiscard]] process_request make_svn_remote_revision_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view url, const vcs_timeout_overrides& timeouts = {});
 
+    // 추적 파일 하나의 diff다 (field-feedback-design 2.3). 미추적(미버전) 파일은
+    // diff 대신 파일을 직접 읽는다.
+    [[nodiscard]] process_request make_svn_diff_request(std::u8string_view executable, std::u8string_view working_directory, std::u8string_view path, const vcs_timeout_overrides& timeouts = {});
+
     // 등록된 작업 복사본 루트에서 그대로 실행한다. `--accept`를 주지 않으므로 충돌은
     // 자동으로 해결되지 않고 그대로 남는다.
     [[nodiscard]] process_request make_svn_update_request(std::u8string_view executable, std::u8string_view working_directory);

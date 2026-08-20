@@ -64,13 +64,6 @@ namespace gitman::ui {
         log_clear,
         // 로그 pane 본문의 시각적 스크롤 막대다 (단계 8).
         log_scrollbar,
-        // Git update 확인 overlay다 (단계 7). 배경 클릭은 닫기이고 panel이 클릭을
-        // 흡수한다.
-        update_overlay,
-        update_overlay_panel,
-        update_overlay_submodule,
-        update_overlay_confirm,
-        update_overlay_cancel,
         // switch dialog다 (단계 7). 후보 행의 정체성은 owner의 값에 index를 담아
         // 구분한다.
         switch_dialog,
@@ -88,11 +81,26 @@ namespace gitman::ui {
         settings_svn_clear,
         // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design 1.3).
         settings_timeout_input,
+        // 업데이트 시 submodule 갱신 토글이다 (update 확인 overlay 대체).
+        settings_submodules_toggle,
         settings_dialog_confirm,
         settings_dialog_cancel,
         // 환경설정 dialog의 file association 등록·제거 버튼이다 (REQ-016, 단계 8).
         settings_associate,
         settings_dissociate,
+        // 로컬 변경 확인 dialog다 (field-feedback-design 2.3). 항목 행은 switch
+        // dialog처럼 owner 값에 index를 담아 구분하고, diff pane은 휠 라우팅의
+        // 기준 영역이다.
+        local_changes_dialog,
+        local_changes_dialog_panel,
+        local_changes_item,
+        // 행 오른쪽의 외부 열기 아이콘(VSCode·탐색기)이다. owner는 행과 같다.
+        local_changes_open_vscode,
+        local_changes_open_explorer,
+        local_changes_diff,
+        local_changes_list_scrollbar,
+        local_changes_diff_scrollbar,
+        local_changes_dialog_close,
         // 탐색 후보 선택 등록 dialog다 (REQ-004, 단계 8). 후보 행의 정체성은
         // switch dialog처럼 owner의 값에 index를 담아 구분한다.
         discovery_dialog,

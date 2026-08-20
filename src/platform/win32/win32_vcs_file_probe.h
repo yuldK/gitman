@@ -10,6 +10,9 @@
 namespace gitman::win32 {
     [[nodiscard]] vcs_path_kind probe_vcs_path(std::u8string_view absolute_path) noexcept;
 
+    // 파일 앞부분을 상한까지 읽는다 (`vcs_file_probe::read_prefix`의 구현).
+    [[nodiscard]] vcs_file_content read_vcs_file_prefix(std::u8string_view absolute_path, std::size_t maximum_bytes) noexcept;
+
     [[nodiscard]] std::unique_ptr<vcs_file_probe> make_vcs_file_probe();
 
     [[nodiscard]] std::u8string read_environment_variable(std::u8string_view name) noexcept;

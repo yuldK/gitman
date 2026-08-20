@@ -4,6 +4,7 @@
 #include "domain/path_syntax.h"
 #include "infrastructure/git_command_builder.h"
 #include "infrastructure/git_status_parser.h"
+#include "infrastructure/local_change_reader.h"
 #include "infrastructure/vcs_command_runner.h"
 #include "infrastructure/vcs_error_classifier.h"
 
@@ -808,6 +809,97 @@ namespace gitman {
         // 하나라도 이번에 새로 고치지 않은 remote의 후보가 있으면 목록 전체를 stale로
         // 표시한다. 카드가 "지금 원격을 확인한 목록"이라고 오해하지 않게 한다.
         result.stale = std::ranges::any_of(result.candidates, [](const switch_candidate& candidate) { return candidate.stale; });
+        return result;
+    }
+
+    local_changes_result git_repository_provider::query_local_changes(const project_definition& project, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            return query_local_changes_impl(project, token);
+        }
+        catch (...)
+        {
+            local_changes_result result {};
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"로컬 변경을 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    local_changes_result git_repository_provider::query_local_changes_impl(const project_definition& project, const process_cancellation_token& token)
+    {
+        local_changes_result result {};
+        if (available() == false)
+        {
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::git, tool_.availability) }, project));
+            return result;
+        }
+
+        const std::u8string_view working_directory { git_working_directory(project) };
+        if (is_absolute_windows_path(working_directory) == false || probe_->probe(working_directory) != vcs_path_kind::directory)
+        {
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::path_missing, diagnostic_severity::error, std::u8string { u8"프로젝트 경로를 찾을 수 없습니다." }, project));
+            return result;
+        }
+
+        const vcs_command_result status_result { run_vcs_command(*runner_, make_git_status_request(tool_.executable, working_directory, timeouts_), token, log_) };
+        if (status_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, status_result) };
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, status_result), project));
+            return result;
+        }
+
+        result.entries = collect_git_local_changes(parse_git_status_porcelain_v2(status_result.standard_output_lines));
+        return result;
+    }
+
+    file_diff_result git_repository_provider::query_file_diff(const project_definition& project, const local_change_entry& entry, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            return query_file_diff_impl(project, entry, token);
+        }
+        catch (...)
+        {
+            file_diff_result result {};
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"diff를 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    file_diff_result git_repository_provider::query_file_diff_impl(const project_definition& project, const local_change_entry& entry, const process_cancellation_token& token)
+    {
+        file_diff_result result {};
+        const std::u8string_view working_directory { git_working_directory(project) };
+        if (is_absolute_windows_path(working_directory) == false || probe_->probe(working_directory) != vcs_path_kind::directory)
+        {
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::path_missing, diagnostic_severity::error, std::u8string { u8"프로젝트 경로를 찾을 수 없습니다." }, project));
+            return result;
+        }
+
+        // 미추적 파일은 저장소가 모르는 파일이라 diff 명령 대신 내용을 직접 읽는다.
+        if (entry.kind == local_change_kind::untracked)
+            return read_untracked_file_diff(*probe_, working_directory, entry.path);
+
+        if (available() == false)
+        {
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::vcs_tool_not_found, diagnostic_severity::warning, std::u8string { vcs_tool_unavailable_message(repository_kind::git, tool_.availability) }, project));
+            return result;
+        }
+
+        const vcs_command_result diff_result { run_vcs_command(*runner_, make_git_diff_request(tool_.executable, working_directory, entry.path, timeouts_), token, log_) };
+        if (diff_result.succeeded() == false)
+        {
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::git, diff_result) };
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, diff_result), project));
+            return result;
+        }
+
+        append_diff_lines_limited(result, diff_result.standard_output_lines);
         return result;
     }
 

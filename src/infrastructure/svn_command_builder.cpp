@@ -94,4 +94,13 @@ namespace gitman {
     {
         return make_svn_remote_info_item_request(executable, working_directory, svn_info_item::revision, url, timeouts);
     }
+
+    process_request make_svn_diff_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view path, const vcs_timeout_overrides& timeouts)
+    {
+        std::vector<std::u8string> arguments { make_arguments(u8"diff") };
+        // 경로는 status 출력에서 오므로 옵션으로 해석되지 않게 끊어 준다.
+        arguments.push_back(std::u8string { u8"--" });
+        arguments.push_back(std::u8string { path });
+        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
+    }
 } // namespace gitman

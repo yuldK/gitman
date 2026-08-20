@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <functional>
+#include <mutex>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -27,7 +29,8 @@ namespace gitman::win32 {
         }
 
         void input_thread_main(messaging::channel<ui::raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const ui::ui_tree>>& tree_slot,
-            messaging::channel<logic_message>& logic_inbox, messaging::latest_slot<ui::interaction_snapshot>& interaction_slot, const HWND wake_window, const UINT command_message)
+            messaging::channel<logic_message>& logic_inbox, messaging::latest_slot<ui::interaction_snapshot>& interaction_slot, const HWND wake_window, const UINT command_message,
+            const std::function<void(ui::open_external_request)> execute_open_external)
         {
             // 더블 클릭 임계는 사용자의 시스템 설정을 따른다.
             ui::interaction_config config {};
@@ -38,7 +41,7 @@ namespace gitman::win32 {
                     if (wake_window != nullptr)
                         PostMessageW(wake_window, command_message, static_cast<WPARAM>(command), 0);
                 },
-                config);
+                config, execute_open_external);
         }
     } // namespace
 
@@ -60,12 +63,17 @@ namespace gitman::win32 {
         messaging::latest_slot<std::shared_ptr<const ui::ui_tree>> tree_slot {};
         messaging::latest_slot<ui::interaction_snapshot> interaction_slot {};
 
+        // 외부 열기 요청 큐다 (2.3). input thread가 넣고 UI thread가 신호를 받아
+        // 꺼낸다. 창 메시지는 인자를 담지 못하므로 내용은 여기로 나른다.
+        std::mutex open_external_mutex {};
+        std::vector<ui::open_external_request> open_external_requests {};
+
         std::unique_ptr<task_scheduler> scheduler {};
         std::thread logic_thread {};
         std::thread input_thread {};
     };
 
-    app_runtime::app_runtime(const HWND window, const UINT snapshot_message, const UINT ui_command_message)
+    app_runtime::app_runtime(const HWND window, const UINT snapshot_message, const UINT ui_command_message, const UINT open_external_message)
         : assembly_ { std::make_unique<assembly>() }
         , window_ { window }
         , snapshot_message_ { snapshot_message }
@@ -84,6 +92,18 @@ namespace gitman::win32 {
         assembly_->logic_thread = std::thread { &app_runtime::logic_thread_main, this };
 
         assembly& parts { *assembly_ };
+        // 요청 내용은 큐로 나르고 창 메시지는 신호만 전한다. 종료 시 input join이
+        // 이 callback보다 늦게 오므로 assembly 수명은 안전하다.
+        std::function<void(ui::open_external_request)> execute_open_external {};
+        if (wake_window != nullptr && open_external_message != 0)
+            execute_open_external = [&parts, wake_window, open_external_message](ui::open_external_request request) {
+                {
+                    const std::lock_guard<std::mutex> lock { parts.open_external_mutex };
+                    parts.open_external_requests.push_back(std::move(request));
+                }
+                PostMessageW(wake_window, open_external_message, 0, 0);
+            };
+
         assembly_->input_thread = std::thread {
             &input_thread_main,
             std::ref(parts.input_inbox),
@@ -92,6 +112,7 @@ namespace gitman::win32 {
             std::ref(parts.interaction_slot),
             wake_window,
             ui_command_message,
+            std::move(execute_open_external),
         };
     }
 
@@ -190,6 +211,12 @@ namespace gitman::win32 {
             current_tree_ = newer->value;
         }
         return current_tree_;
+    }
+
+    std::vector<ui::open_external_request> app_runtime::take_open_external_requests()
+    {
+        const std::lock_guard<std::mutex> lock { assembly_->open_external_mutex };
+        return std::exchange(assembly_->open_external_requests, {});
     }
 
     ui::interaction_snapshot app_runtime::acquire_interaction()

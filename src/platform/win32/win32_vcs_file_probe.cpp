@@ -135,6 +135,56 @@ namespace gitman::win32 {
         }
     }
 
+    vcs_file_content read_vcs_file_prefix(const std::u8string_view absolute_path, const std::size_t maximum_bytes) noexcept
+    {
+        try
+        {
+            vcs_file_content content {};
+            content.kind = probe_vcs_path(absolute_path);
+            if (content.kind != vcs_path_kind::file)
+                return content;
+
+            const auto wide { utf8_to_utf16(absolute_path) };
+            if (wide.value.has_value() == false)
+            {
+                content.kind = vcs_path_kind::missing;
+                return content;
+            }
+
+            const std::wstring api_path { path_for_file_api(std::move(*wide.value)) };
+            const HANDLE file { CreateFileW(api_path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) };
+            if (file == INVALID_HANDLE_VALUE)
+            {
+                content.kind = vcs_path_kind::missing;
+                return content;
+            }
+
+            // 상한보다 한 byte 더 읽어 잘렸는지 판정한다.
+            content.bytes.resize(maximum_bytes + 1);
+            DWORD read { 0 };
+            const BOOL succeeded { ReadFile(file, content.bytes.data(), static_cast<DWORD>(content.bytes.size()), &read, nullptr) };
+            CloseHandle(file);
+            if (succeeded == FALSE)
+            {
+                content.kind = vcs_path_kind::missing;
+                content.bytes.clear();
+                return content;
+            }
+
+            content.bytes.resize(static_cast<std::size_t>(read));
+            if (content.bytes.size() > maximum_bytes)
+            {
+                content.bytes.resize(maximum_bytes);
+                content.truncated = true;
+            }
+            return content;
+        }
+        catch (...)
+        {
+            return {};
+        }
+    }
+
     namespace {
         class win32_vcs_file_probe final : public vcs_file_probe
         {
@@ -142,6 +192,11 @@ namespace gitman::win32 {
             [[nodiscard]] vcs_path_kind probe(const std::u8string_view absolute_path) const noexcept override
             {
                 return probe_vcs_path(absolute_path);
+            }
+
+            [[nodiscard]] vcs_file_content read_prefix(const std::u8string_view absolute_path, const std::size_t maximum_bytes) const noexcept override
+            {
+                return read_vcs_file_prefix(absolute_path, maximum_bytes);
             }
         };
     } // namespace

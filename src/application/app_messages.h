@@ -109,24 +109,6 @@ namespace gitman {
         float delta { 0.0f };
     };
 
-    // Git 카드의 update 버튼이 여는 확인 overlay다 (stage-7-plan 4.4). SVN 카드는
-    // overlay 없이 `request_update_intent`를 바로 보낸다.
-    struct show_update_options_intent
-    {
-        project_id id {};
-    };
-
-    struct set_update_submodules_intent
-    {
-        bool enabled { false };
-    };
-
-    struct confirm_update_intent
-    {};
-
-    struct cancel_update_options_intent
-    {};
-
     // 카드의 switch 버튼이 여는 switch dialog다 (REQ-007, stage-7-plan 4.5). 열면
     // 곧바로 remote-first 후보 조회를 제출한다.
     struct begin_switch_intent
@@ -207,11 +189,43 @@ namespace gitman {
         char32_t character { 0 };
     };
 
+    // 환경설정의 "업데이트 시 submodule 갱신" 토글이다 (2026-08-20 검수: update
+    // 확인 overlay 대신 문서 settings가 정한다).
+    struct toggle_settings_submodules_intent
+    {};
+
     struct confirm_settings_intent
     {};
 
     struct cancel_settings_dialog_intent
     {};
+
+    // 카드의 로컬 변경 확인 dialog를 연다 (field-feedback-design 2.3). 카드 body
+    // 더블 클릭과 (F5) 컨텍스트 메뉴가 보낸다.
+    struct open_local_changes_intent
+    {
+        project_id id {};
+    };
+
+    // 목록 행 선택이다. 선택된 항목의 diff 조회가 lazy로 제출된다.
+    struct select_local_change_intent
+    {
+        std::size_t index { 0 };
+    };
+
+    struct cancel_local_changes_dialog_intent
+    {};
+
+    // 상단 목록과 하단 diff pane의 스크롤이다 (논리 픽셀).
+    struct local_changes_scroll_intent
+    {
+        float delta { 0.0f };
+    };
+
+    struct local_changes_diff_scroll_intent
+    {
+        float delta { 0.0f };
+    };
 
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
@@ -258,6 +272,10 @@ namespace gitman {
         switch_to,
         // remote-first 전환 후보 조회다. switch dialog가 요청한다 (단계 7).
         query_switch_candidates,
+        // 로컬 변경 확인 dialog의 목록 조회다 (field-feedback-design 2.3).
+        query_local_changes,
+        // 목록에서 고른 항목 하나의 diff(미추적은 파일 내용) 조회다.
+        query_file_diff,
         // 깊이 1 자식 탐색이다. 탐색 dialog가 요청하며 프로세스를 만들지 않는다
         // (REQ-004, 단계 8). generate처럼 문서 lane에서 실행한다.
         discover_projects,
@@ -283,6 +301,8 @@ namespace gitman {
         update_options options {};
         // switch_to 전용: 검증을 통과한 전환 대상이다.
         std::optional<switch_candidate> switch_target {};
+        // query_file_diff 전용: 목록에서 고른 항목이다.
+        std::optional<local_change_entry> diff_target {};
         // register_projects 전용: 사용자가 선택한 탐색 후보다. 문서와 revision은
         // save처럼 `document`·`revision` 필드에 실린다.
         std::vector<discovery_candidate> discovery_selection {};
@@ -356,6 +376,22 @@ namespace gitman {
         switch_candidate_result result {};
     };
 
+    // 로컬 변경 목록 조회 결과다. 로컬 변경 확인 dialog 상태가 소비한다 (2.3).
+    struct local_changes_event
+    {
+        std::uint64_t operation_id { 0 };
+        project_id id {};
+        local_changes_result result {};
+    };
+
+    // 항목 하나의 diff 조회 결과다.
+    struct file_diff_event
+    {
+        std::uint64_t operation_id { 0 };
+        project_id id {};
+        file_diff_result result {};
+    };
+
     // 깊이 1 탐색 결과다. 탐색 dialog 상태가 소비한다 (REQ-004).
     struct discovery_completed_event
     {
@@ -380,12 +416,14 @@ namespace gitman {
     // 처리된다.
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent,
         toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent,
-        log_scroll_intent, show_update_options_intent, set_update_submodules_intent, confirm_update_intent, cancel_update_options_intent, begin_switch_intent, select_switch_candidate_intent,
+        log_scroll_intent, begin_switch_intent, select_switch_candidate_intent,
         confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent,
         cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent,
-        confirm_settings_intent,
-        cancel_settings_dialog_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
-        document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, discovery_completed_event, projects_registered_event, shutdown_message>;
+        toggle_settings_submodules_intent, confirm_settings_intent,
+        cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent,
+        window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
+        document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event,
+        shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

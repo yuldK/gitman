@@ -44,6 +44,15 @@ namespace gitman {
     inline constexpr float layout_switch_dialog_height { 320.0f };
     inline constexpr float layout_switch_dialog_row_height { 22.0f };
     inline constexpr float layout_switch_dialog_list_height { 190.0f };
+    // 로컬 변경 확인 dialog의 치수다 (field-feedback-design 2.3). 상단 목록과 하단
+    // diff pane의 스크롤 한계를 logic과 element가 같은 값으로 계산하도록 여기에 둔다.
+    inline constexpr float layout_local_changes_dialog_width { 560.0f };
+    inline constexpr float layout_local_changes_dialog_height { 460.0f };
+    inline constexpr float layout_local_changes_row_height { 22.0f };
+    inline constexpr float layout_local_changes_list_height { 132.0f };
+    inline constexpr float layout_local_changes_diff_height { 220.0f };
+    inline constexpr float layout_local_changes_diff_line_height { 15.0f };
+
     // 탐색 후보 선택 등록 dialog의 치수다 (stage-8-plan 5.2). 목록 스크롤 한계를
     // logic과 element가 같은 값으로 계산하도록 여기에 둔다.
     inline constexpr float layout_discovery_dialog_width { 480.0f };

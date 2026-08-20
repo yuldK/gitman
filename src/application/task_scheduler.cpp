@@ -23,6 +23,8 @@ namespace gitman {
             case operation_kind::update:
             case operation_kind::switch_to:
             case operation_kind::query_switch_candidates:
+            case operation_kind::query_local_changes:
+            case operation_kind::query_file_diff:
                 break;
             }
             return false;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/local_changes.h"
 #include "domain/repository_snapshot.h"
 
 #include <cstdint>
@@ -55,4 +56,8 @@ namespace gitman {
     // `status`가 보고한 switched 항목이 하나라도 있는지다. `svnversion`이 없을 때의
     // 보조 판정이다.
     [[nodiscard]] bool has_svn_switched_entry(const svn_status_summary& status) noexcept;
+
+    // status 항목을 로컬 변경 확인 dialog의 목록으로 옮긴다 (field-feedback-design
+    // 2.3). 무시(`I`)와 외부(`X`) 항목은 뺀다.
+    [[nodiscard]] std::vector<local_change_entry> collect_svn_local_changes(const svn_status_summary& status);
 } // namespace gitman

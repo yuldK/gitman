@@ -181,6 +181,26 @@ namespace gitman {
         std::vector<context_menu_item_view> items {};
     };
 
+    // 시작 페이지의 최근 항목 한 행이다 (app-shell-design A1.3).
+    struct recent_document_view
+    {
+        // 확장자를 뗀 문서 이름이다.
+        std::u8string display_name {};
+        // 문서가 있는 폴더다. 이름 뒤에 흐리게 붙는다.
+        std::u8string folder {};
+        // 클릭했을 때 여는 문서의 절대 경로다.
+        std::u8string path {};
+    };
+
+    // 열린 문서가 없을 때 카드 목록 자리를 채우는 시작 페이지다 (VSCode 시작
+    // 페이지 모방, app-shell-design A1.3). 값이 있으면 빈 상태 문구 대신 그린다.
+    struct start_page_view
+    {
+        std::vector<recent_document_view> recents {};
+        // 앱 설정 파일을 아직 읽는 중이다. 목록 자리에 안내 문구를 그린다.
+        bool loading { false };
+    };
+
     // 탐색 dialog의 후보 한 행이다. 제외 사유가 있는 후보는 체크할 수 없고 표시만
     // 된다 (stage-8-plan 5.2).
     struct discovery_row_view
@@ -260,6 +280,9 @@ namespace gitman {
         std::optional<settings_dialog_view> settings_dialog {};
         // 값이 있으면 로컬 변경 확인 dialog가 화면을 덮는다 (2.3).
         std::optional<local_changes_dialog_view> local_changes_dialog {};
+        // 열린 문서가 없을 때의 시작 페이지다 (A1.3). 값이 있으면 카드 목록 자리를
+        // 대신 채운다.
+        std::optional<start_page_view> start_page {};
         // 값이 있으면 카드 컨텍스트 메뉴가 앵커 좌표에 떠 있다 (3장).
         std::optional<context_menu_view> context_menu {};
         // 값이 있으면 탐색 후보 선택 등록 dialog가 화면을 덮는다.

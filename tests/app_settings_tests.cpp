@@ -50,10 +50,8 @@ namespace {
             return result;
         }
 
-        [[nodiscard]] gitman::workspace_file_commit_result atomic_commit(
-            const std::u8string_view document_path, const std::u8string_view backup_path, const std::u8string_view bytes, const bool replace_existing) noexcept override
+        [[nodiscard]] gitman::workspace_file_commit_result atomic_commit(const std::u8string_view document_path, const std::u8string_view bytes, const bool replace_existing) noexcept override
         {
-            static_cast<void>(backup_path);
             last_replace_existing_ = replace_existing;
             ++commit_count_;
             gitman::workspace_file_commit_result result {};

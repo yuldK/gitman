@@ -26,9 +26,6 @@ namespace gitman {
         write,
         flush,
         replace,
-        // replace 도중 원본이 backup 위치로 이동된 뒤 복원까지 실패했다. 원본 내용은
-        // backup 경로에만 남아 있으므로 호출자가 복구 안내를 구분해서 표시해야 한다.
-        restore,
     };
 
     struct workspace_file_commit_result
@@ -53,7 +50,9 @@ namespace gitman {
         virtual ~workspace_document_file_system() = default;
 
         [[nodiscard]] virtual workspace_file_read_result read(std::u8string_view path) noexcept = 0;
-        [[nodiscard]] virtual workspace_file_commit_result atomic_commit(std::u8string_view document_path, std::u8string_view backup_path, std::u8string_view bytes, bool replace_existing) noexcept
-            = 0;
+        // 임시 파일에 쓰고 원자적으로 교체한다. backup 파일은 남기지 않는다
+        // (2026-08-21 사용자 지시). `replace_existing`이 거짓이면 이미 있는 파일을
+        // 덮어쓰지 않고 실패한다.
+        [[nodiscard]] virtual workspace_file_commit_result atomic_commit(std::u8string_view document_path, std::u8string_view bytes, bool replace_existing) noexcept = 0;
     };
 } // namespace gitman

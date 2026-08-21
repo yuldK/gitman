@@ -7,9 +7,6 @@
 #include <string_view>
 
 namespace gitman {
-    // 앱 설정 파일의 backup 경로다. 문서와 같은 `.bak` 규칙을 쓴다.
-    [[nodiscard]] std::u8string app_settings_backup_path(std::u8string_view path);
-
     // 원본 JSON 위에 값만 덮어써 알 수 없는 키를 보존한다. shadow가 비어 있으면 새
     // object에서 시작한다. test가 직접 부를 수 있도록 store와 분리해 둔다.
     [[nodiscard]] std::u8string serialize_app_settings_json(const app_settings& settings, std::u8string_view shadow_source_json);

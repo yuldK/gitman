@@ -248,11 +248,6 @@ namespace gitman {
             return result;
         }
 
-        bool is_valid_recovery_document(const workspace_document_parse_result& result) noexcept
-        {
-            return result.document.has_value() && result.has_errors() == false;
-        }
-
         diagnostic_code commit_diagnostic_code(const workspace_file_commit_failure failure) noexcept
         {
             switch (failure)
@@ -262,7 +257,6 @@ namespace gitman {
             case workspace_file_commit_failure::flush:
                 return diagnostic_code::document_flush_failed;
             case workspace_file_commit_failure::replace:
-            case workspace_file_commit_failure::restore:
                 return diagnostic_code::document_replace_failed;
             case workspace_file_commit_failure::none:
                 return diagnostic_code::unknown;
@@ -280,21 +274,12 @@ namespace gitman {
                 return u8"작업공간 문서 임시 파일을 디스크에 반영하지 못했습니다.";
             case workspace_file_commit_failure::replace:
                 return u8"작업공간 문서 원본을 교체하지 못했습니다.";
-            case workspace_file_commit_failure::restore:
-                return u8"작업공간 문서 교체와 원본 복원이 모두 실패해 원본이 backup 위치에만 남았습니다. `.bak` 파일에서 복구할 수 있습니다.";
             case workspace_file_commit_failure::none:
                 return u8"작업공간 문서 저장에 실패했습니다.";
             }
             return u8"작업공간 문서 저장에 실패했습니다.";
         }
     } // namespace
-
-    std::u8string workspace_document_backup_path(const std::u8string_view document_path)
-    {
-        std::u8string result { document_path };
-        result.append(u8".bak");
-        return result;
-    }
 
     json_project_store::json_project_store(workspace_document_file_system& file_system, project_path_resolver& path_resolver) noexcept
         : file_system_ { file_system }
@@ -324,14 +309,12 @@ namespace gitman {
         {
             result.revision = make_revision_token(revision_file_state::missing, std::u8string { document_path }, {}, {}, {});
             result.diagnostics.push_back(make_diagnostic(diagnostic_code::document_not_found, diagnostic_severity::error, u8"작업공간 문서를 찾을 수 없습니다.", document_path, source.native_error));
-            append_recovery_diagnostic(document_path, result);
             return result;
         }
         if (source.state == workspace_file_read_state::failed)
         {
             result.revision = make_revision_token(revision_file_state::unavailable, std::u8string { document_path }, {}, {}, {});
             result.diagnostics.push_back(make_diagnostic(diagnostic_code::document_read_failed, diagnostic_severity::error, u8"작업공간 문서를 읽지 못했습니다.", document_path, source.native_error));
-            append_recovery_diagnostic(document_path, result);
             return result;
         }
 
@@ -339,95 +322,6 @@ namespace gitman {
         result.revision = make_revision_token(revision_file_state::present, std::u8string { document_path }, source.bytes, parsed.shadow.source_json, parsed.shadow.project_source_indices);
         result.document = std::move(parsed.document);
         result.diagnostics = std::move(parsed.diagnostics);
-        if (result.document.has_value() == false)
-            append_recovery_diagnostic(document_path, result);
-        return result;
-    }
-
-    void json_project_store::append_recovery_diagnostic(const std::u8string_view document_path, project_store_load_result& result)
-    {
-        const std::u8string backup_path { workspace_document_backup_path(document_path) };
-        workspace_file_read_result backup { file_system_.read(backup_path) };
-        if (backup.state == workspace_file_read_state::not_found)
-            return;
-        if (backup.state == workspace_file_read_state::failed)
-        {
-            result.diagnostics.push_back(
-                make_diagnostic(diagnostic_code::backup_invalid, diagnostic_severity::warning, u8"backup 작업공간 문서를 읽을 수 없습니다.", backup_path, backup.native_error));
-            return;
-        }
-
-        const workspace_document_parse_result parsed { parse_and_resolve(backup.bytes, backup_path, path_resolver_) };
-        if (is_valid_recovery_document(parsed))
-        {
-            result.diagnostics.push_back(
-                make_diagnostic(diagnostic_code::recovery_available, diagnostic_severity::warning, u8"유효한 backup이 있습니다. 명시적으로 열고 저장해야 복구됩니다.", backup_path));
-            return;
-        }
-        result.diagnostics.push_back(make_diagnostic(diagnostic_code::backup_invalid, diagnostic_severity::warning, u8"backup 작업공간 문서가 유효하지 않습니다.", backup_path));
-    }
-
-    project_store_load_result json_project_store::load_backup(const std::u8string_view document_path) noexcept
-    {
-        try
-        {
-            return load_backup_impl(document_path);
-        }
-        catch (...)
-        {
-            project_store_load_result result {};
-            result.source = workspace_document_source::backup;
-            const std::u8string backup_path { workspace_document_backup_path(document_path) };
-            result.diagnostics.push_back(
-                make_diagnostic(diagnostic_code::backup_invalid, diagnostic_severity::error, u8"backup 작업공간 문서를 읽는 중 예기치 않은 오류가 발생했습니다.", backup_path));
-            return result;
-        }
-    }
-
-    project_store_load_result json_project_store::load_backup_impl(const std::u8string_view document_path)
-    {
-        project_store_load_result result {};
-        result.source = workspace_document_source::backup;
-
-        revision_file_state primary_state { revision_file_state::unavailable };
-        std::u8string primary_bytes {};
-        const workspace_file_read_result primary { file_system_.read(document_path) };
-        if (primary.state == workspace_file_read_state::available)
-        {
-            primary_state = revision_file_state::present;
-            primary_bytes = primary.bytes;
-        }
-        else if (primary.state == workspace_file_read_state::not_found)
-            primary_state = revision_file_state::missing;
-        else
-        {
-            result.diagnostics.push_back(
-                make_diagnostic(diagnostic_code::document_read_failed, diagnostic_severity::error, u8"복구 저장에 필요한 primary revision을 읽지 못했습니다.", document_path, primary.native_error));
-        }
-
-        const std::u8string backup_path { workspace_document_backup_path(document_path) };
-        workspace_file_read_result backup { file_system_.read(backup_path) };
-        if (backup.state != workspace_file_read_state::available)
-        {
-            result.revision = make_revision_token(primary_state, std::u8string { document_path }, std::move(primary_bytes), {}, {});
-            result.diagnostics.push_back(make_diagnostic(diagnostic_code::backup_invalid, diagnostic_severity::error,
-                backup.state == workspace_file_read_state::not_found ? u8"backup 작업공간 문서를 찾을 수 없습니다." : u8"backup 작업공간 문서를 읽지 못했습니다.", backup_path, backup.native_error));
-            return result;
-        }
-
-        workspace_document_parse_result parsed { parse_and_resolve(backup.bytes, backup_path, path_resolver_) };
-        if (is_valid_recovery_document(parsed) == false)
-        {
-            append_diagnostics(result.diagnostics, std::move(parsed.diagnostics));
-            result.revision = make_revision_token(primary_state, std::u8string { document_path }, std::move(primary_bytes), {}, {});
-            result.diagnostics.push_back(make_diagnostic(diagnostic_code::backup_invalid, diagnostic_severity::error, u8"backup 작업공간 문서가 유효하지 않아 복구할 수 없습니다.", backup_path));
-            return result;
-        }
-
-        parsed.document->document_path = document_path;
-        result.revision = make_revision_token(primary_state, std::u8string { document_path }, std::move(primary_bytes), backup.bytes, parsed.shadow.project_source_indices);
-        result.document = std::move(parsed.document);
-        append_diagnostics(result.diagnostics, std::move(parsed.diagnostics));
         return result;
     }
 
@@ -496,9 +390,8 @@ namespace gitman {
             return result;
         }
 
-        const std::u8string backup_path { workspace_document_backup_path(document_path) };
         const bool replace_existing { revision->file_state == revision_file_state::present };
-        const workspace_file_commit_result commit { file_system_.atomic_commit(document_path, backup_path, serialized.bytes, replace_existing) };
+        const workspace_file_commit_result commit { file_system_.atomic_commit(document_path, serialized.bytes, replace_existing) };
         if (commit.succeeded() == false)
         {
             result.diagnostics.push_back(

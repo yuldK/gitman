@@ -12,12 +12,6 @@
 #include <vector>
 
 namespace gitman {
-    enum class workspace_document_source
-    {
-        primary,
-        backup,
-    };
-
     class workspace_revision_token
     {
     public:
@@ -45,7 +39,6 @@ namespace gitman {
         std::optional<workspace_document> document {};
         std::vector<diagnostic> diagnostics {};
         workspace_revision_token revision {};
-        workspace_document_source source { workspace_document_source::primary };
 
         [[nodiscard]] bool has_errors() const noexcept;
         [[nodiscard]] bool has_warnings() const noexcept;
@@ -72,7 +65,6 @@ namespace gitman {
         virtual ~project_store() = default;
 
         [[nodiscard]] virtual project_store_load_result load(std::u8string_view document_path) noexcept = 0;
-        [[nodiscard]] virtual project_store_load_result load_backup(std::u8string_view document_path) noexcept = 0;
         [[nodiscard]] virtual project_store_save_result save(std::u8string_view document_path, const workspace_document& document, const workspace_revision_token& expected_revision) noexcept = 0;
 
     protected:

@@ -40,7 +40,7 @@ namespace gitman {
             return true;
         }
 
-        // "primary도 backup도 없는 새 경로"의 load 결과인지 판정한다. 그 외의 진단이
+        // "파일이 없는 새 경로"의 load 결과인지 판정한다. 그 외의 진단이
         // 하나라도 섞여 있으면 출력 경로의 상태를 신뢰할 수 없어 생성을 거부한다.
         bool output_is_cleanly_missing(const project_store_load_result& loaded) noexcept
         {

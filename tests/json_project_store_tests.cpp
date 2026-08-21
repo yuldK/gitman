@@ -82,11 +82,6 @@ namespace {
             return last_document_path_;
         }
 
-        [[nodiscard]] std::u8string_view last_backup_path() const noexcept
-        {
-            return last_backup_path_;
-        }
-
         [[nodiscard]] std::u8string_view last_candidate_bytes() const noexcept
         {
             return last_candidate_bytes_;
@@ -107,14 +102,12 @@ namespace {
             }
         }
 
-        [[nodiscard]] gitman::workspace_file_commit_result atomic_commit(
-            const std::u8string_view document_path, const std::u8string_view backup_path, const std::u8string_view bytes, const bool replace_existing) noexcept override
+        [[nodiscard]] gitman::workspace_file_commit_result atomic_commit(const std::u8string_view document_path, const std::u8string_view bytes, const bool replace_existing) noexcept override
         {
             try
             {
                 ++atomic_commit_count_;
                 last_document_path_ = document_path;
-                last_backup_path_ = backup_path;
                 last_candidate_bytes_ = bytes;
                 last_replace_existing_ = replace_existing;
 
@@ -129,8 +122,6 @@ namespace {
                         protocol_error_ = true;
                         return { gitman::workspace_file_commit_failure::replace, injected_native_error };
                     }
-                    const std::u8string previous_bytes { existing->bytes };
-                    set_file(backup_path, previous_bytes);
                     set_file(document_path, bytes);
                     return {};
                 }
@@ -172,7 +163,6 @@ namespace {
         bool protocol_error_ {};
         bool last_replace_existing_ {};
         std::u8string last_document_path_ {};
-        std::u8string last_backup_path_ {};
         std::u8string last_candidate_bytes_ {};
     };
 
@@ -337,7 +327,7 @@ namespace {
     }
 } // namespace
 
-TEST_CASE("Project store creates new documents without replacement backups", "[workspace][store][save]")
+TEST_CASE("Project store creates new documents without replacing an existing file", "[workspace][store][save]")
 {
     fake_workspace_document_file_system file_system {};
     fake_project_path_resolver path_resolver {};
@@ -358,7 +348,6 @@ TEST_CASE("Project store creates new documents without replacement backups", "[w
     REQUIRE_FALSE(file_system.protocol_error());
     REQUIRE_FALSE(file_system.last_replace_existing());
     REQUIRE(u8_equal(file_system.last_document_path(), fake_document_path));
-    REQUIRE(u8_equal(file_system.last_backup_path(), u8"C:/gitman-s2-d4/workspace.version-list.bak"));
     constexpr std::u8string_view expected { u8"{\r\n    \"schema_version\": 1,\r\n    \"projects\": []\r\n}\r\n" };
     REQUIRE(u8_equal(file_system.last_candidate_bytes(), expected));
     REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.version-list.bak"));
@@ -411,9 +400,8 @@ TEST_CASE("Project store preserves shadow fields and canonical output", "[worksp
     REQUIRE(output->find(u8"\"display_name\"") == std::u8string::npos);
     REQUIRE(output->find(u8"\"vcs_hint\"") == std::u8string::npos);
 
-    const std::u8string* backup { file_system.file_bytes(u8"C:/gitman-s2-d4/workspace.version-list.bak") };
-    REQUIRE(backup != nullptr);
-    REQUIRE(u8_equal(*backup, source));
+    // 저장은 backup 파일을 남기지 않는다 (2026-08-21 사용자 지시).
+    REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.version-list.bak"));
 }
 
 TEST_CASE("Project store round-trips workspace settings and unknown keys", "[workspace][store][save][settings]")
@@ -623,7 +611,6 @@ TEST_CASE("Project store maps injected commit failures without changing original
         failure_case { gitman::workspace_file_commit_failure::write, gitman::diagnostic_code::document_write_failed },
         failure_case { gitman::workspace_file_commit_failure::flush, gitman::diagnostic_code::document_flush_failed },
         failure_case { gitman::workspace_file_commit_failure::replace, gitman::diagnostic_code::document_replace_failed },
-        failure_case { gitman::workspace_file_commit_failure::restore, gitman::diagnostic_code::document_replace_failed },
     };
     constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };
 
@@ -647,63 +634,6 @@ TEST_CASE("Project store maps injected commit failures without changing original
         REQUIRE(u8_equal(*file_system.file_bytes(fake_document_path), source));
         REQUIRE_FALSE(file_system.has_file(u8"C:/gitman-s2-d4/workspace.version-list.bak"));
     }
-}
-
-TEST_CASE("Project store reports backups and requires explicit recovery", "[workspace][store][recovery]")
-{
-    constexpr std::u8string_view malformed_primary { u8"{ malformed" };
-    constexpr std::u8string_view valid_backup { u8"{\"schema_version\":1,\"projects\":[]}" };
-    const std::u8string backup_path { gitman::workspace_document_backup_path(fake_document_path) };
-    fake_workspace_document_file_system file_system {};
-    file_system.set_file(fake_document_path, malformed_primary);
-    file_system.set_file(backup_path, valid_backup);
-    fake_project_path_resolver path_resolver {};
-    gitman::json_project_store store { file_system, path_resolver };
-
-    const gitman::project_store_load_result primary { store.load(fake_document_path) };
-    REQUIRE_FALSE(primary.document.has_value());
-    REQUIRE(primary.source == gitman::workspace_document_source::primary);
-    REQUIRE(find_diagnostic(primary.diagnostics, gitman::diagnostic_code::malformed_document) != nullptr);
-    REQUIRE(find_diagnostic(primary.diagnostics, gitman::diagnostic_code::recovery_available) != nullptr);
-    REQUIRE(u8_equal(*file_system.file_bytes(fake_document_path), malformed_primary));
-
-    const gitman::project_store_load_result recovery { store.load_backup(fake_document_path) };
-    REQUIRE(recovery.document.has_value());
-    REQUIRE(recovery.source == gitman::workspace_document_source::backup);
-    REQUIRE(recovery.revision.valid());
-    REQUIRE(u8_equal(recovery.document->document_path, fake_document_path));
-    REQUIRE(u8_equal(*file_system.file_bytes(fake_document_path), malformed_primary));
-
-    const gitman::project_store_save_result saved { store.save(fake_document_path, *recovery.document, recovery.revision) };
-    REQUIRE(saved.succeeded());
-    REQUIRE(file_system.last_replace_existing());
-    REQUIRE(u8_equal(*file_system.file_bytes(backup_path), malformed_primary));
-    const gitman::workspace_document_parse_result parsed { gitman::parse_workspace_document_json(*file_system.file_bytes(fake_document_path), fake_document_path) };
-    REQUIRE(parsed.document.has_value());
-    REQUIRE_FALSE(parsed.has_errors());
-}
-
-TEST_CASE("Project store rejects invalid recovery backups", "[workspace][store][recovery]")
-{
-    constexpr std::u8string_view malformed_primary { u8"{ malformed" };
-    constexpr std::u8string_view invalid_backup { u8"[]" };
-    const std::u8string backup_path { gitman::workspace_document_backup_path(fake_document_path) };
-    fake_workspace_document_file_system file_system {};
-    file_system.set_file(fake_document_path, malformed_primary);
-    file_system.set_file(backup_path, invalid_backup);
-    fake_project_path_resolver path_resolver {};
-    gitman::json_project_store store { file_system, path_resolver };
-
-    const gitman::project_store_load_result primary { store.load(fake_document_path) };
-    REQUIRE_FALSE(primary.document.has_value());
-    REQUIRE(find_diagnostic(primary.diagnostics, gitman::diagnostic_code::backup_invalid) != nullptr);
-    REQUIRE(find_diagnostic(primary.diagnostics, gitman::diagnostic_code::recovery_available) == nullptr);
-
-    const gitman::project_store_load_result recovery { store.load_backup(fake_document_path) };
-    REQUIRE_FALSE(recovery.document.has_value());
-    REQUIRE(find_diagnostic(recovery.diagnostics, gitman::diagnostic_code::invalid_document_root) != nullptr);
-    REQUIRE(find_diagnostic(recovery.diagnostics, gitman::diagnostic_code::backup_invalid) != nullptr);
-    REQUIRE(file_system.atomic_commit_count() == 0);
 }
 
 TEST_CASE("Win32 workspace storage creates replaces and detects external changes", "[workspace][store][win32]")
@@ -740,8 +670,8 @@ TEST_CASE("Win32 workspace storage creates replaces and detects external changes
     loaded.document->projects.push_back(std::move(project));
     const gitman::project_store_save_result replaced { store.save(document_path_utf8, *loaded.document, loaded.revision) };
     REQUIRE(replaced.succeeded());
-    REQUIRE(std::filesystem::is_regular_file(backup_path));
-    REQUIRE(u8_equal(read_file_bytes(backup_path), first_bytes));
+    // 교체 저장도 backup 파일을 남기지 않는다 (2026-08-21 사용자 지시).
+    REQUIRE_FALSE(std::filesystem::exists(backup_path));
     REQUIRE_FALSE(has_temporary_artifact(fixture.root()));
 
     const gitman::project_store_load_result before_external_change { store.load(document_path_utf8) };
@@ -752,7 +682,7 @@ TEST_CASE("Win32 workspace storage creates replaces and detects external changes
     REQUIRE_FALSE(conflicted.succeeded());
     REQUIRE(find_diagnostic(conflicted.diagnostics, gitman::diagnostic_code::concurrent_modification) != nullptr);
     REQUIRE(u8_equal(read_file_bytes(document_path), external_bytes));
-    REQUIRE(u8_equal(read_file_bytes(backup_path), first_bytes));
+    REQUIRE_FALSE(std::filesystem::exists(backup_path));
     REQUIRE_FALSE(has_temporary_artifact(fixture.root()));
 }
 
@@ -769,7 +699,7 @@ TEST_CASE("Win32 workspace storage cleans temporary files after replace failure"
     REQUIRE(locked.valid());
 
     gitman::win32::workspace_document_file_system file_system {};
-    const gitman::workspace_file_commit_result committed { file_system.atomic_commit(document_path.u8string(), backup_path.u8string(), candidate_bytes, true) };
+    const gitman::workspace_file_commit_result committed { file_system.atomic_commit(document_path.u8string(), candidate_bytes, true) };
     REQUIRE_FALSE(committed.succeeded());
     REQUIRE(committed.failure == gitman::workspace_file_commit_failure::replace);
     REQUIRE(u8_equal(read_file_bytes(document_path), original_bytes));

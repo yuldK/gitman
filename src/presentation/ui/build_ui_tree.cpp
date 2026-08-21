@@ -10,6 +10,7 @@
 #include "presentation/ui/local_changes_dialog_element.h"
 #include "presentation/ui/log_view_element.h"
 #include "presentation/ui/settings_dialog_element.h"
+#include "presentation/ui/start_page_element.h"
 #include "presentation/ui/switch_dialog_element.h"
 #include "presentation/ui/toolbar_element.h"
 
@@ -75,9 +76,18 @@ namespace gitman::ui {
                 empty_config.text = std::u8string { empty_state_text(view.empty_state) };
                 empty_config.font_size = 13.0f;
                 auto empty_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::empty_state }, std::move(empty_config)) };
-                empty_label->set_visible(view.empty_state != view_empty_state::none);
+                // 열린 문서가 없으면 안내 문구 대신 시작 페이지가 그 자리를 채운다
+                // (app-shell-design A1.3).
+                empty_label->set_visible(view.empty_state != view_empty_state::none && view.start_page.has_value() == false);
                 empty_label_ = empty_label.get();
                 add_child(std::move(empty_label));
+
+                if (view.start_page.has_value())
+                {
+                    auto start_page { std::make_unique<start_page_element>(*view.start_page) };
+                    start_page_ = start_page.get();
+                    add_child(std::move(start_page));
+                }
 
                 // 선택 카드가 있을 때만 하단 로그 pane을 둔다 (REQ-008). 스크롤
                 // 막대의 thumb 계산에 본문 높이가 필요해 layout을 미리 구한다
@@ -162,6 +172,9 @@ namespace gitman::ui {
                     local_changes_dialog_->arrange({ context.slot, scale });
                 if (context_menu_ != nullptr)
                     context_menu_->arrange({ context.slot, scale });
+                if (start_page_ != nullptr)
+                    start_page_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale });
+
                 const float empty_height { 22.0f * scale };
                 const float empty_top { layout.content_top + (layout.viewport_height - empty_height) / 2.0f };
                 const rect_f empty_slot { layout_margin * scale * 2.0f, empty_top, context.slot.width - layout_margin * 4.0f * scale, empty_height };
@@ -180,6 +193,7 @@ namespace gitman::ui {
             ui_element* notice_ { nullptr };
             ui_element* card_list_ { nullptr };
             ui_element* empty_label_ { nullptr };
+            ui_element* start_page_ { nullptr };
             ui_element* log_pane_ { nullptr };
             ui_element* switch_dialog_ { nullptr };
             ui_element* settings_dialog_ { nullptr };

@@ -73,10 +73,6 @@ namespace gitman {
             return u8"document_replace_failed";
         case diagnostic_code::concurrent_modification:
             return u8"concurrent_modification";
-        case diagnostic_code::backup_invalid:
-            return u8"backup_invalid";
-        case diagnostic_code::recovery_available:
-            return u8"recovery_available";
         case diagnostic_code::repository_unavailable:
             return u8"repository_unavailable";
         case diagnostic_code::operation_failed:

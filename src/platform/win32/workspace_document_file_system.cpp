@@ -281,19 +281,11 @@ namespace gitman::win32 {
                 DeleteFileW(path.c_str());
         }
 
-        workspace_file_commit_result atomic_commit_impl(const std::u8string_view document_path, const std::u8string_view backup_path, const std::u8string_view bytes, const bool replace_existing)
+        workspace_file_commit_result atomic_commit_impl(const std::u8string_view document_path, const std::u8string_view bytes, const bool replace_existing)
         {
             prepared_path prepared_document { prepare_file_path(document_path) };
             if (prepared_document.value.has_value() == false)
                 return { workspace_file_commit_failure::write, prepared_document.native_error };
-
-            prepared_path prepared_backup {};
-            if (replace_existing)
-            {
-                prepared_backup = prepare_file_path(backup_path);
-                if (prepared_backup.value.has_value() == false)
-                    return { workspace_file_commit_failure::write, prepared_backup.native_error };
-            }
 
             temporary_file temporary { create_temporary_file(*prepared_document.value) };
             if (temporary.handle.valid() == false)
@@ -317,29 +309,15 @@ namespace gitman::win32 {
             }
             temporary.handle.reset();
 
+            // 임시 파일 속성(temporary·not indexed)이 교체 후 문서에 남지 않게 한다.
+            // 실패해도 내용은 온전하므로 교체를 계속한다.
+            static_cast<void>(SetFileAttributesW(temporary.path.c_str(), FILE_ATTRIBUTE_NORMAL));
+
+            // backup 파일은 만들지 않는다 (2026-08-21 사용자 지시). 같은 볼륨의
+            // rename이라 교체는 그대로 원자적이다.
+            const DWORD move_flags { MOVEFILE_WRITE_THROUGH | (replace_existing ? MOVEFILE_REPLACE_EXISTING : 0u) };
             SetLastError(ERROR_SUCCESS);
-            if (replace_existing)
-            {
-                if (ReplaceFileW(prepared_document.value->c_str(), temporary.path.c_str(), prepared_backup.value->c_str(), 0, nullptr, nullptr) != FALSE)
-                    return {};
-
-                const std::uint32_t replace_error { last_error_or(ERROR_WRITE_FAULT) };
-                if (replace_error == ERROR_UNABLE_TO_MOVE_REPLACEMENT_2)
-                {
-                    // 원본이 이미 backup 위치로 이동된 상태다. 복원까지 실패하면 원본이
-                    // backup 경로에만 남으므로 호출자가 구분할 수 있게 별도로 보고한다.
-                    SetLastError(ERROR_SUCCESS);
-                    if (MoveFileExW(prepared_backup.value->c_str(), prepared_document.value->c_str(), MOVEFILE_WRITE_THROUGH) == FALSE)
-                    {
-                        delete_temporary_file(temporary.path);
-                        return { workspace_file_commit_failure::restore, last_error_or(replace_error) };
-                    }
-                }
-                delete_temporary_file(temporary.path);
-                return { workspace_file_commit_failure::replace, replace_error };
-            }
-
-            if (MoveFileExW(temporary.path.c_str(), prepared_document.value->c_str(), MOVEFILE_WRITE_THROUGH) != FALSE)
+            if (MoveFileExW(temporary.path.c_str(), prepared_document.value->c_str(), move_flags) != FALSE)
                 return {};
 
             const std::uint32_t replace_error { last_error_or(ERROR_WRITE_FAULT) };
@@ -360,12 +338,11 @@ namespace gitman::win32 {
         }
     }
 
-    workspace_file_commit_result workspace_document_file_system::atomic_commit(
-        const std::u8string_view document_path, const std::u8string_view backup_path, const std::u8string_view bytes, const bool replace_existing) noexcept
+    workspace_file_commit_result workspace_document_file_system::atomic_commit(const std::u8string_view document_path, const std::u8string_view bytes, const bool replace_existing) noexcept
     {
         try
         {
-            return atomic_commit_impl(document_path, backup_path, bytes, replace_existing);
+            return atomic_commit_impl(document_path, bytes, replace_existing);
         }
         catch (...)
         {

@@ -55,6 +55,13 @@ namespace gitman::ui {
         card_update,
         card_switch,
         empty_state,
+        // 열린 문서가 없을 때의 시작 페이지다 (app-shell-design A1.3). 최근 항목
+        // 행과 제거 아이콘은 컨텍스트 메뉴처럼 owner 값에 index를 담아 구분한다.
+        start_page,
+        start_page_open_document,
+        start_page_generate_document,
+        start_page_recent_item,
+        start_page_recent_remove,
         // 선택 카드 전용 하단 로그 pane과 헤더 버튼들이다 (단계 7).
         log_pane,
         log_title,

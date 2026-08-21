@@ -7,6 +7,6 @@ namespace gitman::win32 {
     {
     public:
         [[nodiscard]] workspace_file_read_result read(std::u8string_view path) noexcept override;
-        [[nodiscard]] workspace_file_commit_result atomic_commit(std::u8string_view document_path, std::u8string_view backup_path, std::u8string_view bytes, bool replace_existing) noexcept override;
+        [[nodiscard]] workspace_file_commit_result atomic_commit(std::u8string_view document_path, std::u8string_view bytes, bool replace_existing) noexcept override;
     };
 } // namespace gitman::win32

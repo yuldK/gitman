@@ -49,13 +49,13 @@ bin\gitman.exe --register-file-association
 
 ## 4. 사용자 데이터 위치
 
-앱은 자체 설정 저장소를 두지 않는다. 모든 상태는 사용자가 만든 `.version-list`
-문서에 있다.
+문서 상태는 사용자가 만든 `.version-list` 문서에 있고, 문서 밖의 앱 단위 설정은
+실행 파일 옆의 JSON 파일 하나에 있다 (app-shell-design A1).
 
 | 데이터 | 위치 |
 | --- | --- |
 | 프로젝트 목록·문서 설정(Git/SVN 경로, 경로 표시 방식)·창 배치 | 사용자가 만든 `<이름>.version-list` (UTF-8 JSON, 스키마 버전 1) |
-| 저장 backup | 같은 폴더의 `<이름>.version-list.bak` (저장 시 원자적 교체의 이전본) |
+| 최근에 연 문서 목록 | `gitman.exe`와 같은 폴더의 `gitman.app-settings.json` (UTF-8 JSON, 스키마 버전 1) |
 | 작업 로그 | 메모리 전용 (카드당 1,000 record ring buffer). 파일 로그는 없다 |
 | file association | `HKCU\Software\Classes`의 `.version-list`·`Gitman.VersionList` (등록한 경우만) |
 
@@ -68,13 +68,14 @@ bin\gitman.exe --register-file-association
 - exe 경로가 바뀌지 않았다면 file association도 그대로 유효하다. 경로가
   바뀌었으면 `--register-file-association`을 다시 실행한다.
 
-## 6. 백업과 복구
+## 6. 저장 안전성
 
-- 저장은 임시 파일 작성 → flush → 원자적 교체 순서이며, 교체 직전 원본이
-  `.bak`으로 남는다. 저장 중 중단돼도 원본 또는 backup이 보존된다.
-- 문서가 손상되면 앱이 항목별 오류를 표시하고 원본을 덮어쓰지 않는다. 유효한
-  `.bak`이 있으면 "유효한 backup이 있습니다" 진단이 표시되며, 복구는 `.bak`
-  파일을 명시적으로 열고 저장하는 방식이다 (자동 복구는 하지 않는다).
+- 저장은 임시 파일 작성 → flush → 원자적 교체(rename) 순서다. 저장 중 중단되면
+  원본이 그대로 남고 임시 파일은 지워진다.
+- **backup 파일은 만들지 않는다** (2026-08-21 사용자 지시). 이전 `.bak`을 만들던
+  동작과 `.bak` 기반 복구 진단은 제거했다. 구버전이 남긴 `.bak` 파일이 있다면
+  사용자가 직접 열어 쓰거나 지우면 된다.
+- 문서가 손상되면 앱이 항목별 오류를 표시하고 원본을 덮어쓰지 않는다.
 - 다른 프로그램이 문서를 동시에 수정하면 저장 시 revision 비교로 감지해 충돌
   오류를 표시하고 덮어쓰지 않는다.
 
@@ -82,7 +83,8 @@ bin\gitman.exe --register-file-association
 
 1. (등록했다면) `bin\gitman.exe --unregister-file-association`
 2. `gitman.exe` 삭제
-3. `.version-list` 문서와 `.bak`은 사용자 소유 데이터이므로 필요 시 직접 삭제
+3. `.version-list` 문서는 사용자 소유 데이터이므로 필요 시 직접 삭제
+4. 실행 파일 옆의 `gitman.app-settings.json`도 함께 삭제
 
 이외의 잔여물(레지스트리, AppData, 서비스)은 없다.
 

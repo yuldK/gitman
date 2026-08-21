@@ -35,11 +35,6 @@ namespace {
             return {};
         }
 
-        [[nodiscard]] gitman::project_store_load_result load_backup(std::u8string_view) noexcept override
-        {
-            return {};
-        }
-
         [[nodiscard]] gitman::project_store_save_result save(std::u8string_view, const gitman::workspace_document&, const gitman::workspace_revision_token&) noexcept override
         {
             return {};

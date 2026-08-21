@@ -38,6 +38,16 @@ namespace gitman {
     inline constexpr float layout_log_header_height { 26.0f };
     inline constexpr float layout_log_line_height { 15.0f };
     inline constexpr float layout_log_text_inset { 8.0f };
+    // 시작 페이지의 치수다 (app-shell-design A1.3). 두 열은 창이 좁으면 세로로
+    // 쌓인다.
+    inline constexpr float layout_start_page_padding { 28.0f };
+    inline constexpr float layout_start_page_title_height { 40.0f };
+    inline constexpr float layout_start_page_subtitle_height { 22.0f };
+    inline constexpr float layout_start_page_section_height { 26.0f };
+    inline constexpr float layout_start_page_row_height { 26.0f };
+    inline constexpr float layout_start_page_action_column_width { 240.0f };
+    inline constexpr float layout_start_page_stack_width { 720.0f };
+
     // switch dialog의 치수다. 후보 목록의 스크롤 한계 계산을 logic과 element가
     // 같은 값으로 하도록 여기에 둔다 (stage-7-plan 4.5).
     inline constexpr float layout_switch_dialog_width { 400.0f };

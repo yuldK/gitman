@@ -200,8 +200,6 @@ TEST_CASE("Diagnostics expose structured defaults and stable names", "[domain][d
         diagnostic_name_case { gitman::diagnostic_code::document_flush_failed, u8"document_flush_failed" },
         diagnostic_name_case { gitman::diagnostic_code::document_replace_failed, u8"document_replace_failed" },
         diagnostic_name_case { gitman::diagnostic_code::concurrent_modification, u8"concurrent_modification" },
-        diagnostic_name_case { gitman::diagnostic_code::backup_invalid, u8"backup_invalid" },
-        diagnostic_name_case { gitman::diagnostic_code::recovery_available, u8"recovery_available" },
         diagnostic_name_case { gitman::diagnostic_code::repository_unavailable, u8"repository_unavailable" },
         diagnostic_name_case { gitman::diagnostic_code::operation_failed, u8"operation_failed" },
         diagnostic_name_case { gitman::diagnostic_code::invalid_process_request, u8"invalid_process_request" },

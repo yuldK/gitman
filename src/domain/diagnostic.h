@@ -43,8 +43,6 @@ namespace gitman {
         document_flush_failed,
         document_replace_failed,
         concurrent_modification,
-        backup_invalid,
-        recovery_available,
         repository_unavailable,
         operation_failed,
         invalid_process_request,

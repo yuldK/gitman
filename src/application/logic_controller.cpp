@@ -537,9 +537,10 @@ namespace gitman {
 
     bool logic_controller::has_log_pane() const noexcept
     {
-        // 로그 pane은 항상 열려 있다 (2026-08-20 검수: 클릭해야 열리는 UX 제거).
-        // 선택 카드가 없으면 안내 제목의 빈 pane이다.
-        return true;
+        // 로그 pane은 문서가 열려 있는 동안 항상 열려 있다 (2026-08-20 검수:
+        // 클릭해야 열리는 UX 제거). 선택 카드가 없으면 안내 제목의 빈 pane이다.
+        // 시작 페이지에는 로그가 없으므로 pane도 두지 않는다 (app-shell-design A1.3).
+        return document_.has_value();
     }
 
     float logic_controller::log_content_height() const noexcept
@@ -1770,6 +1771,7 @@ namespace gitman {
 
         // 선택 카드의 로그 뷰다. 필터를 통과한 record만 담고 스크롤은 이미 고정된
         // 값이라 렌더러는 그대로 그린다 (REQ-008).
+        if (has_log_pane())
         {
             // pane은 항상 열려 있다. 선택 카드가 없으면 안내 제목의 빈 모델을 게시한다.
             log_view_model log {};
@@ -1982,7 +1984,22 @@ namespace gitman {
         if (document_loading_)
             snapshot->empty_state = view_empty_state::document_loading;
         else if (document_.has_value() == false)
+        {
             snapshot->empty_state = view_empty_state::no_document;
+            // 열린 문서가 없으면 빈 문구 대신 시작 페이지를 그린다 (A1.3).
+            start_page_view page {};
+            page.loading = app_settings_loaded_ == false;
+            page.recents.reserve(app_settings_.recent_documents.size());
+            for (const recent_document& value : app_settings_.recent_documents)
+            {
+                recent_document_view row {};
+                row.display_name = value.display_name.empty() ? recent_document_display_name(value.path) : value.display_name;
+                row.folder = std::u8string { windows_parent_directory(value.path) };
+                row.path = value.path;
+                page.recents.push_back(std::move(row));
+            }
+            snapshot->start_page = { std::move(page) };
+        }
         else if (cards_.empty())
             snapshot->empty_state = view_empty_state::no_projects;
         else if (snapshot->cards.empty())

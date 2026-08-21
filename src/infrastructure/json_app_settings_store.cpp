@@ -83,13 +83,6 @@ namespace gitman {
         }
     } // namespace
 
-    std::u8string app_settings_backup_path(const std::u8string_view path)
-    {
-        std::u8string result { path };
-        result.append(u8".bak");
-        return result;
-    }
-
     std::u8string serialize_app_settings_json(const app_settings& settings, const std::u8string_view shadow_source_json)
     {
         json root { shadow_root(shadow_source_json) };
@@ -196,7 +189,7 @@ namespace gitman {
             std::u8string bytes { serialize_app_settings_json(settings, shadow_source_json) };
             const workspace_file_read_result current { file_system_->read(path) };
             const bool replace_existing { current.state == workspace_file_read_state::available };
-            const workspace_file_commit_result commit { file_system_->atomic_commit(path, app_settings_backup_path(path), bytes, replace_existing) };
+            const workspace_file_commit_result commit { file_system_->atomic_commit(path, bytes, replace_existing) };
 
             app_settings_save_result result {};
             if (commit.succeeded() == false)

@@ -43,6 +43,9 @@ namespace gitman {
         // G1). 문서의 `window`와 같은 좌표 규칙이며, 문서 없이 시작할 때의 복원
         // fallback이다 (적용 우선순위: 여는 문서의 배치 > 이 값 > 기본값).
         std::optional<window_placement> window {};
+        // 앱 단위 전역 설정이다 (같은 설계 G3). 모든 필드가 구체 값이며, 문서가
+        // 덮어쓰지 않은 항목의 유효 값이 된다.
+        workspace_settings settings {};
 
         [[nodiscard]] bool operator==(const app_settings&) const noexcept = default;
     };

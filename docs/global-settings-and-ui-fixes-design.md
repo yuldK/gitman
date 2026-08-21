@@ -1,6 +1,10 @@
 # 전역 설정 계층 · 앱 단위 창 배치 · UI 결함 수정 설계
 
-상태: **검수 승인** (2026-08-22 작성·검수, 결정 사항은 문서 끝 검수 결과 참조)
+상태: **구현 완료** (2026-08-22 작성·검수·구현. 검증 기록:
+`docs/verification/2026-08-22-g4-switch-scroll-tooltip.md` ·
+`2026-08-22-g5-undetermined-color.md` · `2026-08-22-g2-toolbar-generate-removal.md` ·
+`2026-08-22-g1-app-window-placement.md` · `2026-08-22-dialog-border-and-elapsed-time.md`
+(후속 지시) · `2026-08-22-g3-global-settings.md`)
 
 2026-08-22 사용자 요구 5건의 설계를 기록한다.
 

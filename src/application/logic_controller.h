@@ -144,6 +144,9 @@ namespace gitman {
         // 폴더 기준 상대 경로다.
         [[nodiscard]] std::u8string display_path(const project_definition& project) const;
         [[nodiscard]] bool relative_paths() const noexcept;
+        // 전역 설정 위에 문서 override를 얹은 유효 설정이다. 조회·작업 요청과 표시,
+        // 파일 로그 여부가 모두 이 값을 쓴다 (G3.1).
+        [[nodiscard]] workspace_settings effective_settings() const;
         // 선택 카드가 있어 하단 로그 pane이 보이는 상태다. layout 계산과 view 구성이
         // 같은 판정을 써야 스크롤 한계가 어긋나지 않는다.
         [[nodiscard]] bool has_log_pane() const noexcept;
@@ -233,9 +236,12 @@ namespace gitman {
         std::optional<discovery_dialog_state> discovery_dialog_ {};
 
         // 환경설정 dialog의 경로 초안이다 (REQ-017). 값이 있으면 dialog가 열려
-        // 있다. 저장 전까지 문서 settings를 건드리지 않는다.
+        // 있다. 저장 전까지 문서·앱 settings를 건드리지 않는다.
         struct settings_dialog_state
         {
+            // 문서가 열려 있으면 문서 override를, 없으면 전역 설정을 편집한다
+            // (global-settings-and-ui-fixes-design G3.2).
+            bool document_mode { false };
             std::u8string git_path {};
             std::u8string svn_path {};
             // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design
@@ -247,6 +253,15 @@ namespace gitman {
             bool ignore_local_changes { false };
             // 카드 로그를 문서 폴더에 파일로 남길지의 초안이다 (A4.5).
             bool write_log_files { true };
+            // 문서 모드에서 "문서에 정의됨" 표시다 (G3.2 암묵 덮어쓰기: 값을
+            // 건드리면 켜지고, 저장 시 켜진 행만 override로 남는다). 전역 모드에서는
+            // 쓰지 않는다.
+            bool git_defined { false };
+            bool svn_defined { false };
+            bool timeout_defined { false };
+            bool submodules_defined { false };
+            bool ignore_local_defined { false };
+            bool log_files_defined { false };
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};

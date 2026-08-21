@@ -1,5 +1,7 @@
 #include "infrastructure/json_app_settings_store.h"
 
+#include "domain/path_syntax.h"
+
 #include <nlohmann/json.hpp>
 
 #include <array>
@@ -141,6 +143,76 @@ namespace gitman {
                 placement.maximized = maximized->get<bool>();
             return placement;
         }
+
+        // 전역 설정이다 (global-settings-and-ui-fixes-design G3). 문서 파서와 같은
+        // 검증 규칙이되, 앱 설정은 어떤 오류도 시작을 막지 않으므로 전부 경고로
+        // 남기고 그 필드만 기본값을 쓴다.
+        workspace_settings parse_global_settings(const json& root, app_settings_load_result& result, const std::u8string_view path)
+        {
+            workspace_settings settings {};
+            const auto source { root.find("settings") };
+            if (source == root.end() || source->is_null())
+                return settings;
+            if (source->is_object() == false)
+            {
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 settings는 object여야 합니다. 기본값을 사용합니다.", path));
+                return settings;
+            }
+
+            const auto read_executable = [&source, &result, &path](const char* const key, std::u8string& target) {
+                const auto value { source->find(key) };
+                if (value == source->end() || value->is_null())
+                    return;
+                if (value->is_string() == false)
+                {
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 실행 파일 경로는 문자열이어야 합니다. 기본값을 사용합니다.", path));
+                    return;
+                }
+                std::u8string executable { as_u8string(value->get_ref<const std::string&>()) };
+                // 빈 값은 "지정하지 않음"이며 자동 탐색으로 간다 (문서와 같은 규칙).
+                if (executable.empty() == false && is_absolute_windows_path(executable) == false)
+                {
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 실행 파일 경로는 절대 경로여야 합니다. 기본값을 사용합니다.", path));
+                    return;
+                }
+                target = std::move(executable);
+            };
+            read_executable("git_executable", settings.git_executable);
+            read_executable("svn_executable", settings.svn_executable);
+
+            const auto read_boolean = [&source, &result, &path](const char* const key, bool& target) {
+                const auto value { source->find(key) };
+                if (value == source->end() || value->is_null())
+                    return;
+                if (value->is_boolean() == false)
+                {
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 boolean 항목 형식이 잘못되어 기본값을 사용합니다.", path));
+                    return;
+                }
+                target = value->get<bool>();
+            };
+            read_boolean("show_relative_paths", settings.show_relative_paths);
+            read_boolean("update_submodules", settings.update_submodules);
+            read_boolean("ignore_local_changes", settings.ignore_local_changes);
+            read_boolean("write_log_files", settings.write_log_files);
+
+            if (const auto timeout { source->find("query_timeout_seconds") }; timeout != source->end() && timeout->is_null() == false)
+            {
+                if (timeout->is_number_integer() == false)
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 제한 시간은 정수(초)여야 합니다. 기본값을 사용합니다.", path));
+                else if (const std::int64_t seconds { timeout->get<std::int64_t>() }; seconds < minimum_query_timeout_seconds || seconds > maximum_query_timeout_seconds)
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 제한 시간은 10~3600초여야 합니다. 기본값을 사용합니다.", path));
+                else
+                    settings.query_timeout_seconds = { static_cast<std::int32_t>(seconds) };
+            }
+            return settings;
+        }
     } // namespace
 
     std::u8string serialize_app_settings_json(const app_settings& settings, const std::u8string_view shadow_source_json)
@@ -158,6 +230,26 @@ namespace gitman {
 
         root["schema_version"] = settings.schema_version;
         root["recent_documents"] = std::move(recent);
+
+        // 전역 설정은 모든 키를 항상 기록한다. 값이 파일에 그대로 보여 사용자가
+        // 직접 고치기도 쉽다. 기존 object의 알 수 없는 키는 template으로 보존한다.
+        {
+            const auto existing { root.find("settings") };
+            json value { existing != root.end() && existing->is_object() ? *existing : json::object() };
+            value["git_executable"] = as_string(settings.settings.git_executable);
+            value["svn_executable"] = as_string(settings.settings.svn_executable);
+            value["show_relative_paths"] = settings.settings.show_relative_paths;
+            value["update_submodules"] = settings.settings.update_submodules;
+            value["ignore_local_changes"] = settings.settings.ignore_local_changes;
+            value["write_log_files"] = settings.settings.write_log_files;
+            // 값이 없으면 기본값(600초)이라는 뜻이므로 키를 지운다.
+            if (settings.settings.query_timeout_seconds.has_value())
+                value["query_timeout_seconds"] = *settings.settings.query_timeout_seconds;
+            else
+                value.erase("query_timeout_seconds");
+            root["settings"] = std::move(value);
+        }
+
         // 값이 없으면 필드를 만들지 않고, 파일에 이미 있던 `window`는 지우지
         // 않는다 (문서 저장의 window 규칙과 동일).
         if (settings.window.has_value())
@@ -192,6 +284,7 @@ namespace gitman {
             result.settings.schema_version = version->get<std::int32_t>();
 
         result.settings.window = parse_window(root, result, path);
+        result.settings.settings = parse_global_settings(root, result, path);
 
         const auto recent { root.find("recent_documents") };
         if (recent == root.end())

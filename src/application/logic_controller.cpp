@@ -239,18 +239,29 @@ namespace gitman {
                     handle_edit_settings_timeout(value);
                 else if constexpr (std::is_same_v<value_type, toggle_settings_submodules_intent>)
                 {
+                    // 값을 건드리면 문서 모드에서는 그 행이 "문서에 정의됨"이 된다
+                    // (G3.2 암묵 덮어쓰기).
                     if (settings_dialog_.has_value())
+                    {
                         settings_dialog_->update_submodules = settings_dialog_->update_submodules == false;
+                        settings_dialog_->submodules_defined = true;
+                    }
                 }
                 else if constexpr (std::is_same_v<value_type, toggle_settings_ignore_local_intent>)
                 {
                     if (settings_dialog_.has_value())
+                    {
                         settings_dialog_->ignore_local_changes = settings_dialog_->ignore_local_changes == false;
+                        settings_dialog_->ignore_local_defined = true;
+                    }
                 }
                 else if constexpr (std::is_same_v<value_type, toggle_settings_log_files_intent>)
                 {
                     if (settings_dialog_.has_value())
+                    {
                         settings_dialog_->write_log_files = settings_dialog_->write_log_files == false;
+                        settings_dialog_->log_files_defined = true;
+                    }
                 }
                 else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
                     handle_confirm_settings();
@@ -615,7 +626,8 @@ namespace gitman {
             return;
 
         // 표시 방식은 문서에 남는 설정이라 순서 변경과 같은 저장 경로를 탄다.
-        document_->settings.show_relative_paths = document_->settings.show_relative_paths == false;
+        // 토글은 유효 값을 뒤집은 결과를 문서 override로 정의한다 (G3.1).
+        document_->settings.show_relative_paths = { relative_paths() == false };
         request_save();
     }
 
@@ -692,11 +704,10 @@ namespace gitman {
         if (card == nullptr || card->project.enabled == false)
             return;
 
-        // submodule 갱신 여부는 매번 묻지 않고 문서 settings가 정한다 (2026-08-20
+        // submodule 갱신 여부는 매번 묻지 않고 유효 설정이 정한다 (2026-08-20
         // 검수: 확인 overlay 제거).
         update_options options { intent.options };
-        if (document_.has_value())
-            options.update_submodules = document_->settings.update_submodules;
+        options.update_submodules = effective_settings().update_submodules;
         begin_change(*card, operation_kind::update, options, nullptr);
     }
 
@@ -1178,21 +1189,34 @@ namespace gitman {
 
     void logic_controller::handle_open_settings()
     {
-        // 환경설정은 문서 수준 값이라 열린 문서가 있어야 편집할 수 있다 (REQ-017).
-        if (shutting_down_ || document_.has_value() == false)
+        // 문서가 열려 있으면 문서 override를, 없으면 전역 설정을 편집한다 (G3.2).
+        if (shutting_down_)
             return;
 
         settings_dialog_state dialog {};
-        dialog.git_path = document_->settings.git_executable;
-        dialog.svn_path = document_->settings.svn_executable;
-        if (document_->settings.query_timeout_seconds.has_value())
+        dialog.document_mode = document_.has_value();
+        // 초안은 유효 값에서 시작한다. 문서 모드에서 건드리지 않은 행은 정의되지
+        // 않은 채 남아 앱 설정을 따른다.
+        const workspace_settings effective { effective_settings() };
+        dialog.git_path = effective.git_executable;
+        dialog.svn_path = effective.svn_executable;
+        if (effective.query_timeout_seconds.has_value())
         {
-            const std::string digits { std::to_string(*document_->settings.query_timeout_seconds) };
+            const std::string digits { std::to_string(*effective.query_timeout_seconds) };
             dialog.timeout_text.append(digits.begin(), digits.end());
         }
-        dialog.update_submodules = document_->settings.update_submodules;
-        dialog.ignore_local_changes = document_->settings.ignore_local_changes;
-        dialog.write_log_files = document_->settings.write_log_files;
+        dialog.update_submodules = effective.update_submodules;
+        dialog.ignore_local_changes = effective.ignore_local_changes;
+        dialog.write_log_files = effective.write_log_files;
+        if (dialog.document_mode)
+        {
+            dialog.git_defined = document_->settings.git_executable.has_value();
+            dialog.svn_defined = document_->settings.svn_executable.has_value();
+            dialog.timeout_defined = document_->settings.query_timeout_seconds.has_value();
+            dialog.submodules_defined = document_->settings.update_submodules.has_value();
+            dialog.ignore_local_defined = document_->settings.ignore_local_changes.has_value();
+            dialog.log_files_defined = document_->settings.write_log_files.has_value();
+        }
         settings_dialog_ = { std::move(dialog) };
     }
 
@@ -1203,9 +1227,15 @@ namespace gitman {
             return;
 
         if (intent.tool == repository_kind::git)
+        {
             settings_dialog_->git_path = std::move(intent.path);
+            settings_dialog_->git_defined = true;
+        }
         else if (intent.tool == repository_kind::subversion)
+        {
             settings_dialog_->svn_path = std::move(intent.path);
+            settings_dialog_->svn_defined = true;
+        }
     }
 
     void logic_controller::handle_clear_settings_executable(const clear_settings_executable_intent& intent)
@@ -1213,10 +1243,19 @@ namespace gitman {
         if (settings_dialog_.has_value() == false)
             return;
 
+        // 전역 모드의 지우기는 빈 값(자동 탐색)이고, 문서 모드의 지우기는 문서
+        // 정의를 거둬 앱 설정을 따르게 한다 (G3.2). 초안에는 앱의 값이 다시 보인다.
+        const bool document_mode { settings_dialog_->document_mode };
         if (intent.tool == repository_kind::git)
-            settings_dialog_->git_path.clear();
+        {
+            settings_dialog_->git_path = document_mode ? app_settings_.settings.git_executable : std::u8string {};
+            settings_dialog_->git_defined = false;
+        }
         else if (intent.tool == repository_kind::subversion)
-            settings_dialog_->svn_path.clear();
+        {
+            settings_dialog_->svn_path = document_mode ? app_settings_.settings.svn_executable : std::u8string {};
+            settings_dialog_->svn_defined = false;
+        }
     }
 
     void logic_controller::handle_edit_settings_timeout(const edit_settings_timeout_intent& intent)
@@ -1229,17 +1268,27 @@ namespace gitman {
         if (intent.character == U'\b')
         {
             if (text.empty() == false)
+            {
                 text.pop_back();
+                settings_dialog_->timeout_defined = true;
+            }
             return;
         }
         // 숫자만 받는 텍스트 박스다. 최대값(3600)이 4자리라 그 이상은 버린다.
         if (intent.character >= U'0' && intent.character <= U'9' && text.size() < 4)
+        {
             text.push_back(static_cast<char8_t>(intent.character));
+            settings_dialog_->timeout_defined = true;
+        }
     }
 
     void logic_controller::handle_confirm_settings()
     {
-        if (settings_dialog_.has_value() == false || shutting_down_ || document_.has_value() == false)
+        if (settings_dialog_.has_value() == false || shutting_down_)
+            return;
+        // 문서 모드 dialog가 열린 채 문서가 사라진 경우(닫기 등)의 늦은 확인은
+        // 버린다.
+        if (settings_dialog_->document_mode && document_.has_value() == false)
             return;
         // 버튼 비활성과 별개로 늦게 도착한 확인도 막는다 (view의 can_confirm과 같은
         // 판정이다).
@@ -1248,24 +1297,52 @@ namespace gitman {
             return;
 
         const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout_text) };
-        const bool changed {
-            document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path || document_->settings.query_timeout_seconds != timeout
-                || document_->settings.update_submodules != settings_dialog_->update_submodules
-                || document_->settings.ignore_local_changes != settings_dialog_->ignore_local_changes || document_->settings.write_log_files != settings_dialog_->write_log_files,
-        };
-        if (changed)
+        const workspace_settings previous_effective { effective_settings() };
+
+        if (settings_dialog_->document_mode)
         {
-            document_->settings.git_executable = settings_dialog_->git_path;
-            document_->settings.svn_executable = settings_dialog_->svn_path;
-            document_->settings.query_timeout_seconds = timeout;
-            document_->settings.update_submodules = settings_dialog_->update_submodules;
-            document_->settings.ignore_local_changes = settings_dialog_->ignore_local_changes;
-            document_->settings.write_log_files = settings_dialog_->write_log_files;
-            // 파일 로그 설정이 바뀌면 적재 대상도 곧바로 따라간다 (A4.5).
+            // 건드린(정의된) 행만 문서 override로 남는다 (G3.2 암묵 덮어쓰기).
+            // show_relative_paths는 도구 막대 토글의 몫이라 그대로 둔다. 제한 시간은
+            // 빈 칸이면 "따로 정하지 않음"이라 정의를 거둔다.
+            workspace_settings_overrides overrides { document_->settings };
+            overrides.git_executable = settings_dialog_->git_defined ? std::optional<std::u8string> { settings_dialog_->git_path } : std::nullopt;
+            overrides.svn_executable = settings_dialog_->svn_defined ? std::optional<std::u8string> { settings_dialog_->svn_path } : std::nullopt;
+            overrides.query_timeout_seconds = settings_dialog_->timeout_defined && timeout.has_value() ? timeout : std::nullopt;
+            overrides.update_submodules = settings_dialog_->submodules_defined ? std::optional<bool> { settings_dialog_->update_submodules } : std::nullopt;
+            overrides.ignore_local_changes = settings_dialog_->ignore_local_defined ? std::optional<bool> { settings_dialog_->ignore_local_changes } : std::nullopt;
+            overrides.write_log_files = settings_dialog_->log_files_defined ? std::optional<bool> { settings_dialog_->write_log_files } : std::nullopt;
+
+            if ((overrides == document_->settings) == false)
+            {
+                document_->settings = std::move(overrides);
+                request_save();
+            }
+        }
+        else
+        {
+            // 전역 모드는 모든 행이 구체 값이다. show_relative_paths는 dialog에
+            // 행이 없어 유지된다.
+            workspace_settings global { app_settings_.settings };
+            global.git_executable = settings_dialog_->git_path;
+            global.svn_executable = settings_dialog_->svn_path;
+            global.query_timeout_seconds = timeout;
+            global.update_submodules = settings_dialog_->update_submodules;
+            global.ignore_local_changes = settings_dialog_->ignore_local_changes;
+            global.write_log_files = settings_dialog_->write_log_files;
+            if ((global == app_settings_.settings) == false)
+            {
+                app_settings_.settings = std::move(global);
+                request_app_settings_save();
+            }
+        }
+
+        // 유효 설정이 실제로 바뀐 경우에만 적재 대상을 갱신하고 활성 카드를
+        // 재조회한다 (G3.2 — 문서가 전부 덮어쓰고 있으면 전역 변경은 재조회하지
+        // 않는다). 요청마다 유효 설정 사본이 실리므로 저장 완료를 기다릴 필요가
+        // 없다.
+        if ((effective_settings() == previous_effective) == false)
+        {
             publish_log_targets();
-            request_save();
-            // 도구 경로가 바뀌었으니 모든 활성 카드를 새 settings로 재조회한다.
-            // 요청마다 settings 사본이 실리므로 저장 완료를 기다릴 필요가 없다.
             for (card_state& card : cards_)
                 if (card.project.enabled)
                     request_refresh(card);
@@ -1703,8 +1780,8 @@ namespace gitman {
             target.repository_path = card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized;
             targets.push_back(std::move(target));
         }
-        // 문서 설정이 꺼져 있으면 폴더를 만들지 않도록 빈 문서를 알린다 (A4.5).
-        const bool enabled { document_.has_value() && document_->settings.write_log_files };
+        // 유효 설정이 꺼져 있으면 폴더를 만들지 않도록 빈 문서를 알린다 (A4.5).
+        const bool enabled { document_.has_value() && effective_settings().write_log_files };
         log_sink_->set_document(enabled ? document_path_ : std::u8string {}, targets);
     }
 
@@ -1832,8 +1909,9 @@ namespace gitman {
         request.document_path = document_path_;
         if (card != nullptr)
             request.project = card->project;
-        if (document_.has_value())
-            request.settings = document_->settings;
+        // worker는 유효 설정(전역 + 문서 override)의 사본을 받는다. 층 구분은
+        // logic 안에서 끝난다.
+        request.settings = effective_settings();
         request.token = cancellation_source_.token();
         return request;
     }
@@ -1845,7 +1923,14 @@ namespace gitman {
 
     bool logic_controller::relative_paths() const noexcept
     {
-        return document_.has_value() && document_->settings.show_relative_paths;
+        return document_.has_value() && document_->settings.show_relative_paths.value_or(app_settings_.settings.show_relative_paths);
+    }
+
+    workspace_settings logic_controller::effective_settings() const
+    {
+        if (document_.has_value())
+            return apply_overrides(app_settings_.settings, document_->settings);
+        return app_settings_.settings;
     }
 
     std::u8string logic_controller::display_path(const project_definition& project) const
@@ -2066,12 +2151,23 @@ namespace gitman {
         if (settings_dialog_.has_value())
         {
             settings_dialog_view dialog {};
+            dialog.document_mode = settings_dialog_->document_mode;
             dialog.git_path = settings_dialog_->git_path;
             dialog.svn_path = settings_dialog_->svn_path;
             dialog.timeout_text = settings_dialog_->timeout_text;
             dialog.update_submodules = settings_dialog_->update_submodules;
             dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
             dialog.write_log_files = settings_dialog_->write_log_files;
+            // 문서 모드에서 정의되지 않은 행은 "앱 설정 따름"으로 표시된다 (G3.2).
+            if (settings_dialog_->document_mode)
+            {
+                dialog.git_follows_app = settings_dialog_->git_defined == false;
+                dialog.svn_follows_app = settings_dialog_->svn_defined == false;
+                dialog.timeout_follows_app = settings_dialog_->timeout_defined == false;
+                dialog.submodules_follows_app = settings_dialog_->submodules_defined == false;
+                dialog.ignore_local_follows_app = settings_dialog_->ignore_local_defined == false;
+                dialog.log_files_follows_app = settings_dialog_->log_files_defined == false;
+            }
             // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
             const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };

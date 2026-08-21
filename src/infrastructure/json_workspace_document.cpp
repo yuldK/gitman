@@ -192,11 +192,13 @@ namespace gitman {
             return pointer;
         }
 
-        // `settings`는 optional이며 없으면 전부 기본값이다. 스키마 버전을 올리지 않아
-        // 이 필드를 모르는 기존 문서도 그대로 열린다.
-        workspace_settings parse_settings(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
+        // `settings`는 optional이며 문서에 있는 키만 override로 읽는다. 없는 키는
+        // 앱 설정을 따른다 (global-settings-and-ui-fixes-design G3.1). 스키마 버전을
+        // 올리지 않아 이 필드를 모르는 기존 문서도 그대로 열리고, 기존 문서의 키는
+        // 그대로 override가 되어 동작이 바뀌지 않는다.
+        workspace_settings_overrides parse_settings(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
         {
-            workspace_settings settings {};
+            workspace_settings_overrides settings {};
             const auto source { root.find("settings") };
             if (source == root.end() || source->is_null())
                 return settings;
@@ -234,13 +236,13 @@ namespace gitman {
                     continue;
                 }
                 if (field == "git_executable")
-                    settings.git_executable = std::move(executable);
+                    settings.git_executable = { std::move(executable) };
                 else
-                    settings.svn_executable = std::move(executable);
+                    settings.svn_executable = { std::move(executable) };
             }
 
             // 상태 확인 제한 시간이다 (field-feedback-design 1.3). 값이 나빠도 문서
-            // 열기를 막지 않는다 — 경고만 남기고 기본값을 쓴다.
+            // 열기를 막지 않는다 — 경고만 남기고 앱 설정을 따른다.
             const auto timeout { source->find("query_timeout_seconds") };
             if (timeout != source->end() && timeout->is_null() == false)
             {
@@ -255,14 +257,14 @@ namespace gitman {
                         document_path, settings_field_pointer("query_timeout_seconds"));
                 }
                 else
-                    settings.query_timeout_seconds = static_cast<std::int32_t>(seconds);
+                    settings.query_timeout_seconds = { static_cast<std::int32_t>(seconds) };
             }
 
             const auto relative_paths { source->find("show_relative_paths") };
             if (relative_paths != source->end() && relative_paths->is_null() == false)
             {
                 if (relative_paths->is_boolean())
-                    settings.show_relative_paths = relative_paths->get<bool>();
+                    settings.show_relative_paths = { relative_paths->get<bool>() };
                 else
                 {
                     add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 show_relative_paths는 boolean이어야 합니다.", document_path,
@@ -274,7 +276,7 @@ namespace gitman {
             if (submodules != source->end() && submodules->is_null() == false)
             {
                 if (submodules->is_boolean())
-                    settings.update_submodules = submodules->get<bool>();
+                    settings.update_submodules = { submodules->get<bool>() };
                 else
                 {
                     add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 update_submodules는 boolean이어야 합니다.", document_path,
@@ -286,7 +288,7 @@ namespace gitman {
             if (ignore_local != source->end() && ignore_local->is_null() == false)
             {
                 if (ignore_local->is_boolean())
-                    settings.ignore_local_changes = ignore_local->get<bool>();
+                    settings.ignore_local_changes = { ignore_local->get<bool>() };
                 else
                 {
                     add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 ignore_local_changes는 boolean이어야 합니다.", document_path,
@@ -298,7 +300,7 @@ namespace gitman {
             if (write_logs != source->end() && write_logs->is_null() == false)
             {
                 if (write_logs->is_boolean())
-                    settings.write_log_files = write_logs->get<bool>();
+                    settings.write_log_files = { write_logs->get<bool>() };
                 else
                 {
                     add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 write_log_files는 boolean이어야 합니다.", document_path,

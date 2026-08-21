@@ -148,6 +148,14 @@ namespace gitman::ui {
             bool on_ { false };
         };
 
+        // 문서 모드에서 앱 설정을 따르는 행의 값 문구다. 유효 값 앞에 출처를 밝힌다.
+        std::u8string with_follows_hint(std::u8string text, const bool follows_app)
+        {
+            if (follows_app == false)
+                return text;
+            return std::u8string { u8"앱 설정 따름 · " } + text;
+        }
+
         // panel 배경이다. 클릭을 흡수해 배경 닫기로 흐르지 않게 하고 제목, 행 label,
         // 경로 값, 검증 메시지를 그린다. 버튼은 dialog가 직접 배치하는 자식이다.
         class settings_panel_element final : public ui_element
@@ -155,11 +163,19 @@ namespace gitman::ui {
         public:
             explicit settings_panel_element(const settings_dialog_view& dialog)
                 : ui_element { ui_element_id { ui_element_kind::settings_dialog_panel } }
-                , git_path_ { dialog.git_path }
-                , svn_path_ { dialog.svn_path }
-                , submodules_text_ { dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" } }
-                , ignore_local_text_ { dialog.ignore_local_changes ? std::u8string { u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" } : std::u8string { u8"끔 - 로컬 변경을 확인한 뒤 진행" } }
-                , log_files_text_ { dialog.write_log_files ? std::u8string { u8"켬 - .<문서>.version-list.log 폴더에 저장소별로 남김" } : std::u8string { u8"끔 - 화면 로그만 유지" } }
+                , title_ { dialog.document_mode ? std::u8string { u8"환경설정 (문서)" } : std::u8string { u8"환경설정 (전역)" } }
+                , git_path_ { with_follows_hint(dialog.git_path.empty() ? std::u8string { u8"자동 탐색 (지정되지 않음)" } : dialog.git_path, dialog.git_follows_app) }
+                , svn_path_ { with_follows_hint(dialog.svn_path.empty() ? std::u8string { u8"자동 탐색 (지정되지 않음)" } : dialog.svn_path, dialog.svn_follows_app) }
+                , timeout_follows_ { dialog.timeout_follows_app }
+                , submodules_text_ { with_follows_hint(
+                      dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" },
+                      dialog.submodules_follows_app) }
+                , ignore_local_text_ { with_follows_hint(
+                      dialog.ignore_local_changes ? std::u8string { u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" } : std::u8string { u8"끔 - 로컬 변경을 확인한 뒤 진행" },
+                      dialog.ignore_local_follows_app) }
+                , log_files_text_ { with_follows_hint(
+                      dialog.write_log_files ? std::u8string { u8"켬 - .<문서>.version-list.log 폴더에 저장소별로 남김" } : std::u8string { u8"끔 - 화면 로그만 유지" },
+                      dialog.log_files_follows_app) }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -195,7 +211,7 @@ namespace gitman::ui {
                 SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
                 title_font.setEmbolden(true);
                 static_cast<void>(draw_text_within(
-                    context.canvas, u8"환경설정", title_left, box.y + padding + 11.0f * scale, box.x + box.width - padding - title_left, title_font, solid_paint(context.palette.primary_foreground)));
+                    context.canvas, title_, title_left, box.y + padding + 11.0f * scale, box.x + box.width - padding - title_left, title_font, solid_paint(context.palette.primary_foreground)));
 
                 draw_row(context, 0, u8"Git 실행 파일", git_path_, u8"자동 탐색 (지정되지 않음)");
                 draw_row(context, 1, u8"SVN 실행 파일", svn_path_, u8"자동 탐색 (지정되지 않음)");
@@ -203,6 +219,16 @@ namespace gitman::ui {
                 // 조정한다 (field-feedback-design 1장). 값 칸은 텍스트 박스 element가
                 // 대신 그린다.
                 draw_row(context, 2, u8"상태 확인 제한 시간 (초)", u8"", u8"");
+                // 텍스트 박스 오른쪽에 따름 표시를 그린다 (다른 행은 값 문구에 담긴다).
+                if (timeout_follows_)
+                {
+                    const SkFont hint_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                    SkPaint hint { solid_paint(context.palette.primary_foreground) };
+                    hint.setAlphaf(0.45f);
+                    const float input_top { box.y + (first_row_top + row_height * 2.0f + 20.0f) * scale };
+                    draw_text(context.canvas, u8"앱 설정 따름", box.x + padding + (timeout_input_width + 8.0f) * scale,
+                        input_top + centered_text_baseline(hint_font, row_button_height * scale), hint_font, hint);
+                }
                 // 업데이트마다 묻지 않고 여기서 정한다 (2026-08-20 검수, ADR-003
                 // 기본 off 유지).
                 draw_row(context, 3, u8"업데이트 시 submodule 갱신", submodules_text_, u8"");
@@ -248,8 +274,10 @@ namespace gitman::ui {
                 static_cast<void>(draw_text_within(context.canvas, shown, box.x + padding, row_top + 33.0f * scale, box.width - padding * 2.0f, value_font, value_paint));
             }
 
+            std::u8string title_ {};
             std::u8string git_path_ {};
             std::u8string svn_path_ {};
+            bool timeout_follows_ { false };
             std::u8string submodules_text_ {};
             std::u8string ignore_local_text_ {};
             std::u8string log_files_text_ {};
@@ -273,9 +301,11 @@ namespace gitman::ui {
         git_browse->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_git_executable_picker } }; });
         add_child(std::move(git_browse));
 
+        // 지우기의 의미는 모드에 따라 다르다: 전역은 빈 값(자동 탐색), 문서는 문서
+        // 정의를 거둬 앱 설정을 따른다 (G3.2).
         auto git_clear { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_git_clear }, std::u8string { u8"지우기" }, false) };
-        git_clear->set_tooltip(u8"지우면 자동 탐색을 사용합니다");
-        git_clear->set_enabled(dialog_.git_path.empty() == false);
+        git_clear->set_tooltip(dialog_.document_mode ? std::u8string { u8"지우면 앱 설정을 따릅니다" } : std::u8string { u8"지우면 자동 탐색을 사용합니다" });
+        git_clear->set_enabled(dialog_.document_mode ? dialog_.git_follows_app == false : dialog_.git_path.empty() == false);
         git_clear->set_action(ui_trigger::left_click,
             [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_executable_intent { repository_kind::git } } } }; });
         add_child(std::move(git_clear));
@@ -285,8 +315,8 @@ namespace gitman::ui {
         add_child(std::move(svn_browse));
 
         auto svn_clear { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_svn_clear }, std::u8string { u8"지우기" }, false) };
-        svn_clear->set_tooltip(u8"지우면 자동 탐색을 사용합니다");
-        svn_clear->set_enabled(dialog_.svn_path.empty() == false);
+        svn_clear->set_tooltip(dialog_.document_mode ? std::u8string { u8"지우면 앱 설정을 따릅니다" } : std::u8string { u8"지우면 자동 탐색을 사용합니다" });
+        svn_clear->set_enabled(dialog_.document_mode ? dialog_.svn_follows_app == false : dialog_.svn_path.empty() == false);
         svn_clear->set_action(ui_trigger::left_click,
             [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_executable_intent { repository_kind::subversion } } } }; });
         add_child(std::move(svn_clear));

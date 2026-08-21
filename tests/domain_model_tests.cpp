@@ -31,16 +31,32 @@ TEST_CASE("Workspace documents expose approved defaults", "[domain][project]")
     REQUIRE(document.document_path.empty());
     REQUIRE(document.projects.empty());
 
-    // `settings`가 없는 문서는 전부 기본값이며 실행 파일은 자동 탐색한다.
-    REQUIRE(document.settings.is_default());
-    REQUIRE(document.settings.git_executable.empty());
-    REQUIRE(document.settings.svn_executable.empty());
-    REQUIRE(document.settings == gitman::workspace_settings {});
+    // `settings`가 없는 문서는 아무것도 덮어쓰지 않아 전부 앱 설정을 따른다 (G3.1).
+    REQUIRE(document.settings.empty());
+    REQUIRE(document.settings.git_executable.has_value() == false);
+    REQUIRE(document.settings.svn_executable.has_value() == false);
+    REQUIRE(document.settings == gitman::workspace_settings_overrides {});
 
-    gitman::workspace_settings configured {};
-    configured.git_executable = u8"C:/Program Files/Git/cmd/git.exe";
-    REQUIRE_FALSE(configured.is_default());
-    REQUIRE_FALSE(configured == gitman::workspace_settings {});
+    gitman::workspace_settings_overrides configured {};
+    configured.git_executable = { u8"C:/Program Files/Git/cmd/git.exe" };
+    REQUIRE_FALSE(configured.empty());
+    REQUIRE_FALSE(configured == gitman::workspace_settings_overrides {});
+
+    // 유효 설정은 전역 값 위에 정의된 override만 얹는다.
+    gitman::workspace_settings global {};
+    global.svn_executable = u8"C:\\tools\\svn.exe";
+    global.update_submodules = true;
+    gitman::workspace_settings_overrides overrides {};
+    overrides.git_executable = { u8"C:\\tools\\git.exe" };
+    overrides.update_submodules = { false };
+    overrides.query_timeout_seconds = { 120 };
+    const gitman::workspace_settings effective { gitman::apply_overrides(global, overrides) };
+    REQUIRE(effective.git_executable == u8"C:\\tools\\git.exe");
+    REQUIRE(effective.svn_executable == u8"C:\\tools\\svn.exe");
+    REQUIRE(effective.update_submodules == false);
+    REQUIRE(effective.query_timeout_seconds == std::optional<std::int32_t> { 120 });
+    // override가 없으면 전역 값이 그대로다.
+    REQUIRE(gitman::apply_overrides(global, {}) == global);
 
     const gitman::project_definition project {};
     REQUIRE(project.id.value.empty());

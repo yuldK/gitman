@@ -114,10 +114,10 @@ TEST_CASE("Schema parser reads workspace settings and keeps unknown keys", "[wor
     REQUIRE(result.document.has_value());
     REQUIRE_FALSE(result.has_errors());
     REQUIRE(result.document->projects.size() == 1);
-    REQUIRE(u8_equal(result.document->settings.git_executable, u8"C:/Program Files/Git/cmd/git.exe"));
-    // 빈 값은 "지정하지 않음"이며 자동 탐색으로 간다.
-    REQUIRE(result.document->settings.svn_executable.empty());
-    REQUIRE_FALSE(result.document->settings.is_default());
+    REQUIRE(result.document->settings.git_executable == std::optional<std::u8string> { u8"C:/Program Files/Git/cmd/git.exe" });
+    // 빈 값도 유효한 정의다("자동 탐색을 쓴다"). 키가 있으면 override로 읽는다.
+    REQUIRE(result.document->settings.svn_executable == std::optional<std::u8string> { std::u8string {} });
+    REQUIRE_FALSE(result.document->settings.empty());
     // 원문 byte를 그대로 보존해야 저장 시 알 수 없는 키를 되돌려 쓸 수 있다.
     REQUIRE(u8_equal(result.shadow.source_json, source));
 
@@ -134,13 +134,13 @@ TEST_CASE("Documents without settings keep working with defaults", "[workspace][
     {
         const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(load_fixture(fixture), test_document_path) };
         REQUIRE(result.document.has_value());
-        REQUIRE(result.document->settings.is_default());
+        REQUIRE(result.document->settings.empty());
     }
 
     constexpr std::u8string_view explicit_null { u8"{\"schema_version\":1,\"settings\":null,\"projects\":[]}" };
     const gitman::workspace_document_parse_result null_result { gitman::parse_workspace_document_json(explicit_null, test_document_path) };
     REQUIRE(null_result.document.has_value());
-    REQUIRE(null_result.document->settings.is_default());
+    REQUIRE(null_result.document->settings.empty());
     // `null`은 "값 없음"이므로 경고를 만들지 않는다.
     REQUIRE_FALSE(null_result.has_warnings());
     REQUIRE_FALSE(null_result.has_errors());
@@ -152,14 +152,15 @@ TEST_CASE("The log file setting defaults to on and accepts booleans only", "[wor
     constexpr std::u8string_view missing { u8"{\"schema_version\":1,\"projects\":[]}" };
     const gitman::workspace_document_parse_result default_result { gitman::parse_workspace_document_json(missing, test_document_path) };
     REQUIRE(default_result.document.has_value());
-    REQUIRE(default_result.document->settings.write_log_files);
-    REQUIRE(default_result.document->settings.is_default());
+    // 키가 없으면 override도 없다. 유효 값은 앱 설정(기본 켬)이 정한다.
+    REQUIRE(default_result.document->settings.write_log_files.has_value() == false);
+    REQUIRE(default_result.document->settings.empty());
 
     constexpr std::u8string_view disabled { u8"{\"schema_version\":1,\"settings\":{\"write_log_files\":false},\"projects\":[]}" };
     const gitman::workspace_document_parse_result disabled_result { gitman::parse_workspace_document_json(disabled, test_document_path) };
     REQUIRE(disabled_result.document.has_value());
-    REQUIRE(disabled_result.document->settings.write_log_files == false);
-    REQUIRE_FALSE(disabled_result.document->settings.is_default());
+    REQUIRE(disabled_result.document->settings.write_log_files == std::optional<bool> { false });
+    REQUIRE_FALSE(disabled_result.document->settings.empty());
     // 알려진 필드이므로 알 수 없는 키 경고를 만들지 않는다.
     REQUIRE_FALSE(disabled_result.has_warnings());
 
@@ -179,7 +180,7 @@ TEST_CASE("Settings executables must be absolute or empty", "[workspace][schema]
     REQUIRE(rejected->severity == gitman::diagnostic_severity::error);
     // 거부한 값은 문서에 남기지 않는다.
     REQUIRE(relative_result.document.has_value());
-    REQUIRE(relative_result.document->settings.git_executable.empty());
+    REQUIRE(relative_result.document->settings.git_executable.has_value() == false);
 
     constexpr std::u8string_view wrong_type { u8"{\"schema_version\":1,\"settings\":{\"svn_executable\":7},\"projects\":[]}" };
     const gitman::workspace_document_parse_result type_result { gitman::parse_workspace_document_json(wrong_type, test_document_path) };
@@ -193,7 +194,7 @@ TEST_CASE("Settings executables must be absolute or empty", "[workspace][schema]
     const gitman::workspace_document_parse_result unc_result { gitman::parse_workspace_document_json(unc, test_document_path) };
     REQUIRE_FALSE(unc_result.has_errors());
     REQUIRE(unc_result.document.has_value());
-    REQUIRE(u8_equal(unc_result.document->settings.svn_executable, u8"\\\\build\\tools\\svn.exe"));
+    REQUIRE(unc_result.document->settings.svn_executable == std::optional<std::u8string> { u8"\\\\build\\tools\\svn.exe" });
 }
 
 TEST_CASE("The settings query timeout accepts the allowed range and warns otherwise", "[workspace][schema][settings]")
@@ -204,8 +205,8 @@ TEST_CASE("The settings query timeout accepts the allowed range and warns otherw
     REQUIRE_FALSE(valid_result.has_errors());
     REQUIRE_FALSE(valid_result.has_warnings());
     REQUIRE(valid_result.document.has_value());
-    REQUIRE(valid_result.document->settings.query_timeout_seconds == 900);
-    REQUIRE_FALSE(valid_result.document->settings.is_default());
+    REQUIRE(valid_result.document->settings.query_timeout_seconds == std::optional<std::int32_t> { 900 });
+    REQUIRE_FALSE(valid_result.document->settings.empty());
 
     // 범위 밖·잘못된 타입은 경고만 남기고 기본값(값 없음)을 쓴다. 문서 열기는
     // 실패하지 않는다.

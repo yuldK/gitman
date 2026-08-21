@@ -425,10 +425,10 @@ TEST_CASE("Project store round-trips workspace settings and unknown keys", "[wor
     gitman::project_store_load_result loaded { store.load(fake_document_path) };
     REQUIRE(loaded.document.has_value());
     REQUIRE_FALSE(loaded.has_errors());
-    REQUIRE(u8_equal(loaded.document->settings.git_executable, u8"C:/tools/git.exe"));
+    REQUIRE(loaded.document->settings.git_executable == std::optional<std::u8string> { u8"C:/tools/git.exe" });
 
-    // 환경설정 화면이 SVN 경로를 채우는 상황이다.
-    loaded.document->settings.svn_executable = u8"D:/tools/svn/bin/svn.exe";
+    // 환경설정 화면이 SVN 경로를 문서 override로 채우는 상황이다.
+    loaded.document->settings.svn_executable = { u8"D:/tools/svn/bin/svn.exe" };
 
     const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
     REQUIRE(saved.succeeded());
@@ -442,8 +442,8 @@ TEST_CASE("Project store round-trips workspace settings and unknown keys", "[wor
 
     const gitman::project_store_load_result reloaded { store.load(fake_document_path) };
     REQUIRE(reloaded.document.has_value());
-    REQUIRE(u8_equal(reloaded.document->settings.git_executable, u8"C:/tools/git.exe"));
-    REQUIRE(u8_equal(reloaded.document->settings.svn_executable, u8"D:/tools/svn/bin/svn.exe"));
+    REQUIRE(reloaded.document->settings.git_executable == std::optional<std::u8string> { u8"C:/tools/git.exe" });
+    REQUIRE(reloaded.document->settings.svn_executable == std::optional<std::u8string> { u8"D:/tools/svn/bin/svn.exe" });
 }
 
 TEST_CASE("Project store writes and removes the query timeout setting", "[workspace][store][save][settings]")
@@ -501,7 +501,7 @@ TEST_CASE("Project store does not add a settings field to documents that lack on
 
     const gitman::project_store_load_result loaded { store.load(fake_document_path) };
     REQUIRE(loaded.document.has_value());
-    REQUIRE(loaded.document->settings.is_default());
+    REQUIRE(loaded.document->settings.empty());
 
     const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
     REQUIRE(saved.succeeded());

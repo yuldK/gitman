@@ -255,6 +255,32 @@ TEST_CASE("The app settings window placement round trips and ignores broken valu
     REQUIRE(wrong.diagnostics.size() == 1);
 }
 
+TEST_CASE("Global settings in the app settings file round trip with validation", "[app-settings][json]")
+{
+    // 앱 단위 전역 설정이다 (G3.1). 저장은 모든 키를 기록하고, 읽기는 문서 파서와
+    // 같은 검증을 경고로만 적용한다.
+    gitman::app_settings settings {};
+    settings.settings.git_executable = u8"C:\\tools\\git\\git.exe";
+    settings.settings.show_relative_paths = true;
+    settings.settings.write_log_files = false;
+    settings.settings.query_timeout_seconds = { 900 };
+
+    const std::u8string serialized { gitman::serialize_app_settings_json(settings, {}) };
+    const gitman::app_settings_load_result reparsed { gitman::parse_app_settings_json(serialized, settings_path) };
+    REQUIRE(reparsed.diagnostics.empty());
+    REQUIRE(reparsed.settings.settings == settings.settings);
+
+    // 잘못된 값(상대 경로·boolean 아님·범위 밖)은 경고만 남기고 그 필드만
+    // 기본값을 쓴다.
+    const gitman::app_settings_load_result invalid {
+        gitman::parse_app_settings_json(u8"{ \"settings\": { \"git_executable\": \"git.exe\", \"update_submodules\": \"yes\", \"query_timeout_seconds\": 5 } }", settings_path),
+    };
+    REQUIRE(invalid.settings.settings == gitman::workspace_settings {});
+    REQUIRE(invalid.diagnostics.size() == 3);
+    for (const gitman::diagnostic& value : invalid.diagnostics)
+        REQUIRE(value.severity == gitman::diagnostic_severity::warning);
+}
+
 TEST_CASE("A broken app settings file falls back to defaults with a warning", "[app-settings][json]")
 {
     const gitman::app_settings_load_result broken { gitman::parse_app_settings_json(u8"not json", settings_path) };

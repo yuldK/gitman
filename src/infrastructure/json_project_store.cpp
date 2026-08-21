@@ -82,13 +82,14 @@ namespace gitman {
                 value.erase("svn_switch_targets");
         }
 
-        // 기존 `settings` object를 template으로 삼아 알 수 없는 키를 보존한다. 문서에
-        // 없었고 값도 기본값이면 필드 자체를 만들지 않아 기존 문서 형태를 바꾸지 않는다.
-        void write_settings(json& root, const workspace_settings& settings)
+        // 기존 `settings` object를 template으로 삼아 알 수 없는 키를 보존한다. 문서가
+        // 덮어쓴(정의된) 키만 남기고, 정의를 거둔 키는 지운다 — 남겨 두면 다음
+        // 열기에서 override로 되살아난다 (global-settings-and-ui-fixes-design G3.1).
+        void write_settings(json& root, const workspace_settings_overrides& settings)
         {
             const auto existing { root.find("settings") };
             const bool had_settings { existing != root.end() && existing->is_object() };
-            if (had_settings == false && settings.is_default())
+            if (had_settings == false && settings.empty())
             {
                 if (existing != root.end())
                     root.erase("settings");
@@ -96,35 +97,27 @@ namespace gitman {
             }
 
             json value { had_settings ? *existing : json::object() };
-            const bool had_git { value.contains("git_executable") };
-            const bool had_svn { value.contains("svn_executable") };
-            const bool had_relative_paths { value.contains("show_relative_paths") };
-            const bool had_submodules { value.contains("update_submodules") };
-            const bool had_ignore_local { value.contains("ignore_local_changes") };
-            const bool had_write_logs { value.contains("write_log_files") };
+            const auto set_or_erase = [&value](const char* const key, const auto& field, const auto& to_json) {
+                if (field.has_value())
+                    value[key] = to_json(*field);
+                else
+                    value.erase(key);
+            };
+            const auto as_is = [](const auto& raw) { return raw; };
+            set_or_erase("git_executable", settings.git_executable, [](const std::u8string& raw) { return as_string(raw); });
+            set_or_erase("svn_executable", settings.svn_executable, [](const std::u8string& raw) { return as_string(raw); });
+            set_or_erase("show_relative_paths", settings.show_relative_paths, as_is);
+            set_or_erase("update_submodules", settings.update_submodules, as_is);
+            set_or_erase("ignore_local_changes", settings.ignore_local_changes, as_is);
+            set_or_erase("write_log_files", settings.write_log_files, as_is);
+            set_or_erase("query_timeout_seconds", settings.query_timeout_seconds, as_is);
 
-            if (had_git || settings.git_executable.empty() == false)
-                value["git_executable"] = as_string(settings.git_executable);
-            if (had_svn || settings.svn_executable.empty() == false)
-                value["svn_executable"] = as_string(settings.svn_executable);
-            if (had_relative_paths || settings.show_relative_paths)
-                value["show_relative_paths"] = settings.show_relative_paths;
-            if (had_submodules || settings.update_submodules)
-                value["update_submodules"] = settings.update_submodules;
-            if (had_ignore_local || settings.ignore_local_changes)
-                value["ignore_local_changes"] = settings.ignore_local_changes;
-            // 기본값이 켬이라 꺼진 경우에만 기록한다 (기존 필드가 있으면 유지).
-            if (had_write_logs || settings.write_log_files == false)
-                value["write_log_files"] = settings.write_log_files;
-
-            // 제한 시간은 값이 없으면 기본값이라는 뜻이므로 필드를 지운다. 남겨 두면
-            // 다음 열기에서 이전 값이 되살아난다.
-            if (settings.query_timeout_seconds.has_value())
-                value["query_timeout_seconds"] = *settings.query_timeout_seconds;
+            // 알 수 없는 키만 남았어도 보존하고, 아무것도 남지 않으면 object 자체를
+            // 만들지 않는다.
+            if (value.empty())
+                root.erase("settings");
             else
-                value.erase("query_timeout_seconds");
-
-            root["settings"] = std::move(value);
+                root["settings"] = std::move(value);
         }
 
         // 창 배치는 표시 상태라 문서에 없던 값을 새로 만들지 않고, 문서에 있던 값을

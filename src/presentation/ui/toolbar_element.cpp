@@ -47,11 +47,10 @@ namespace gitman::ui {
         toggle_path_display_ = toggle_path_display.get();
         add_child(std::move(toggle_path_display));
 
-        // 환경설정은 문서 `settings`를 편집하므로 열린 문서가 있을 때만 활성이다
-        // (REQ-017).
+        // 환경설정은 문서가 없으면 전역 설정을, 열려 있으면 문서 override를
+        // 편집하므로 항상 활성이다 (global-settings-and-ui-fixes-design G3.2).
         auto settings { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_settings }, button_config { .glyph = codicons::icon_settings_gear }) };
-        settings->set_tooltip(document_open ? std::u8string { u8"환경설정" } : std::u8string { u8"환경설정 (문서를 먼저 여세요)" });
-        settings->set_enabled(document_open);
+        settings->set_tooltip(document_open ? std::u8string { u8"환경설정 (문서)" } : std::u8string { u8"환경설정 (전역)" });
         settings->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_settings_intent {} } } }; });
         settings_ = settings.get();
         add_child(std::move(settings));

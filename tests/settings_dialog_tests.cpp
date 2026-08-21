@@ -101,13 +101,45 @@ TEST_CASE("Opening the settings dialog copies the document settings into the dra
     REQUIRE(view->settings_dialog->message.empty());
 }
 
-TEST_CASE("The settings dialog does not open without a document", "[logic][settings-ui]")
+TEST_CASE("The settings dialog opens without a document and edits the global settings", "[logic][settings-ui]")
 {
+    // 문서가 없으면 전역 설정을 편집한다 (G3.2). 저장은 앱 설정 파일로 나가고,
+    // 카드가 없으므로 재조회는 없다.
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
-    controller.handle(gitman::open_settings_intent {});
+    controller.start();
+    const std::uint64_t load_id { submitter.requests.front().operation_id };
+    gitman::app_settings_loaded_event loaded_settings {};
+    loaded_settings.operation_id = load_id;
+    controller.handle(gitman::logic_message { std::move(loaded_settings) });
+    submitter.requests.clear();
 
+    controller.handle(gitman::open_settings_intent {});
+    {
+        const auto view { controller.make_view_snapshot() };
+        REQUIRE(view->settings_dialog.has_value());
+        REQUIRE(view->settings_dialog->document_mode == false);
+        REQUIRE(view->settings_dialog->git_follows_app == false);
+    }
+
+    controller.handle(gitman::set_settings_executable_intent { gitman::repository_kind::git, u8"C:\\tools\\git\\git.exe" });
+    controller.handle(gitman::toggle_settings_submodules_intent {});
+    controller.handle(gitman::confirm_settings_intent {});
     REQUIRE(controller.make_view_snapshot()->settings_dialog.has_value() == false);
+
+    // 전역 값이 앱 설정 저장에 실린다.
+    const gitman::operation_request* save { nullptr };
+    for (const gitman::operation_request& request : submitter.requests)
+        if (request.kind == gitman::operation_kind::save_app_settings)
+            save = &request;
+    REQUIRE(save != nullptr);
+    REQUIRE(save->app_settings_payload.has_value());
+    REQUIRE(save->app_settings_payload->settings.git_executable == u8"C:\\tools\\git\\git.exe");
+    REQUIRE(save->app_settings_payload->settings.update_submodules);
+
+    // 이후 문서 없이 다시 열면 저장된 전역 값이 초안으로 보인다.
+    controller.handle(gitman::open_settings_intent {});
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->git_path == u8"C:\\tools\\git\\git.exe");
 }
 
 TEST_CASE("Executable intents edit the drafts of the addressed tool only", "[logic][settings-ui]")
@@ -201,6 +233,79 @@ TEST_CASE("Cancelling the settings dialog keeps the document settings", "[logic]
     REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->git_path == u8"C:\\tools\\git\\git.exe");
 }
 
+TEST_CASE("Untouched document rows follow the app settings and touched ones override", "[logic][settings-ui]")
+{
+    // 문서 모드의 암묵 덮어쓰기다 (G3.2): 건드린 행만 문서에 남고, 나머지는 앱
+    // 설정을 따른다.
+    settings_fixture fixture {};
+    fixture.controller.start();
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    const std::uint64_t load_id { fixture.submitter.requests.front().operation_id };
+    gitman::app_settings stored {};
+    stored.settings.svn_executable = u8"C:\\tools\\svn\\svn.exe";
+    stored.settings.update_submodules = true;
+    gitman::app_settings_loaded_event loaded_settings {};
+    loaded_settings.operation_id = load_id;
+    loaded_settings.settings = std::move(stored);
+    fixture.controller.handle(gitman::logic_message { std::move(loaded_settings) });
+    fixture.submitter.requests.clear();
+
+    fixture.controller.handle(gitman::open_settings_intent {});
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->settings_dialog->document_mode);
+        // 문서가 정의한 git은 override 값이고, 정의하지 않은 svn·submodule은 앱
+        // 값이 "따름"으로 보인다.
+        REQUIRE(view->settings_dialog->git_follows_app == false);
+        REQUIRE(view->settings_dialog->svn_follows_app);
+        REQUIRE(view->settings_dialog->svn_path == u8"C:\\tools\\svn\\svn.exe");
+        REQUIRE(view->settings_dialog->submodules_follows_app);
+        REQUIRE(view->settings_dialog->update_submodules);
+    }
+
+    // 건드리지 않고 확인하면 아무것도 저장·재조회하지 않는다.
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.submitter.requests.empty());
+
+    // ignore_local만 건드리면 그 행만 문서 override가 된다. 재조회 요청에는 전역
+    // svn과 문서 git이 합성된 유효 설정이 실린다.
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::toggle_settings_ignore_local_intent {});
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 2u);
+    const gitman::operation_request& save { fixture.submitter.requests[0] };
+    REQUIRE(save.kind == gitman::operation_kind::save_document);
+    REQUIRE(save.document->settings.ignore_local_changes == std::optional<bool> { true });
+    REQUIRE(save.document->settings.svn_executable.has_value() == false);
+    REQUIRE(save.document->settings.update_submodules.has_value() == false);
+    const gitman::operation_request& refresh { fixture.submitter.requests[1] };
+    REQUIRE(refresh.kind == gitman::operation_kind::refresh);
+    REQUIRE(refresh.settings.git_executable == u8"C:\\tools\\git\\git.exe");
+    REQUIRE(refresh.settings.svn_executable == u8"C:\\tools\\svn\\svn.exe");
+    REQUIRE(refresh.settings.update_submodules);
+    REQUIRE(refresh.settings.ignore_local_changes);
+}
+
+TEST_CASE("Clearing a document executable returns the row to the app settings", "[logic][settings-ui]")
+{
+    // 문서 모드의 지우기는 빈 값이 아니라 "앱 설정 따름"으로 되돌린다 (G3.2).
+    // 이 fixture의 앱 설정은 기본값(자동 탐색)이다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::clear_settings_executable_intent { gitman::repository_kind::git });
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->settings_dialog->git_follows_app);
+        REQUIRE(view->settings_dialog->git_path.empty());
+    }
+
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 2u);
+    REQUIRE(fixture.submitter.requests[0].kind == gitman::operation_kind::save_document);
+    REQUIRE(fixture.submitter.requests[0].document->settings.git_executable.has_value() == false);
+    REQUIRE(fixture.submitter.requests[1].settings.git_executable.empty());
+}
+
 TEST_CASE("The settings dialog elements register the picker commands and intents", "[ui][settings-ui]")
 {
     settings_fixture fixture {};
@@ -252,7 +357,7 @@ TEST_CASE("The settings dialog association buttons request the UI commands", "[u
     REQUIRE(*dissociate_command == gitman::ui::ui_command::unregister_file_association);
 }
 
-TEST_CASE("The toolbar settings button opens the dialog only with a document", "[ui][settings-ui]")
+TEST_CASE("The toolbar settings button opens the dialog with or without a document", "[ui][settings-ui]")
 {
     settings_fixture fixture {};
     const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
@@ -262,7 +367,7 @@ TEST_CASE("The toolbar settings button opens the dialog only with a document", "
     REQUIRE(message != nullptr);
     REQUIRE(std::holds_alternative<gitman::open_settings_intent>(*message));
 
-    // 문서가 없으면 버튼이 비활성이다.
+    // 문서가 없어도 전역 설정 진입점으로 항상 활성이다 (G3.2).
     gitman::view_snapshot empty {};
     empty.window_width = 800.0f;
     empty.window_height = 600.0f;
@@ -270,7 +375,7 @@ TEST_CASE("The toolbar settings button opens the dialog only with a document", "
     const auto empty_tree { gitman::ui::build_ui_tree(empty) };
     const gitman::ui::ui_element* const button { empty_tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::toolbar_settings }) };
     REQUIRE(button != nullptr);
-    REQUIRE(button->enabled() == false);
+    REQUIRE(button->enabled());
 }
 
 TEST_CASE("Escape closes the settings dialog before clearing the selection", "[ui][settings-ui]")

@@ -92,6 +92,29 @@ namespace gitman {
         [[nodiscard]] bool is_default() const noexcept;
     };
 
+    // 문서가 명시적으로 덮어쓴 설정만 담는다 (global-settings-and-ui-fixes-design
+    // G3.1). 값이 없는 필드는 앱 설정을 따르고, 유효 설정은 apply_overrides가
+    // 전역 값 위에 합성한다. 문서 JSON의 `settings`에는 정의된 키만 남는다.
+    struct workspace_settings_overrides
+    {
+        // 빈 문자열도 유효한 정의다("자동 탐색을 쓴다"). nullopt만 "앱 설정 따름"이다.
+        std::optional<std::u8string> git_executable {};
+        std::optional<std::u8string> svn_executable {};
+        std::optional<bool> show_relative_paths {};
+        std::optional<bool> update_submodules {};
+        std::optional<bool> ignore_local_changes {};
+        std::optional<bool> write_log_files {};
+        std::optional<std::int32_t> query_timeout_seconds {};
+
+        [[nodiscard]] bool operator==(const workspace_settings_overrides&) const noexcept = default;
+        // 모든 필드가 "따름"이다. 저장 시 settings object를 만들지 않는 판정이다.
+        [[nodiscard]] bool empty() const noexcept;
+    };
+
+    // 전역 설정 위에 문서 override를 얹은 유효 설정이다. 조회·작업 요청과 표시가
+    // 모두 이 결과를 쓴다.
+    [[nodiscard]] workspace_settings apply_overrides(const workspace_settings& base, const workspace_settings_overrides& overrides);
+
     // 문서를 마지막으로 닫을 때의 창 배치다. `.version-list`의 optional `window`
     // object에 대응한다. 좌표는 `WINDOWPLACEMENT::rcNormalPosition`의 값 그대로이며
     // (물리 픽셀, 작업 영역 기준) 최대화 상태에서도 복원 크기를 담는다.
@@ -113,7 +136,8 @@ namespace gitman {
     {
         std::int32_t schema_version { current_workspace_schema_version };
         std::u8string document_path {};
-        workspace_settings settings {};
+        // 문서가 덮어쓴 설정만 담는다. 정의하지 않은 항목은 앱 설정을 따른다.
+        workspace_settings_overrides settings {};
         // 값이 없으면 문서에 배치가 없거나 읽을 수 없었다는 뜻이다. 저장 시 기존
         // 문서의 `window` 필드를 지우지 않는다.
         std::optional<window_placement> window {};

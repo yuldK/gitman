@@ -7,6 +7,32 @@ namespace gitman {
             && query_timeout_seconds.has_value() == false;
     }
 
+    bool workspace_settings_overrides::empty() const noexcept
+    {
+        return git_executable.has_value() == false && svn_executable.has_value() == false && show_relative_paths.has_value() == false && update_submodules.has_value() == false
+            && ignore_local_changes.has_value() == false && write_log_files.has_value() == false && query_timeout_seconds.has_value() == false;
+    }
+
+    workspace_settings apply_overrides(const workspace_settings& base, const workspace_settings_overrides& overrides)
+    {
+        workspace_settings result { base };
+        if (overrides.git_executable.has_value())
+            result.git_executable = *overrides.git_executable;
+        if (overrides.svn_executable.has_value())
+            result.svn_executable = *overrides.svn_executable;
+        if (overrides.show_relative_paths.has_value())
+            result.show_relative_paths = *overrides.show_relative_paths;
+        if (overrides.update_submodules.has_value())
+            result.update_submodules = *overrides.update_submodules;
+        if (overrides.ignore_local_changes.has_value())
+            result.ignore_local_changes = *overrides.ignore_local_changes;
+        if (overrides.write_log_files.has_value())
+            result.write_log_files = *overrides.write_log_files;
+        if (overrides.query_timeout_seconds.has_value())
+            result.query_timeout_seconds = { *overrides.query_timeout_seconds };
+        return result;
+    }
+
     bool window_placement::valid() const noexcept
     {
         return width > 0 && height > 0;

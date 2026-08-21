@@ -247,6 +247,17 @@ namespace gitman {
     // can_confirm은 logic이 초안 검증에서 계산해 UI는 그대로 그린다.
     struct settings_dialog_view
     {
+        // true면 문서 override 편집(제목 "환경설정 (문서)"), false면 전역 설정
+        // 편집이다 (global-settings-and-ui-fixes-design G3.2).
+        bool document_mode { false };
+        // 문서 모드에서 그 행이 문서에 정의되지 않아 앱 설정을 따른다는 표시다.
+        // 전역 모드에서는 항상 false다.
+        bool git_follows_app { false };
+        bool svn_follows_app { false };
+        bool timeout_follows_app { false };
+        bool submodules_follows_app { false };
+        bool ignore_local_follows_app { false };
+        bool log_files_follows_app { false };
         std::u8string git_path {};
         std::u8string svn_path {};
         // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design 1.3).

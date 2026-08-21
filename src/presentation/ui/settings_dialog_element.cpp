@@ -159,7 +159,7 @@ namespace gitman::ui {
                 , svn_path_ { dialog.svn_path }
                 , submodules_text_ { dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" } }
                 , ignore_local_text_ { dialog.ignore_local_changes ? std::u8string { u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" } : std::u8string { u8"끔 - 로컬 변경을 확인한 뒤 진행" } }
-                , log_files_text_ { dialog.write_log_files ? std::u8string { u8"켬 - <문서>.version-list.log 폴더에 저장소별로 남김" } : std::u8string { u8"끔 - 화면 로그만 유지" } }
+                , log_files_text_ { dialog.write_log_files ? std::u8string { u8"켬 - .<문서>.version-list.log 폴더에 저장소별로 남김" } : std::u8string { u8"끔 - 화면 로그만 유지" } }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -305,7 +305,7 @@ namespace gitman::ui {
 
         // 카드 로그를 문서 폴더에 파일로 남기는 토글이다 (app-shell-design A4.5).
         add_child(std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_log_files_toggle }, dialog_.write_log_files,
-            std::u8string { u8"켜면 문서 폴더에 <문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다" }, logic_message { toggle_settings_log_files_intent {} }));
+            std::u8string { u8"켜면 문서 폴더에 .<문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다" }, logic_message { toggle_settings_log_files_intent {} }));
 
         // file association 등록·제거다 (REQ-016). registry 작업은 UI thread의
         // ui_command로 수행되고 결과는 시스템 dialog로 알린다.

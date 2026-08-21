@@ -1,6 +1,6 @@
 # 앱 셸 설계: 앱 단위 설정·시작 페이지·실행 인자·로그 적재
 
-상태: **승인** (2026-08-21 작성, 2026-08-21 검수 승인)
+상태: **완료** (2026-08-21 작성·검수 승인, 2026-08-22 구현 완료, 검증 기록 `docs/verification/2026-08-22-app-shell.md`)
 
 2026-08-21 사용자 요구 4건의 설계를 기록한다. 지금까지 Gitman의 모든 상태는
 열린 `.version-list` 문서 안에만 있었다. 이번 변경으로 **문서보다 바깥의
@@ -246,13 +246,16 @@ struct notice_dialog_view
 문서가 `D:\workspaces\team.version-list`이면 로그 루트는 다음이다.
 
 ```text
-D:\workspaces\team.version-list.log\
+D:\workspaces\.team.version-list.log\
     frontend\20260821-184012.log
     a-b-c\20260821-184012.log
     c-drive_a-b-c\20260821-184012.log
 ```
 
-- 루트 = **문서 경로 + `.log`** (요구의 `${projectname}.version-list.log`).
+- 루트 = 문서가 있는 폴더의 **`.<문서 이름>.log`** (요구의
+  `${projectname}.version-list.log`에 앞 `.`을 더한 이름이다). 2026-08-22 지시로
+  이름 앞에 `.`을 붙여 탐색기에서 저장소 폴더들 사이에 섞이지 않고 맨 앞에 모이게
+  했다.
   문서를 처음 기록할 때 만들고, 만들지 못하면 그 세션 동안 파일 로그를 끈다.
 - 저장소 폴더 이름 규칙 (사용자 지시):
   1. 기본은 작업 복사본 경로의 **마지막 폴더 이름**이다 (`C:\a\b\c` → `c`).

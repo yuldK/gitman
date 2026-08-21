@@ -57,7 +57,7 @@ bin\gitman.exe --register-file-association
 | 프로젝트 목록·문서 설정(Git/SVN 경로, 경로 표시 방식)·창 배치 | 사용자가 만든 `<이름>.version-list` (UTF-8 JSON, 스키마 버전 1) |
 | 최근에 연 문서 목록 | `gitman.exe`와 같은 폴더의 `gitman.app-settings.json` (UTF-8 JSON, 스키마 버전 1) |
 | 작업 로그(화면) | 메모리 전용 (카드당 1,000 record ring buffer) |
-| 작업 로그(파일) | 문서 폴더의 `<이름>.version-list.log\<저장소>\<타임스탬프>.log` (문서 설정 `write_log_files`가 켜져 있을 때) |
+| 작업 로그(파일) | 문서 폴더의 `.<이름>.version-list.log\<저장소>\<타임스탬프>.log` (문서 설정 `write_log_files`가 켜져 있을 때) |
 | file association | `HKCU\Software\Classes`의 `.version-list`·`Gitman.VersionList` (등록한 경우만) |
 
 ## 5. 업그레이드
@@ -84,7 +84,7 @@ bin\gitman.exe --register-file-association
 
 1. (등록했다면) `bin\gitman.exe --unregister-file-association`
 2. `gitman.exe` 삭제
-3. `.version-list` 문서와 `<이름>.version-list.log` 로그 폴더는 사용자 소유 데이터이므로 필요 시 직접 삭제
+3. `.version-list` 문서와 `.<이름>.version-list.log` 로그 폴더는 사용자 소유 데이터이므로 필요 시 직접 삭제
 4. 실행 파일 옆의 `gitman.app-settings.json`도 함께 삭제
 
 이외의 잔여물(레지스트리, AppData, 서비스)은 없다.

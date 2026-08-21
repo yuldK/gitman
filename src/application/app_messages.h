@@ -3,6 +3,7 @@
 #include "application/process_cancellation.h"
 #include "application/project_store.h"
 #include "application/repository_provider.h"
+#include "domain/app_settings.h"
 #include "domain/diagnostic.h"
 #include "domain/discovery.h"
 #include "domain/operation_log.h"
@@ -258,6 +259,13 @@ namespace gitman {
     struct close_context_menu_intent
     {};
 
+    // 시작 페이지 최근 항목의 제거다 (app-shell-design A1.3). 경로가 목록에 없으면
+    // 아무 일도 하지 않는다.
+    struct remove_recent_document_intent
+    {
+        std::u8string path {};
+    };
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -314,6 +322,10 @@ namespace gitman {
         discover_projects,
         // 선택 후보의 원자적 등록이다. save와 같은 lane에서 직렬화된다 (단계 8).
         register_projects,
+        // 앱 단위 설정 파일의 읽기·쓰기다 (app-shell-design A1.2). 파일 경로는
+        // executor가 알고 있어 요청에는 담지 않는다. 문서 lane에서 직렬화된다.
+        load_app_settings,
+        save_app_settings,
     };
 
     struct operation_request
@@ -343,6 +355,10 @@ namespace gitman {
         // register_projects 전용: 사용자가 선택한 탐색 후보다. 문서와 revision은
         // save처럼 `document`·`revision` 필드에 실린다.
         std::vector<discovery_candidate> discovery_selection {};
+        // save_app_settings 전용: 저장할 앱 설정과 마지막으로 읽은 원본 JSON이다.
+        // 원본은 알 수 없는 키를 보존하는 데 쓴다.
+        std::optional<app_settings> app_settings_payload {};
+        std::u8string app_settings_shadow {};
         process_cancellation_token token {};
     };
 
@@ -454,6 +470,24 @@ namespace gitman {
         std::vector<diagnostic> diagnostics {};
     };
 
+    // 앱 설정 읽기 결과다. 파일이 없으면 기본값이 실려 온다 (실패가 아니다).
+    struct app_settings_loaded_event
+    {
+        std::uint64_t operation_id { 0 };
+        app_settings settings {};
+        std::u8string shadow_source_json {};
+        std::vector<diagnostic> diagnostics {};
+    };
+
+    // 앱 설정 저장 결과다. 실패해도 앱 상태는 그대로 두고 진단만 알린다.
+    struct app_settings_saved_event
+    {
+        std::uint64_t operation_id { 0 };
+        bool succeeded { false };
+        std::u8string shadow_source_json {};
+        std::vector<diagnostic> diagnostics {};
+    };
+
     struct shutdown_message
     {};
 
@@ -463,11 +497,11 @@ namespace gitman {
         reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
         switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
-        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, confirm_settings_intent,
-        cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent,
-        open_context_menu_intent, close_context_menu_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event,
-        query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event,
-        discovery_completed_event, projects_registered_event, shutdown_message>;
+        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent,
+        confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
+        local_changes_diff_scroll_intent, open_context_menu_intent, close_context_menu_intent, remove_recent_document_intent, window_metrics_intent, scroll_intent, window_placement_intent,
+        close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event,
+        svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

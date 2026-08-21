@@ -48,6 +48,8 @@ set_source_files_properties(
 add_library(gitman_lib STATIC
     "${GITMAN_GENERATED_CODICONS}"
     # 도메인: 순수 규칙과 값 타입이다. 다른 계층에 의존하지 않는다.
+    domain/app_settings.cpp
+    domain/app_settings.h
     domain/diagnostic.cpp
     domain/diagnostic.h
     domain/discovery.cpp
@@ -73,6 +75,7 @@ add_library(gitman_lib STATIC
 
     # application: 상태 소유와 계약(interface)이다. OS API를 직접 부르지 않는다.
     application/app_messages.h
+    application/app_settings_store.h
     application/application_options.cpp
     application/application_options.h
     application/directory_enumerator.h
@@ -120,6 +123,8 @@ add_library(gitman_lib STATIC
     infrastructure/git_status_parser.h
     infrastructure/local_change_reader.cpp
     infrastructure/local_change_reader.h
+    infrastructure/json_app_settings_store.cpp
+    infrastructure/json_app_settings_store.h
     infrastructure/json_project_store.cpp
     infrastructure/json_project_store.h
     infrastructure/json_workspace_document.cpp
@@ -230,6 +235,8 @@ add_library(gitman_lib STATIC
     platform/win32/version_list_generation_dialog.h
     platform/win32/win32_app_runtime.cpp
     platform/win32/win32_app_runtime.h
+    platform/win32/win32_app_settings_path.cpp
+    platform/win32/win32_app_settings_path.h
     platform/win32/win32_application.cpp
     platform/win32/win32_application.h
     platform/win32/win32_clipboard.cpp

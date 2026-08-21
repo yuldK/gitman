@@ -1,5 +1,6 @@
 #pragma once
 
+#include "application/app_settings_store.h"
 #include "application/directory_enumerator.h"
 #include "application/operation_executor.h"
 #include "application/process_runner.h"
@@ -28,6 +29,11 @@ namespace gitman {
 
         void execute(const operation_request& request, const std::function<void(logic_message)>& emit) noexcept override;
 
+        // 앱 단위 설정 파일의 store와 경로를 붙인다 (app-shell-design A1.2). 경로는
+        // 실행 파일 위치라 platform 계층만 알고, 조립 시 한 번 붙인 뒤 바뀌지
+        // 않는다. 붙이지 않은 조립(창 없는 test)은 관련 작업이 기본값으로 끝난다.
+        void bind_app_settings(app_settings_store& store, std::u8string path);
+
     private:
         [[nodiscard]] vcs_tool_set tools_for(const workspace_settings& settings, const process_cancellation_token& token);
         [[nodiscard]] repository_kind decide_kind(const project_definition& project) const;
@@ -45,12 +51,17 @@ namespace gitman {
         // service를 그대로 조립한다.
         void execute_discover_projects(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_register_projects(const operation_request& request, const std::function<void(logic_message)>& emit);
+        // 앱 단위 설정 파일의 읽기·쓰기다 (app-shell-design A1.2).
+        void execute_load_app_settings(const operation_request& request, const std::function<void(logic_message)>& emit);
+        void execute_save_app_settings(const operation_request& request, const std::function<void(logic_message)>& emit);
 
         project_store* store_ { nullptr };
         process_runner* runner_ { nullptr };
         const vcs_file_probe* probe_ { nullptr };
         const directory_enumerator* enumerator_ { nullptr };
         project_path_resolver* resolver_ { nullptr };
+        app_settings_store* app_settings_store_ { nullptr };
+        std::u8string app_settings_path_ {};
         vcs_tool_environment environment_ {};
 
         // settings가 같으면 도구 재조사를 하지 않는다. 매 조회마다 `--version`을

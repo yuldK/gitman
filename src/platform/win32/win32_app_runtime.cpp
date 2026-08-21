@@ -2,9 +2,11 @@
 
 #include "application/logic_controller.h"
 #include "application/task_scheduler.h"
+#include "infrastructure/json_app_settings_store.h"
 #include "infrastructure/json_project_store.h"
 #include "infrastructure/vcs_operation_executor.h"
 #include "platform/win32/project_file_system.h"
+#include "platform/win32/win32_app_settings_path.h"
 #include "platform/win32/win32_directory_enumerator.h"
 #include "platform/win32/win32_process_runner.h"
 #include "platform/win32/win32_vcs_file_probe.h"
@@ -55,6 +57,7 @@ namespace gitman::win32 {
         std::unique_ptr<vcs_file_probe> probe { make_vcs_file_probe() };
         std::unique_ptr<directory_enumerator> enumerator { make_directory_enumerator() };
         json_project_store store { file_system, *resolver };
+        json_app_settings_store app_settings_store { file_system };
         vcs_operation_executor executor { store, *runner, *probe, *enumerator, *resolver, current_vcs_tool_environment() };
 
         messaging::channel<ui::raw_input_event> input_inbox { messaging::channel_options { 4096, messaging::overflow_policy::drop_oldest, {} } };
@@ -88,6 +91,9 @@ namespace gitman::win32 {
             assembly_->interaction_slot.set_signal_callback([wake_window, wake_message] { PostMessageW(wake_window, wake_message, 0, 0); });
         }
 
+        // 앱 단위 설정 파일은 실행 파일 옆에 둔다 (app-shell-design A1.1). 경로는
+        // 조립 시 한 번 정해 executor가 들고 있고 logic은 알지 못한다.
+        assembly_->executor.bind_app_settings(assembly_->app_settings_store, app_settings_file_path());
         assembly_->scheduler = std::make_unique<task_scheduler>(assembly_->executor, assembly_->logic_inbox, default_worker_count());
         assembly_->logic_thread = std::thread { &app_runtime::logic_thread_main, this };
 
@@ -244,6 +250,9 @@ namespace gitman::win32 {
     {
         logic_controller controller { *assembly_->scheduler };
 
+        // 앱 단위 설정 읽기를 가장 먼저 제출한다. 시작 페이지의 최근 목록이 이
+        // 결과로 채워진다 (app-shell-design A1.2).
+        controller.start();
         publish_snapshots(controller);
         std::vector<messaging::envelope<logic_message>> batch {};
         messaging::envelope<logic_message> received {};

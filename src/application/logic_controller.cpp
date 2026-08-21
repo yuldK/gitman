@@ -201,6 +201,8 @@ namespace gitman {
                     handle_open_context_menu(value);
                 else if constexpr (std::is_same_v<value_type, close_context_menu_intent>)
                     context_menu_.reset();
+                else if constexpr (std::is_same_v<value_type, remove_recent_document_intent>)
+                    handle_remove_recent_document(value);
                 else if constexpr (std::is_same_v<value_type, open_local_changes_intent>)
                     handle_open_local_changes(value);
                 else if constexpr (std::is_same_v<value_type, select_local_change_intent>)
@@ -275,8 +277,24 @@ namespace gitman {
                     handle_discovery_completed(std::move(value));
                 else if constexpr (std::is_same_v<value_type, projects_registered_event>)
                     handle_projects_registered(std::move(value));
+                else if constexpr (std::is_same_v<value_type, app_settings_loaded_event>)
+                    handle_app_settings_loaded(std::move(value));
+                else if constexpr (std::is_same_v<value_type, app_settings_saved_event>)
+                    handle_app_settings_saved(std::move(value));
             },
             std::move(message));
+    }
+
+    void logic_controller::start()
+    {
+        if (shutting_down_ || app_settings_loaded_ || pending_app_settings_load_id_ != 0)
+            return;
+
+        operation_request request { make_request(operation_kind::load_app_settings, nullptr, 0) };
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+        pending_app_settings_load_id_ = operation_id;
     }
 
     bool logic_controller::shutdown_requested() const noexcept
@@ -415,6 +433,9 @@ namespace gitman {
             card.generation = 1;
             cards_.push_back(std::move(card));
         }
+
+        // 문서를 실제로 연 시점에만 최근 목록에 남긴다 (app-shell-design A1.2).
+        record_recent_document();
 
         // 시작 시 로컬 상태를 먼저 표시한다 (plan 5.1). 원격 판정은 명시적 refresh다.
         for (card_state& card : cards_)
@@ -922,6 +943,100 @@ namespace gitman {
             }
         }
         discovery_dialog_.reset();
+    }
+
+    void logic_controller::handle_app_settings_loaded(app_settings_loaded_event event)
+    {
+        if (event.operation_id != pending_app_settings_load_id_)
+            return;
+        pending_app_settings_load_id_ = 0;
+
+        // 읽기가 끝나기 전에 문서를 열었으면 그 항목이 파일의 어떤 항목보다 최신이다.
+        // 읽은 목록을 바탕으로 깔고 그 위에 오래된 것부터 다시 올린다.
+        const std::vector<recent_document> pending { std::move(app_settings_.recent_documents) };
+        app_settings_ = std::move(event.settings);
+        app_settings_shadow_ = std::move(event.shadow_source_json);
+        app_settings_loaded_ = true;
+        for (std::size_t index = pending.size(); index > 0; --index)
+        {
+            const recent_document& value { pending[index - 1] };
+            touch_recent_document(app_settings_, value.path, value.opened_at);
+        }
+
+        for (const diagnostic& value : event.diagnostics)
+            if (value.severity != diagnostic_severity::information)
+                notices_.push_back(value.message);
+
+        if (pending.empty() == false || app_settings_save_queued_)
+        {
+            app_settings_save_queued_ = false;
+            request_app_settings_save();
+        }
+    }
+
+    void logic_controller::handle_app_settings_saved(app_settings_saved_event event)
+    {
+        if (event.operation_id != pending_app_settings_save_id_)
+            return;
+        pending_app_settings_save_id_ = 0;
+
+        if (event.succeeded)
+            app_settings_shadow_ = std::move(event.shadow_source_json);
+        else if (app_settings_save_notified_ == false)
+        {
+            // 실행 파일 폴더가 보호된 위치면 매번 실패한다. 사유는 한 번만 알리고
+            // 최근 목록은 이 세션의 메모리에만 남긴다 (app-shell-design A1.1).
+            app_settings_save_notified_ = true;
+            for (const diagnostic& value : event.diagnostics)
+                if (value.severity != diagnostic_severity::information)
+                {
+                    notices_.push_back(value.message);
+                    break;
+                }
+        }
+
+        if (app_settings_save_queued_)
+        {
+            app_settings_save_queued_ = false;
+            request_app_settings_save();
+        }
+    }
+
+    void logic_controller::handle_remove_recent_document(const remove_recent_document_intent& intent)
+    {
+        if (remove_recent_document(app_settings_, intent.path) == false)
+            return;
+        request_app_settings_save();
+    }
+
+    void logic_controller::record_recent_document()
+    {
+        if (document_path_.empty())
+            return;
+
+        touch_recent_document(app_settings_, document_path_, format_utc_timestamp(std::chrono::system_clock::now()));
+        request_app_settings_save();
+    }
+
+    void logic_controller::request_app_settings_save()
+    {
+        if (shutting_down_)
+            return;
+        // 읽기가 끝나기 전에 저장하면 파일에 있던 항목을 지운다. 결과가 도착한 뒤
+        // 합쳐서 한 번만 쓴다.
+        if (app_settings_loaded_ == false || pending_app_settings_save_id_ != 0)
+        {
+            app_settings_save_queued_ = true;
+            return;
+        }
+
+        operation_request request { make_request(operation_kind::save_app_settings, nullptr, 0) };
+        request.app_settings_payload = app_settings_;
+        request.app_settings_shadow = app_settings_shadow_;
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+        pending_app_settings_save_id_ = operation_id;
     }
 
     void logic_controller::handle_cancel_discovery_dialog()

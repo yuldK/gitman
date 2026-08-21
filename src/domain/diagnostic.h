@@ -72,6 +72,9 @@ namespace gitman {
         generation_output_exists,
         generation_no_repositories,
         generation_failed,
+        app_settings_read_failed,
+        app_settings_invalid,
+        app_settings_write_failed,
     };
 
     struct diagnostic_source

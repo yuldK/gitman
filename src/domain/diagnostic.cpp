@@ -131,6 +131,12 @@ namespace gitman {
             return u8"generation_no_repositories";
         case diagnostic_code::generation_failed:
             return u8"generation_failed";
+        case diagnostic_code::app_settings_read_failed:
+            return u8"app_settings_read_failed";
+        case diagnostic_code::app_settings_invalid:
+            return u8"app_settings_invalid";
+        case diagnostic_code::app_settings_write_failed:
+            return u8"app_settings_write_failed";
         }
         return u8"unknown";
     }

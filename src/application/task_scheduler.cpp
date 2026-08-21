@@ -17,6 +17,9 @@ namespace gitman {
             case operation_kind::save_document:
             case operation_kind::discover_projects:
             case operation_kind::register_projects:
+            // 앱 설정 파일도 같은 lane에서 직렬화한다. 읽기와 쓰기가 겹치면 안 된다.
+            case operation_kind::load_app_settings:
+            case operation_kind::save_app_settings:
                 return true;
             case operation_kind::query_local:
             case operation_kind::refresh:
@@ -49,6 +52,8 @@ namespace gitman {
             case operation_kind::save_document:
             case operation_kind::discover_projects:
             case operation_kind::register_projects:
+            case operation_kind::load_app_settings:
+            case operation_kind::save_app_settings:
             case operation_kind::query_local:
             case operation_kind::refresh:
             case operation_kind::update:

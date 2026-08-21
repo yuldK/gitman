@@ -158,6 +158,18 @@ namespace gitman {
                 return;
             }
 
+            if (request.kind == operation_kind::load_app_settings)
+            {
+                execute_load_app_settings(request, emit);
+                return;
+            }
+
+            if (request.kind == operation_kind::save_app_settings)
+            {
+                execute_save_app_settings(request, emit);
+                return;
+            }
+
             if (request.kind == operation_kind::update || request.kind == operation_kind::switch_to)
             {
                 execute_change(request, emit);
@@ -236,6 +248,20 @@ namespace gitman {
                     failure.diagnostics.push_back(std::move(value));
                     emit(std::move(failure));
                 }
+                else if (request.kind == operation_kind::load_app_settings)
+                {
+                    app_settings_loaded_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::save_app_settings)
+                {
+                    app_settings_saved_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
                 else if (request.kind == operation_kind::update || request.kind == operation_kind::switch_to)
                 {
                     change_completed_event failure { make_change_event(request, {}) };
@@ -286,6 +312,40 @@ namespace gitman {
             catch (...)
             {}
         }
+    }
+
+    void vcs_operation_executor::bind_app_settings(app_settings_store& store, std::u8string path)
+    {
+        app_settings_store_ = &store;
+        app_settings_path_ = std::move(path);
+    }
+
+    void vcs_operation_executor::execute_load_app_settings(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        app_settings_loaded_event event {};
+        event.operation_id = request.operation_id;
+        if (app_settings_store_ != nullptr)
+        {
+            app_settings_load_result loaded { app_settings_store_->load(app_settings_path_) };
+            event.settings = std::move(loaded.settings);
+            event.shadow_source_json = std::move(loaded.shadow_source_json);
+            event.diagnostics = std::move(loaded.diagnostics);
+        }
+        emit(std::move(event));
+    }
+
+    void vcs_operation_executor::execute_save_app_settings(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        app_settings_saved_event event {};
+        event.operation_id = request.operation_id;
+        if (app_settings_store_ != nullptr && request.app_settings_payload.has_value())
+        {
+            app_settings_save_result saved { app_settings_store_->save(app_settings_path_, *request.app_settings_payload, request.app_settings_shadow) };
+            event.succeeded = saved.succeeded;
+            event.shadow_source_json = std::move(saved.shadow_source_json);
+            event.diagnostics = std::move(saved.diagnostics);
+        }
+        emit(std::move(event));
     }
 
     void vcs_operation_executor::execute_change(const operation_request& request, const std::function<void(logic_message)>& emit)

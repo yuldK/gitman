@@ -26,6 +26,10 @@ namespace gitman {
 
         void handle(logic_message message);
 
+        // logic thread가 loop에 들어가기 전에 한 번 호출한다. 앱 단위 설정을 읽는
+        // 작업을 제출한다 (app-shell-design A1.2).
+        void start();
+
         [[nodiscard]] bool shutdown_requested() const noexcept;
         // 종료 시 실행 중 작업에 전파되는 취소 token이다. 모든 요청에 실려 나간다.
         [[nodiscard]] process_cancellation_token cancellation() const noexcept;
@@ -77,6 +81,12 @@ namespace gitman {
         void handle_cancel_discovery_dialog();
         void handle_discovery_completed(discovery_completed_event event);
         void handle_projects_registered(projects_registered_event event);
+        void handle_app_settings_loaded(app_settings_loaded_event event);
+        void handle_app_settings_saved(app_settings_saved_event event);
+        void handle_remove_recent_document(const remove_recent_document_intent& intent);
+        // 문서를 성공적으로 연 뒤 최근 목록 맨 앞으로 올리고 저장을 예약한다.
+        void record_recent_document();
+        void request_app_settings_save();
         void handle_discovery_dialog_scroll(float delta);
         void handle_open_settings();
         void handle_open_context_menu(const open_context_menu_intent& intent);
@@ -267,6 +277,19 @@ namespace gitman {
         // 종료 시 배치를 문서에 저장해야 하는지다. UI thread가 보낸 배치가 문서의
         // 값과 다를 때만 켜진다.
         bool window_placement_dirty_ { false };
+        // 앱 단위 설정이다 (app-shell-design A1). 파일을 읽기 전에도 기본값으로
+        // 동작하며, 저장 실패는 문서 흐름을 막지 않는다.
+        app_settings app_settings_ {};
+        // 마지막으로 읽거나 쓴 원본 JSON이다. 알 수 없는 키를 보존하는 기준이다.
+        std::u8string app_settings_shadow_ {};
+        // 읽기가 끝나기 전에 문서를 열면 최근 항목이 덮어써질 수 있다. 읽기 완료
+        // 전의 갱신은 대기시켰다가 결과가 도착하면 합친다.
+        bool app_settings_loaded_ { false };
+        std::uint64_t pending_app_settings_load_id_ { 0 };
+        std::uint64_t pending_app_settings_save_id_ { 0 };
+        bool app_settings_save_queued_ { false };
+        // 저장 실패 문구는 한 번만 알린다. 반복 실패가 배너를 도배하지 않게 한다.
+        bool app_settings_save_notified_ { false };
         std::uint64_t next_operation_id_ { 1 };
         bool document_loading_ { false };
         // 생성은 한 번에 하나만 진행한다. id가 0이 아니면 진행 중이며, id 비교로

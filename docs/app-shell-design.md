@@ -153,10 +153,10 @@ logic thread는 파일 I/O를 하지 않는다(ADR-004). 문서와 같은 방식
 
 ### A2.3 영향 범위
 
-- 확장: `platform/win32/main.cpp` 또는 `win32_application`(정규화 위치는
-  Win32 API를 쓰므로 platform 계층), `application_options` test 보강.
-- 정규화 자체는 순수 규칙(`/`→`\`, 중복 구분자 정리)과 Win32 호출로 나눠
-  순수 부분만 test한다.
+- 신설: `win32::absolute_workspace_document_path`(`project_file_system`의 기존
+  경로 준비·`GetFullPathNameW` 조각을 재사용한다).
+- 확장: `win32_application`의 세 진입점(명령줄 인자, drag & drop, 파일 선택기)이
+  모두 이 함수를 거친다. `application_options`의 확장자 오류 문구에 사용 예 추가.
 
 ---
 

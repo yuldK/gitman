@@ -339,6 +339,34 @@ namespace gitman::win32 {
         return state_from_error(native_error);
     }
 
+    std::u8string absolute_workspace_document_path(const std::u8string_view path) noexcept
+    {
+        try
+        {
+            const auto wide { utf8_to_utf16(path) };
+            if (wide.value.has_value() == false)
+                return std::u8string { path };
+
+            wide_path_result prepared { prepare_path(std::move(*wide.value), true) };
+            if (prepared.value.has_value() == false)
+                return std::u8string { path };
+
+            wide_path_result absolute { full_path(*prepared.value) };
+            if (absolute.value.has_value() == false)
+                return std::u8string { path };
+
+            remove_trailing_separators(*absolute.value);
+            auto narrow { utf16_to_utf8(*absolute.value) };
+            if (narrow.value.has_value() == false)
+                return std::u8string { path };
+            return std::move(*narrow.value);
+        }
+        catch (...)
+        {
+            return std::u8string { path };
+        }
+    }
+
     project_path_resolution resolve_project_path(const std::u8string_view original_path, const std::u8string_view document_path) noexcept
     {
         try

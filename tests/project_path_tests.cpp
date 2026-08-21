@@ -317,3 +317,25 @@ TEST_CASE("Normalized project path equality is ordinal and case insensitive", "[
     REQUIRE(gitman::win32::normalized_project_paths_equal(u8"C:\\Repositories\\한글", u8"c:\\repositories\\한글"));
     REQUIRE_FALSE(gitman::win32::normalized_project_paths_equal(u8"C:\\Repositories\\First", u8"C:\\Repositories\\Second"));
 }
+
+TEST_CASE("Command line document paths become absolute Windows paths", "[workspace][path][options]")
+{
+    // 인자·drag & drop 경로는 열기 전에 절대 경로로 펴진다 (app-shell-design A2.2).
+    const std::filesystem::path working_directory { std::filesystem::current_path() };
+    const std::u8string expected { (working_directory / L"team.version-list").u8string() };
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8"team.version-list"), expected));
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8".\\team.version-list"), expected));
+
+    // 구분자는 역슬래시로 통일하고 `.`·`..`과 끝 구분자를 정리한다.
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8"D:/workspaces/team.version-list"), u8"D:\\workspaces\\team.version-list"));
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8"D:\\workspaces\\.\\sub\\..\\team.version-list"), u8"D:\\workspaces\\team.version-list"));
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8"D:\\workspaces\\"), u8"D:\\workspaces"));
+
+    // 이미 절대 경로면 그대로다. 존재 여부는 확인하지 않는다.
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8"\\\\server\\share\\team.version-list"), u8"\\\\server\\share\\team.version-list"));
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8"D:\\없는 폴더\\team.version-list"), u8"D:\\없는 폴더\\team.version-list"));
+
+    // 펼 수 없는 형식은 원본 그대로다. 열기 실패 경로가 사유를 보고한다.
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8""), u8""));
+    REQUIRE(u8_equal(gitman::win32::absolute_workspace_document_path(u8"D:team.version-list"), u8"D:team.version-list"));
+}

@@ -2,6 +2,7 @@
 
 #include "platform/win32/caption_layout.h"
 #include "platform/win32/embedded_assets.h"
+#include "platform/win32/project_file_system.h"
 #include "platform/win32/resources/resource_ids.h"
 #include "platform/win32/skia_renderer.h"
 #include "platform/win32/utf8.h"
@@ -244,8 +245,10 @@ namespace gitman::win32 {
                 }
 
                 post_window_metrics();
+                // 인자 경로는 절대 경로로 펴서 보낸다. 상대 경로 그대로 열면 문서
+                // 기준 상대 저장소 경로가 어긋난다 (app-shell-design A2.2).
                 if (options_.workspace_document_path.has_value())
-                    runtime_->post_logic(logic_message { open_document_intent { *options_.workspace_document_path } });
+                    runtime_->post_logic(logic_message { open_document_intent { absolute_workspace_document_path(*options_.workspace_document_path) } });
 
                 ShowWindow(window_, SW_SHOWDEFAULT);
                 UpdateWindow(window_);
@@ -667,7 +670,7 @@ namespace gitman::win32 {
                         if (converted.value.has_value() == false || has_workspace_document_extension(*converted.value) == false)
                             continue;
 
-                        runtime_->post_logic(logic_message { open_document_intent { std::move(*converted.value) } });
+                        runtime_->post_logic(logic_message { open_document_intent { absolute_workspace_document_path(*converted.value) } });
                         return;
                     }
                 }
@@ -686,7 +689,7 @@ namespace gitman::win32 {
                     if (runtime_ != nullptr)
                     {
                         if (const std::optional<std::u8string> path { choose_workspace_document(window_) }; path.has_value())
-                            runtime_->post_logic(logic_message { open_document_intent { *path } });
+                            runtime_->post_logic(logic_message { open_document_intent { absolute_workspace_document_path(*path) } });
                     }
                     return;
                 case ui::ui_command::show_generate_document_dialog:

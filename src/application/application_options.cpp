@@ -82,7 +82,7 @@ namespace gitman {
             {
                 return {
                     std::nullopt,
-                    u8"작업공간 문서는 .version-list 확장자여야 합니다: " + arguments[index],
+                    u8"작업공간 문서는 .version-list 확장자여야 합니다 (예: gitman.exe \"D:\\workspaces\\team.version-list\"): " + arguments[index],
                 };
             }
             options.workspace_document_path = arguments[index];

@@ -14,6 +14,13 @@ namespace gitman::win32 {
     // 그대로 노출한다.
     using project_path_resolution = gitman::project_path_resolution;
 
+    // 명령줄 인자·drag & drop·파일 선택기로 받은 문서 경로를 절대 경로로 만든다
+    // (app-shell-design A2.2). 구분자를 `\`로 통일하고 현재 작업 디렉터리 기준으로
+    // 편다. 상대 경로 그대로 문서를 열면 문서 기준 상대 저장소 경로가 엉뚱한 곳을
+    // 가리키기 때문이다. 펼 수 없는 형식은 원본을 그대로 돌려주고, 존재 여부는
+    // 확인하지 않는다(열기 실패 경로가 사유를 보고한다).
+    [[nodiscard]] std::u8string absolute_workspace_document_path(std::u8string_view path) noexcept;
+
     [[nodiscard]] project_path_resolution resolve_project_path(std::u8string_view original_path, std::u8string_view document_path) noexcept;
     [[nodiscard]] bool normalized_project_paths_equal(std::u8string_view left, std::u8string_view right) noexcept;
 

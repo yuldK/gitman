@@ -78,6 +78,14 @@ namespace gitman::ui {
 
         // 컨텍스트 메뉴의 열림 상태다. 여닫는 edge에서 키보드 강조를 지운다.
         bool context_menu_open_ { false };
+
+        // 마지막으로 본 포인터 위치·시각이다. 포인터가 머문 채 내용만 스크롤되면
+        // (휠) 새 tree를 받을 때 이 자리로 hover를 다시 판정한다. 창을 벗어나면
+        // 무효가 된다.
+        bool pointer_inside_ { false };
+        float last_pointer_x_ { 0.0f };
+        float last_pointer_y_ { 0.0f };
+        std::chrono::steady_clock::time_point last_pointer_time_ {};
     };
 
     // input thread의 소비 루프다. raw input 채널이 닫히면 반환한다. tree는 처리

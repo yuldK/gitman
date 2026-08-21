@@ -50,6 +50,8 @@ namespace gitman::ui {
         float y { 0.0f };
         // WHEEL_DELTA(120) 단위다. 양수가 위로 굴림이다.
         float delta { 0.0f };
+        // 스크롤로 내용이 흐른 뒤 hover를 다시 판정할 때의 기준 시각이다.
+        std::chrono::steady_clock::time_point time {};
     };
 
     enum class key_code

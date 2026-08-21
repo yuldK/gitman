@@ -113,7 +113,7 @@ namespace gitman::ui {
                 // test도 먼저 걸린다. 창 이동은 비클라이언트 경로라 계속 동작한다.
                 if (view.switch_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<switch_dialog_element>(*view.switch_dialog) };
+                    auto dialog { std::make_unique<switch_dialog_element>(*view.switch_dialog, view.scale, view.window_height) };
                     switch_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
@@ -125,7 +125,7 @@ namespace gitman::ui {
                 }
                 if (view.discovery_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<discovery_dialog_element>(*view.discovery_dialog) };
+                    auto dialog { std::make_unique<discovery_dialog_element>(*view.discovery_dialog, view.scale) };
                     discovery_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }

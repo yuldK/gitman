@@ -120,6 +120,25 @@ namespace gitman::ui {
         }
     }
 
+    void draw_upward_shadow(SkCanvas& canvas, const rect_f& area, const ui_color color, const float strength)
+    {
+        if (area.width <= 0.0f || area.height <= 0.0f || strength <= 0.0f)
+            return;
+
+        constexpr int band_count { 8 };
+        const float band_height { area.height / static_cast<float>(band_count) };
+        for (int band = 0; band < band_count; ++band)
+        {
+            // 아래쪽이 가장 진하고 위로 갈수록 제곱으로 옅어진다.
+            const float distance { static_cast<float>(band) / static_cast<float>(band_count) };
+            const float remaining { 1.0f - distance };
+            SkPaint paint { solid_paint(with_alpha(color, strength * remaining * remaining)) };
+            paint.setAntiAlias(false);
+            const float bottom { area.y + area.height - band_height * static_cast<float>(band) };
+            canvas.drawRect(SkRect::MakeXYWH(area.x, bottom - band_height, area.width, band_height), paint);
+        }
+    }
+
     void draw_centered_glyph(SkCanvas& canvas, const char32_t codepoint, const rect_f& target, const SkFont& font, const SkPaint& paint)
     {
         const SkGlyphID glyph { font.unicharToGlyph(static_cast<SkUnichar>(codepoint)) };

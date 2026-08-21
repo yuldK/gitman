@@ -32,6 +32,10 @@ namespace gitman::ui {
     // 아래로 지나간다는 것을 보여 준다. 셰이더 없이 알파를 낮춘 띠를 쌓는다.
     void draw_downward_shadow(SkCanvas& canvas, const rect_f& area, ui_color color, float strength);
 
+    // `area` 아래쪽 경계에서 위로 옅어지는 그림자다. 스크롤 영역 아래에 아직
+    // 내용이 더 있다는 것을 보여 준다 (downward의 대칭).
+    void draw_upward_shadow(SkCanvas& canvas, const rect_f& area, ui_color color, float strength);
+
     // target 중앙에 글리프 하나를 그린다. 글리프가 없으면 아무것도 그리지 않는다.
     void draw_centered_glyph(SkCanvas& canvas, char32_t codepoint, const rect_f& target, const SkFont& font, const SkPaint& paint);
 

@@ -16,7 +16,8 @@ namespace gitman::ui {
     class discovery_dialog_element final : public ui_element
     {
     public:
-        explicit discovery_dialog_element(discovery_dialog_view dialog);
+        // scale은 스크롤 막대의 content·viewport 계산(물리 픽셀)에 필요하다.
+        discovery_dialog_element(discovery_dialog_view dialog, float scale);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
@@ -24,5 +25,6 @@ namespace gitman::ui {
     private:
         discovery_dialog_view dialog_ {};
         ui_element* panel_ { nullptr };
+        ui_element* scrollbar_ { nullptr };
     };
 } // namespace gitman::ui

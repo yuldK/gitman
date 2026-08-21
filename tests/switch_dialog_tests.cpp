@@ -401,6 +401,53 @@ TEST_CASE("The switch dialog tree wires rows and buttons and routes escape and t
     REQUIRE(std::get_if<gitman::switch_dialog_scroll_intent>(&wheel_message) != nullptr);
 }
 
+TEST_CASE("The switch dialog shows a scrollbar only when the candidates overflow", "[ui][switch-ui]")
+{
+    gitman::view_snapshot view {};
+    view.window_width = 800.0f;
+    view.window_height = 600.0f;
+    view.scale = 1.0f;
+
+    gitman::switch_dialog_view dialog {};
+    dialog.card.value = u8"alpha";
+    dialog.title = u8"alpha";
+    dialog.confirm_label = u8"전환 실행";
+    dialog.candidates.push_back(make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch));
+    view.switch_dialog = { dialog };
+
+    // 목록이 영역에 다 들어가면 막대가 보이지 않는다.
+    {
+        const auto tree { gitman::ui::build_ui_tree(view) };
+        const gitman::ui::ui_element* const bar { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::switch_dialog_scrollbar }) };
+        REQUIRE(bar != nullptr);
+        REQUIRE(bar->visible() == false);
+    }
+
+    // 넘치면 막대가 보이고, thumb 밖 track을 누르면 그 자리로 이동하는 스크롤
+    // intent가 나간다 (logic의 clamp 경로와 같은 switch_dialog_scroll_intent).
+    for (std::size_t index = 0; index < 30; ++index)
+    {
+        const std::string digits { std::to_string(index) };
+        std::u8string name { u8"branch-" };
+        name.append(digits.begin(), digits.end());
+        dialog.candidates.push_back(make_candidate(name, gitman::switch_candidate_kind::git_local_branch));
+    }
+    view.switch_dialog = { std::move(dialog) };
+    const auto tree { gitman::ui::build_ui_tree(view) };
+    const gitman::ui::ui_element* const bar { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::switch_dialog_scrollbar }) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+
+    gitman::ui::interaction_controller controller {};
+    controller.set_tree(tree);
+    const gitman::ui::rect_f track { bar->bounds() };
+    const auto actions { controller.process(gitman::ui::pointer_pressed_event { track.x + track.width - 1.0f, track.y + track.height - 2.0f, gitman::ui::pointer_button::left, {} }) };
+    const gitman::logic_message message { first_logic_message(actions) };
+    const auto* const intent { std::get_if<gitman::switch_dialog_scroll_intent>(&message) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->delta > 0.0f);
+}
+
 TEST_CASE("The SVN switch tree separates row selection from expansion", "[ui][switch-ui][svn]")
 {
     gitman::view_snapshot view {};

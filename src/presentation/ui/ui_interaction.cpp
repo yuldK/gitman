@@ -39,6 +39,13 @@ namespace gitman::ui {
     void interaction_controller::set_tree(std::shared_ptr<const ui_tree> tree) noexcept
     {
         tree_ = std::move(tree);
+
+        // 포인터가 머문 자리에서 내용이 스크롤로 흐르면 커서 아래 element가
+        // 바뀐다. 새 tree를 받을 때 마지막 위치로 hover를 다시 판정해 tooltip이
+        // 이전 대상을 따라 쓸려 다니지 않게 한다. 끌기 중에는 hover가 잡은
+        // 대상에 남아야 하므로 건드리지 않는다.
+        if (pointer_inside_ && pointer_drag_id_ == ui_element_id {} && snapshot_.drag.has_value() == false)
+            update_hover(last_pointer_x_, last_pointer_y_, last_pointer_time_);
     }
 
     std::vector<input_action> interaction_controller::process(const raw_input_event& event)
@@ -57,10 +64,17 @@ namespace gitman::ui {
                 {
                     snapshot_.hovered = {};
                     snapshot_.hover_started_at.reset();
+                    pointer_inside_ = false;
                     return {};
                 }
                 else if constexpr (std::is_same_v<value_type, mouse_wheel_event>)
                 {
+                    // 스크롤 뒤 tree가 다시 오면 이 자리로 hover를 재판정한다.
+                    pointer_inside_ = true;
+                    last_pointer_x_ = value.x;
+                    last_pointer_y_ = value.y;
+                    last_pointer_time_ = value.time;
+
                     // 위로 굴리면 내용이 위로 간다.
                     const float delta { -(value.delta / 120.0f) * input_wheel_scroll_step };
 
@@ -119,6 +133,11 @@ namespace gitman::ui {
 
     std::vector<input_action> interaction_controller::process_move(const pointer_moved_event& event)
     {
+        pointer_inside_ = true;
+        last_pointer_x_ = event.x;
+        last_pointer_y_ = event.y;
+        last_pointer_time_ = event.time;
+
         if (tree_ == nullptr)
             return {};
 
@@ -472,22 +491,24 @@ namespace gitman::ui {
             const messaging::receive_status status { input_inbox.receive_wait(received, std::chrono::milliseconds { 250 }) };
             if (status == messaging::receive_status::closed)
                 return;
-            if (status != messaging::receive_status::received)
-                continue;
 
+            // 이벤트가 없는 턴(타임아웃)에도 최신 tree를 받는다. set_tree가 마지막
+            // 포인터 위치로 hover를 재판정하므로, 휠을 멈춘 뒤 도착한 tree의 반영이
+            // 다음 입력을 기다리지 않는다.
             if (const auto tree { tree_slot.take_newer(tree_version) }; tree.has_value())
             {
                 tree_version = tree->version;
                 controller.set_tree(tree->value);
             }
 
-            for (input_action& action : controller.process(received.payload))
-                if (const auto* const message { std::get_if<logic_message>(&action) }; message != nullptr)
-                    post_with_retry(logic_inbox, *message);
-                else if (const auto* const command { std::get_if<ui_command>(&action) }; command != nullptr && execute_ui_command)
-                    execute_ui_command(*command);
-                else if (auto* const open { std::get_if<open_external_request>(&action) }; open != nullptr && execute_open_external)
-                    execute_open_external(std::move(*open));
+            if (status == messaging::receive_status::received)
+                for (input_action& action : controller.process(received.payload))
+                    if (const auto* const message { std::get_if<logic_message>(&action) }; message != nullptr)
+                        post_with_retry(logic_inbox, *message);
+                    else if (const auto* const command { std::get_if<ui_command>(&action) }; command != nullptr && execute_ui_command)
+                        execute_ui_command(*command);
+                    else if (auto* const open { std::get_if<open_external_request>(&action) }; open != nullptr && execute_open_external)
+                        execute_open_external(std::move(*open));
 
             if ((controller.snapshot() == published) == false)
             {

@@ -359,8 +359,8 @@ namespace gitman::win32 {
                     {
                         POINT client_point { GET_X_LPARAM(long_parameter), GET_Y_LPARAM(long_parameter) };
                         ScreenToClient(window_, &client_point);
-                        runtime_->post_raw_input(
-                            ui::mouse_wheel_event { static_cast<float>(client_point.x), static_cast<float>(client_point.y), static_cast<float>(GET_WHEEL_DELTA_WPARAM(word_parameter)) });
+                        runtime_->post_raw_input(ui::mouse_wheel_event {
+                            static_cast<float>(client_point.x), static_cast<float>(client_point.y), static_cast<float>(GET_WHEEL_DELTA_WPARAM(word_parameter)), std::chrono::steady_clock::now() });
                         return 0;
                     }
                     break;

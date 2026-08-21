@@ -486,6 +486,47 @@ TEST_CASE("A drag cancels with escape and a short movement stays a click", "[ui]
     REQUIRE(controller.process(gitman::ui::pointer_released_event { 112.0f, 110.0f, gitman::ui::pointer_button::left, at(140) }).empty());
 }
 
+TEST_CASE("A new tree refreshes the hover under a resting pointer", "[ui][interaction]")
+{
+    // 휠 스크롤로 내용이 흐르면 포인터가 머문 자리의 element가 바뀐다. 새 tree를
+    // 받을 때 마지막 포인터 위치로 hover를 다시 판정해 tooltip이 이전 대상을
+    // 따라 위·아래로 쓸려 다니지 않게 한다.
+    const auto make_button_tree = [](const std::u8string_view owner) {
+        auto root { std::make_unique<test_panel>(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::root }) };
+        root->arrange({ { 0.0f, 0.0f, 400.0f, 400.0f }, 1.0f });
+        auto button {
+            std::make_unique<gitman::ui::button_element>(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::card_refresh, gitman::project_id { std::u8string { owner } } },
+                gitman::ui::button_config {}),
+        };
+        button->arrange({ { 10.0f, 10.0f, 40.0f, 40.0f }, 1.0f });
+        button->set_tooltip(u8"tip");
+        root->add(std::move(button));
+        return std::make_shared<gitman::ui::ui_tree>(std::move(root));
+    };
+
+    gitman::ui::interaction_controller controller {};
+    controller.set_tree(make_button_tree(u8"first"));
+    REQUIRE(controller.process(gitman::ui::pointer_moved_event { 15.0f, 15.0f, at(100) }).empty());
+    REQUIRE(controller.snapshot().hovered.owner.value == u8"first");
+
+    // 포인터가 움직이지 않아도 새 tree에서 같은 자리의 element로 hover가 넘어간다.
+    controller.set_tree(make_button_tree(u8"second"));
+    REQUIRE(controller.snapshot().hovered.owner.value == u8"second");
+    REQUIRE(controller.snapshot().hover_started_at == at(100));
+
+    // 휠 이벤트가 기록한 위치도 같은 경로를 쓴다. 빈 자리에서 굴린 뒤 새 tree가
+    // 오면 hover가 걷힌다.
+    REQUIRE(controller.process(gitman::ui::mouse_wheel_event { 300.0f, 300.0f, -120.0f, at(200) }).empty() == false);
+    controller.set_tree(make_button_tree(u8"third"));
+    REQUIRE(controller.snapshot().hovered == gitman::ui::ui_element_id {});
+
+    // 창을 벗어난 뒤에는 tree가 바뀌어도 hover를 만들지 않는다.
+    REQUIRE(controller.process(gitman::ui::pointer_moved_event { 15.0f, 15.0f, at(300) }).empty());
+    REQUIRE(controller.process(gitman::ui::pointer_left_event {}).empty());
+    controller.set_tree(make_button_tree(u8"fourth"));
+    REQUIRE(controller.snapshot().hovered == gitman::ui::ui_element_id {});
+}
+
 namespace {
     void pump_thread_main(messaging::channel<gitman::ui::raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const gitman::ui::ui_tree>>& tree_slot,
         messaging::channel<gitman::logic_message>& logic_inbox, messaging::latest_slot<gitman::ui::interaction_snapshot>& interaction_slot, std::atomic<int>& dialog_requests)

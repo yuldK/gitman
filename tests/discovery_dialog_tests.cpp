@@ -356,6 +356,46 @@ TEST_CASE("The toolbar discover button requests the folder picker only with a do
     REQUIRE(button->enabled() == false);
 }
 
+TEST_CASE("The discovery dialog shows a scrollbar only when the candidates overflow", "[ui][discovery-ui]")
+{
+    discovery_fixture fixture {};
+
+    std::vector<gitman::discovery_candidate> candidates {};
+    for (std::size_t index = 0; index < 30; ++index)
+    {
+        const std::string digits { std::to_string(index) };
+        std::u8string name { u8"repo-" };
+        name.append(digits.begin(), digits.end());
+        candidates.push_back(make_candidate(name, gitman::repository_kind::git));
+    }
+    fixture.deliver_candidates(std::move(candidates));
+
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const gitman::ui::ui_element* const bar { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::discovery_dialog_scrollbar }) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+
+    // thumb 밖 track을 누르면 그 자리로 이동하는 스크롤 intent가 나간다.
+    gitman::ui::interaction_controller interaction {};
+    interaction.set_tree(tree);
+    const gitman::ui::rect_f track { bar->bounds() };
+    const auto actions { interaction.process(gitman::ui::pointer_pressed_event { track.x + track.width - 1.0f, track.y + track.height - 2.0f, gitman::ui::pointer_button::left, {} }) };
+    REQUIRE(actions.size() == 1u);
+    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+    REQUIRE(message != nullptr);
+    const auto* const intent { std::get_if<gitman::discovery_dialog_scroll_intent>(message) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->delta > 0.0f);
+
+    // 목록이 영역에 다 들어가면 막대가 보이지 않는다.
+    discovery_fixture short_fixture {};
+    short_fixture.deliver_candidates({ make_candidate(u8"repo-a", gitman::repository_kind::git) });
+    const auto short_tree { gitman::ui::build_ui_tree(*short_fixture.controller.make_view_snapshot()) };
+    const gitman::ui::ui_element* const short_bar { short_tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::discovery_dialog_scrollbar }) };
+    REQUIRE(short_bar != nullptr);
+    REQUIRE(short_bar->visible() == false);
+}
+
 TEST_CASE("Escape closes the discovery dialog and the wheel scrolls its list", "[ui][discovery-ui]")
 {
     discovery_fixture fixture {};

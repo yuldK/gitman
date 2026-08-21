@@ -80,6 +80,8 @@ namespace gitman::ui {
         switch_dialog_item,
         switch_dialog_svn_expand,
         switch_dialog_svn_status,
+        // 후보 목록의 스크롤 막대다. 내용이 목록 영역보다 길 때만 만든다.
+        switch_dialog_scrollbar,
         switch_dialog_confirm,
         switch_dialog_cancel,
         // 환경설정 dialog다 (REQ-017, 단계 8). 배경 클릭은 닫기이고 panel이 클릭을
@@ -130,6 +132,8 @@ namespace gitman::ui {
         discovery_dialog,
         discovery_dialog_panel,
         discovery_dialog_item,
+        // 후보 목록의 스크롤 막대다 (switch dialog와 같은 정책).
+        discovery_dialog_scrollbar,
         discovery_dialog_confirm,
         discovery_dialog_cancel,
     };

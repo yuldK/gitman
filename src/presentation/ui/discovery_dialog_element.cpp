@@ -4,6 +4,7 @@
 #include "presentation/list_metrics.h"
 #include "presentation/ui/dialog_elements.h"
 #include "presentation/ui/draw_primitives.h"
+#include "presentation/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -169,6 +170,8 @@ namespace gitman::ui {
                 , loading_ { dialog.loading }
                 , executing_ { dialog.executing }
                 , empty_ { dialog.rows.empty() }
+                , row_count_ { dialog.rows.size() }
+                , scroll_ { dialog.scroll_offset }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -214,6 +217,26 @@ namespace gitman::ui {
                 context.canvas.save();
                 context.canvas.clipRect(SkRect::MakeXYWH(list_area.x, list_area.y, list_area.width, list_area.height));
                 draw_children(context, interaction);
+                // 위·아래로 내용이 이어질 때 경계에 그림자를 드리운다 (switch
+                // dialog와 같은 규칙). 스크롤 영역이 주변과 같은 색이라 이 그림자가
+                // 위아래 구분을 만든다.
+                {
+                    const float content { static_cast<float>(row_count_) * layout_discovery_dialog_row_height * scale };
+                    const float hidden_above { scroll_ * scale };
+                    const float hidden_below { content - list_area.height - hidden_above };
+                    const float shadow_height { layout_content_shadow_height * scale };
+                    if (hidden_above > 0.0f)
+                    {
+                        const float ratio { hidden_above < shadow_height ? hidden_above / shadow_height : 1.0f };
+                        draw_downward_shadow(context.canvas, { list_area.x, list_area.y, list_area.width, shadow_height }, context.palette.content_shadow, layout_content_shadow_strength * ratio);
+                    }
+                    if (hidden_below > 0.0f)
+                    {
+                        const float ratio { hidden_below < shadow_height ? hidden_below / shadow_height : 1.0f };
+                        draw_upward_shadow(context.canvas, { list_area.x, list_area.y + list_area.height - shadow_height, list_area.width, shadow_height }, context.palette.content_shadow,
+                            layout_content_shadow_strength * ratio);
+                    }
+                }
                 context.canvas.restore();
 
                 std::u8string_view footer {};
@@ -239,6 +262,9 @@ namespace gitman::ui {
             bool loading_ { false };
             bool executing_ { false };
             bool empty_ { false };
+            // 경계 그림자 판정용이다. content 높이와 숨은 양을 draw가 계산한다.
+            std::size_t row_count_ { 0 };
+            float scroll_ { 0.0f };
             std::u8string message_ {};
         };
     } // namespace
@@ -250,7 +276,7 @@ namespace gitman::ui {
         return id;
     }
 
-    discovery_dialog_element::discovery_dialog_element(discovery_dialog_view dialog)
+    discovery_dialog_element::discovery_dialog_element(discovery_dialog_view dialog, const float scale)
         : ui_element { ui_element_id { ui_element_kind::discovery_dialog } }
         , dialog_ { std::move(dialog) }
     {
@@ -273,6 +299,19 @@ namespace gitman::ui {
         cancel->set_enabled(dialog_.executing == false);
         cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_discovery_dialog_intent {} } } }; });
         add_child(std::move(cancel));
+
+        // 목록의 스크롤 막대다 (switch dialog와 같은 정책). logic의 clamp 계산과
+        // 같은 content·viewport를 쓴다.
+        const float effective { scale > 0.0f ? scale : 1.0f };
+        const float bar_content { static_cast<float>(dialog_.rows.size()) * layout_discovery_dialog_row_height * effective };
+        const float bar_viewport { layout_discovery_dialog_list_height * effective };
+        auto bar {
+            std::make_unique<scrollbar_element>(ui_element_id { ui_element_kind::discovery_dialog_scrollbar },
+                [](const float delta) { return logic_message { discovery_dialog_scroll_intent { delta } }; }, bar_content, bar_viewport, dialog_.scroll_offset * effective, effective),
+        };
+        bar->set_visible(bar_content > bar_viewport);
+        scrollbar_ = bar.get();
+        add_child(std::move(bar));
     }
 
     void discovery_dialog_element::arrange(const arrange_context& context)
@@ -294,16 +333,22 @@ namespace gitman::ui {
         auto* const panel { static_cast<discovery_panel_element*>(panel_) };
         panel->list_area = { left + padding, top + list_top_offset * scale, width - padding * 2.0f, layout_discovery_dialog_list_height * scale };
 
-        // 후보 행 배치: 스크롤을 반영하고 목록 영역을 벗어난 행은 숨긴다.
+        // 후보 행 배치: 스크롤을 반영하고 목록 영역을 벗어난 행은 숨긴다. 스크롤
+        // 막대가 보이면 행을 그만큼 좁혀 막대와 겹치지 않게 한다.
         const float row_height { layout_discovery_dialog_row_height * scale };
+        const float scrollbar_reserved { scrollbar_->visible() ? layout_scrollbar_hit_width * scale : 0.0f };
         const std::span<const std::unique_ptr<ui_element>> rows { panel_->children() };
         for (std::size_t index = 0; index < rows.size(); ++index)
         {
             const float row_top { panel->list_area.y + static_cast<float>(index) * row_height - dialog_.scroll_offset * scale };
             const bool inside { row_top + row_height > panel->list_area.y && row_top < panel->list_area.y + panel->list_area.height };
             rows[index]->set_visible(inside);
-            rows[index]->arrange({ { panel->list_area.x, row_top, panel->list_area.width, row_height }, scale });
+            rows[index]->arrange({ { panel->list_area.x, row_top, panel->list_area.width - scrollbar_reserved, row_height }, scale });
         }
+
+        // 스크롤 막대는 목록 영역의 오른쪽 안쪽 세로 띠다.
+        const float bar_width { layout_scrollbar_hit_width * scale };
+        scrollbar_->arrange({ { panel->list_area.x + panel->list_area.width - bar_width, panel->list_area.y, bar_width, panel->list_area.height }, scale });
 
         // 버튼은 panel 오른쪽 아래다. dialog의 자식이라 목록 clip의 영향을 받지 않는다.
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };

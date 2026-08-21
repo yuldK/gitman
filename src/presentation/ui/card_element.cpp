@@ -192,12 +192,17 @@ namespace gitman::ui {
         const float line_2 { line_1 + 16.0f * scale };
         const float line_3_top { line_2 + 5.0f * scale };
 
-        // 상태 아이콘: 진행 중이면 sync, 아니면 상태 글리프다.
+        // 상태 아이콘: 진행 중이면 sync, 아니면 상태 글리프다. 확인되지 않은
+        // 상태(`?`)는 강조색 대신 비활성 계열로 흐리게 그려 정상처럼 보이지
+        // 않게 한다.
         if (context.codicon_typeface != nullptr)
         {
             const rect_f icon_slot { box.x + padding, box.y + padding, 16.0f * scale, 16.0f * scale };
             const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 14.0f * scale };
-            const SkPaint icon_paint { solid_paint(state_accent(context.palette, card_.state)) };
+            const bool undetermined { card_.busy == false && card_.status.undetermined };
+            SkPaint icon_paint { solid_paint(undetermined ? context.palette.primary_foreground : state_accent(context.palette, card_.state)) };
+            if (undetermined)
+                icon_paint.setAlphaf(0.45f);
             const char32_t glyph { card_.busy ? codicons::icon_sync : codicon_for_name(card_.status.codicon) };
             draw_centered_glyph(context.canvas, glyph, icon_slot, icon_font, icon_paint);
         }
@@ -233,7 +238,14 @@ namespace gitman::ui {
         if (card_.revision.empty() == false)
             chips.push_back({ codicons::icon_git_commit, std::u8string { revision_display_text(card_.kind, card_.revision) }, with_alpha(neutral, 0.12f), with_alpha(neutral, 0.75f) });
         if (card_.status.tooltip.empty() == false)
-            chips.push_back({ codicon_for_name(card_.status.codicon), card_.status.tooltip, with_alpha(accent, 0.18f), accent });
+        {
+            // 확인되지 않은 상태(`?`)는 상태 강조색이 아니라 비활성 계열이다.
+            // 제대로 조회되지 않았다는 사실이 색으로도 드러난다.
+            if (card_.status.undetermined)
+                chips.push_back({ codicon_for_name(card_.status.codicon), card_.status.tooltip, with_alpha(neutral, 0.10f), with_alpha(neutral, 0.5f) });
+            else
+                chips.push_back({ codicon_for_name(card_.status.codicon), card_.status.tooltip, with_alpha(accent, 0.18f), accent });
+        }
         if (card_.working_tree_text.empty() == false)
         {
             const ui_color tree_color { context.palette.warning_accent };

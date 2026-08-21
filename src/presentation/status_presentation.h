@@ -26,6 +26,10 @@ namespace gitman {
     {
         std::u8string_view codicon {};
         std::u8string tooltip {};
+        // 확인되지 않은 상태(`?`)다. 렌더러가 상태 강조색 대신 비활성 계열로
+        // 그려 정상(키 컬러)처럼 보이지 않게 한다. codicon 이름 비교 대신 이
+        // flag를 쓰는 이유는 표현 규칙이 글리프 교체와 무관하게 유지되기 위해서다.
+        bool undetermined { false };
     };
 
     // plan 3.2의 표를 그대로 구현한다. 수치가 있는 상태는 툴팁에 개수를 담는다.

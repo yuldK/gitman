@@ -46,7 +46,7 @@ namespace gitman {
         case remote_sync_state::unknown:
             break;
         }
-        return { u8"question", u8"확인되지 않음" };
+        return { u8"question", u8"확인되지 않음", true };
     }
 
     status_glyph availability_glyph(const repository_availability availability)
@@ -65,7 +65,7 @@ namespace gitman {
         case repository_availability::unknown:
             break;
         }
-        return { u8"question", u8"확인되지 않음" };
+        return { u8"question", u8"확인되지 않음", true };
     }
 
     std::u8string working_tree_summary_text(const working_tree_summary& summary)

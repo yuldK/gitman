@@ -42,6 +42,23 @@ TEST_CASE("Availability glyphs cover every unqueryable state", "[presentation][a
     REQUIRE(u8_equal(gitman::availability_glyph(gitman::repository_availability::unknown).codicon, u8"question"));
 }
 
+TEST_CASE("Only the question glyphs are marked undetermined", "[presentation][app]")
+{
+    // 확인되지 않은 상태(`?`)만 undetermined다. 렌더러가 이 flag로 상태 강조색
+    // 대신 비활성 계열을 고른다 (global-settings-and-ui-fixes-design G5).
+    REQUIRE(gitman::sync_state_glyph(gitman::remote_sync_state::unknown, 0, 0).undetermined);
+    REQUIRE(gitman::availability_glyph(gitman::repository_availability::unknown).undetermined);
+    REQUIRE(gitman::availability_glyph(gitman::repository_availability::ready).undetermined);
+
+    // 의미가 판정된 상태는 강조색을 유지한다. 오류·경고도 undetermined가 아니다.
+    REQUIRE(gitman::sync_state_glyph(gitman::remote_sync_state::up_to_date, 0, 0).undetermined == false);
+    REQUIRE(gitman::sync_state_glyph(gitman::remote_sync_state::behind, 0, 3).undetermined == false);
+    REQUIRE(gitman::sync_state_glyph(gitman::remote_sync_state::error, 0, 0).undetermined == false);
+    REQUIRE(gitman::sync_state_glyph(gitman::remote_sync_state::offline, 0, 0).undetermined == false);
+    REQUIRE(gitman::availability_glyph(gitman::repository_availability::not_a_repository).undetermined == false);
+    REQUIRE(gitman::availability_glyph(gitman::repository_availability::tool_unavailable).undetermined == false);
+}
+
 TEST_CASE("Working tree summaries collapse to readable Korean text", "[presentation][app]")
 {
     gitman::working_tree_summary summary {};

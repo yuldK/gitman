@@ -235,6 +235,8 @@ namespace gitman {
                     handle_set_settings_executable(std::move(value));
                 else if constexpr (std::is_same_v<value_type, clear_settings_executable_intent>)
                     handle_clear_settings_executable(value);
+                else if constexpr (std::is_same_v<value_type, clear_settings_override_intent>)
+                    handle_clear_settings_override(value);
                 else if constexpr (std::is_same_v<value_type, edit_settings_timeout_intent>)
                     handle_edit_settings_timeout(value);
                 else if constexpr (std::is_same_v<value_type, toggle_settings_submodules_intent>)
@@ -1243,18 +1245,59 @@ namespace gitman {
         if (settings_dialog_.has_value() == false)
             return;
 
-        // 전역 모드의 지우기는 빈 값(자동 탐색)이고, 문서 모드의 지우기는 문서
-        // 정의를 거둬 앱 설정을 따르게 한다 (G3.2). 초안에는 앱의 값이 다시 보인다.
-        const bool document_mode { settings_dialog_->document_mode };
+        // 지우기는 두 모드 모두 빈 값(자동 탐색)이다. 문서 모드에서는 값을 건드린
+        // 것이므로 그 행이 정의된다 — 문서 정의를 삭제하려면 `덮어씀` 배지를 쓴다
+        // (2026-08-22 지시).
         if (intent.tool == repository_kind::git)
         {
-            settings_dialog_->git_path = document_mode ? app_settings_.settings.git_executable : std::u8string {};
-            settings_dialog_->git_defined = false;
+            settings_dialog_->git_path.clear();
+            settings_dialog_->git_defined = true;
         }
         else if (intent.tool == repository_kind::subversion)
         {
-            settings_dialog_->svn_path = document_mode ? app_settings_.settings.svn_executable : std::u8string {};
+            settings_dialog_->svn_path.clear();
+            settings_dialog_->svn_defined = true;
+        }
+    }
+
+    void logic_controller::handle_clear_settings_override(const clear_settings_override_intent& intent)
+    {
+        // 문서 모드에서만 의미가 있다. 그 행의 문서 정의를 지우고 초안에는 앱의
+        // 값이 다시 보인다 (G3.2 `덮어씀` 배지).
+        if (settings_dialog_.has_value() == false || settings_dialog_->document_mode == false)
+            return;
+
+        switch (intent.field)
+        {
+        case settings_override_field::git_executable:
+            settings_dialog_->git_path = app_settings_.settings.git_executable;
+            settings_dialog_->git_defined = false;
+            break;
+        case settings_override_field::svn_executable:
+            settings_dialog_->svn_path = app_settings_.settings.svn_executable;
             settings_dialog_->svn_defined = false;
+            break;
+        case settings_override_field::query_timeout:
+            settings_dialog_->timeout_text.clear();
+            if (app_settings_.settings.query_timeout_seconds.has_value())
+            {
+                const std::string digits { std::to_string(*app_settings_.settings.query_timeout_seconds) };
+                settings_dialog_->timeout_text.append(digits.begin(), digits.end());
+            }
+            settings_dialog_->timeout_defined = false;
+            break;
+        case settings_override_field::update_submodules:
+            settings_dialog_->update_submodules = app_settings_.settings.update_submodules;
+            settings_dialog_->submodules_defined = false;
+            break;
+        case settings_override_field::ignore_local_changes:
+            settings_dialog_->ignore_local_changes = app_settings_.settings.ignore_local_changes;
+            settings_dialog_->ignore_local_defined = false;
+            break;
+        case settings_override_field::write_log_files:
+            settings_dialog_->write_log_files = app_settings_.settings.write_log_files;
+            settings_dialog_->log_files_defined = false;
+            break;
         }
     }
 

@@ -3,6 +3,10 @@
 #include "presentation/ui/ui_element.h"
 #include "presentation/view_snapshot.h"
 
+#include <cstddef>
+#include <utility>
+#include <vector>
+
 namespace gitman::ui {
     // 환경설정 dialog다 (REQ-017, stage-8-plan 5.1). 화면 전체를 덮는 dim 배경 위에
     // panel을 띄우고 Git/SVN 실행 파일 경로 행과 저장·취소 버튼을 담는다. 경로는
@@ -19,5 +23,8 @@ namespace gitman::ui {
     private:
         settings_dialog_view dialog_ {};
         ui_element* panel_ { nullptr };
+        // 문서가 덮어쓴 행의 `덮어씀` 배지다 (행 index, element). 문서 모드에서
+        // 덮어쓴 행에만 만들어지고 클릭이 그 행의 문서 정의를 지운다 (G3.2).
+        std::vector<std::pair<std::size_t, ui_element*>> badges_ {};
     };
 } // namespace gitman::ui

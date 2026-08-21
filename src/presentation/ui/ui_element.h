@@ -93,6 +93,9 @@ namespace gitman::ui {
         settings_svn_clear,
         // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design 1.3).
         settings_timeout_input,
+        // 문서가 덮어쓴 행에 붙는 `덮어씀` 배지다 (G3.2). owner 값이 행을 구분하고
+        // 클릭하면 그 행의 문서 override를 지운다.
+        settings_override_badge,
         // 업데이트 시 submodule 갱신 토글이다 (update 확인 overlay 대체).
         settings_submodules_toggle,
         // 로컬 변경을 상관하지 않음 토글이다 (status 순회 생략).

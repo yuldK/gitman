@@ -193,6 +193,25 @@ namespace gitman {
         repository_kind tool { repository_kind::git };
     };
 
+    // 환경설정의 행 하나를 가리키는 열쇠다 (global-settings-and-ui-fixes-design
+    // G3.2). `덮어씀` 배지가 어느 행의 문서 override를 지울지 담는다.
+    enum class settings_override_field
+    {
+        git_executable,
+        svn_executable,
+        query_timeout,
+        update_submodules,
+        ignore_local_changes,
+        write_log_files,
+    };
+
+    // 문서 모드에서 그 행의 문서 override를 삭제해 앱 설정을 따르게 한다.
+    // `덮어씀` 배지 클릭이 보낸다 (2026-08-22 지시).
+    struct clear_settings_override_intent
+    {
+        settings_override_field field { settings_override_field::git_executable };
+    };
+
     // 환경설정 dialog의 상태 확인 제한 시간 텍스트 박스 입력이다
     // (field-feedback-design 1.3). 키 입력 문자가 그대로 오며 logic이 숫자만
     // 초안에 반영한다: 0~9는 뒤에 붙이고 backspace(U+0008)는 마지막 자리를
@@ -519,8 +538,9 @@ namespace gitman {
         reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
         switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
-        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent,
-        toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent,
+        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent,
+        toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent,
+        cancel_local_changes_dialog_intent,
         local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, close_context_menu_intent, remove_recent_document_intent, close_document_intent, show_notice_intent,
         dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
         document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event,

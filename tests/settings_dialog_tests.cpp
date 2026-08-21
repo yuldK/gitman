@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -286,16 +287,39 @@ TEST_CASE("Untouched document rows follow the app settings and touched ones over
     REQUIRE(refresh.settings.ignore_local_changes);
 }
 
-TEST_CASE("Clearing a document executable returns the row to the app settings", "[logic][settings-ui]")
+TEST_CASE("Clearing a document executable defines an empty override", "[logic][settings-ui]")
 {
-    // 문서 모드의 지우기는 빈 값이 아니라 "앱 설정 따름"으로 되돌린다 (G3.2).
-    // 이 fixture의 앱 설정은 기본값(자동 탐색)이다.
+    // 지우기는 두 모드 모두 빈 값(자동 탐색)이며, 문서 모드에서는 "빈 값으로
+    // 덮어씀"이 된다. 문서 정의 삭제는 배지의 몫이다 (G3.2).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     fixture.controller.handle(gitman::clear_settings_executable_intent { gitman::repository_kind::git });
     {
         const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->settings_dialog->git_follows_app == false);
+        REQUIRE(view->settings_dialog->git_path.empty());
+    }
+
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 2u);
+    REQUIRE(fixture.submitter.requests[0].kind == gitman::operation_kind::save_document);
+    REQUIRE(fixture.submitter.requests[0].document->settings.git_executable == std::optional<std::u8string> { std::u8string {} });
+    REQUIRE(fixture.submitter.requests[1].settings.git_executable.empty());
+}
+
+TEST_CASE("The override badge deletes a document override and follows the app settings", "[logic][settings-ui]")
+{
+    // `덮어씀` 배지 클릭이 그 행의 문서 정의를 지운다 (2026-08-22 지시). 이
+    // fixture의 앱 설정은 기본값(자동 탐색)이다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->git_follows_app == false);
+
+    fixture.controller.handle(gitman::clear_settings_override_intent { gitman::settings_override_field::git_executable });
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
         REQUIRE(view->settings_dialog->git_follows_app);
+        // 초안에는 앱의 값(기본값 = 자동 탐색)이 다시 보인다.
         REQUIRE(view->settings_dialog->git_path.empty());
     }
 
@@ -304,6 +328,35 @@ TEST_CASE("Clearing a document executable returns the row to the app settings", 
     REQUIRE(fixture.submitter.requests[0].kind == gitman::operation_kind::save_document);
     REQUIRE(fixture.submitter.requests[0].document->settings.git_executable.has_value() == false);
     REQUIRE(fixture.submitter.requests[1].settings.git_executable.empty());
+}
+
+TEST_CASE("Overridden rows show a clickable override badge in document mode", "[ui][settings-ui]")
+{
+    // 문서가 덮어쓴 행(git)에만 배지가 붙고, 클릭이 그 행의 override 삭제 intent를
+    // 낸다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+
+    const gitman::ui::ui_element_id git_badge { gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } };
+    REQUIRE(tree->find(git_badge) != nullptr);
+    REQUIRE(tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"svn" } }) == nullptr);
+
+    const std::vector<gitman::ui::input_action> actions { click(*tree, git_badge) };
+    REQUIRE(actions.size() == 1u);
+    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+    REQUIRE(message != nullptr);
+    const auto* const intent { std::get_if<gitman::clear_settings_override_intent>(message) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->field == gitman::settings_override_field::git_executable);
+
+    // 전역 모드에는 배지가 없다.
+    recording_submitter global_submitter {};
+    gitman::logic_controller global_controller { global_submitter };
+    global_controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
+    global_controller.handle(gitman::open_settings_intent {});
+    const auto global_tree { gitman::ui::build_ui_tree(*global_controller.make_view_snapshot()) };
+    REQUIRE(global_tree->find(git_badge) == nullptr);
 }
 
 TEST_CASE("The settings dialog elements register the picker commands and intents", "[ui][settings-ui]")

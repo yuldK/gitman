@@ -109,6 +109,7 @@ namespace gitman {
         void request_selected_file_diff();
         void handle_set_settings_executable(set_settings_executable_intent intent);
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
+        void handle_clear_settings_override(const clear_settings_override_intent& intent);
         void handle_edit_settings_timeout(const edit_settings_timeout_intent& intent);
         void handle_confirm_settings();
         void handle_begin_switch(const begin_switch_intent& intent);

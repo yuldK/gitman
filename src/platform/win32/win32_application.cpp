@@ -750,27 +750,27 @@ namespace gitman::win32 {
             }
 
             // 환경설정 dialog의 연결 등록·해제다 (REQ-016). registry 작업은 짧은
-            // 로컬 I/O라 UI thread에서 곧바로 수행하고, 파일 선택 dialog처럼 시스템
-            // dialog로 결과를 알린다.
+            // 로컬 I/O라 UI thread에서 곧바로 수행하고, 결과는 logic을 거쳐 앱 스타일
+            // 알림 dialog로 알린다 (app-shell-design A3.2).
             void execute_file_association_command(const bool register_association)
             {
                 const file_association_outcome outcome { register_association ? register_file_association(current_executable_path()) : unregister_file_association() };
+
+                show_notice_intent notice {};
+                notice.title = u8"파일 연결";
+                notice.error = outcome.succeeded == false;
                 if (outcome.succeeded)
+                    notice.lines.push_back(
+                        register_association ? std::u8string { u8".version-list 문서가 이 프로그램에 연결되었습니다." } : std::u8string { u8".version-list 연결이 제거되었습니다." });
+                else
                 {
-                    MessageBoxW(window_, register_association ? L".version-list 문서가 이 프로그램에 연결되었습니다." : L".version-list 연결이 제거되었습니다.", L"Gitman 환경설정",
-                        MB_OK | MB_ICONINFORMATION);
-                    return;
+                    notice.lines.push_back(register_association ? std::u8string { u8"연결 등록에 실패했습니다." } : std::u8string { u8"연결 제거에 실패했습니다." });
+                    for (const diagnostic& value : outcome.diagnostics)
+                        notice.lines.push_back(value.message);
                 }
-                std::wstring message { register_association ? L"연결 등록에 실패했습니다." : L"연결 제거에 실패했습니다." };
-                for (const diagnostic& value : outcome.diagnostics)
-                {
-                    if (auto converted { utf8_to_utf16(value.message) }; converted.value.has_value())
-                    {
-                        message += L"\n";
-                        message += *converted.value;
-                    }
-                }
-                MessageBoxW(window_, message.c_str(), L"Gitman 환경설정", MB_OK | MB_ICONERROR);
+
+                if (runtime_ != nullptr)
+                    runtime_->post_logic(logic_message { std::move(notice) });
             }
 
             // 비클라이언트 클릭을 caption 버튼 element에 등록된 액션으로 실행한다.

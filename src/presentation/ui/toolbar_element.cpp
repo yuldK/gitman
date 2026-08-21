@@ -18,6 +18,7 @@ namespace gitman::ui {
     toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths, const bool document_open)
         : ui_element { ui_element_id { ui_element_kind::toolbar } }
         , show_open_button_ { show_open_button }
+        , document_open_ { document_open }
     {
         auto document_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::toolbar_document_path }, label_config { .text = std::move(document_text) }) };
         document_label_ = document_label.get();
@@ -36,6 +37,8 @@ namespace gitman::ui {
         open_document_ = open_document.get();
         add_child(std::move(open_document));
 
+        // 새 문서 만들기는 문서가 없을 때만 둔다 (2026-08-21 사용자 지시). 열린
+        // 문서가 있으면 먼저 닫아야 한다.
         auto generate_document { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_generate_document }, button_config { .glyph = codicons::icon_new_file }) };
         generate_document->set_tooltip(generation_busy ? std::u8string { u8".version-list 생성 중" } : std::u8string { u8"하위 폴더 저장소로 .version-list 만들기" });
         generate_document->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_generate_document_dialog } }; });
@@ -70,6 +73,13 @@ namespace gitman::ui {
         discover->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_discovery_folder_picker } }; });
         discover_ = discover.get();
         add_child(std::move(discover));
+
+        // 문서 닫기다 (2026-08-21 사용자 지시). 닫으면 시작 페이지로 돌아간다.
+        auto close_document { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_close_document }, button_config { .glyph = codicons::icon_close }) };
+        close_document->set_tooltip(u8"문서 닫기");
+        close_document->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { close_document_intent {} } } }; });
+        close_document_ = close_document.get();
+        add_child(std::move(close_document));
     }
 
     void toolbar_element::arrange(const arrange_context& context)
@@ -80,7 +90,11 @@ namespace gitman::ui {
         const float margin { layout_margin * scale };
         const float button { layout_button_size * scale };
         const float button_y { context.slot.y + (context.slot.height - button) / 2.0f };
-        const float label_left { context.slot.x + margin };
+        // 전체 새로 고침은 왼쪽 끝이다 (2026-08-21 사용자 지시). 문서 경로는 그
+        // 오른쪽에서 시작한다.
+        refresh_all_->set_visible(true);
+        refresh_all_->arrange({ { context.slot.x + margin, button_y, button, button }, scale });
+        const float label_left { context.slot.x + margin + button + margin };
         // 창이 좁으면 오른쪽부터 들어가고 자리가 없는 버튼은 숨긴다. 남은 버튼과
         // 문서 경로가 서로 겹치는 것보다 낫다.
         float next_x { context.slot.x + context.slot.width - margin - button };
@@ -95,9 +109,10 @@ namespace gitman::ui {
             next_x -= button + margin;
         };
 
-        place(refresh_all_, true);
+        // 닫기는 오른쪽 끝이다 (2026-08-21 사용자 지시). 나머지는 그 왼쪽으로 이어진다.
+        place(close_document_, document_open_);
         place(open_document_, show_open_button_);
-        place(generate_document_, true);
+        place(generate_document_, document_open_ == false);
         place(toggle_path_display_, true);
         place(discover_, true);
         place(settings_, true);

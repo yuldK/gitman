@@ -185,6 +185,8 @@ add_library(gitman_lib STATIC
     presentation/ui/local_changes_dialog_element.h
     presentation/ui/log_view_element.cpp
     presentation/ui/log_view_element.h
+    presentation/ui/notice_dialog_element.cpp
+    presentation/ui/notice_dialog_element.h
     presentation/ui/scrollbar_element.cpp
     presentation/ui/scrollbar_element.h
     presentation/ui/settings_dialog_element.cpp

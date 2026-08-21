@@ -203,6 +203,12 @@ namespace gitman {
                     context_menu_.reset();
                 else if constexpr (std::is_same_v<value_type, remove_recent_document_intent>)
                     handle_remove_recent_document(value);
+                else if constexpr (std::is_same_v<value_type, close_document_intent>)
+                    handle_close_document();
+                else if constexpr (std::is_same_v<value_type, show_notice_intent>)
+                    handle_show_notice(std::move(value));
+                else if constexpr (std::is_same_v<value_type, dismiss_notice_intent>)
+                    notice_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, open_local_changes_intent>)
                     handle_open_local_changes(value);
                 else if constexpr (std::is_same_v<value_type, select_local_change_intent>)
@@ -944,6 +950,56 @@ namespace gitman {
             }
         }
         discovery_dialog_.reset();
+    }
+
+    void logic_controller::handle_close_document()
+    {
+        if (shutting_down_ || document_.has_value() == false)
+            return;
+
+        // 카드가 사라지기 전에 진행 중인 변경 작업을 취소한다 (문서 열기와 같다).
+        cancel_running_changes();
+        // 아직 문서에 반영되지 않은 창 배치는 닫기 전에 한 번 내보낸다. 이미 제출된
+        // 저장은 worker가 끝까지 수행하고 늦은 결과는 id 비교로 버려진다.
+        if (window_placement_dirty_)
+        {
+            window_placement_dirty_ = false;
+            request_save();
+        }
+
+        document_path_.clear();
+        document_.reset();
+        revision_ = {};
+        cards_.clear();
+        notices_.clear();
+        save_notice_.clear();
+        selected_.reset();
+        filter_.clear();
+        scroll_offset_ = 0.0f;
+        document_loading_ = false;
+        reset_log_view_state();
+        // 이전 문서를 가리키던 dialog와 메뉴는 의미가 없다.
+        switch_dialog_.reset();
+        settings_dialog_.reset();
+        local_changes_dialog_.reset();
+        context_menu_.reset();
+        if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
+            discovery_dialog_->scan_cancellation->request_cancellation();
+        discovery_dialog_.reset();
+        window_placement_.reset();
+        // 진행 중이던 저장·생성 결과는 도착해도 버린다.
+        pending_save_operation_id_ = 0;
+        save_queued_ = false;
+        pending_generation_operation_id_ = 0;
+    }
+
+    void logic_controller::handle_show_notice(show_notice_intent intent)
+    {
+        notice_dialog_view dialog {};
+        dialog.title = std::move(intent.title);
+        dialog.lines = std::move(intent.lines);
+        dialog.error = intent.error;
+        notice_dialog_ = { std::move(dialog) };
     }
 
     void logic_controller::handle_app_settings_loaded(app_settings_loaded_event event)
@@ -1952,6 +2008,9 @@ namespace gitman {
             }
             snapshot->local_changes_dialog = { std::move(dialog) };
         }
+
+        if (notice_dialog_.has_value())
+            snapshot->notice_dialog = notice_dialog_;
 
         if (context_menu_.has_value())
         {

@@ -325,7 +325,10 @@ namespace gitman::ui {
                 snapshot_.drag.reset();
                 return {};
             }
-            // 열린 dialog·overlay가 있으면 닫기가 먼저다.
+            // 열린 dialog·overlay가 있으면 닫기가 먼저다. 알림은 다른 dialog 위에
+            // 뜨므로 가장 먼저 닫힌다 (app-shell-design A3.2).
+            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::notice_dialog }) != nullptr)
+                return { input_action { logic_message { dismiss_notice_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::local_changes_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_local_changes_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::discovery_dialog }) != nullptr)

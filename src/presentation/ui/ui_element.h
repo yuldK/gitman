@@ -45,6 +45,8 @@ namespace gitman::ui {
         toolbar_open_document,
         toolbar_generate_document,
         toolbar_toggle_path_display,
+        // 열린 문서를 닫는다 (2026-08-21 사용자 지시). 문서가 열려 있을 때만 둔다.
+        toolbar_close_document,
         toolbar_settings,
         toolbar_discover,
         notice,
@@ -117,6 +119,10 @@ namespace gitman::ui {
         context_menu,
         context_menu_panel,
         context_menu_item,
+        // 확인 버튼 하나짜리 알림 다이얼로그다 (app-shell-design A3.2).
+        notice_dialog,
+        notice_dialog_panel,
+        notice_dialog_confirm,
         // 탐색 후보 선택 등록 dialog다 (REQ-004, 단계 8). 후보 행의 정체성은
         // switch dialog처럼 owner의 값에 index를 담아 구분한다.
         discovery_dialog,

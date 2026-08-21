@@ -81,6 +81,8 @@ namespace gitman {
         void handle_cancel_discovery_dialog();
         void handle_discovery_completed(discovery_completed_event event);
         void handle_projects_registered(projects_registered_event event);
+        void handle_close_document();
+        void handle_show_notice(show_notice_intent intent);
         void handle_app_settings_loaded(app_settings_loaded_event event);
         void handle_app_settings_saved(app_settings_saved_event event);
         void handle_remove_recent_document(const remove_recent_document_intent& intent);
@@ -266,6 +268,9 @@ namespace gitman {
         };
 
         std::optional<context_menu_state> context_menu_ {};
+        // 확인 버튼 하나짜리 알림 다이얼로그다 (app-shell-design A3.2). 값이
+        // 있으면 다른 dialog 위에 떠 있다.
+        std::optional<notice_dialog_view> notice_dialog_ {};
         float window_width_ { 0.0f };
         float window_height_ { 0.0f };
         float scale_ { 1.0f };

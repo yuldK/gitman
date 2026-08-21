@@ -181,6 +181,17 @@ namespace gitman {
         std::vector<context_menu_item_view> items {};
     };
 
+    // 확인 버튼 하나짜리 알림 다이얼로그다 (app-shell-design A3.2). 파일 연결
+    // 결과처럼 UI thread가 곧바로 수행한 작업의 결과를 앱 스타일로 알린다.
+    struct notice_dialog_view
+    {
+        std::u8string title {};
+        // 본문 줄 목록이다. 실패는 진단 메시지를 줄 단위로 담는다.
+        std::vector<std::u8string> lines {};
+        // 실패 알림이면 아이콘과 강조 색이 오류 색이다.
+        bool error { false };
+    };
+
     // 시작 페이지의 최근 항목 한 행이다 (app-shell-design A1.3).
     struct recent_document_view
     {
@@ -283,6 +294,8 @@ namespace gitman {
         // 열린 문서가 없을 때의 시작 페이지다 (A1.3). 값이 있으면 카드 목록 자리를
         // 대신 채운다.
         std::optional<start_page_view> start_page {};
+        // 값이 있으면 알림 다이얼로그가 다른 dialog 위에 떠 있다 (A3.2).
+        std::optional<notice_dialog_view> notice_dialog {};
         // 값이 있으면 카드 컨텍스트 메뉴가 앵커 좌표에 떠 있다 (3장).
         std::optional<context_menu_view> context_menu {};
         // 값이 있으면 탐색 후보 선택 등록 dialog가 화면을 덮는다.

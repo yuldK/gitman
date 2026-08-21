@@ -80,18 +80,44 @@ TEST_CASE("The open document button appears only without a document", "[ui][tree
     REQUIRE(tree->find({ gitman::ui::ui_element_kind::empty_state })->visible());
 }
 
-TEST_CASE("The generate document button stays visible and follows the busy state", "[ui][tree]")
+TEST_CASE("The toolbar keeps refresh at the left end and close at the right end", "[ui][tree]")
 {
-    // 문서가 열려 있어도 새 문서 생성은 가능해야 하므로 버튼이 항상 보인다.
+    // 2026-08-21 사용자 지시: 새로 고침은 왼쪽 끝, 닫기는 오른쪽 끝이다.
     const auto tree { gitman::ui::build_ui_tree(make_view(2)) };
+    const gitman::ui::rect_f refresh { tree->find({ gitman::ui::ui_element_kind::toolbar_refresh_all })->bounds() };
+    const gitman::ui::rect_f close { tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->bounds() };
+    const gitman::ui::rect_f settings { tree->find({ gitman::ui::ui_element_kind::toolbar_settings })->bounds() };
+    const gitman::ui::rect_f label { tree->find({ gitman::ui::ui_element_kind::toolbar_document_path })->bounds() };
+
+    REQUIRE(refresh.x < settings.x);
+    REQUIRE(refresh.x < label.x);
+    // 문서 경로는 새로 고침 오른쪽에서 시작해 겹치지 않는다.
+    REQUIRE(label.x >= refresh.x + refresh.width);
+    // 닫기가 가장 오른쪽이고 창 오른쪽 끝에 붙는다.
+    REQUIRE(close.x > settings.x);
+    REQUIRE(close.x + close.width <= 800.0f);
+    REQUIRE(close.x + close.width > settings.x + settings.width);
+}
+
+TEST_CASE("The generate document button appears only without a document", "[ui][tree]")
+{
+    // 문서가 열려 있으면 새 문서 만들기 아이콘을 감춘다 (2026-08-21 사용자 지시).
+    const auto open_tree { gitman::ui::build_ui_tree(make_view(2)) };
+    REQUIRE(open_tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document })->visible() == false);
+    // 대신 문서를 닫는 버튼이 보인다.
+    REQUIRE(open_tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible());
+
+    const auto tree { gitman::ui::build_ui_tree(make_view(0, 1.0f, 0.0f, gitman::view_empty_state::no_document)) };
     const auto* const button { tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document }) };
     REQUIRE(button != nullptr);
     REQUIRE(button->visible());
     REQUIRE(button->enabled());
     REQUIRE(button->action(gitman::ui::ui_trigger::left_click) != nullptr);
+    // 문서가 없으면 닫기 버튼은 없다.
+    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible() == false);
 
     // 생성이 진행 중이면 비활성이고 사유 tooltip을 가진다.
-    gitman::view_snapshot busy_view { make_view(2) };
+    gitman::view_snapshot busy_view { make_view(0, 1.0f, 0.0f, gitman::view_empty_state::no_document) };
     busy_view.document_generating = true;
     const auto busy_tree { gitman::ui::build_ui_tree(busy_view) };
     const auto* const busy_button { busy_tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document }) };

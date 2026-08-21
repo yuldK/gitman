@@ -9,6 +9,7 @@
 #include "presentation/ui/label_element.h"
 #include "presentation/ui/local_changes_dialog_element.h"
 #include "presentation/ui/log_view_element.h"
+#include "presentation/ui/notice_dialog_element.h"
 #include "presentation/ui/settings_dialog_element.h"
 #include "presentation/ui/start_page_element.h"
 #include "presentation/ui/switch_dialog_element.h"
@@ -134,6 +135,13 @@ namespace gitman::ui {
                     local_changes_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
+                // 알림은 다른 dialog 위, 컨텍스트 메뉴 아래다 (app-shell-design A3.2).
+                if (view.notice_dialog.has_value())
+                {
+                    auto dialog { std::make_unique<notice_dialog_element>(*view.notice_dialog) };
+                    notice_dialog_ = dialog.get();
+                    add_child(std::move(dialog));
+                }
                 // 컨텍스트 메뉴는 맨 마지막 자식이라 dialog 위에도 그려지고 hit
                 // test도 가장 먼저 걸린다 (field-feedback-design 3장).
                 if (view.context_menu.has_value())
@@ -170,6 +178,8 @@ namespace gitman::ui {
                     discovery_dialog_->arrange({ context.slot, scale });
                 if (local_changes_dialog_ != nullptr)
                     local_changes_dialog_->arrange({ context.slot, scale });
+                if (notice_dialog_ != nullptr)
+                    notice_dialog_->arrange({ context.slot, scale });
                 if (context_menu_ != nullptr)
                     context_menu_->arrange({ context.slot, scale });
                 if (start_page_ != nullptr)
@@ -199,6 +209,7 @@ namespace gitman::ui {
             ui_element* settings_dialog_ { nullptr };
             ui_element* discovery_dialog_ { nullptr };
             ui_element* local_changes_dialog_ { nullptr };
+            ui_element* notice_dialog_ { nullptr };
             ui_element* context_menu_ { nullptr };
         };
     } // namespace

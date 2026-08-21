@@ -178,7 +178,8 @@ TEST_CASE("The open document button asks for a UI command", "[ui][interaction]")
 
 TEST_CASE("The generate document button asks for a UI command", "[ui][interaction]")
 {
-    const auto tree { make_tree(1) };
+    // 새 문서 만들기는 문서가 없을 때만 보인다 (2026-08-21 사용자 지시).
+    const auto tree { make_tree(0, gitman::view_empty_state::no_document) };
     gitman::ui::interaction_controller controller {};
     controller.set_tree(tree);
 
@@ -187,6 +188,18 @@ TEST_CASE("The generate document button asks for a UI command", "[ui][interactio
     const auto* const command { std::get_if<gitman::ui::ui_command>(&actions.front()) };
     REQUIRE(command != nullptr);
     REQUIRE(*command == gitman::ui::ui_command::show_generate_document_dialog);
+}
+
+TEST_CASE("The close document button asks logic to close the document", "[ui][interaction]")
+{
+    const auto tree { make_tree(1) };
+    gitman::ui::interaction_controller controller {};
+    controller.set_tree(tree);
+
+    const auto actions { click(controller, bounds_of(*tree, gitman::ui::ui_element_kind::toolbar_close_document)) };
+    const gitman::logic_message* const message { as_message(actions) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::close_document_intent>(*message));
 }
 
 TEST_CASE("Caption buttons return window commands", "[ui][interaction]")

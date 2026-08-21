@@ -38,6 +38,8 @@ namespace gitman::ui {
             {
             case context_menu_entry::open_repository:
                 return codicons::icon_folder_opened;
+            case context_menu_entry::open_in_vscode:
+                return codicons::icon_vscode;
             case context_menu_entry::show_local_changes:
                 return codicons::icon_diff;
             case context_menu_entry::refresh:
@@ -58,6 +60,11 @@ namespace gitman::ui {
             {
             case context_menu_entry::open_repository:
                 actions.push_back(input_action { open_external_request { external_open_target::explorer_folder, repository_path } });
+                break;
+            case context_menu_entry::open_in_vscode:
+                // 로컬 변경 dialog의 파일 열기와 같은 UI thread 경로다. 폴더를 주면
+                // VSCode가 workspace로 연다.
+                actions.push_back(input_action { open_external_request { external_open_target::vscode, repository_path } });
                 break;
             case context_menu_entry::show_local_changes:
                 actions.push_back(input_action { logic_message { open_local_changes_intent { owner } } });

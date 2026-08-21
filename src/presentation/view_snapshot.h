@@ -158,6 +158,9 @@ namespace gitman {
     enum class context_menu_entry
     {
         open_repository,
+        // 저장소를 VSCode로 연다 (2026-08-22 지시). 미추적·변경 정리는 앱이 아니라
+        // 편집기에서 하는 편이 낫다.
+        open_in_vscode,
         show_local_changes,
         refresh,
         update,

@@ -106,6 +106,7 @@ namespace {
         menu.repository_path = u8"C:\\work\\card-0";
         const std::vector<gitman::context_menu_entry> entries {
             gitman::context_menu_entry::open_repository,
+            gitman::context_menu_entry::open_in_vscode,
             gitman::context_menu_entry::show_local_changes,
             gitman::context_menu_entry::refresh,
             gitman::context_menu_entry::update,
@@ -131,7 +132,10 @@ TEST_CASE("A right click intent selects the card and opens the menu with button 
     REQUIRE(view->context_menu->anchor_x == 120.0f);
     REQUIRE(view->context_menu->anchor_y == 240.0f);
     REQUIRE(view->context_menu->repository_path == u8"C:\\work\\alpha");
-    REQUIRE(view->context_menu->items.size() == 5u);
+    REQUIRE(view->context_menu->items.size() == 6u);
+    // VSCode 열기는 저장소 열기 바로 아래다 (2026-08-22 지시).
+    REQUIRE(view->context_menu->items[0].entry == gitman::context_menu_entry::open_repository);
+    REQUIRE(view->context_menu->items[1].entry == gitman::context_menu_entry::open_in_vscode);
 
     // 준비된 카드는 모든 항목이 활성이다.
     for (const gitman::context_menu_item_view& item : view->context_menu->items)
@@ -199,17 +203,17 @@ TEST_CASE("The built tree anchors the menu panel and pushes it back inside the w
 {
     SECTION("앵커에 붙는다")
     {
-        const auto tree { gitman::ui::build_ui_tree(make_menu_view(120.0f, 240.0f, { true, true, true, true, true })) };
+        const auto tree { gitman::ui::build_ui_tree(make_menu_view(120.0f, 240.0f, { true, true, true, true, true, true })) };
         const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::context_menu_panel }) };
         REQUIRE(panel != nullptr);
         REQUIRE(panel->bounds().x == 120.0f);
         REQUIRE(panel->bounds().y == 240.0f);
-        REQUIRE(tree->find(gitman::ui::context_menu_item_id(4)) != nullptr);
+        REQUIRE(tree->find(gitman::ui::context_menu_item_id(5)) != nullptr);
     }
 
     SECTION("창 밖으로 나가면 안쪽으로 민다")
     {
-        const auto tree { gitman::ui::build_ui_tree(make_menu_view(790.0f, 595.0f, { true, true, true, true, true })) };
+        const auto tree { gitman::ui::build_ui_tree(make_menu_view(790.0f, 595.0f, { true, true, true, true, true, true })) };
         const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::context_menu_panel }) };
         REQUIRE(panel != nullptr);
         REQUIRE(panel->bounds().x + panel->bounds().width <= 800.0f);
@@ -219,7 +223,7 @@ TEST_CASE("The built tree anchors the menu panel and pushes it back inside the w
 
 TEST_CASE("Menu item clicks close the menu first and then fire the action", "[ui][context-menu]")
 {
-    const auto tree { gitman::ui::build_ui_tree(make_menu_view(100.0f, 100.0f, { true, true, true, false, true })) };
+    const auto tree { gitman::ui::build_ui_tree(make_menu_view(100.0f, 100.0f, { true, true, true, true, false, true })) };
     gitman::ui::interaction_controller controller {};
     controller.set_tree(tree);
 
@@ -236,9 +240,19 @@ TEST_CASE("Menu item clicks close the menu first and then fire the action", "[ui
         REQUIRE(open->absolute_path == u8"C:\\work\\card-0");
     }
 
+    SECTION("VSCode로 열기는 작업 복사본을 VSCode로 여는 요청이다")
+    {
+        const auto actions { click(controller, tree->find(gitman::ui::context_menu_item_id(1))->bounds()) };
+        REQUIRE(actions.size() == 2u);
+        const auto* const open { std::get_if<gitman::ui::open_external_request>(&actions[1]) };
+        REQUIRE(open != nullptr);
+        REQUIRE(open->target == gitman::ui::external_open_target::vscode);
+        REQUIRE(open->absolute_path == u8"C:\\work\\card-0");
+    }
+
     SECTION("상태 갱신")
     {
-        const auto actions { click(controller, tree->find(gitman::ui::context_menu_item_id(2))->bounds()) };
+        const auto actions { click(controller, tree->find(gitman::ui::context_menu_item_id(3))->bounds()) };
         REQUIRE(actions.size() == 2u);
         const auto* const refresh { std::get_if<gitman::logic_message>(&actions[1]) };
         REQUIRE(refresh != nullptr);
@@ -249,7 +263,7 @@ TEST_CASE("Menu item clicks close the menu first and then fire the action", "[ui
 
     SECTION("로컬 변경 확인은 F4 dialog를 연다")
     {
-        const auto actions { click(controller, tree->find(gitman::ui::context_menu_item_id(1))->bounds()) };
+        const auto actions { click(controller, tree->find(gitman::ui::context_menu_item_id(2))->bounds()) };
         REQUIRE(actions.size() == 2u);
         const auto* const message { std::get_if<gitman::logic_message>(&actions[1]) };
         REQUIRE(message != nullptr);
@@ -260,7 +274,7 @@ TEST_CASE("Menu item clicks close the menu first and then fire the action", "[ui
 
     SECTION("비활성 항목은 아무 일도 하지 않는다")
     {
-        REQUIRE(click(controller, tree->find(gitman::ui::context_menu_item_id(3))->bounds()).empty());
+        REQUIRE(click(controller, tree->find(gitman::ui::context_menu_item_id(4))->bounds()).empty());
     }
 
     SECTION("바깥 클릭은 좌·우 모두 닫기다")
@@ -309,7 +323,7 @@ TEST_CASE("A card body right click asks for the menu at the pointer", "[ui][cont
 TEST_CASE("The keyboard walks enabled items, runs the highlight, and escape closes", "[ui][context-menu]")
 {
     // 항목 1이 비활성이라 ↑/↓가 건너뛰어야 한다.
-    const auto tree { gitman::ui::build_ui_tree(make_menu_view(100.0f, 100.0f, { true, false, true, true, true })) };
+    const auto tree { gitman::ui::build_ui_tree(make_menu_view(100.0f, 100.0f, { true, false, true, true, true, true })) };
     gitman::ui::interaction_controller controller {};
     controller.set_tree(tree);
 

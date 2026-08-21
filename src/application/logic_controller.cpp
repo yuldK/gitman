@@ -2284,6 +2284,8 @@ namespace gitman {
                 const bool can_change { card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready };
                 const bool change_running { card.change_operation_id != 0 };
                 menu.items.push_back({ context_menu_entry::open_repository, u8"저장소 열기", true });
+                // 미추적·변경 정리는 편집기에서 하는 편이 낫다 (2026-08-22 지시).
+                menu.items.push_back({ context_menu_entry::open_in_vscode, u8"VSCode로 열기", true });
                 menu.items.push_back({ context_menu_entry::show_local_changes, u8"로컬 변경 확인", true });
                 menu.items.push_back({ context_menu_entry::refresh, u8"상태 갱신", true });
                 menu.items.push_back({ context_menu_entry::update, u8"업데이트", can_change && change_running == false });

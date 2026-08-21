@@ -296,8 +296,12 @@ D:\workspaces\team.version-list.log\
 
 - UTF-8(BOM 없음), CRLF. 화면에서 접히는 progress record도 파일에는 모두
   남긴다(원본 보존).
-- 파일 첫 줄에 머리글 1줄을 둔다: 문서 경로, 저장소 표시 이름, 작업 복사본
-  절대 경로, 앱 버전.
+- 파일 첫 두 줄이 머리글이다: `# 문서: <로그 루트>`와
+  `# 저장소: <표시 이름> (<작업 복사본 절대 경로>)`. 앱 버전은 C++ 코드에 상수가
+  없어 넣지 않았다(구현 결정).
+- 조회(refresh/status)는 지금까지 카드 로그를 남기지 않았다. 검수 결정("전부")에
+  맞춰 **조회 진단 중 경고·오류를 카드 로그(=파일)에 남기도록** 했다. 성공은 카드 표시로
+  충분해 남기지 않는다.
 
 ### A4.4 스레드와 I/O 경로
 
@@ -335,12 +339,14 @@ worker/logic → logic_controller(카드 buffer 적재) → log_file_sink::appen
 
 ### A4.6 영향 범위
 
-- 신설: `domain/log_file_naming.{h,cpp}`(폴더 이름 규칙, 순수 함수),
-  `application/log_file_sink.h`, `infrastructure/file_log_writer.{h,cpp}`,
-  `platform/win32/win32_log_file_system.{h,cpp}`(폴더 생성·append 열기).
-- 확장: `logic_controller`(sink 주입과 호출 지점 2곳: lifecycle append와
-  `operation_log_event` 처리), `workspace_settings`(필드 1개),
-  `json_workspace_document`, `settings_dialog`(토글 1행), `app_runtime`(소유·종료).
+- 신설: `domain/log_file_naming.{h,cpp}`(루트·폴더 이름·파일 이름·줄 형식의 순수
+  규칙), `application/log_file_sink.h`·`application/log_file_system.h`(계약),
+  `infrastructure/file_log_writer.{h,cpp}`(큐 + writer thread),
+  `platform/win32/win32_log_file_system.{h,cpp}`(폴더 생성·append 쓰기).
+- 확장: `logic_controller`(sink 주입, `append_card_log` 한 곳으로 모은 적재,
+  문서 열기·등록·닫기·설정 저장 시 `publish_log_targets`), `workspace_settings`
+  (`write_log_files` 1개), `json_workspace_document`·`json_project_store`(직렬화),
+  `settings_dialog`(토글 1행, panel 높이), `app_runtime`(writer 소유).
 
 ---
 

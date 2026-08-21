@@ -146,6 +146,28 @@ TEST_CASE("Documents without settings keep working with defaults", "[workspace][
     REQUIRE_FALSE(null_result.has_errors());
 }
 
+TEST_CASE("The log file setting defaults to on and accepts booleans only", "[workspace][schema][settings]")
+{
+    // 기본은 켬이라 필드가 없어도 파일 로그를 남긴다 (app-shell-design A4.5).
+    constexpr std::u8string_view missing { u8"{\"schema_version\":1,\"projects\":[]}" };
+    const gitman::workspace_document_parse_result default_result { gitman::parse_workspace_document_json(missing, test_document_path) };
+    REQUIRE(default_result.document.has_value());
+    REQUIRE(default_result.document->settings.write_log_files);
+    REQUIRE(default_result.document->settings.is_default());
+
+    constexpr std::u8string_view disabled { u8"{\"schema_version\":1,\"settings\":{\"write_log_files\":false},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result disabled_result { gitman::parse_workspace_document_json(disabled, test_document_path) };
+    REQUIRE(disabled_result.document.has_value());
+    REQUIRE(disabled_result.document->settings.write_log_files == false);
+    REQUIRE_FALSE(disabled_result.document->settings.is_default());
+    // 알려진 필드이므로 알 수 없는 키 경고를 만들지 않는다.
+    REQUIRE_FALSE(disabled_result.has_warnings());
+
+    constexpr std::u8string_view wrong_type { u8"{\"schema_version\":1,\"settings\":{\"write_log_files\":\"yes\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result wrong_result { gitman::parse_workspace_document_json(wrong_type, test_document_path) };
+    REQUIRE(wrong_result.has_errors());
+}
+
 TEST_CASE("Settings executables must be absolute or empty", "[workspace][schema][settings]")
 {
     // 상대 경로는 실행 시점의 현재 디렉터리에 따라 다른 프로그램을 가리킬 수 있다.

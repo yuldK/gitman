@@ -56,6 +56,8 @@ add_library(gitman_lib STATIC
     domain/discovery.h
     domain/local_changes.cpp
     domain/local_changes.h
+    domain/log_file_naming.cpp
+    domain/log_file_naming.h
     domain/operation.cpp
     domain/operation.h
     domain/operation_log.cpp
@@ -81,6 +83,8 @@ add_library(gitman_lib STATIC
     application/directory_enumerator.h
     application/discovery_service.cpp
     application/discovery_service.h
+    application/log_file_sink.h
+    application/log_file_system.h
     application/logic_controller.cpp
     application/logic_controller.h
     application/operation_executor.h
@@ -115,6 +119,8 @@ add_library(gitman_lib STATIC
     infrastructure/command_line_builder.h
     infrastructure/file_association.cpp
     infrastructure/file_association.h
+    infrastructure/file_log_writer.cpp
+    infrastructure/file_log_writer.h
     infrastructure/git_command_builder.cpp
     infrastructure/git_command_builder.h
     infrastructure/git_repository_provider.cpp
@@ -249,6 +255,8 @@ add_library(gitman_lib STATIC
     platform/win32/win32_directory_enumerator.h
     platform/win32/win32_file_association.cpp
     platform/win32/win32_file_association.h
+    platform/win32/win32_log_file_system.cpp
+    platform/win32/win32_log_file_system.h
     platform/win32/win32_process_runner.cpp
     platform/win32/win32_process_runner.h
     platform/win32/win32_text_transcoder.cpp

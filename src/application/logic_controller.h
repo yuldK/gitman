@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/app_messages.h"
+#include "application/log_file_sink.h"
 #include "application/process_cancellation.h"
 #include "domain/operation_log.h"
 #include "domain/project.h"
@@ -23,6 +24,9 @@ namespace gitman {
     {
     public:
         explicit logic_controller(operation_submitter& submitter) noexcept;
+        // 카드 로그를 파일로도 적재하는 조립이다 (app-shell-design A4). sink는
+        // controller보다 오래 살아 있어야 한다.
+        logic_controller(operation_submitter& submitter, log_file_sink& log_sink) noexcept;
 
         void handle(logic_message message);
 
@@ -120,6 +124,11 @@ namespace gitman {
         // 남긴다.
         void begin_change(card_state& card, operation_kind kind, const update_options& options, const switch_candidate* target);
         void append_lifecycle_log(card_state& card, diagnostic_severity severity, std::u8string text);
+        // 카드 buffer와 파일 sink에 같은 항목을 넣는다. sink가 알린 실패는 카드
+        // 로그에 한 번만 남긴다 (A4.4).
+        void append_card_log(card_state& card, operation_log_entry entry);
+        // 문서가 바뀔 때 sink에 적재 대상을 알린다. 문서가 없으면 빈 목록이다.
+        void publish_log_targets();
         void cancel_running_changes() noexcept;
         void begin_shutdown();
 
@@ -152,6 +161,7 @@ namespace gitman {
         [[nodiscard]] operation_request make_request(operation_kind kind, const card_state* card, std::uint64_t generation);
 
         operation_submitter* submitter_ { nullptr };
+        log_file_sink* log_sink_ { nullptr };
         process_cancellation_source cancellation_source_ {};
 
         std::u8string document_path_ {};
@@ -231,6 +241,8 @@ namespace gitman {
             bool update_submodules { false };
             // 로컬 변경을 상관하지 않음 여부의 초안이다. status 순회를 건너뛴다.
             bool ignore_local_changes { false };
+            // 카드 로그를 문서 폴더에 파일로 남길지의 초안이다 (A4.5).
+            bool write_log_files { true };
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};

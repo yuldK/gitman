@@ -253,6 +253,8 @@ namespace gitman {
         bool update_submodules { false };
         // 로컬 변경을 상관하지 않음 여부의 초안이다. status 순회를 건너뛴다.
         bool ignore_local_changes { false };
+        // 카드 로그를 문서 폴더에 파일로 남길지의 초안이다 (app-shell-design A4.5).
+        bool write_log_files { true };
         // 검증 오류다. 비어 있으면 표시하지 않는다.
         std::u8string message {};
         bool can_confirm { true };

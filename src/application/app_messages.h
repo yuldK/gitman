@@ -212,6 +212,10 @@ namespace gitman {
     struct toggle_settings_ignore_local_intent
     {};
 
+    // 환경설정의 "로그를 문서 폴더에 파일로 남김" 토글이다 (app-shell-design A4.5).
+    struct toggle_settings_log_files_intent
+    {};
+
     struct confirm_settings_intent
     {};
 
@@ -516,11 +520,11 @@ namespace gitman {
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
         switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
         open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent,
-        confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
-        local_changes_diff_scroll_intent, open_context_menu_intent, close_context_menu_intent, remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent,
-        window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event,
-        change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event,
-        app_settings_saved_event, shutdown_message>;
+        toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent,
+        local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, close_context_menu_intent, remove_recent_document_intent, close_document_intent, show_notice_intent,
+        dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
+        document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event,
+        projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

@@ -39,6 +39,7 @@ add_executable(gitman_tests
     helpers/vcs_test_doubles.h
     json_project_store_tests.cpp
     local_changes_tests.cpp
+    log_file_tests.cpp
     log_isolation_stress_tests.cpp
     log_view_tests.cpp
     logic_change_operation_tests.cpp

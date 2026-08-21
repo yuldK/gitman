@@ -96,6 +96,8 @@ namespace gitman::ui {
         settings_submodules_toggle,
         // 로컬 변경을 상관하지 않음 토글이다 (status 순회 생략).
         settings_ignore_local_toggle,
+        // 카드 로그를 문서 폴더에 파일로 남기는 토글이다 (app-shell-design A4.5).
+        settings_log_files_toggle,
         settings_dialog_confirm,
         settings_dialog_cancel,
         // 환경설정 dialog의 file association 등록·제거 버튼이다 (REQ-016, 단계 8).

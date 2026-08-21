@@ -465,3 +465,27 @@ TEST_CASE("The submodule toggle edits the draft and confirm saves it", "[logic][
     REQUIRE(fixture.submitter.requests.size() == 1u);
     REQUIRE(fixture.submitter.requests.front().options.update_submodules);
 }
+
+TEST_CASE("The log file toggle edits the draft and confirm saves it", "[logic][settings-ui][log-file]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    // 기본값은 켬이다 (app-shell-design A4.5).
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->write_log_files);
+
+    {
+        const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+        const std::vector<gitman::ui::input_action> actions { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_log_files_toggle }) };
+        const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+        REQUIRE(message != nullptr);
+        REQUIRE(std::holds_alternative<gitman::toggle_settings_log_files_intent>(*message));
+    }
+    fixture.controller.handle(gitman::toggle_settings_log_files_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->write_log_files == false);
+
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.submitter.requests.size() >= 1u);
+    const gitman::operation_request& save { fixture.submitter.requests[0] };
+    REQUIRE(save.kind == gitman::operation_kind::save_document);
+    REQUIRE(save.document->settings.write_log_files == false);
+}

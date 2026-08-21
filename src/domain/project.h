@@ -80,6 +80,9 @@ namespace gitman {
         // 배선되어 있으며(git은 미적용), update·switch 직전의 svnversion 검증
         // (mixed revision·switched 차단)은 로컬 변경이 아니라서 건너뛰지 않는다.
         bool ignore_local_changes { false };
+        // 카드 로그를 문서 폴더(`<문서>.version-list.log`)에 파일로도 남긴다
+        // (app-shell-design A4.5). 기본 켬이며, 끄면 폴더를 만들지 않는다.
+        bool write_log_files { true };
         // 상태 확인(로컬·원격 조회) 명령의 제한 시간(초)이다. 값이 없으면 실행
         // 정책의 기본값(600초)을 쓴다. 대형 저장소의 status가 5~10분 걸리는 실측을
         // 반영한 항목이다 (field-feedback-design 1장).

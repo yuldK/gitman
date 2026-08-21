@@ -20,7 +20,7 @@ namespace gitman::ui {
     namespace {
         // panel의 논리 치수다. 이 dialog에서만 쓰므로 이 파일에 둔다.
         constexpr float panel_width { 460.0f };
-        constexpr float panel_height { 388.0f };
+        constexpr float panel_height { 440.0f };
         constexpr float panel_padding { 14.0f };
         // 행 배치: 제목 아래에서 시작해 행마다 label 한 줄과 값 한 줄을 그린다.
         constexpr float first_row_top { 40.0f };
@@ -34,7 +34,7 @@ namespace gitman::ui {
         constexpr float toggle_height { 20.0f };
         constexpr float action_button_width { 88.0f };
         constexpr float action_button_height { 28.0f };
-        constexpr std::size_t row_count { 5 };
+        constexpr std::size_t row_count { 6 };
 
         // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design
         // 1.3). 키 입력은 dialog가 열려 있는 동안 interaction이 그대로 intent로
@@ -159,6 +159,7 @@ namespace gitman::ui {
                 , svn_path_ { dialog.svn_path }
                 , submodules_text_ { dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" } }
                 , ignore_local_text_ { dialog.ignore_local_changes ? std::u8string { u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" } : std::u8string { u8"끔 - 로컬 변경을 확인한 뒤 진행" } }
+                , log_files_text_ { dialog.write_log_files ? std::u8string { u8"켬 - <문서>.version-list.log 폴더에 저장소별로 남김" } : std::u8string { u8"끔 - 화면 로그만 유지" } }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -209,6 +210,8 @@ namespace gitman::ui {
                 // 건너뛰는 선택지다. 깨끗하다고 믿고 진행하며 문제는 사후에 알린다.
                 // 현재 SVN provider에만 배선되어 있어 문구도 SVN으로 한정한다.
                 draw_row(context, 4, u8"로컬 변경을 상관하지 않음 (SVN)", ignore_local_text_, u8"");
+                // 카드 로그를 문서 폴더에 파일로 남긴다 (app-shell-design A4).
+                draw_row(context, 5, u8"로그를 문서 폴더에 파일로 남김", log_files_text_, u8"");
 
                 if (message_.empty() == false)
                 {
@@ -249,6 +252,7 @@ namespace gitman::ui {
             std::u8string svn_path_ {};
             std::u8string submodules_text_ {};
             std::u8string ignore_local_text_ {};
+            std::u8string log_files_text_ {};
             std::u8string message_ {};
         };
     } // namespace
@@ -299,6 +303,10 @@ namespace gitman::ui {
             std::u8string { u8"켜면 SVN 저장소에서 로컬 변경 확인(status)을 건너뛰고 깨끗하다고 믿은 채 조회·업데이트·스위치를 진행합니다 (git에는 적용되지 않음)" },
             logic_message { toggle_settings_ignore_local_intent {} }));
 
+        // 카드 로그를 문서 폴더에 파일로 남기는 토글이다 (app-shell-design A4.5).
+        add_child(std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_log_files_toggle }, dialog_.write_log_files,
+            std::u8string { u8"켜면 문서 폴더에 <문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다" }, logic_message { toggle_settings_log_files_intent {} }));
+
         // file association 등록·제거다 (REQ-016). registry 작업은 UI thread의
         // ui_command로 수행되고 결과는 시스템 dialog로 알린다.
         auto associate { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_associate }, std::u8string { u8"연결 등록" }, false) };
@@ -338,7 +346,7 @@ namespace gitman::ui {
 
         const float padding { panel_padding * scale };
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
-        if (children.size() >= 12)
+        if (children.size() >= 13)
         {
             // 행 버튼은 행 오른쪽에 두되 세부 기능 타이틀 줄과 겹치지 않게 약간
             // 내린다 (panel의 draw_row 배치와 같은 좌표 기준이다).
@@ -365,14 +373,18 @@ namespace gitman::ui {
             const float ignore_local_row_top { top + (first_row_top + row_height * 4.0f) * scale + control_offset };
             children[7]->arrange({ { left + width - padding - toggle_width * scale, ignore_local_row_top, toggle_width * scale, toggle_height * scale }, scale });
 
+            // 파일 로그 토글은 6행이다 (app-shell-design A4.5).
+            const float log_files_row_top { top + (first_row_top + row_height * 5.0f) * scale + control_offset };
+            children[8]->arrange({ { left + width - padding - toggle_width * scale, log_files_row_top, toggle_width * scale, toggle_height * scale }, scale });
+
             const float button_width { action_button_width * scale };
             const float button_height { action_button_height * scale };
             const float button_top { top + height - padding - button_height };
             // 아래 왼쪽은 연결 등록·해제, 오른쪽은 저장·취소다.
-            children[8]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
-            children[9]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[10]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[11]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
+            children[9]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
+            children[10]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[11]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[12]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
         }
     }
 

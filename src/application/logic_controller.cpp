@@ -1,6 +1,7 @@
 #include "application/logic_controller.h"
 
 #include "application/svn_repository_browser.h"
+#include "domain/log_file_naming.h"
 #include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
 #include "presentation/log_presentation.h"
@@ -117,6 +118,11 @@ namespace gitman {
 
     logic_controller::logic_controller(operation_submitter& submitter) noexcept
         : submitter_ { &submitter }
+    {}
+
+    logic_controller::logic_controller(operation_submitter& submitter, log_file_sink& log_sink) noexcept
+        : submitter_ { &submitter }
+        , log_sink_ { &log_sink }
     {}
 
     void logic_controller::handle(logic_message message)
@@ -240,6 +246,11 @@ namespace gitman {
                 {
                     if (settings_dialog_.has_value())
                         settings_dialog_->ignore_local_changes = settings_dialog_->ignore_local_changes == false;
+                }
+                else if constexpr (std::is_same_v<value_type, toggle_settings_log_files_intent>)
+                {
+                    if (settings_dialog_.has_value())
+                        settings_dialog_->write_log_files = settings_dialog_->write_log_files == false;
                 }
                 else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
                     handle_confirm_settings();
@@ -442,6 +453,8 @@ namespace gitman {
 
         // 문서를 실제로 연 시점에만 최근 목록에 남긴다 (app-shell-design A1.2).
         record_recent_document();
+        // 로그 파일 적재 대상도 문서 단위로 다시 정해진다 (A4.1).
+        publish_log_targets();
 
         // 시작 시 로컬 상태를 먼저 표시한다 (plan 5.1). 원격 판정은 명시적 refresh다.
         for (card_state& card : cards_)
@@ -465,6 +478,12 @@ namespace gitman {
         card->snapshot = std::move(event.result.snapshot);
         card->diagnostics = std::move(event.result.diagnostics);
         card->has_local_result = true;
+
+        // 조회 실패·경고는 카드 로그에도 남긴다 (2026-08-21 검수: 파일 로그에 조회
+        // 결과까지 포함). 성공은 카드 표시로 충분하므로 남기지 않는다.
+        for (const diagnostic& value : card->diagnostics)
+            if (value.severity != diagnostic_severity::information)
+                append_lifecycle_log(*card, value.severity, value.message);
 
         if (event.final_event)
         {
@@ -739,7 +758,7 @@ namespace gitman {
             return;
 
         for (operation_log_entry& entry : event.entries)
-            card->log.append(std::move(entry));
+            append_card_log(*card, std::move(entry));
     }
 
     void logic_controller::handle_change_completed(change_completed_event event)
@@ -950,6 +969,8 @@ namespace gitman {
             }
         }
         discovery_dialog_.reset();
+        // 등록으로 카드가 늘었으면 로그 폴더 이름도 다시 계산한다 (A4.1).
+        publish_log_targets();
     }
 
     void logic_controller::handle_close_document()
@@ -991,6 +1012,8 @@ namespace gitman {
         pending_save_operation_id_ = 0;
         save_queued_ = false;
         pending_generation_operation_id_ = 0;
+        // 문서를 닫으면 더 쌓을 로그가 없다. 파일은 그대로 두고 적재만 멈춘다.
+        publish_log_targets();
     }
 
     void logic_controller::handle_show_notice(show_notice_intent intent)
@@ -1143,6 +1166,7 @@ namespace gitman {
         }
         dialog.update_submodules = document_->settings.update_submodules;
         dialog.ignore_local_changes = document_->settings.ignore_local_changes;
+        dialog.write_log_files = document_->settings.write_log_files;
         settings_dialog_ = { std::move(dialog) };
     }
 
@@ -1201,7 +1225,7 @@ namespace gitman {
         const bool changed {
             document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path || document_->settings.query_timeout_seconds != timeout
                 || document_->settings.update_submodules != settings_dialog_->update_submodules
-                || document_->settings.ignore_local_changes != settings_dialog_->ignore_local_changes,
+                || document_->settings.ignore_local_changes != settings_dialog_->ignore_local_changes || document_->settings.write_log_files != settings_dialog_->write_log_files,
         };
         if (changed)
         {
@@ -1210,6 +1234,9 @@ namespace gitman {
             document_->settings.query_timeout_seconds = timeout;
             document_->settings.update_submodules = settings_dialog_->update_submodules;
             document_->settings.ignore_local_changes = settings_dialog_->ignore_local_changes;
+            document_->settings.write_log_files = settings_dialog_->write_log_files;
+            // 파일 로그 설정이 바뀌면 적재 대상도 곧바로 따라간다 (A4.5).
+            publish_log_targets();
             request_save();
             // 도구 경로가 바뀌었으니 모든 활성 카드를 새 settings로 재조회한다.
             // 요청마다 settings 사본이 실리므로 저장 완료를 기다릴 필요가 없다.
@@ -1610,7 +1637,49 @@ namespace gitman {
         entry.severity = severity;
         entry.text = std::move(text);
         entry.time = std::chrono::system_clock::now();
+        append_card_log(card, std::move(entry));
+    }
+
+    void logic_controller::append_card_log(card_state& card, operation_log_entry entry)
+    {
+        if (log_sink_ != nullptr)
+            log_sink_->append(card.project.id, entry);
         card.log.append(std::move(entry));
+        if (log_sink_ == nullptr)
+            return;
+
+        // 파일 로그가 꺼진 사유는 화면 로그에만 남긴다. 파일로 다시 보내면 실패가
+        // 반복되므로 buffer에 직접 넣는다.
+        std::optional<std::u8string> failure { log_sink_->take_failure() };
+        if (failure.has_value() == false)
+            return;
+
+        operation_log_entry notice {};
+        notice.kind = log_entry_kind::lifecycle;
+        notice.severity = diagnostic_severity::warning;
+        notice.text = std::move(*failure);
+        notice.time = std::chrono::system_clock::now();
+        card.log.append(std::move(notice));
+    }
+
+    void logic_controller::publish_log_targets()
+    {
+        if (log_sink_ == nullptr)
+            return;
+
+        std::vector<log_file_target> targets {};
+        targets.reserve(cards_.size());
+        for (const card_state& card : cards_)
+        {
+            log_file_target target {};
+            target.id = card.project.id;
+            target.display_name = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
+            target.repository_path = card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized;
+            targets.push_back(std::move(target));
+        }
+        // 문서 설정이 꺼져 있으면 폴더를 만들지 않도록 빈 문서를 알린다 (A4.5).
+        const bool enabled { document_.has_value() && document_->settings.write_log_files };
+        log_sink_->set_document(enabled ? document_path_ : std::u8string {}, targets);
     }
 
     void logic_controller::cancel_running_changes() noexcept
@@ -1958,6 +2027,7 @@ namespace gitman {
             dialog.timeout_text = settings_dialog_->timeout_text;
             dialog.update_submodules = settings_dialog_->update_submodules;
             dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
+            dialog.write_log_files = settings_dialog_->write_log_files;
             // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
             const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };

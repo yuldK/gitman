@@ -45,8 +45,29 @@ namespace gitman {
         [[nodiscard]] bool mixed_revision() const noexcept;
     };
 
+    // svn info --xml이 낸 작업 복사본 항목이다. --show-item을 항목마다 다시 실행하지
+    // 않고 프로세스 하나로 같은 값을 얻는다. XML 요소 이름은 로캘과 무관하다.
+    struct svn_info_fields
+    {
+        std::u8string url {};
+        std::u8string relative_url {};
+        std::u8string repository_root {};
+        std::u8string repository_uuid {};
+        std::u8string revision {};
+        // 첫 entry의 `<commit revision>`이다. WC 리비전(entry attribute)과 달리 이
+        // 노드의 마지막 커밋(last-changed) 리비전이라 브랜치의 최신 커밋을 뜻한다.
+        // commit 요소가 없으면 빈 문자열이다.
+        std::u8string last_changed_revision {};
+        std::u8string working_copy_root {};
+        // 필수 값(URL과 리비전)을 읽었을 때만 참이다.
+        bool parsed { false };
+    };
+
     // 값 하나만 내는 `--show-item` 출력에서 값을 꺼낸다. 빈 줄과 앞뒤 공백을 버린다.
     [[nodiscard]] std::u8string parse_svn_info_item(const std::vector<std::u8string>& lines);
+    // svn info --xml 출력을 해석한다. 우리가 만든 요청의 출력만 들어오므로
+    // 첫 번째 entry의 값만 읽는 좁은 해석이면 충분하다.
+    [[nodiscard]] svn_info_fields parse_svn_info_xml(const std::vector<std::u8string>& lines);
     // 비recursive `svn ls` 기본 출력에서 `/`로 끝나는 디렉터리 이름만 남긴다.
     // 파일과 빈 줄은 버리고 서버가 준 순서를 보존한다.
     [[nodiscard]] std::vector<std::u8string> parse_svn_directory_list(const std::vector<std::u8string>& lines);
@@ -59,6 +80,13 @@ namespace gitman {
     // `status`가 보고한 switched 항목이 하나라도 있는지다. `svnversion`이 없을 때의
     // 보조 판정이다.
     [[nodiscard]] bool has_svn_switched_entry(const svn_status_summary& status) noexcept;
+
+    // `svn update`·`svn switch` 출력에서 충돌 항목을 찾는다. 출력 행은 앞 네 칸이
+    // 항목·속성·잠금·트리 충돌 문자이고 다섯 번째 칸이 공백이며, 그 자리의 'C'가
+    // 충돌을 뜻한다. 상태 문자는 로캘과 무관하므로 사람이 읽는 문장을 파싱하지
+    // 않는다는 원칙은 지켜진다. 한계: 이미 충돌 상태였던 항목은 update가 'C' 행 없이
+    // Skipped 문장(로캘 의존)으로만 알리므로 여기서 잡히지 않는다.
+    [[nodiscard]] bool svn_change_output_reports_conflict(const std::vector<std::u8string>& lines) noexcept;
 
     // status 항목을 로컬 변경 확인 dialog의 목록으로 옮긴다 (field-feedback-design
     // 2.3). 무시(`I`)와 외부(`X`) 항목은 뺀다.

@@ -31,6 +31,8 @@ namespace gitman {
             return u8"repos-uuid";
         case svn_info_item::revision:
             return u8"revision";
+        case svn_info_item::last_changed_revision:
+            return u8"last-changed-revision";
         case svn_info_item::working_copy_root:
             return u8"wc-root";
         }
@@ -48,12 +50,23 @@ namespace gitman {
         return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
+    process_request make_svn_info_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
+    {
+        std::vector<std::u8string> arguments { make_arguments(u8"info") };
+        arguments.push_back(std::u8string { u8"--xml" });
+        return make_vcs_process_request(repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
+    }
+
     process_request make_svn_status_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
     {
         // 대상을 주지 않으면 작업 디렉터리를 기준으로 상대 경로를 낸다. 카드가 그대로
         // 보여 줄 수 있는 형태다.
+        std::vector<std::u8string> arguments { make_arguments(u8"status") };
+        // 외부 항목(externals)은 카드 요약과 로컬 변경 목록 모두에서 제외되는데도 기본
+        // status는 외부 작업 복사본까지 전부 걷는다. 결과에 쓰이지 않는 순회를 건너뛴다.
+        arguments.push_back(std::u8string { u8"--ignore-externals" });
         return make_vcs_process_request(
-            repository_kind::subversion, executable, working_directory, make_arguments(u8"status"), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
+            repository_kind::subversion, executable, working_directory, std::move(arguments), vcs_command_class::local_query, default_process_record_byte_limit, timeouts);
     }
 
     process_request make_svnversion_request(const std::u8string_view executable, const std::u8string_view working_directory, const vcs_timeout_overrides& timeouts)
@@ -96,7 +109,9 @@ namespace gitman {
     process_request make_svn_remote_revision_request(
         const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url, const vcs_timeout_overrides& timeouts)
     {
-        return make_svn_remote_info_item_request(executable, working_directory, svn_info_item::revision, url, timeouts);
+        // 저장소 전역 HEAD(`revision`)가 아니라 이 URL(브랜치)의 마지막 커밋 리비전을
+        // 받는다. 로컬도 같은 기준을 쓰므로 behind 계산이 브랜치 기준으로 맞는다.
+        return make_svn_remote_info_item_request(executable, working_directory, svn_info_item::last_changed_revision, url, timeouts);
     }
 
     process_request make_svn_list_request(const std::u8string_view executable, const std::u8string_view working_directory, const std::u8string_view url, const vcs_timeout_overrides& timeouts)

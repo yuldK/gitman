@@ -20,7 +20,7 @@ namespace gitman::ui {
     namespace {
         // panel의 논리 치수다. 이 dialog에서만 쓰므로 이 파일에 둔다.
         constexpr float panel_width { 460.0f };
-        constexpr float panel_height { 336.0f };
+        constexpr float panel_height { 388.0f };
         constexpr float panel_padding { 14.0f };
         // 행 배치: 제목 아래에서 시작해 행마다 label 한 줄과 값 한 줄을 그린다.
         constexpr float first_row_top { 40.0f };
@@ -34,7 +34,7 @@ namespace gitman::ui {
         constexpr float toggle_height { 20.0f };
         constexpr float action_button_width { 88.0f };
         constexpr float action_button_height { 28.0f };
-        constexpr std::size_t row_count { 4 };
+        constexpr std::size_t row_count { 5 };
 
         // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design
         // 1.3). 키 입력은 dialog가 열려 있는 동안 interaction이 그대로 intent로
@@ -158,6 +158,7 @@ namespace gitman::ui {
                 , git_path_ { dialog.git_path }
                 , svn_path_ { dialog.svn_path }
                 , submodules_text_ { dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" } }
+                , ignore_local_text_ { dialog.ignore_local_changes ? std::u8string { u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" } : std::u8string { u8"끔 - 로컬 변경을 확인한 뒤 진행" } }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -204,6 +205,10 @@ namespace gitman::ui {
                 // 업데이트마다 묻지 않고 여기서 정한다 (2026-08-20 검수, ADR-003
                 // 기본 off 유지).
                 draw_row(context, 3, u8"업데이트 시 submodule 갱신", submodules_text_, u8"");
+                // 대형 저장소에서 status 순회(로컬 변경 확인)가 분 단위로 걸릴 때 아예
+                // 건너뛰는 선택지다. 깨끗하다고 믿고 진행하며 문제는 사후에 알린다.
+                // 현재 SVN provider에만 배선되어 있어 문구도 SVN으로 한정한다.
+                draw_row(context, 4, u8"로컬 변경을 상관하지 않음 (SVN)", ignore_local_text_, u8"");
 
                 if (message_.empty() == false)
                 {
@@ -243,6 +248,7 @@ namespace gitman::ui {
             std::u8string git_path_ {};
             std::u8string svn_path_ {};
             std::u8string submodules_text_ {};
+            std::u8string ignore_local_text_ {};
             std::u8string message_ {};
         };
     } // namespace
@@ -288,6 +294,11 @@ namespace gitman::ui {
         add_child(std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_submodules_toggle }, dialog_.update_submodules,
             std::u8string { u8"업데이트 실행 시 submodule을 함께 갱신할지 정합니다" }, logic_message { toggle_settings_submodules_intent {} }));
 
+        // 로컬 변경을 상관하지 않음 토글이다. 대형 저장소의 status 순회를 건너뛴다.
+        add_child(std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_ignore_local_toggle }, dialog_.ignore_local_changes,
+            std::u8string { u8"켜면 SVN 저장소에서 로컬 변경 확인(status)을 건너뛰고 깨끗하다고 믿은 채 조회·업데이트·스위치를 진행합니다 (git에는 적용되지 않음)" },
+            logic_message { toggle_settings_ignore_local_intent {} }));
+
         // file association 등록·제거다 (REQ-016). registry 작업은 UI thread의
         // ui_command로 수행되고 결과는 시스템 dialog로 알린다.
         auto associate { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_associate }, std::u8string { u8"연결 등록" }, false) };
@@ -327,7 +338,7 @@ namespace gitman::ui {
 
         const float padding { panel_padding * scale };
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
-        if (children.size() >= 11)
+        if (children.size() >= 12)
         {
             // 행 버튼은 행 오른쪽에 두되 세부 기능 타이틀 줄과 겹치지 않게 약간
             // 내린다 (panel의 draw_row 배치와 같은 좌표 기준이다).
@@ -350,14 +361,18 @@ namespace gitman::ui {
             const float submodules_row_top { top + (first_row_top + row_height * 3.0f) * scale + control_offset };
             children[6]->arrange({ { left + width - padding - toggle_width * scale, submodules_row_top, toggle_width * scale, toggle_height * scale }, scale });
 
+            // 로컬 변경 무시 토글은 5행이다.
+            const float ignore_local_row_top { top + (first_row_top + row_height * 4.0f) * scale + control_offset };
+            children[7]->arrange({ { left + width - padding - toggle_width * scale, ignore_local_row_top, toggle_width * scale, toggle_height * scale }, scale });
+
             const float button_width { action_button_width * scale };
             const float button_height { action_button_height * scale };
             const float button_top { top + height - padding - button_height };
             // 아래 왼쪽은 연결 등록·해제, 오른쪽은 저장·취소다.
-            children[7]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
-            children[8]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[9]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[10]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
+            children[8]->arrange({ { left + padding, button_top, button_width, button_height }, scale });
+            children[9]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[10]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
+            children[11]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
         }
     }
 

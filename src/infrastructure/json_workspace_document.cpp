@@ -181,7 +181,7 @@ namespace gitman {
 
         bool is_known_settings_field(const std::string_view field) noexcept
         {
-            return field == "git_executable" || field == "svn_executable" || field == "show_relative_paths" || field == "update_submodules" || field == "query_timeout_seconds";
+            return field == "git_executable" || field == "svn_executable" || field == "show_relative_paths" || field == "update_submodules" || field == "ignore_local_changes" || field == "query_timeout_seconds";
         }
 
         std::u8string settings_field_pointer(const std::string_view field)
@@ -278,6 +278,18 @@ namespace gitman {
                 {
                     add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 update_submodules는 boolean이어야 합니다.", document_path,
                         settings_field_pointer("update_submodules"));
+                }
+            }
+
+            const auto ignore_local { source->find("ignore_local_changes") };
+            if (ignore_local != source->end() && ignore_local->is_null() == false)
+            {
+                if (ignore_local->is_boolean())
+                    settings.ignore_local_changes = ignore_local->get<bool>();
+                else
+                {
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::error, u8"settings의 ignore_local_changes는 boolean이어야 합니다.", document_path,
+                        settings_field_pointer("ignore_local_changes"));
                 }
             }
 

@@ -228,6 +228,11 @@ namespace gitman {
                     if (settings_dialog_.has_value())
                         settings_dialog_->update_submodules = settings_dialog_->update_submodules == false;
                 }
+                else if constexpr (std::is_same_v<value_type, toggle_settings_ignore_local_intent>)
+                {
+                    if (settings_dialog_.has_value())
+                        settings_dialog_->ignore_local_changes = settings_dialog_->ignore_local_changes == false;
+                }
                 else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
                     handle_confirm_settings();
                 else if constexpr (std::is_same_v<value_type, cancel_settings_dialog_intent>)
@@ -965,6 +970,7 @@ namespace gitman {
             dialog.timeout_text.append(digits.begin(), digits.end());
         }
         dialog.update_submodules = document_->settings.update_submodules;
+        dialog.ignore_local_changes = document_->settings.ignore_local_changes;
         settings_dialog_ = { std::move(dialog) };
     }
 
@@ -1022,7 +1028,8 @@ namespace gitman {
         const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout_text) };
         const bool changed {
             document_->settings.git_executable != settings_dialog_->git_path || document_->settings.svn_executable != settings_dialog_->svn_path || document_->settings.query_timeout_seconds != timeout
-                || document_->settings.update_submodules != settings_dialog_->update_submodules,
+                || document_->settings.update_submodules != settings_dialog_->update_submodules
+                || document_->settings.ignore_local_changes != settings_dialog_->ignore_local_changes,
         };
         if (changed)
         {
@@ -1030,6 +1037,7 @@ namespace gitman {
             document_->settings.svn_executable = settings_dialog_->svn_path;
             document_->settings.query_timeout_seconds = timeout;
             document_->settings.update_submodules = settings_dialog_->update_submodules;
+            document_->settings.ignore_local_changes = settings_dialog_->ignore_local_changes;
             request_save();
             // 도구 경로가 바뀌었으니 모든 활성 카드를 새 settings로 재조회한다.
             // 요청마다 settings 사본이 실리므로 저장 완료를 기다릴 필요가 없다.
@@ -1593,7 +1601,10 @@ namespace gitman {
             model.kind = card.snapshot.kind;
             model.reference = card.snapshot.current_reference;
             model.revision = card.snapshot.local_revision;
-            model.working_tree_text = working_tree_summary_text(card.snapshot.working_tree);
+            // status 순회가 원격 조회와 병렬로 도는 동안에는 요약 대신 진행 표시를
+            // 그린다 (대형 작업 복사본에서 분 단위로 걸린다).
+            model.working_tree_text =
+                card.snapshot.working_tree_scan_pending ? std::u8string { u8"로컬 변경 확인 중" } : working_tree_summary_text(card.snapshot.working_tree);
             model.comparison_target = card.snapshot.comparison_target;
             model.local_checked_at = card.snapshot.local_checked_at;
             model.remote_checked_at = card.snapshot.remote_checked_at;
@@ -1773,6 +1784,7 @@ namespace gitman {
             dialog.svn_path = settings_dialog_->svn_path;
             dialog.timeout_text = settings_dialog_->timeout_text;
             dialog.update_submodules = settings_dialog_->update_submodules;
+            dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
             // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
             const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };

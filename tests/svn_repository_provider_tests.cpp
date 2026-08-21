@@ -52,14 +52,24 @@ namespace {
         probe.add_directory(path);
     }
 
-    // 로컬 조회 성공 경로의 응답이다. `info` 5개, `status`, `svnversion` 순이다.
+    // `svn info --xml` 성공 출력이다. 공식 스키마의 요소 이름을 근거로 작성했다.
+    constexpr std::u8string_view info_xml_output {
+        u8"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        u8"<info><entry kind=\"dir\" path=\".\" revision=\"4168\">\n"
+        u8"<url>https://svn.example.com/repo/trunk</url>\n"
+        u8"<relative-url>^/trunk</relative-url>\n"
+        u8"<repository><root>https://svn.example.com/repo</root>\n"
+        u8"<uuid>8f3a1c2e-0000-0000-0000-000000000000</uuid></repository>\n"
+        u8"<wc-info><wcroot-abspath>C:\\작업 공간\\작업 복사본</wcroot-abspath></wc-info>\n"
+        u8"<commit revision=\"4168\"></commit>\n"
+        u8"</entry></info>\n",
+    };
+
+    // 로컬 조회 성공 경로의 응답이다. `info --xml` 하나, `status`, 선택적 `svnversion`
+    // 순이다. `svnversion`은 update·switch 직전 검증에서만 실행된다.
     void push_local_responses(gitman::testing::fake_process_runner& runner, const std::u8string_view status, const std::u8string_view version)
     {
-        runner.push_response({ gitman::process_completion::exited, 0, u8"C:\\작업 공간\\작업 복사본\n", {} });
-        runner.push_response({ gitman::process_completion::exited, 0, u8"^/trunk\n", {} });
-        runner.push_response({ gitman::process_completion::exited, 0, u8"4168\n", {} });
-        runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo\n", {} });
-        runner.push_response({ gitman::process_completion::exited, 0, u8"8f3a1c2e-0000-0000-0000-000000000000\n", {} });
+        runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
         runner.push_response({ gitman::process_completion::exited, 0, std::u8string { status }, {} });
         if (version.empty() == false)
             runner.push_response({ gitman::process_completion::exited, 0, std::u8string { version }, {} });
@@ -207,7 +217,7 @@ TEST_CASE("Paths that are not working copies stop at the first query", "[infrast
 TEST_CASE("A working copy becomes a common snapshot", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
-    push_local_responses(runner, u8"M       trunk/a.txt\n?       trunk/새 파일.txt\n", u8"4168\n");
+    push_local_responses(runner, u8"M       trunk/a.txt\n?       trunk/새 파일.txt\n", u8"");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -226,45 +236,44 @@ TEST_CASE("A working copy becomes a common snapshot", "[infrastructure][svn][pro
     REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::modified);
     REQUIRE(result.snapshot.working_tree.modified_count == 1);
     REQUIRE(result.snapshot.working_tree.untracked_count == 1);
-    REQUIRE(result.snapshot.has_mixed_revision.has_value());
-    REQUIRE_FALSE(*result.snapshot.has_mixed_revision);
-    REQUIRE(result.snapshot.has_switched_subtree.has_value());
-    REQUIRE_FALSE(*result.snapshot.has_switched_subtree);
+    // `svnversion` 검사는 update·switch 직전 검증에서만 실행되므로 일반 조회에서는
+    // 미상으로 남는다. 거짓과 미상을 구분한다.
+    REQUIRE_FALSE(result.snapshot.has_mixed_revision.has_value());
+    REQUIRE_FALSE(result.snapshot.has_switched_subtree.has_value());
     REQUIRE(result.snapshot.local_checked_at.has_value());
     REQUIRE_FALSE(result.snapshot.remote_checked_at.has_value());
     REQUIRE(result.diagnostics.empty());
 
-    REQUIRE(runner.request_count() == 7);
-    REQUIRE(runner.request(0).arguments.back() == u8"wc-root");
-    REQUIRE(runner.request(1).arguments.back() == u8"relative-url");
-    REQUIRE(runner.request(2).arguments.back() == u8"revision");
-    REQUIRE(runner.request(3).arguments.back() == u8"repos-root-url");
-    REQUIRE(runner.request(4).arguments.back() == u8"repos-uuid");
-    REQUIRE(runner.request(5).arguments.back() == u8"status");
-    // `svnversion`은 다른 실행 파일이고 인자가 없다.
-    REQUIRE(runner.request(6).executable == svnversion_executable);
-    REQUIRE(runner.request(6).arguments.empty());
+    // `info --xml` 하나와 `status`뿐이다. 항목별 `--show-item` 프로세스는 없다.
+    REQUIRE(runner.request_count() == 2);
+    REQUIRE(runner.request(0).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--xml" });
+    REQUIRE(runner.request(1).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"status", u8"--ignore-externals" });
     // 로컬 조회는 네트워크를 쓰지 않는다.
-    REQUIRE(runner.requests_for_executable_suffix(u8"svn.exe") == 6);
+    REQUIRE(runner.requests_for_executable_suffix(u8"svn.exe") == 2);
     for (const gitman::process_request& request : runner.requests())
         for (const std::u8string& argument : request.arguments)
             REQUIRE(argument.starts_with(u8"https://") == false);
 }
 
-TEST_CASE("Mixed revisions and switched subtrees are reported", "[infrastructure][svn][provider]")
+TEST_CASE("Mixed revisions and switched subtrees are reported before an update", "[infrastructure][svn][provider]")
 {
+    // `svnversion` 검사는 판정이 실제로 필요한 update·switch 직전 검증에서만 실행된다.
     gitman::testing::fake_process_runner runner {};
     push_local_responses(runner, u8"    S   trunk/전환된 폴더\n", u8"4123:4168MS\n");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
 
-    const gitman::repository_query_result result { provider.query_local(make_project(), {}) };
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
 
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.blocked_by != gitman::update_block_reason::none);
     REQUIRE(result.snapshot.has_mixed_revision.has_value());
     REQUIRE(*result.snapshot.has_mixed_revision);
     REQUIRE(result.snapshot.has_switched_subtree.has_value());
     REQUIRE(*result.snapshot.has_switched_subtree);
+    // 조회 3(info·status·svnversion)에서 preflight가 막아 update 명령이 없다.
+    REQUIRE(runner.request_count() == 3);
 }
 
 TEST_CASE("Missing svnversion gives up only the two judgements", "[infrastructure][svn][provider]")
@@ -275,40 +284,43 @@ TEST_CASE("Missing svnversion gives up only the two judgements", "[infrastructur
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(false), runner, probe };
 
-    const gitman::repository_query_result result { provider.query_local(make_project(), {}) };
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
 
-    REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
-    REQUIRE(result.snapshot.local_revision == u8"4168");
-    // 거짓과 미상을 구분한다.
+    // 거짓과 미상을 구분한다. `svnversion` 없이도 조회는 계속된다.
     REQUIRE_FALSE(result.snapshot.has_mixed_revision.has_value());
-    // switched는 `status`의 5번 칸으로 보조 판정한다.
+    // switched는 `status`의 5번 칸으로 보조 판정하며 update를 막는다.
     REQUIRE(result.snapshot.has_switched_subtree.has_value());
     REQUIRE(*result.snapshot.has_switched_subtree);
-    REQUIRE(runner.request_count() == 6);
+    REQUIRE_FALSE(result.executed);
+    REQUIRE(result.blocked_by == gitman::update_block_reason::switched_subtree);
+    REQUIRE(runner.request_count() == 2);
 }
 
 TEST_CASE("Unreadable svnversion output is a warning, not a failure", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
     push_local_responses(runner, {}, u8"Unversioned directory\n");
+    runner.push_response({ gitman::process_completion::exited, 0, u8"Updating '.':\nAt revision 4180.\n", {} });
+    push_local_responses(runner, {}, u8"");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
 
-    const gitman::repository_query_result result { provider.query_local(make_project(), {}) };
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
 
-    REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
+    // 판정 실패는 경고로 남고 update 진행을 막지 않는다.
+    REQUIRE(result.executed);
+    REQUIRE(result.succeeded);
     REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::clean);
     REQUIRE_FALSE(result.snapshot.has_mixed_revision.has_value());
     REQUIRE(has_diagnostic(result, gitman::diagnostic_code::vcs_output_unparsable));
-    REQUIRE_FALSE(result.has_errors());
+    REQUIRE_FALSE(has_error_diagnostic(result));
 }
 
 TEST_CASE("SVN status failures do not become a working tree state", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
-    for (std::size_t index = 0; index < 5; ++index)
-        runner.push_response({ gitman::process_completion::exited, 0, u8"값\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
     runner.push_response({ gitman::process_completion::exited, 1, {}, u8"svn: E155004: 작업 복사본이 잠겨 있습니다\n" });
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
@@ -319,7 +331,7 @@ TEST_CASE("SVN status failures do not become a working tree state", "[infrastruc
     REQUIRE(result.snapshot.availability == gitman::repository_availability::unknown);
     REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::unknown);
     REQUIRE(result.has_errors());
-    REQUIRE(runner.request_count() == 6);
+    REQUIRE(runner.request_count() == 2);
 }
 
 TEST_CASE("Process failures during SVN queries are promoted", "[infrastructure][svn][provider]")
@@ -507,9 +519,9 @@ TEST_CASE("A blocked SVN update builds no change command", "[infrastructure][svn
     REQUIRE_FALSE(result.executed);
     REQUIRE(result.blocked_by == gitman::update_block_reason::working_tree_dirty);
     REQUIRE(has_diagnostic(result, gitman::diagnostic_code::update_blocked));
-    // 조회 7개뿐이며 update 명령이 없다. `svnversion` 요청에는 인자가 아예 없으므로
+    // 조회 3개뿐이며 update 명령이 없다. `svnversion` 요청에는 인자가 아예 없으므로
     // 마지막 인자만 보지 않고 목록 전체를 확인한다.
-    REQUIRE(runner.request_count() == 7);
+    REQUIRE(runner.request_count() == 3);
     for (const gitman::process_request& request : runner.requests())
         REQUIRE(std::ranges::find(request.arguments, std::u8string { u8"update" }) == request.arguments.end());
 }
@@ -519,7 +531,7 @@ TEST_CASE("A successful SVN update re-reads the working copy", "[infrastructure]
     gitman::testing::fake_process_runner runner {};
     push_local_responses(runner, {}, u8"4168\n");
     runner.push_response({ gitman::process_completion::exited, 0, u8"Updating '.':\nAt revision 4180.\n", {} });
-    push_local_responses(runner, {}, u8"4180\n");
+    push_local_responses(runner, {}, u8"");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -529,9 +541,9 @@ TEST_CASE("A successful SVN update re-reads the working copy", "[infrastructure]
     REQUIRE(result.executed);
     REQUIRE(result.succeeded);
     REQUIRE(result.blocked_by == gitman::update_block_reason::none);
-    // 조회 7 + update 1 + 사후 조회 7이다.
-    REQUIRE(runner.request_count() == 15);
-    REQUIRE(runner.request(7).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"update" });
+    // 사전 조회 3(info·status·svnversion) + update 1 + 사후 조회 2(info·status)다.
+    REQUIRE(runner.request_count() == 6);
+    REQUIRE(runner.request(3).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"update" });
     REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
 }
 
@@ -540,7 +552,7 @@ TEST_CASE("A failed SVN update is reported with the state after it", "[infrastru
     gitman::testing::fake_process_runner runner {};
     push_local_responses(runner, {}, u8"4168\n");
     runner.push_response({ gitman::process_completion::exited, 1, {}, u8"svn: E155004: 작업 복사본이 잠겨 있습니다\n" });
-    push_local_responses(runner, u8"C       trunk/충돌.txt\n", u8"4168\n");
+    push_local_responses(runner, u8"C       trunk/충돌.txt\n", u8"");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -571,8 +583,7 @@ TEST_CASE("SVN updates do nothing when the tool is missing", "[infrastructure][s
 TEST_CASE("SVN switch browser initialization reads the root and current URL", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
-    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo\n", {} });
-    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo/trunk\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -583,21 +594,20 @@ TEST_CASE("SVN switch browser initialization reads the root and current URL", "[
     REQUIRE(candidates.svn_browser.has_value());
     REQUIRE(candidates.svn_browser->repository_root_url == u8"https://svn.example.com/repo");
     REQUIRE(candidates.svn_browser->current_url == u8"https://svn.example.com/repo/trunk");
-    REQUIRE(runner.request_count() == 2u);
-    REQUIRE(runner.request(0).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--show-item", u8"repos-root-url" });
-    REQUIRE(runner.request(1).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--show-item", u8"url" });
+    // 루트와 현재 URL은 `info --xml` 하나로 받는다.
+    REQUIRE(runner.request_count() == 1u);
+    REQUIRE(runner.request(0).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"info", u8"--xml" });
 
     const gitman::repository_change_result switched { provider.switch_to(project, {}, {}) };
     REQUIRE_FALSE(switched.executed);
     REQUIRE(switched.rejected_by == gitman::switch_rejection::target_not_found);
-    REQUIRE(runner.request_count() == 2u);
+    REQUIRE(runner.request_count() == 1u);
 }
 
 TEST_CASE("SVN switch browser ignores the preserved document target list", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
-    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo\n", {} });
-    runner.push_response({ gitman::process_completion::exited, 0, u8"https://svn.example.com/repo/trunk\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -607,7 +617,7 @@ TEST_CASE("SVN switch browser ignores the preserved document target list", "[inf
 
     const gitman::switch_candidate_result result { provider.query_switch_candidates(project, {}) };
 
-    REQUIRE(runner.request_count() == 2u);
+    REQUIRE(runner.request_count() == 1u);
     REQUIRE(result.candidates.empty());
     REQUIRE(result.svn_browser.has_value());
     REQUIRE_FALSE(result.stale);
@@ -661,8 +671,8 @@ TEST_CASE("Rejected SVN switches never reach the network", "[infrastructure][svn
 
         REQUIRE_FALSE(result.executed);
         REQUIRE(result.rejected_by == value.rejection);
-        // 조회 7 + 현재 URL 1에서 끝난다. 대상 URL을 확인하는 원격 조회가 없다.
-        REQUIRE(runner.request_count() == 8);
+        // 조회 3 + 현재 URL 1에서 끝난다. 대상 URL을 확인하는 원격 조회가 없다.
+        REQUIRE(runner.request_count() == 4);
         REQUIRE(count_svn_commands(runner, u8"switch") == 0);
     }
 }
@@ -734,7 +744,7 @@ TEST_CASE("An SVN switch refuses a different repository", "[infrastructure][svn]
 
     REQUIRE_FALSE(result.executed);
     REQUIRE(result.rejected_by == gitman::switch_rejection::repository_mismatch);
-    REQUIRE(runner.request_count() == 10);
+    REQUIRE(runner.request_count() == 6);
     REQUIRE(count_svn_commands(runner, u8"switch") == 0);
     REQUIRE(has_diagnostic(result.diagnostics, gitman::diagnostic_code::switch_target_rejected));
 }
@@ -753,7 +763,7 @@ TEST_CASE("An SVN switch stops when the target cannot be reached", "[infrastruct
 
     REQUIRE_FALSE(result.executed);
     REQUIRE(result.rejected_by == gitman::switch_rejection::target_unreachable);
-    REQUIRE(runner.request_count() == 9);
+    REQUIRE(runner.request_count() == 5);
     REQUIRE(count_svn_commands(runner, u8"switch") == 0);
 }
 
@@ -764,7 +774,7 @@ TEST_CASE("A successful SVN switch re-reads the working copy", "[infrastructure]
     push_current_url(runner);
     push_identity(runner);
     runner.push_response({ gitman::process_completion::exited, 0, u8"Updating '.':\nAt revision 4180.\n", {} });
-    push_local_responses(runner, {}, u8"4180\n");
+    push_local_responses(runner, {}, u8"");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -774,9 +784,9 @@ TEST_CASE("A successful SVN switch re-reads the working copy", "[infrastructure]
     REQUIRE(result.executed);
     REQUIRE(result.succeeded);
     REQUIRE(result.rejected_by == gitman::switch_rejection::none);
-    // 조회 7 + 현재 URL 1 + 대상 확인 2 + switch 1 + 사후 조회 7이다.
-    REQUIRE(runner.request_count() == 18);
-    REQUIRE(runner.request(10).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"switch", std::u8string { switch_target_url } });
+    // 사전 조회 3 + 현재 URL 1 + 대상 확인 2 + switch 1 + 사후 조회 2다.
+    REQUIRE(runner.request_count() == 9);
+    REQUIRE(runner.request(6).arguments == std::vector<std::u8string> { u8"--non-interactive", u8"switch", std::u8string { switch_target_url } });
     REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
 }
 
@@ -787,7 +797,7 @@ TEST_CASE("A failed SVN switch is reported with the state after it", "[infrastru
     push_current_url(runner);
     push_identity(runner);
     runner.push_response({ gitman::process_completion::exited, 1, {}, u8"svn: E155004: 작업 복사본이 잠겨 있습니다\n" });
-    push_local_responses(runner, u8"C       trunk/충돌.txt\n", u8"4168\n");
+    push_local_responses(runner, u8"C       trunk/충돌.txt\n", u8"");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -819,7 +829,7 @@ TEST_CASE("SVN switches do nothing when the tool is missing", "[infrastructure][
 TEST_CASE("Refreshed SVN tool information is picked up", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
-    push_local_responses(runner, {}, u8"4168\n");
+    push_local_responses(runner, {}, u8"");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { missing_tool(), runner, probe };
@@ -830,4 +840,64 @@ TEST_CASE("Refreshed SVN tool information is picked up", "[infrastructure][svn][
     REQUIRE(provider.available());
     REQUIRE(provider.tool().version == gitman::vcs_tool_version { 1, 14, 5 });
     REQUIRE(provider.query_local(make_project(), {}).snapshot.availability == gitman::repository_availability::ready);
+}
+
+TEST_CASE("Ignoring local changes skips the status walk but keeps the revision scan", "[infrastructure][svn][provider]")
+{
+    SECTION("조회는 status 없이 작업 트리를 깨끗하다고 믿는다")
+    {
+        gitman::testing::fake_process_runner runner {};
+        runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
+        gitman::testing::fake_vcs_file_probe probe {};
+        register_working_directory(probe);
+        gitman::svn_repository_provider provider { available_tool(), runner, probe, nullptr, {}, true };
+
+        const gitman::repository_query_result result { provider.query_local(make_project(), {}) };
+
+        REQUIRE(result.snapshot.availability == gitman::repository_availability::ready);
+        REQUIRE(result.snapshot.working_tree.state == gitman::working_tree_state::clean);
+        // `info --xml` 하나뿐이다. status 순회가 없다.
+        REQUIRE(runner.request_count() == 1);
+    }
+
+    SECTION("update 직전 검증의 svnversion 검사는 그대로 수행한다")
+    {
+        // mixed revision·switched는 로컬 변경이 아니라 작업 복사본 구조라서 이 설정의
+        // 대상이 아니다. F3의 전환·업데이트 차단 정책이 유지된다.
+        gitman::testing::fake_process_runner runner {};
+        runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
+        runner.push_response({ gitman::process_completion::exited, 0, u8"4123:4168M\n", {} });
+        gitman::testing::fake_vcs_file_probe probe {};
+        register_working_directory(probe);
+        gitman::svn_repository_provider provider { available_tool(), runner, probe, nullptr, {}, true };
+
+        const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
+
+        REQUIRE_FALSE(result.executed);
+        REQUIRE(result.blocked_by == gitman::update_block_reason::mixed_revision);
+        // `info --xml`과 `svnversion`뿐이다. status 순회가 없다.
+        REQUIRE(runner.request_count() == 2);
+    }
+}
+
+TEST_CASE("Ignore mode surfaces conflicts from the update output", "[infrastructure][svn][provider]")
+{
+    // 사전 status 검사가 없으므로 실행 출력의 충돌 행이 유일한 안내 근거다.
+    gitman::testing::fake_process_runner runner {};
+    runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
+    runner.push_response({ gitman::process_completion::exited, 0, u8"4168\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, u8"Updating '.':\nC    trunk/충돌.txt\nAt revision 4180.\n", {} });
+    runner.push_response({ gitman::process_completion::exited, 0, std::u8string { info_xml_output }, {} });
+    gitman::testing::fake_vcs_file_probe probe {};
+    register_working_directory(probe);
+    gitman::svn_repository_provider provider { available_tool(), runner, probe, nullptr, {}, true };
+
+    const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
+
+    REQUIRE(result.executed);
+    REQUIRE(result.succeeded);
+    // 실행은 성공했지만 직접 확인 안내가 남는다.
+    REQUIRE(has_diagnostic(result, gitman::diagnostic_code::operation_failed));
+    // 사전 조회 2(info·svnversion) + update 1 + 사후 조회 1(info)이다.
+    REQUIRE(runner.request_count() == 4);
 }

@@ -112,6 +112,9 @@ namespace gitman {
         std::uint64_t ahead_count { 0 };
         std::uint64_t behind_count { 0 };
         working_tree_summary working_tree {};
+        // refresh가 원격 조회와 병렬로 status 순회를 진행하는 동안 참이다. 카드는 이
+        // 값으로 "로컬 변경 확인 중"을 표시하고, 순회가 끝난 event가 값을 덮어쓴다.
+        bool working_tree_scan_pending { false };
         std::vector<submodule_status> submodules {};
         std::u8string svn_repository_root {};
         std::u8string svn_repository_uuid {};

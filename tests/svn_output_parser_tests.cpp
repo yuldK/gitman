@@ -203,3 +203,68 @@ TEST_CASE("svnversion output that is not a working copy is refused", "[infrastru
     REQUIRE(refused.low_revision == 0);
     REQUIRE(refused.high_revision == 0);
 }
+
+TEST_CASE("SVN info xml output yields the working copy fields", "[infrastructure][svn][parser]")
+{
+    const std::vector<std::u8string_view> output {
+        u8"<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+        u8"<info>",
+        u8"<entry kind=\"dir\" path=\".\" revision=\"4200\">",
+        u8"<url>https://svn.example.com/repo/branches/%EC%9E%91%EC%97%85</url>",
+        u8"<relative-url>^/branches/%EC%9E%91%EC%97%85</relative-url>",
+        u8"<repository><root>https://svn.example.com/repo</root>",
+        u8"<uuid>3f119b5a-6ac6-4d9c-a2d7-6f7f0f1a58ab</uuid></repository>",
+        u8"<wc-info><wcroot-abspath>D:\\작업 공간\\작업 복사본</wcroot-abspath></wc-info>",
+        u8"<commit revision=\"4168\">",
+        u8"<author>담당자 &amp; 동료</author>",
+        u8"</commit>",
+        u8"</entry>",
+        u8"</info>",
+    };
+    const std::vector<std::u8string> lines { lines_of(output) };
+
+    const gitman::svn_info_fields fields { gitman::parse_svn_info_xml(lines) };
+    REQUIRE(fields.parsed);
+    REQUIRE(fields.url == u8"https://svn.example.com/repo/branches/%EC%9E%91%EC%97%85");
+    REQUIRE(fields.relative_url == u8"^/branches/%EC%9E%91%EC%97%85");
+    REQUIRE(fields.repository_root == u8"https://svn.example.com/repo");
+    REQUIRE(fields.repository_uuid == u8"3f119b5a-6ac6-4d9c-a2d7-6f7f0f1a58ab");
+    REQUIRE(fields.working_copy_root == u8"D:\\작업 공간\\작업 복사본");
+    // entry attribute는 WC 리비전, commit attribute는 마지막 커밋 리비전이다.
+    REQUIRE(fields.revision == u8"4200");
+    REQUIRE(fields.last_changed_revision == u8"4168");
+}
+
+TEST_CASE("SVN info xml output without required fields is refused", "[infrastructure][svn][parser]")
+{
+    // 필수 값(URL과 리비전)이 없으면 해석 실패로 본다.
+    REQUIRE_FALSE(gitman::parse_svn_info_xml({}).parsed);
+    REQUIRE_FALSE(gitman::parse_svn_info_xml(lines_of({ u8"<info></info>" })).parsed);
+    REQUIRE_FALSE(gitman::parse_svn_info_xml(lines_of({ u8"<entry revision=\"10\"><url></url></entry>" })).parsed);
+
+    // commit 요소가 없으면 last-changed 리비전만 비운다 (호출자가 WC 리비전으로 대체).
+    const gitman::svn_info_fields no_commit { gitman::parse_svn_info_xml(lines_of({ u8"<entry revision=\"10\"><url>https://svn.example.com/repo/trunk</url></entry>" })) };
+    REQUIRE(no_commit.parsed);
+    REQUIRE(no_commit.revision == u8"10");
+    REQUIRE(no_commit.last_changed_revision.empty());
+
+    // XML entity는 값으로 되돌린다.
+    const gitman::svn_info_fields escaped { gitman::parse_svn_info_xml(lines_of({ u8"<entry revision=\"10\"><url>https://svn.example.com/repo/a&amp;b</url></entry>" })) };
+    REQUIRE(escaped.url == u8"https://svn.example.com/repo/a&b");
+}
+
+TEST_CASE("SVN change output reports conflicts from the status columns", "[infrastructure][svn][parser]")
+{
+    // update·switch 출력의 앞 네 칸(항목·속성·잠금·트리 충돌)에서 'C'를 찾는다.
+    REQUIRE(gitman::svn_change_output_reports_conflict(lines_of({ u8"C    conflicted.txt" })));
+    REQUIRE(gitman::svn_change_output_reports_conflict(lines_of({ u8" C   property-conflict.txt" })));
+    REQUIRE(gitman::svn_change_output_reports_conflict(lines_of({ u8"   C tree-conflict.txt" })));
+    REQUIRE(gitman::svn_change_output_reports_conflict(lines_of({ u8"U    ok.txt", u8"C    conflicted.txt" })));
+
+    REQUIRE_FALSE(gitman::svn_change_output_reports_conflict({}));
+    REQUIRE_FALSE(gitman::svn_change_output_reports_conflict(lines_of({ u8"U    updated.txt", u8"A    added.txt" })));
+    // 다섯 번째 칸이 공백이 아닌 문장 줄은 상태 행이 아니다.
+    REQUIRE_FALSE(gitman::svn_change_output_reports_conflict(lines_of({ u8"Updated to revision 4168.", u8"Checked out revision 12." })));
+    // 경로에 'C'가 있어도 상태 칸이 아니면 충돌이 아니다.
+    REQUIRE_FALSE(gitman::svn_change_output_reports_conflict(lines_of({ u8"U    C-드라이브 목록.txt" })));
+}

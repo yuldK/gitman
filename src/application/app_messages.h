@@ -206,6 +206,11 @@ namespace gitman {
     struct toggle_settings_submodules_intent
     {};
 
+    // 환경설정의 "로컬 변경을 상관하지 않음" 토글이다. status 순회를 건너뛰고
+    // 작업 트리를 깨끗하다고 믿는다 (대형 저장소 대응).
+    struct toggle_settings_ignore_local_intent
+    {};
+
     struct confirm_settings_intent
     {};
 
@@ -458,7 +463,7 @@ namespace gitman {
         reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
         switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
-        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, confirm_settings_intent,
+        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, confirm_settings_intent,
         cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent,
         open_context_menu_intent, close_context_menu_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event,
         query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event,

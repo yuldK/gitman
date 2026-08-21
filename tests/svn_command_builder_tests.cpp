@@ -34,6 +34,7 @@ TEST_CASE("SVN info item names match the documented values", "[infrastructure][s
     REQUIRE(gitman::svn_info_item_name(gitman::svn_info_item::repository_root) == u8"repos-root-url");
     REQUIRE(gitman::svn_info_item_name(gitman::svn_info_item::repository_uuid) == u8"repos-uuid");
     REQUIRE(gitman::svn_info_item_name(gitman::svn_info_item::revision) == u8"revision");
+    REQUIRE(gitman::svn_info_item_name(gitman::svn_info_item::last_changed_revision) == u8"last-changed-revision");
     REQUIRE(gitman::svn_info_item_name(gitman::svn_info_item::working_copy_root) == u8"wc-root");
 }
 
@@ -43,7 +44,8 @@ TEST_CASE("SVN status requests stay non verbose", "[infrastructure][svn][command
 
     // `--verbose`는 리비전과 작성자 컬럼을 끼워 넣어 작성자 이름에 공백이 있으면 경로
     // 경계가 흔들린다. 대상을 주지 않아 작업 디렉터리 기준 상대 경로가 나온다.
-    const std::vector<std::u8string> expected { u8"--non-interactive", u8"status" };
+    // 외부 항목은 카드 요약과 로컬 변경 목록 모두에서 제외되므로 순회도 건너뛴다.
+    const std::vector<std::u8string> expected { u8"--non-interactive", u8"status", u8"--ignore-externals" };
     REQUIRE(request.arguments == expected);
     REQUIRE(gitman::validate_process_request(request).empty());
 }
@@ -67,7 +69,8 @@ TEST_CASE("SVN remote revision requests target the URL", "[infrastructure][svn][
 {
     const gitman::process_request request { gitman::make_svn_remote_revision_request(svn_executable, working_directory, u8"https://svn.example.com/repo/trunk") };
 
-    const std::vector<std::u8string> expected { u8"--non-interactive", u8"info", u8"--show-item", u8"revision", u8"https://svn.example.com/repo/trunk" };
+    // 저장소 전역 HEAD(`revision`)가 아니라 이 URL(브랜치)의 마지막 커밋 리비전이다.
+    const std::vector<std::u8string> expected { u8"--non-interactive", u8"info", u8"--show-item", u8"last-changed-revision", u8"https://svn.example.com/repo/trunk" };
     REQUIRE(request.arguments == expected);
     // 네트워크를 쓰는 유일한 조회다.
     REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
@@ -140,9 +143,11 @@ TEST_CASE("SVN identity requests use the remote query limits", "[infrastructure]
     const gitman::process_request uuid { gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::repository_uuid, url) };
     REQUIRE(uuid.arguments[3] == u8"repos-uuid");
 
-    // 기존 원격 리비전 요청은 같은 조립을 쓰며 만들어 내는 명령이 달라지지 않는다.
+    // 원격 리비전 요청은 저장소 전역 HEAD가 아니라 이 URL(브랜치)의 마지막 커밋
+    // 리비전을 받는다. 로컬도 같은 기준을 쓰므로 behind 계산이 브랜치 기준으로 맞는다.
     const gitman::process_request revision { gitman::make_svn_remote_revision_request(svn_executable, working_directory, url) };
-    REQUIRE(revision.arguments == gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::revision, url).arguments);
+    REQUIRE(revision.arguments == gitman::make_svn_remote_info_item_request(svn_executable, working_directory, gitman::svn_info_item::last_changed_revision, url).arguments);
+    REQUIRE(revision.arguments[3] == u8"last-changed-revision");
     REQUIRE(*revision.timeout == std::chrono::milliseconds { 600000 });
 }
 
@@ -171,4 +176,18 @@ TEST_CASE("SVN requests never enable interactive prompts", "[infrastructure][svn
         // 로캘은 강제하지 않는다.
         REQUIRE(request.environment_overrides.empty());
     }
+}
+
+TEST_CASE("SVN info xml requests fetch every item in one process", "[infrastructure][svn][command]")
+{
+    const gitman::process_request request { gitman::make_svn_info_request(svn_executable, working_directory) };
+
+    // --xml 출력은 요소 이름이 로캘과 무관해 사람이 읽는 목록을 파싱하지 않는다는
+    // 원칙을 지키면서 항목마다 프로세스를 띄우는 고정 비용을 없앤다.
+    const std::vector<std::u8string> expected { u8"--non-interactive", u8"info", u8"--xml" };
+    REQUIRE(request.arguments == expected);
+    REQUIRE(request.executable == svn_executable);
+    REQUIRE(request.working_directory == working_directory);
+    REQUIRE(*request.timeout == std::chrono::milliseconds { 600000 });
+    REQUIRE(gitman::validate_process_request(request).empty());
 }

@@ -85,6 +85,8 @@ namespace gitman::ui {
         settings_timeout_input,
         // 업데이트 시 submodule 갱신 토글이다 (update 확인 overlay 대체).
         settings_submodules_toggle,
+        // 로컬 변경을 상관하지 않음 토글이다 (status 순회 생략).
+        settings_ignore_local_toggle,
         settings_dialog_confirm,
         settings_dialog_cancel,
         // 환경설정 dialog의 file association 등록·제거 버튼이다 (REQ-016, 단계 8).

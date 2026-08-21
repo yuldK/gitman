@@ -74,6 +74,12 @@ namespace gitman {
         // on-demand). 매번 묻지 않고 이 값을 쓴다 (2026-08-20 검수). 기본 off는
         // ADR-003의 보호 정책을 따른다.
         bool update_submodules { false };
+        // 로컬 변경을 상관하지 않는다. 대형 작업 복사본에서 분 단위로 걸리는 status
+        // 순회를 건너뛰고 작업 트리가 깨끗하다고 믿은 채 조회·업데이트·스위치를
+        // 진행한다. 문제는 실행 뒤에만 알린다. 기본 off. 현재 SVN provider에만
+        // 배선되어 있으며(git은 미적용), update·switch 직전의 svnversion 검증
+        // (mixed revision·switched 차단)은 로컬 변경이 아니라서 건너뛰지 않는다.
+        bool ignore_local_changes { false };
         // 상태 확인(로컬·원격 조회) 명령의 제한 시간(초)이다. 값이 없으면 실행
         // 정책의 기본값(600초)을 쓴다. 대형 저장소의 status가 5~10분 걸리는 실측을
         // 반영한 항목이다 (field-feedback-design 1장).

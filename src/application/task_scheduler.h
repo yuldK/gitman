@@ -18,6 +18,10 @@ namespace gitman {
 
     // worker pool과 lane 배정이다. 전체 동시 실행 상한은 worker 수와 같다
     // (단계 6 계획 4.4). 서로 다른 lane은 병렬, 같은 lane은 접수 순서로 직렬이다.
+    //
+    // dialog가 결과를 기다리는 읽기 전용 조회(로컬 변경 확인·diff·저장소 탐색)는 카드
+    // lane과 분리된 전용 lane에서 실행된다. 카드 lane에 넣으면 오래 걸리는 refresh·update
+    // 뒤에 줄을 서서 UI가 멈춘 것처럼 보이기 때문이다.
     class task_scheduler final : public operation_submitter
     {
     public:

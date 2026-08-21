@@ -220,6 +220,8 @@ namespace gitman {
         std::u8string timeout_text {};
         // 업데이트 시 submodule 갱신 여부의 초안이다 (확인 overlay 대체).
         bool update_submodules { false };
+        // 로컬 변경을 상관하지 않음 여부의 초안이다. status 순회를 건너뛴다.
+        bool ignore_local_changes { false };
         // 검증 오류다. 비어 있으면 표시하지 않는다.
         std::u8string message {};
         bool can_confirm { true };

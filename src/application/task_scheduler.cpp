@@ -30,6 +30,34 @@ namespace gitman {
             }
             return false;
         }
+
+        // dialog가 결과를 기다리는 읽기 전용 조회다. 카드 lane에 넣으면 진행 중인
+        // refresh·update 뒤에 줄을 서서 사용자가 멈춤으로 느끼므로 전용 lane에서 실행한다.
+        // 저장소를 수정하지 않는 명령만 넣는다. query_switch_candidates는 git에서
+        // fetch(remote ref 갱신)를 실행하므로 같은 작업 복사본의 pull과 겹치면 ref lock
+        // 경합이 나서 카드 lane에 남긴다.
+        bool is_interactive_query(const operation_kind kind) noexcept
+        {
+            switch (kind)
+            {
+            case operation_kind::query_svn_directory:
+            case operation_kind::query_local_changes:
+            case operation_kind::query_file_diff:
+                return true;
+            case operation_kind::load_document:
+            case operation_kind::generate_document:
+            case operation_kind::save_document:
+            case operation_kind::discover_projects:
+            case operation_kind::register_projects:
+            case operation_kind::query_local:
+            case operation_kind::refresh:
+            case operation_kind::update:
+            case operation_kind::switch_to:
+            case operation_kind::query_switch_candidates:
+                break;
+            }
+            return false;
+        }
     } // namespace
 
     std::size_t operation_lane(const project_id& id, const std::size_t worker_count) noexcept
@@ -52,8 +80,10 @@ namespace gitman {
         , logic_inbox_ { &logic_inbox }
     {
         const std::size_t count { worker_count == 0 ? 1 : worker_count };
-        inboxes_.reserve(count);
-        for (std::size_t index = 0; index < count; ++index)
+        // 카드 lane `count`개에 대화형 조회 전용 lane 하나를 마지막 index로 더한다.
+        const std::size_t total { count + 1 };
+        inboxes_.reserve(total);
+        for (std::size_t index = 0; index < total; ++index)
         {
             messaging::channel_options options {};
             // scheduler가 lane당 동시 1개만 흘리는 것이 정상이라 사실상 도달하지 않는
@@ -61,8 +91,8 @@ namespace gitman {
             options.capacity = 64;
             inboxes_.push_back(std::make_unique<messaging::channel<operation_request>>(options));
         }
-        workers_.reserve(count);
-        for (std::size_t index = 0; index < count; ++index)
+        workers_.reserve(total);
+        for (std::size_t index = 0; index < total; ++index)
             workers_.emplace_back(&task_scheduler::worker_loop, this, index);
     }
 
@@ -73,7 +103,12 @@ namespace gitman {
 
     bool task_scheduler::submit(operation_request request)
     {
-        const std::size_t lane { is_document_operation(request.kind) ? 0 : operation_lane(request.project.id, inboxes_.size()) };
+        const std::size_t card_lanes { inboxes_.size() - 1 };
+        std::size_t lane { operation_lane(request.project.id, card_lanes) };
+        if (is_document_operation(request.kind))
+            lane = 0;
+        else if (is_interactive_query(request.kind))
+            lane = card_lanes;
         return inboxes_[lane]->post(std::move(request)) == messaging::post_result::posted;
     }
 
@@ -92,7 +127,8 @@ namespace gitman {
 
     std::size_t task_scheduler::worker_count() const noexcept
     {
-        return inboxes_.size();
+        // 대화형 전용 lane은 세지 않는다. 카드 분배에 쓰는 lane 수가 공약이다.
+        return inboxes_.size() - 1;
     }
 
     void task_scheduler::worker_loop(const std::size_t index)

@@ -15,6 +15,9 @@ namespace gitman {
         repository_root,
         repository_uuid,
         revision,
+        // 대상 노드의 마지막 커밋 리비전이다 (`Last Changed Rev`). 저장소 전역
+        // 리비전과 달리 해당 경로(브랜치)의 최신 커밋을 가리킨다.
+        last_changed_revision,
         working_copy_root,
     };
 
@@ -29,6 +32,11 @@ namespace gitman {
     [[nodiscard]] process_request make_svn_remote_info_item_request(
         std::u8string_view executable, std::u8string_view working_directory, svn_info_item item, std::u8string_view url, const vcs_timeout_overrides& timeouts = {});
 
+    // 작업 복사본의 info 항목 전부를 프로세스 하나로 받는다. --xml 출력은 로캘과
+    // 무관하므로 사람이 읽는 key: value 목록을 파싱하지 않는다는 원칙을 지키면서도
+    // 항목마다 프로세스를 띄우는 고정 비용을 없앤다.
+    [[nodiscard]] process_request make_svn_info_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
+
     // 비verbose `status`다. 앞의 상태 칸이 고정 폭이고 그 뒤가 전부 경로라 공백이 든
     // 경로에서도 경계가 모호하지 않다. `--verbose`는 작성자 컬럼 때문에 쓰지 않는다.
     [[nodiscard]] process_request make_svn_status_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
@@ -37,7 +45,8 @@ namespace gitman {
     // 따라서 SVN 공통 인자를 붙이지 않고 요청을 직접 만든다.
     [[nodiscard]] process_request make_svnversion_request(std::u8string_view executable, std::u8string_view working_directory, const vcs_timeout_overrides& timeouts = {});
 
-    // 원격 HEAD 리비전이다.
+    // 원격 브랜치(URL)의 마지막 커밋 리비전이다. 저장소 전역 HEAD가 아니라 이
+    // 경로의 최신 커밋을 받아, 다른 브랜치의 커밋만으로 뒤처짐이 되지 않는다.
     [[nodiscard]] process_request make_svn_remote_revision_request(
         std::u8string_view executable, std::u8string_view working_directory, std::u8string_view url, const vcs_timeout_overrides& timeouts = {});
 

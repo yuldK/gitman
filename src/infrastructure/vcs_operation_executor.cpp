@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <future>
 #include <utility>
 #include <vector>
 
@@ -312,7 +313,7 @@ namespace gitman {
         repository_change_result result {};
         if (kind == repository_kind::subversion)
         {
-            svn_repository_provider provider { tools.subversion, *runner_, *probe_, &log, vcs_timeouts_from_settings(request.settings) };
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, &log, vcs_timeouts_from_settings(request.settings), request.settings.ignore_local_changes };
             result = request.kind == operation_kind::update ? provider.update(request.project, request.options, request.token)
                                                             : provider.switch_to(request.project, *request.switch_target, request.token);
         }
@@ -495,15 +496,63 @@ namespace gitman {
 
         if (kind == repository_kind::subversion)
         {
-            svn_repository_provider provider { tools.subversion, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings) };
-            repository_query_result local { provider.query_local(request.project, request.token) };
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, nullptr, vcs_timeouts_from_settings(request.settings), request.settings.ignore_local_changes };
             if (request.kind == operation_kind::query_local)
             {
-                emit(make_query_event(request, false, true, std::move(local)));
+                emit(make_query_event(request, false, true, provider.query_local(request.project, request.token)));
                 return;
             }
-            emit(make_query_event(request, false, false, local));
-            emit(make_query_event(request, true, true, provider.query_remote(request.project, local.snapshot, request.token)));
+
+            // refresh는 `svn info`까지만 먼저 받고, 대형 작업 복사본에서 분 단위로 걸리는
+            // status 순회와 원격 조회를 병렬로 돌린다.
+            repository_query_result local { provider.query_local_metadata(request.project, request.token) };
+            if (local.snapshot.availability != repository_availability::ready)
+            {
+                // metadata 단계에서 실패하면 기존 순서 그대로 처리한다. 원격 조회도 ready가
+                // 아닌 로컬 상태를 보고 즉시 물러난다.
+                emit(make_query_event(request, false, false, local));
+                emit(make_query_event(request, true, true, provider.query_remote(request.project, local.snapshot, request.token)));
+                return;
+            }
+
+            {
+                // status 순회가 도는 동안 카드가 "로컬 변경 확인 중"을 표시하도록 metadata
+                // 결과를 중간 event로 먼저 게시한다.
+                repository_query_result scanning { local };
+                scanning.snapshot.working_tree_scan_pending = true;
+                emit(make_query_event(request, false, false, std::move(scanning)));
+            }
+
+            // 원격 조회는 별도 thread에서 진행하고 끝나는 즉시 중간 event로 게시해 로컬
+            // 순회가 끝나기 전에도 원격 상태가 보이게 한다. logic inbox 게시는 worker들이
+            // 이미 동시에 하고 있으므로 다른 thread에서 불러도 안전하다.
+            const auto remote_query = [&provider, &request, &emit, snapshot = local.snapshot] {
+                repository_query_result remote { provider.query_remote(request.project, snapshot, request.token) };
+                repository_query_result preview { remote };
+                preview.snapshot.working_tree_scan_pending = true;
+                emit(make_query_event(request, true, false, std::move(preview)));
+                return remote;
+            };
+            std::future<repository_query_result> remote_future { std::async(std::launch::async, remote_query) };
+
+            // status 순회는 이 thread에서 이어 간다. 로컬 변경을 상관하지 않는 설정이면
+            // provider가 순회를 건너뛰고 즉시 돌아온다.
+            provider.finish_local_query(local, request.project, request.token);
+
+            repository_query_result merged { remote_future.get() };
+            // 원격 결과의 snapshot은 metadata 기반이므로 방금 끝난 로컬 결과를 합쳐
+            // 최종본을 만든다. controller는 event의 snapshot으로 카드를 통째로 바꾼다.
+            // availability는 나쁜 쪽이 이긴다. 원격 조회가 경로 소실(path_unavailable)을
+            // 발견했는데 로컬 단계의 ready로 되돌리면 없는 경로가 ready로 보인다.
+            if (merged.snapshot.availability == repository_availability::ready)
+                merged.snapshot.availability = local.snapshot.availability;
+            merged.snapshot.working_tree = local.snapshot.working_tree;
+            merged.snapshot.has_switched_subtree = local.snapshot.has_switched_subtree;
+            merged.snapshot.has_mixed_revision = local.snapshot.has_mixed_revision;
+            merged.snapshot.local_checked_at = local.snapshot.local_checked_at;
+            for (const diagnostic& value : local.diagnostics)
+                merged.diagnostics.push_back(value);
+            emit(make_query_event(request, true, true, std::move(merged)));
             return;
         }
 

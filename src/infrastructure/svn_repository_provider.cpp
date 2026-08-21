@@ -80,12 +80,14 @@ namespace gitman {
         }
     } // namespace
 
-    svn_repository_provider::svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log, vcs_timeout_overrides timeouts) noexcept
+    svn_repository_provider::svn_repository_provider(
+        vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log, vcs_timeout_overrides timeouts, const bool ignore_local_changes) noexcept
         : tool_ { std::move(tool) }
         , runner_ { &runner }
         , probe_ { &probe }
         , log_ { log }
         , timeouts_ { timeouts }
+        , ignore_local_changes_ { ignore_local_changes }
     {}
 
     const vcs_tool_info& svn_repository_provider::tool() const noexcept
@@ -112,7 +114,7 @@ namespace gitman {
     {
         try
         {
-            return query_local_impl(project, token);
+            return query_local_impl(project, token, false);
         }
         catch (...)
         {
@@ -125,7 +127,49 @@ namespace gitman {
         }
     }
 
-    repository_query_result svn_repository_provider::query_local_impl(const project_definition& project, const process_cancellation_token& token)
+    repository_query_result svn_repository_provider::query_local_metadata(const project_definition& project, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            return query_local_metadata_impl(project, token);
+        }
+        catch (...)
+        {
+            repository_query_result result {};
+            result.snapshot.project = project.id;
+            result.snapshot.kind = repository_kind::subversion;
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"저장소 상태를 조회하는 중 내부 오류가 발생했습니다." }, project));
+            return result;
+        }
+    }
+
+    void svn_repository_provider::finish_local_query(repository_query_result& result, const project_definition& project, const process_cancellation_token& token) noexcept
+    {
+        try
+        {
+            finish_local_query_impl(result, project, token, false);
+        }
+        catch (...)
+        {
+            result.snapshot.availability = repository_availability::unknown;
+            result.diagnostics.push_back(
+                make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error, std::u8string { u8"저장소 상태를 조회하는 중 내부 오류가 발생했습니다." }, project));
+        }
+    }
+
+    repository_query_result svn_repository_provider::query_local_impl(const project_definition& project, const process_cancellation_token& token, const bool include_revision_scan)
+    {
+        repository_query_result result { query_local_metadata_impl(project, token) };
+        if (result.snapshot.availability != repository_availability::ready)
+            return result;
+        finish_local_query_impl(result, project, token, include_revision_scan);
+        return result;
+    }
+
+    // svn info까지만 수행하는 빠른 로컬 조회다. 작업 트리 요약(status 순회)은
+    // finish_local_query_impl이 채운다.
+    repository_query_result svn_repository_provider::query_local_metadata_impl(const project_definition& project, const process_cancellation_token& token)
     {
         repository_query_result result {};
         result.snapshot.project = project.id;
@@ -154,66 +198,100 @@ namespace gitman {
             return result;
         }
 
-        // 값 하나만 내는 항목을 차례로 받는다. 항목마다 프로세스를 새로 띄우지만 명시적
-        // 조회에서만 일어나고, 그 대신 사람이 읽는 목록을 파싱하지 않아도 된다.
-        struct info_field
+        // 모든 항목을 `svn info --xml` 한 번으로 받는다. 항목마다 `--show-item` 프로세스를
+        // 새로 띄우던 방식은 조회 한 번에 실행 고정 비용을 다섯 번 냈다. XML 요소 이름은
+        // 로캘과 무관하므로 사람이 읽는 목록을 파싱하지 않는다는 원칙은 그대로다.
+        // XML 출력은 기계 해석용이라 카드 로그에 그대로 흘러보내면 읽을 수 없는 문서 덩어리가 찍힌다.
+        // 로그로 전달하지 않고, 해석 실패는 진단(diagnostic)으로만 알린다.
+        const vcs_command_result info_result { run_vcs_command(*runner_, make_svn_info_request(tool_.executable, working_directory, timeouts_), token, nullptr) };
+        if (info_result.succeeded() == false)
         {
-            svn_info_item item {};
-            std::u8string* target {};
-        };
-
-        std::u8string relative_url {};
-        std::u8string revision {};
-        const info_field fields[] {
-            { svn_info_item::working_copy_root, &result.snapshot.repository_root },
-            { svn_info_item::relative_url, &relative_url },
-            { svn_info_item::revision, &revision },
-            { svn_info_item::repository_root, &result.snapshot.svn_repository_root },
-            { svn_info_item::repository_uuid, &result.snapshot.svn_repository_uuid },
-        };
-
-        for (const info_field& field : fields)
-        {
-            const vcs_command_result info_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, field.item, {}, timeouts_), token, log_) };
-            if (info_result.succeeded() == false)
+            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, info_result) };
+            if (info_result.process.completion == process_completion::exited)
             {
-                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, info_result) };
-                if (info_result.process.completion == process_completion::exited)
-                {
-                    // 실행은 됐는데 값을 얻지 못했다. 등록 경로가 작업 복사본이 아니라는
-                    // 뜻이며 SVN 오류 코드가 있으면 분류기가 같은 결론을 낸다.
-                    result.snapshot.availability = repository_availability::not_a_repository;
-                    result.diagnostics.push_back(
-                        make_diagnostic(diagnostic_code::repository_not_found, diagnostic_severity::error, std::u8string { u8"등록한 경로가 SVN 작업 복사본이 아닙니다." }, project));
-                    return result;
-                }
-
-                result.snapshot.availability = repository_availability::unknown;
-                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, info_result), project));
+                // 실행은 됐는데 값을 얻지 못했다. 등록 경로가 작업 복사본이 아니라는
+                // 뜻이며 SVN 오류 코드가 있으면 분류기가 같은 결론을 낸다.
+                result.snapshot.availability = repository_availability::not_a_repository;
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::repository_not_found, diagnostic_severity::error, std::u8string { u8"등록한 경로가 SVN 작업 복사본이 아닙니다." }, project));
                 return result;
             }
-            *field.target = parse_svn_info_item(info_result.standard_output_lines);
-        }
 
-        result.snapshot.availability = repository_availability::ready;
-        // `^/trunk` 형태의 저장소 상대 URL이 카드가 보여 줄 현재 위치다.
-        result.snapshot.current_reference = relative_url;
-        result.snapshot.local_revision = revision;
-
-        const vcs_command_result status_result { run_vcs_command(*runner_, make_svn_status_request(tool_.executable, working_directory, timeouts_), token, log_) };
-        if (status_result.succeeded() == false)
-        {
-            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, status_result) };
             result.snapshot.availability = repository_availability::unknown;
-            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, status_result), project));
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, info_result), project));
             return result;
         }
 
-        const svn_status_summary status { parse_svn_status(status_result.standard_output_lines) };
-        result.snapshot.working_tree = summarize_svn_working_tree(status);
-        if (status.unparsable_records > 0)
+        const svn_info_fields info { parse_svn_info_xml(info_result.standard_output_lines) };
+        if (info.parsed == false)
+        {
+            result.snapshot.availability = repository_availability::unknown;
             result.diagnostics.push_back(make_diagnostic(
-                diagnostic_code::vcs_output_unparsable, diagnostic_severity::warning, std::u8string { u8"해석하지 못한 상태 줄이 있어 작업 트리 상태를 확정하지 못했습니다." }, project));
+                diagnostic_code::vcs_output_unparsable, diagnostic_severity::error, std::u8string { u8"svn info 출력을 해석하지 못했습니다." }, project));
+            return result;
+        }
+        result.snapshot.repository_root = info.working_copy_root;
+        result.snapshot.svn_repository_root = info.repository_root;
+        result.snapshot.svn_repository_uuid = info.repository_uuid;
+        result.snapshot.availability = repository_availability::ready;
+        // `^/trunk` 형태의 저장소 상대 URL이 카드가 보여 줄 현재 위치다.
+        result.snapshot.current_reference = info.relative_url;
+        // WC 리비전(entry attribute)은 update 직후 저장소 전역 HEAD가 되어 브랜치와
+        // 무관한 값이 보인다. 카드에는 이 경로의 마지막 커밋(last-changed) 리비전을
+        // 쓰고, 원격 비교도 같은 기준을 쓴다. commit 요소가 없는 예외적 출력에서만
+        // WC 리비전으로 되돌아간다.
+        result.snapshot.local_revision = info.last_changed_revision.empty() ? info.revision : info.last_changed_revision;
+        return result;
+    }
+
+    // query_local_metadata_impl이 ready로 끝난 결과에 작업 트리 요약을 채운다. status
+    // 순회는 대형 작업 복사본에서 분 단위로 걸리므로 refresh는 이 단계를 원격 조회와
+    // 병렬로 돌린다.
+    void svn_repository_provider::finish_local_query_impl(repository_query_result& result, const project_definition& project, const process_cancellation_token& token, const bool include_revision_scan)
+    {
+        const std::u8string_view working_directory { svn_working_directory(project) };
+
+        svn_status_summary status {};
+        if (ignore_local_changes_)
+        {
+            // 로컬 변경을 상관하지 않는 설정이다. status 순회를 통째로 건너뛰고 작업
+            // 트리가 깨끗하다고 믿는다. 실제 변경이 있었다면 update·switch 실행 결과에서
+            // 드러나며, 그때 사용자에게 직접 확인하라고 알린다. 단 mixed revision과
+            // switched 판정은 로컬 변경이 아니라 작업 복사본 구조라서 이 설정의 대상이
+            // 아니다. update·switch 직전 검증의 svnversion 검사는 그대로 수행해 F3의
+            // 전환 차단 정책을 유지한다.
+            result.snapshot.working_tree.state = working_tree_state::clean;
+            if (include_revision_scan == false)
+                return;
+        }
+        else
+        {
+            const vcs_command_result status_result { run_vcs_command(*runner_, make_svn_status_request(tool_.executable, working_directory, timeouts_), token, log_) };
+            if (status_result.succeeded() == false)
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, status_result) };
+                result.snapshot.availability = repository_availability::unknown;
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, status_result), project));
+                return;
+            }
+
+            status = parse_svn_status(status_result.standard_output_lines);
+            result.snapshot.working_tree = summarize_svn_working_tree(status);
+            if (status.unparsable_records > 0)
+                result.diagnostics.push_back(make_diagnostic(
+                    diagnostic_code::vcs_output_unparsable, diagnostic_severity::warning, std::u8string { u8"해석하지 못한 상태 줄이 있어 작업 트리 상태를 확정하지 못했습니다." }, project));
+
+            if (include_revision_scan == false)
+            {
+                // `svnversion`은 status와 별개로 작업 복사본 전체를 한 번 더 걷는다. 큰 작업
+                // 복사본에서는 새로 고침 비용을 사실상 두 배로 만들므로 리비전 혼합 판정이
+                // 실제로 필요한 update·switch 직전 검증에서만 실행한다. 거짓과 미상을
+                // 구분하려고 값은 비워 둔다.
+                if (has_svn_switched_entry(status))
+                    result.snapshot.has_switched_subtree = true;
+                return;
+            }
+        }
 
         if (tool_.auxiliary_executable.empty())
         {
@@ -221,7 +299,7 @@ namespace gitman {
             // 조회는 계속한다. 거짓과 미상을 구분하려고 값을 비워 둔다.
             if (has_svn_switched_entry(status))
                 result.snapshot.has_switched_subtree = true;
-            return result;
+            return;
         }
 
         const vcs_command_result version_result { run_vcs_command(*runner_, make_svnversion_request(tool_.auxiliary_executable, working_directory, timeouts_), token, log_) };
@@ -232,12 +310,11 @@ namespace gitman {
                 result.snapshot.has_switched_subtree = true;
             result.diagnostics.push_back(make_diagnostic(
                 diagnostic_code::vcs_output_unparsable, diagnostic_severity::warning, std::u8string { u8"svnversion 출력을 해석하지 못해 리비전 혼합 여부를 확인하지 못했습니다." }, project));
-            return result;
+            return;
         }
 
         result.snapshot.has_mixed_revision = version.mixed_revision();
         result.snapshot.has_switched_subtree = version.switched || has_svn_switched_entry(status);
-        return result;
     }
 
     repository_query_result svn_repository_provider::query_remote(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token) noexcept
@@ -289,16 +366,28 @@ namespace gitman {
             return result;
         }
 
-        // 현재 URL을 다시 물어본다. snapshot의 상대 URL과 저장소 루트를 이어 붙이는
-        // 것보다 규칙이 하나 적고, 명시적 조회에서만 실행된다.
-        const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url, {}, timeouts_), token, log_) };
-        const std::u8string url { url_result.succeeded() ? parse_svn_info_item(url_result.standard_output_lines) : std::u8string {} };
+        // 로컬 조회가 방금 채운 저장소 루트와 상대 URL을 이어 붙여 현재 URL을 만든다.
+        // `svn info` 프로세스를 한 번 더 띄우지 않기 위해서다. 형태가 예상과 다르면
+        // 이전처럼 물어본다.
+        std::u8string url {};
+        if (local.svn_repository_root.empty() == false && local.current_reference.starts_with(u8"^/"))
+        {
+            url = local.svn_repository_root;
+            while (url.ends_with(u8'/'))
+                url.pop_back();
+            url.append(local.current_reference.substr(1));
+        }
         if (url.empty())
         {
-            const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, url_result) };
-            result.snapshot.sync_state = remote_sync_state_for_failure(failure);
-            result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, url_result), project));
-            return result;
+            const vcs_command_result url_result { run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, svn_info_item::url, {}, timeouts_), token, log_) };
+            url = url_result.succeeded() ? parse_svn_info_item(url_result.standard_output_lines) : std::u8string {};
+            if (url.empty())
+            {
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, url_result) };
+                result.snapshot.sync_state = remote_sync_state_for_failure(failure);
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, url_result), project));
+                return result;
+            }
         }
 
         const vcs_command_result head_result { run_vcs_command(*runner_, make_svn_remote_revision_request(tool_.executable, working_directory, url, timeouts_), token, log_) };
@@ -346,33 +435,23 @@ namespace gitman {
         {
             const std::u8string_view working_directory { svn_working_directory(project) };
             svn_repository_browser_info browser {};
-            struct browser_field
+            // 루트와 현재 URL을 `svn info --xml` 한 번으로 받는다.
+            // XML 출력은 기계 해석용이라 카드 로그에 그대로 흘러보내면 읽을 수 없는 문서 덩어리가 찍힌다.
+            // 로그로 전달하지 않고, 해석 실패는 진단(diagnostic)으로만 알린다.
+            const vcs_command_result info_result { run_vcs_command(*runner_, make_svn_info_request(tool_.executable, working_directory, timeouts_), token, nullptr) };
+            if (info_result.succeeded() == false)
             {
-                svn_info_item item {};
-                std::u8string* target {};
-            };
-            const browser_field fields[] {
-                { svn_info_item::repository_root, &browser.repository_root_url },
-                { svn_info_item::url, &browser.current_url },
-            };
-
-            for (const browser_field& field : fields)
+                const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, info_result) };
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, info_result), project));
+                return result;
+            }
+            const svn_info_fields info { parse_svn_info_xml(info_result.standard_output_lines) };
+            browser.repository_root_url = info.repository_root;
+            browser.current_url = info.url;
+            if (browser.repository_root_url.empty() || browser.current_url.empty())
             {
-                const vcs_command_result info_result {
-                    run_vcs_command(*runner_, make_svn_info_item_request(tool_.executable, working_directory, field.item, {}, timeouts_), token, log_),
-                };
-                if (info_result.succeeded() == false)
-                {
-                    const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, info_result) };
-                    result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, info_result), project));
-                    return result;
-                }
-                *field.target = parse_svn_info_item(info_result.standard_output_lines);
-                if (field.target->empty())
-                {
-                    result.diagnostics.push_back(make_diagnostic(diagnostic_code::vcs_output_unparsable, diagnostic_severity::error, std::u8string { u8"SVN 저장소 URL을 읽지 못했습니다." }, project));
-                    return result;
-                }
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code::vcs_output_unparsable, diagnostic_severity::error, std::u8string { u8"SVN 저장소 URL을 읽지 못했습니다." }, project));
+                return result;
             }
 
             browser.repository_root_url = normalize_svn_browser_url(browser.repository_root_url);
@@ -555,6 +634,20 @@ namespace gitman {
         }
     }
 
+    namespace {
+        // 로컬 변경을 상관하지 않는 설정은 사전 status 검사를 건너뛰므로 update·switch
+        // 실행 출력이 문제를 알아챌 유일한 근거다. 자동 복구는 시도하지 않고 직접 해결을
+        // 안내한다. 실패 원인이 로컬 변경이 아닐 수도 있어(예: 네트워크 오류) 단정하지
+        // 않는 문구를 쓴다.
+        void append_ignore_local_notice(repository_change_result& result, const vcs_command_result& change_result, const project_definition& project)
+        {
+            if (result.succeeded && svn_change_output_reports_conflict(change_result.standard_output_lines) == false)
+                return;
+            result.diagnostics.push_back(make_diagnostic(diagnostic_code::operation_failed, diagnostic_severity::error,
+                std::u8string { u8"로컬 변경을 상관하지 않는 설정으로 실행했습니다. 실패나 충돌이 커밋하지 않은 로컬 변경 때문일 수 있으니 작업 복사본을 직접 확인해 주세요." }, project));
+        }
+    } // namespace
+
     repository_change_result svn_repository_provider::update_impl(const project_definition& project, const process_cancellation_token& token)
     {
         repository_change_result result {};
@@ -565,7 +658,7 @@ namespace gitman {
             return result;
         }
 
-        const repository_query_result before { query_local_impl(project, token) };
+        const repository_query_result before { query_local_impl(project, token, true) };
         result.snapshot = before.snapshot;
         for (const diagnostic& value : before.diagnostics)
             result.diagnostics.push_back(value);
@@ -586,8 +679,11 @@ namespace gitman {
             result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, update_result), project));
         }
 
+        if (ignore_local_changes_)
+            append_ignore_local_notice(result, update_result, project);
+
         // 성공과 실패 모두 실행 직후 상태를 다시 조회한다.
-        const repository_query_result after { query_local_impl(project, token) };
+        const repository_query_result after { query_local_impl(project, token, false) };
         result.snapshot = after.snapshot;
         for (const diagnostic& value : after.diagnostics)
             result.diagnostics.push_back(value);
@@ -628,7 +724,7 @@ namespace gitman {
             return result;
         }
 
-        const repository_query_result before { query_local_impl(project, token) };
+        const repository_query_result before { query_local_impl(project, token, true) };
         result.snapshot = before.snapshot;
         for (const diagnostic& value : before.diagnostics)
             result.diagnostics.push_back(value);
@@ -709,8 +805,11 @@ namespace gitman {
             result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, switch_result), project));
         }
 
+        if (ignore_local_changes_)
+            append_ignore_local_notice(result, switch_result, project);
+
         // 성공과 실패 모두 실행 직후 상태를 다시 조회한다.
-        const repository_query_result after { query_local_impl(project, token) };
+        const repository_query_result after { query_local_impl(project, token, false) };
         result.snapshot = after.snapshot;
         for (const diagnostic& value : after.diagnostics)
             result.diagnostics.push_back(value);

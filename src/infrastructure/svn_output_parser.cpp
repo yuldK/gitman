@@ -59,6 +59,81 @@ namespace gitman {
             // `I`(무시)와 `X`(외부 항목), `?`(미추적)는 변경으로 세지 않는다.
             return value == u8'M' || value == u8'A' || value == u8'D' || value == u8'R' || value == u8'!' || value == u8'~';
         }
+
+        // `svn info --xml`은 우리가 만든 요청에서만 오므로 문서 전체를 해석하는 XML
+        // 파서 없이 요소를 문자열로 찾는 좁은 해석이면 충분하다.
+        std::u8string xml_unescape(const std::u8string_view text)
+        {
+            std::u8string value {};
+            value.reserve(text.size());
+            for (std::size_t index = 0; index < text.size();)
+            {
+                if (text[index] != u8'&')
+                {
+                    value.push_back(text[index]);
+                    ++index;
+                    continue;
+                }
+                struct xml_entity
+                {
+                    std::u8string_view name {};
+                    char8_t replacement {};
+                };
+                constexpr xml_entity entities[] {
+                    { u8"&amp;", u8'&' }, { u8"&lt;", u8'<' }, { u8"&gt;", u8'>' }, { u8"&quot;", u8'"' }, { u8"&apos;", u8'\'' },
+                };
+                const std::u8string_view rest { text.substr(index) };
+                bool replaced { false };
+                for (const xml_entity& candidate : entities)
+                {
+                    if (rest.starts_with(candidate.name))
+                    {
+                        value.push_back(candidate.replacement);
+                        index += candidate.name.size();
+                        replaced = true;
+                        break;
+                    }
+                }
+                if (replaced == false)
+                {
+                    value.push_back(text[index]);
+                    ++index;
+                }
+            }
+            return value;
+        }
+
+        std::u8string first_element_text(const std::u8string_view xml, const std::u8string_view open_tag, const std::u8string_view close_tag)
+        {
+            const std::size_t open { xml.find(open_tag) };
+            if (open == std::u8string_view::npos)
+                return {};
+            const std::size_t begin { open + open_tag.size() };
+            const std::size_t end { xml.find(close_tag, begin) };
+            if (end == std::u8string_view::npos)
+                return {};
+            return xml_unescape(trim_ascii_whitespace(xml.substr(begin, end - begin)));
+        }
+
+        // 첫 `open_tag` 요소의 `revision` attribute다. 다른 요소의 같은 attribute와
+        // 섞이지 않도록 여는 tag 안에서만 찾는다.
+        std::u8string first_revision_attribute(const std::u8string_view xml, const std::u8string_view open_tag)
+        {
+            const std::size_t element { xml.find(open_tag) };
+            if (element == std::u8string_view::npos)
+                return {};
+            const std::size_t tag_end { xml.find(u8'>', element) };
+            const std::u8string_view attributes { xml.substr(element, tag_end == std::u8string_view::npos ? xml.size() - element : tag_end - element) };
+            constexpr std::u8string_view name { u8"revision=\"" };
+            const std::size_t value_start { attributes.find(name) };
+            if (value_start == std::u8string_view::npos)
+                return {};
+            const std::size_t begin { value_start + name.size() };
+            const std::size_t end { attributes.find(u8'"', begin) };
+            if (end == std::u8string_view::npos)
+                return {};
+            return std::u8string { attributes.substr(begin, end - begin) };
+        }
     } // namespace
 
     bool svn_version_info::mixed_revision() const noexcept
@@ -75,6 +150,28 @@ namespace gitman {
                 return std::u8string { value };
         }
         return {};
+    }
+
+    svn_info_fields parse_svn_info_xml(const std::vector<std::u8string>& lines)
+    {
+        std::u8string xml {};
+        for (const std::u8string& line : lines)
+        {
+            xml.append(line);
+            xml.push_back(u8'\n');
+        }
+        svn_info_fields fields {};
+        fields.url = first_element_text(xml, u8"<url>", u8"</url>");
+        fields.relative_url = first_element_text(xml, u8"<relative-url>", u8"</relative-url>");
+        fields.repository_root = first_element_text(xml, u8"<root>", u8"</root>");
+        fields.repository_uuid = first_element_text(xml, u8"<uuid>", u8"</uuid>");
+        fields.working_copy_root = first_element_text(xml, u8"<wcroot-abspath>", u8"</wcroot-abspath>");
+        // entry attribute는 WC 리비전, commit attribute는 이 노드의 마지막 커밋
+        // 리비전이다.
+        fields.revision = first_revision_attribute(xml, u8"<entry");
+        fields.last_changed_revision = first_revision_attribute(xml, u8"<commit");
+        fields.parsed = fields.url.empty() == false && fields.revision.empty() == false;
+        return fields;
     }
 
     std::vector<std::u8string> parse_svn_directory_list(const std::vector<std::u8string>& lines)
@@ -202,6 +299,21 @@ namespace gitman {
         for (const svn_status_entry& entry : status.entries)
             if (entry.switched)
                 return true;
+        return false;
+    }
+
+    bool svn_change_output_reports_conflict(const std::vector<std::u8string>& lines) noexcept
+    {
+        for (const std::u8string& line : lines)
+        {
+            if (line.size() < 6 || line[4] != u8' ')
+                continue;
+            for (std::size_t index = 0; index < 4; ++index)
+            {
+                if (line[index] == u8'C')
+                    return true;
+            }
+        }
         return false;
     }
 

@@ -219,6 +219,42 @@ TEST_CASE("App settings JSON round trips and preserves unknown keys", "[app-sett
     REQUIRE(reparsed.settings.recent_documents == parsed.settings.recent_documents);
 }
 
+TEST_CASE("The app settings window placement round trips and ignores broken values", "[app-settings][json]")
+{
+    // 앱 단위 창 배치다 (global-settings-and-ui-fixes-design G1). 문서의 window와
+    // 같은 규칙으로 왕복하고, 깨진 값은 경고만 남기고 무시한다.
+    gitman::app_settings settings {};
+    gitman::window_placement placement {};
+    placement.x = 320;
+    placement.y = 180;
+    placement.width = 1280;
+    placement.height = 720;
+    placement.maximized = true;
+    settings.window = { placement };
+
+    const std::u8string serialized { gitman::serialize_app_settings_json(settings, {}) };
+    const gitman::app_settings_load_result reparsed { gitman::parse_app_settings_json(serialized, settings_path) };
+    REQUIRE(reparsed.diagnostics.empty());
+    REQUIRE(reparsed.settings.window.has_value());
+    REQUIRE(*reparsed.settings.window == placement);
+
+    // 값이 없으면 window 필드를 만들지 않고, shadow에 이미 있던 값은 지우지 않는다.
+    const std::u8string without { gitman::serialize_app_settings_json({}, {}) };
+    REQUIRE(without.find(u8"\"window\"") == std::u8string::npos);
+    const std::u8string preserved { gitman::serialize_app_settings_json({}, serialized) };
+    REQUIRE(preserved.find(u8"\"window\"") != std::u8string::npos);
+
+    // 크기가 0이거나 형식이 다르면 배치 없이 열고 경고를 남긴다.
+    const gitman::app_settings_load_result zero { gitman::parse_app_settings_json(u8"{ \"window\": { \"x\": 0, \"y\": 0, \"width\": 0, \"height\": 400 } }", settings_path) };
+    REQUIRE(zero.settings.window.has_value() == false);
+    REQUIRE(zero.diagnostics.size() == 1);
+    REQUIRE(zero.diagnostics.front().severity == gitman::diagnostic_severity::warning);
+
+    const gitman::app_settings_load_result wrong { gitman::parse_app_settings_json(u8"{ \"window\": { \"x\": \"left\" } }", settings_path) };
+    REQUIRE(wrong.settings.window.has_value() == false);
+    REQUIRE(wrong.diagnostics.size() == 1);
+}
+
 TEST_CASE("A broken app settings file falls back to defaults with a warning", "[app-settings][json]")
 {
     const gitman::app_settings_load_result broken { gitman::parse_app_settings_json(u8"not json", settings_path) };
@@ -349,6 +385,87 @@ TEST_CASE("Recent list changes merge into a single pending save", "[logic][app-s
     const gitman::operation_request* const second { submitter.last_of(gitman::operation_kind::save_app_settings) };
     REQUIRE(second->app_settings_payload->recent_documents.empty());
     REQUIRE(u8_equal(second->app_settings_shadow, u8"{}"));
+}
+
+TEST_CASE("The closing window placement lands in the app settings save at shutdown", "[logic][app-settings]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+
+    controller.start();
+    const std::uint64_t load_id { submitter.requests.front().operation_id };
+    controller.handle(gitman::logic_message { make_loaded_settings(load_id) });
+
+    // 문서 없이(시작 페이지) 닫아도 배치는 앱 설정에 남는다 (G1).
+    gitman::window_placement placement {};
+    placement.x = 10;
+    placement.y = 20;
+    placement.width = 800;
+    placement.height = 600;
+    controller.handle(gitman::logic_message { gitman::window_placement_intent { placement } });
+    // 배치만으로는 즉시 저장하지 않는다. 종료 처리에서 한 번 나간다.
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == 0);
+
+    controller.handle(gitman::logic_message { gitman::close_intent {} });
+    const gitman::operation_request* const save { submitter.last_of(gitman::operation_kind::save_app_settings) };
+    REQUIRE(save != nullptr);
+    REQUIRE(save->app_settings_payload.has_value());
+    REQUIRE(save->app_settings_payload->window.has_value());
+    REQUIRE(*save->app_settings_payload->window == placement);
+}
+
+TEST_CASE("The app settings placement restores the window only when nothing was applied", "[logic][app-settings]")
+{
+    gitman::window_placement stored {};
+    stored.x = 320;
+    stored.y = 180;
+    stored.width = 1280;
+    stored.height = 720;
+
+    SECTION("문서가 없으면 앱 설정의 마지막 배치를 1회 요청한다")
+    {
+        recording_submitter submitter {};
+        gitman::logic_controller controller { submitter };
+        controller.start();
+        const std::uint64_t load_id { submitter.requests.front().operation_id };
+
+        gitman::app_settings settings {};
+        settings.window = { stored };
+        controller.handle(gitman::logic_message { make_loaded_settings(load_id, std::move(settings)) });
+
+        const std::shared_ptr<const gitman::view_snapshot> view { controller.make_view_snapshot() };
+        REQUIRE(view->window_placement_request.has_value());
+        REQUIRE(*view->window_placement_request == stored);
+        REQUIRE(view->window_placement_revision == 1);
+    }
+
+    SECTION("문서가 자기 배치를 이미 적용했으면 문서가 우선이다")
+    {
+        recording_submitter submitter {};
+        gitman::logic_controller controller { submitter };
+        controller.start();
+        const std::uint64_t load_id { submitter.requests.front().operation_id };
+
+        gitman::window_placement document_placement {};
+        document_placement.x = 1;
+        document_placement.y = 2;
+        document_placement.width = 640;
+        document_placement.height = 480;
+
+        controller.handle(gitman::logic_message { gitman::open_document_intent { u8"D:\\workspaces\\team.version-list" } });
+        gitman::document_loaded_event loaded { make_loaded_document() };
+        loaded.document->window = { document_placement };
+        controller.handle(gitman::logic_message { std::move(loaded) });
+
+        gitman::app_settings settings {};
+        settings.window = { stored };
+        controller.handle(gitman::logic_message { make_loaded_settings(load_id, std::move(settings)) });
+
+        const std::shared_ptr<const gitman::view_snapshot> view { controller.make_view_snapshot() };
+        REQUIRE(view->window_placement_request.has_value());
+        REQUIRE(*view->window_placement_request == document_placement);
+        REQUIRE(view->window_placement_revision == 1);
+    }
 }
 
 TEST_CASE("A failing app settings save is reported once", "[logic][app-settings]")

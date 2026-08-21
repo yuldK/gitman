@@ -307,6 +307,9 @@ namespace gitman {
         bool app_settings_save_queued_ { false };
         // 저장 실패 문구는 한 번만 알린다. 반복 실패가 배너를 도배하지 않게 한다.
         bool app_settings_save_notified_ { false };
+        // 종료 시 받은 창 배치가 앱 설정에 아직 저장되지 않았다는 표시다 (G1).
+        // begin_shutdown이 이 값을 보고 저장을 한 번 내보낸다.
+        bool app_settings_window_dirty_ { false };
         std::uint64_t next_operation_id_ { 1 };
         bool document_loading_ { false };
         // 생성은 한 번에 하나만 진행한다. id가 0이 아니면 진행 중이며, id 비교로

@@ -2,7 +2,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -81,6 +84,63 @@ namespace gitman {
                 return {};
             return as_u8string(found->get_ref<const std::string&>());
         }
+
+        // 문서의 `window`와 같은 규칙이다: 표시 상태라 어떤 오류도 앱 시작을 막지
+        // 않고, 읽을 수 없으면 경고만 남기고 배치 없이 연다.
+        std::optional<window_placement> parse_window(const json& root, app_settings_load_result& result, const std::u8string_view path)
+        {
+            const auto source { root.find("window") };
+            if (source == root.end() || source->is_null())
+                return std::nullopt;
+            if (source->is_object() == false)
+            {
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 window는 object여야 합니다. 창 배치를 무시합니다.", path));
+                return std::nullopt;
+            }
+
+            constexpr std::array coordinate_fields {
+                std::string_view { "x" },
+                std::string_view { "y" },
+                std::string_view { "width" },
+                std::string_view { "height" },
+            };
+            std::array<std::int32_t, 4> coordinates {};
+            for (std::size_t index = 0; index < coordinate_fields.size(); ++index)
+            {
+                const auto value { source->find(coordinate_fields[index]) };
+                if (value == source->end() || value->is_number_integer() == false)
+                {
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정 window의 좌표와 크기는 정수여야 합니다. 창 배치를 무시합니다.", path));
+                    return std::nullopt;
+                }
+                const std::int64_t number { value->get<std::int64_t>() };
+                if (number < std::numeric_limits<std::int32_t>::min() || number > std::numeric_limits<std::int32_t>::max())
+                {
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정 window의 좌표와 크기가 표현 범위를 벗어났습니다. 창 배치를 무시합니다.", path));
+                    return std::nullopt;
+                }
+                coordinates[index] = static_cast<std::int32_t>(number);
+            }
+
+            window_placement placement {};
+            placement.x = coordinates[0];
+            placement.y = coordinates[1];
+            placement.width = coordinates[2];
+            placement.height = coordinates[3];
+            if (placement.valid() == false)
+            {
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정 window의 크기는 양수여야 합니다. 창 배치를 무시합니다.", path));
+                return std::nullopt;
+            }
+
+            if (const auto maximized { source->find("maximized") }; maximized != source->end() && maximized->is_boolean())
+                placement.maximized = maximized->get<bool>();
+            return placement;
+        }
     } // namespace
 
     std::u8string serialize_app_settings_json(const app_settings& settings, const std::u8string_view shadow_source_json)
@@ -98,6 +158,18 @@ namespace gitman {
 
         root["schema_version"] = settings.schema_version;
         root["recent_documents"] = std::move(recent);
+        // 값이 없으면 필드를 만들지 않고, 파일에 이미 있던 `window`는 지우지
+        // 않는다 (문서 저장의 window 규칙과 동일).
+        if (settings.window.has_value())
+        {
+            json window { json::object() };
+            window["x"] = settings.window->x;
+            window["y"] = settings.window->y;
+            window["width"] = settings.window->width;
+            window["height"] = settings.window->height;
+            window["maximized"] = settings.window->maximized;
+            root["window"] = std::move(window);
+        }
         return format_json_bytes(root.dump(4, ' ', false, json::error_handler_t::strict));
     }
 
@@ -118,6 +190,8 @@ namespace gitman {
 
         if (const auto version { root.find("schema_version") }; version != root.end() && version->is_number_integer())
             result.settings.schema_version = version->get<std::int32_t>();
+
+        result.settings.window = parse_window(root, result, path);
 
         const auto recent { root.find("recent_documents") };
         if (recent == root.end())

@@ -621,7 +621,18 @@ namespace gitman {
 
     void logic_controller::handle_window_placement(const window_placement_intent& intent)
     {
-        if (intent.placement.valid() == false || document_.has_value() == false)
+        if (intent.placement.valid() == false)
+            return;
+
+        // 앱 설정에는 문서 유무와 무관하게 마지막 배치를 남긴다 (G1). 배치 intent는
+        // 종료 직전에만 오므로 저장은 begin_shutdown이 한 번 내보낸다.
+        if (app_settings_.window.has_value() == false || *app_settings_.window != intent.placement)
+        {
+            app_settings_.window = { intent.placement };
+            app_settings_window_dirty_ = true;
+        }
+
+        if (document_.has_value() == false)
             return;
         if (document_->window.has_value() && *document_->window == intent.placement)
             return;
@@ -1034,9 +1045,14 @@ namespace gitman {
         // 읽기가 끝나기 전에 문서를 열었으면 그 항목이 파일의 어떤 항목보다 최신이다.
         // 읽은 목록을 바탕으로 깔고 그 위에 오래된 것부터 다시 올린다.
         const std::vector<recent_document> pending { std::move(app_settings_.recent_documents) };
+        // 읽기 전에 이미 받은 창 배치(시작 직후 종료의 드문 경로)도 파일 값보다
+        // 최신이라 보존한다.
+        const std::optional<window_placement> pending_window { app_settings_window_dirty_ ? app_settings_.window : std::nullopt };
         app_settings_ = std::move(event.settings);
         app_settings_shadow_ = std::move(event.shadow_source_json);
         app_settings_loaded_ = true;
+        if (pending_window.has_value())
+            app_settings_.window = pending_window;
         for (std::size_t index = pending.size(); index > 0; --index)
         {
             const recent_document& value { pending[index - 1] };
@@ -1046,6 +1062,14 @@ namespace gitman {
         for (const diagnostic& value : event.diagnostics)
             if (value.severity != diagnostic_severity::information)
                 notices_.push_back(value.message);
+
+        // 아직 어떤 배치도 적용되지 않았으면 앱 설정의 마지막 배치를 복원한다 (G1).
+        // 문서가 자기 배치를 이미 적용했으면(=revision이 올라갔으면) 문서가 우선이다.
+        if (window_placement_revision_ == 0 && app_settings_.window.has_value())
+        {
+            window_placement_ = app_settings_.window;
+            ++window_placement_revision_;
+        }
 
         if (pending.empty() == false || app_settings_save_queued_)
         {
@@ -1718,18 +1742,33 @@ namespace gitman {
 
         // 종료 저장은 취소 전파 뒤에도 한 번 나간다. runtime의 종료 순서가 이 요청이
         // worker inbox에 들어간 뒤에 inbox를 닫으므로 join 안에서 끝까지 실행된다.
-        if (window_placement_dirty_ == false || document_.has_value() == false)
-            return;
-        window_placement_dirty_ = false;
+        if (window_placement_dirty_ && document_.has_value())
+        {
+            window_placement_dirty_ = false;
+            operation_request request { make_request(operation_kind::save_document, nullptr, 0) };
+            request.document = document_;
+            request.revision = revision_;
+            // 저장은 취소 token을 보지 않지만, 종료 저장이 취소 대상이 아니라는
+            // 의도를 요청에 남긴다.
+            request.token = {};
+            pending_save_operation_id_ = request.operation_id;
+            static_cast<void>(submitter_->submit(std::move(request)));
+        }
 
-        operation_request request { make_request(operation_kind::save_document, nullptr, 0) };
-        request.document = document_;
-        request.revision = revision_;
-        // 저장은 취소 token을 보지 않지만, 종료 저장이 취소 대상이 아니라는 의도를
-        // 요청에 남긴다.
-        request.token = {};
-        pending_save_operation_id_ = request.operation_id;
-        static_cast<void>(submitter_->submit(std::move(request)));
+        // 앱 설정의 마지막 창 배치도 같은 구간에서 한 번 저장한다 (G1). worker
+        // lane이 FIFO라 진행 중이던 일반 저장 뒤에 실행되어 마지막 상태가 남는다.
+        // 읽기가 끝나기 전이면 파일의 다른 항목을 지울 수 있어 포기한다 (시작
+        // 직후 종료의 드문 경로).
+        if (app_settings_window_dirty_ && app_settings_loaded_)
+        {
+            app_settings_window_dirty_ = false;
+            operation_request request { make_request(operation_kind::save_app_settings, nullptr, 0) };
+            request.app_settings_payload = app_settings_;
+            request.app_settings_shadow = app_settings_shadow_;
+            request.token = {};
+            pending_app_settings_save_id_ = request.operation_id;
+            static_cast<void>(submitter_->submit(std::move(request)));
+        }
     }
 
     bool logic_controller::has_notice() const noexcept

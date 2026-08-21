@@ -1,8 +1,11 @@
 #pragma once
 
+#include "domain/project.h"
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -36,6 +39,10 @@ namespace gitman {
         std::int32_t schema_version { current_app_settings_schema_version };
         // 최근 순으로 정렬된 목록이다. 맨 앞이 가장 최근에 연 문서다.
         std::vector<recent_document> recent_documents {};
+        // 마지막으로 앱을 닫을 때의 창 배치다 (global-settings-and-ui-fixes-design
+        // G1). 문서의 `window`와 같은 좌표 규칙이며, 문서 없이 시작할 때의 복원
+        // fallback이다 (적용 우선순위: 여는 문서의 배치 > 이 값 > 기본값).
+        std::optional<window_placement> window {};
 
         [[nodiscard]] bool operator==(const app_settings&) const noexcept = default;
     };

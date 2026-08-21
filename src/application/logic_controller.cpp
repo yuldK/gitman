@@ -742,6 +742,8 @@ namespace gitman {
         card.busy = true;
         card.change_operation_id = operation_id;
         card.change_kind = kind;
+        // 경과 시간 표시의 기준 시각이다 (로그 헤더의 MM:SS).
+        card.change_started_at = std::chrono::steady_clock::now();
         card.change_cancellation = std::move(cancellation);
         if (is_update)
             append_lifecycle_log(
@@ -1956,6 +1958,9 @@ namespace gitman {
                     // 렌더링·스크롤은 접힌 표시 목록을, 복사는 records를 쓴다.
                     log.lines = build_log_display_lines(card.log.records(), log_filter_);
                     log.truncated = card.log.dropped_count() > 0;
+                    // 변경 작업이 실행 중이면 헤더에 경과 시간을 표시한다.
+                    if (card.change_operation_id != 0)
+                        log.change_started_at = { card.change_started_at };
 
                     float maximum { log_content_height() - log_viewport_height() };
                     if (maximum < 0.0f)

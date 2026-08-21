@@ -130,6 +130,20 @@ namespace gitman::ui {
         place(autoscroll_);
         place(filter_);
 
+        // 실행 중 변경 작업의 경과 시간 자리다. 버튼 왼쪽에 예약해 제목이 침범하지
+        // 않는다. 자리가 없으면 그리지 않는다.
+        elapsed_right_ = 0.0f;
+        if (log_.change_started_at.has_value())
+        {
+            const float reserved { layout_log_elapsed_width * scale };
+            const float right { next_x + button - gap };
+            if (right - reserved >= title_left)
+            {
+                elapsed_right_ = right;
+                next_x -= reserved;
+            }
+        }
+
         const float title_width { next_x + button - title_left };
         title_->arrange({ { title_left, context.slot.y, title_width > 0.0f ? title_width : 0.0f, header_height }, scale });
 
@@ -157,6 +171,18 @@ namespace gitman::ui {
         // 목록과 구분되도록 pane 전체를 표면색으로 깔고 위쪽 경계선을 긋는다.
         context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), solid_paint(context.palette.surface_background));
         context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, 1.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.15f)));
+
+        // 변경 작업(update·switch)이 실행 중이면 헤더에 경과 시간을 그린다. 값은
+        // draw 시각 기준이라 UI thread의 timer가 1초마다 다시 그리게 한다.
+        if (log_.change_started_at.has_value() && elapsed_right_ > 0.0f)
+        {
+            const std::u8string text { format_elapsed_time(context.now - *log_.change_started_at) };
+            const SkFont font { sk_ref_sp(context.ui_typeface), 10.5f * scale };
+            SkPaint paint { solid_paint(context.palette.primary_foreground) };
+            paint.setAlphaf(0.6f);
+            const float header_height { layout_log_header_height * scale };
+            draw_text(context.canvas, text, elapsed_right_ - measure_text(text, font), box.y + centered_text_baseline(font, header_height), font, paint);
+        }
 
         draw_records(context, body_);
         draw_children(context, interaction);

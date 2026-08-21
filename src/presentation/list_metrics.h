@@ -29,6 +29,9 @@ namespace gitman {
     // 조절 테두리와 겹치지 않도록 안쪽으로 들여놓는 거리다.
     inline constexpr float layout_scrollbar_width { 8.0f };
     inline constexpr float layout_scrollbar_hit_width { 16.0f };
+    // 로그 헤더의 경과 시간(MM:SS) 표시에 예약하는 폭이다. 제목이 이 자리를
+    // 침범하지 않는다.
+    inline constexpr float layout_log_elapsed_width { 44.0f };
     inline constexpr float layout_scrollbar_right_inset { 6.0f };
     // 막대가 목록 위아래 끝에 붙지 않도록 두는 여백이다.
     inline constexpr float layout_scrollbar_vertical_inset { 6.0f };

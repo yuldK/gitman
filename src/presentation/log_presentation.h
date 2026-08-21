@@ -23,6 +23,10 @@ namespace gitman {
     // 시스템 로캘의 지역 시각 `HH:MM:SS`다. 변환 실패는 자리 표시자를 돌려준다.
     [[nodiscard]] std::u8string format_log_timestamp(std::chrono::system_clock::time_point time);
 
+    // 실행 중 변경 작업의 경과 시간 `MM:SS`다 (초 단위 내림, 음수는 0으로).
+    // 60분을 넘으면 분 자리가 그대로 늘어난다 (예: `125:07`).
+    [[nodiscard]] std::u8string format_elapsed_time(std::chrono::steady_clock::duration elapsed);
+
     // 클립보드 복사용 텍스트다. 현재 뷰에 표시 중인(필터 적용 후) record를 CRLF로
     // 잇는다. UI thread는 이 결과를 그대로 클립보드에 넣는다. progress 접기는
     // 표시 전용이라 복사에는 적용하지 않는다 (stage-8-plan 5.3).

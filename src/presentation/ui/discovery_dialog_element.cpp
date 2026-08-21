@@ -170,8 +170,6 @@ namespace gitman::ui {
                 , loading_ { dialog.loading }
                 , executing_ { dialog.executing }
                 , empty_ { dialog.rows.empty() }
-                , row_count_ { dialog.rows.size() }
-                , scroll_ { dialog.scroll_offset }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -217,27 +215,14 @@ namespace gitman::ui {
                 context.canvas.save();
                 context.canvas.clipRect(SkRect::MakeXYWH(list_area.x, list_area.y, list_area.width, list_area.height));
                 draw_children(context, interaction);
-                // 위·아래로 내용이 이어질 때 경계에 그림자를 드리운다 (switch
-                // dialog와 같은 규칙). 스크롤 영역이 주변과 같은 색이라 이 그림자가
-                // 위아래 구분을 만든다.
-                {
-                    const float content { static_cast<float>(row_count_) * layout_discovery_dialog_row_height * scale };
-                    const float hidden_above { scroll_ * scale };
-                    const float hidden_below { content - list_area.height - hidden_above };
-                    const float shadow_height { layout_content_shadow_height * scale };
-                    if (hidden_above > 0.0f)
-                    {
-                        const float ratio { hidden_above < shadow_height ? hidden_above / shadow_height : 1.0f };
-                        draw_downward_shadow(context.canvas, { list_area.x, list_area.y, list_area.width, shadow_height }, context.palette.content_shadow, layout_content_shadow_strength * ratio);
-                    }
-                    if (hidden_below > 0.0f)
-                    {
-                        const float ratio { hidden_below < shadow_height ? hidden_below / shadow_height : 1.0f };
-                        draw_upward_shadow(context.canvas, { list_area.x, list_area.y + list_area.height - shadow_height, list_area.width, shadow_height }, context.palette.content_shadow,
-                            layout_content_shadow_strength * ratio);
-                    }
-                }
                 context.canvas.restore();
+
+                // 하단 로그 콘솔과 같은 실선 경계로 스크롤 영역을 구분한다 (switch
+                // dialog와 같은 규칙, 2026-08-22 사용자 지시).
+                SkPaint list_border { solid_paint(with_alpha(context.palette.primary_foreground, 0.25f)) };
+                list_border.setStyle(SkPaint::kStroke_Style);
+                list_border.setStrokeWidth(1.0f * scale);
+                context.canvas.drawRect(SkRect::MakeXYWH(list_area.x, list_area.y, list_area.width, list_area.height), list_border);
 
                 std::u8string_view footer {};
                 if (executing_)
@@ -262,9 +247,6 @@ namespace gitman::ui {
             bool loading_ { false };
             bool executing_ { false };
             bool empty_ { false };
-            // 경계 그림자 판정용이다. content 높이와 숨은 양을 draw가 계산한다.
-            std::size_t row_count_ { 0 };
-            float scroll_ { 0.0f };
             std::u8string message_ {};
         };
     } // namespace

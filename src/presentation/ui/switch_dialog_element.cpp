@@ -294,8 +294,6 @@ namespace gitman::ui {
                 , stale_ { dialog.stale }
                 , svn_browser_ { dialog.svn_browser }
                 , empty_ { dialog.svn_browser ? dialog.svn_rows.empty() : dialog.candidates.empty() }
-                , row_count_ { dialog.svn_browser ? dialog.svn_rows.size() : dialog.candidates.size() }
-                , scroll_ { dialog.scroll_offset }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -350,28 +348,15 @@ namespace gitman::ui {
                 context.canvas.save();
                 context.canvas.clipRect(SkRect::MakeXYWH(list_area.x, list_area.y, list_area.width, list_area.height));
                 draw_children(context, interaction);
-                // 목록이 주변과 같은 색이라 경계가 보이지 않는다. 위·아래로 아직
-                // 내용이 이어질 때 그 경계에 그림자를 드리워 스크롤 영역이 제목·
-                // 버튼 영역 밑으로 지나간다는 것을 보인다 (상단 막대 그림자와 같은
-                // 규칙, 숨은 양이 적으면 옅게 시작한다).
-                {
-                    const float content { static_cast<float>(row_count_) * layout_switch_dialog_row_height * scale };
-                    const float hidden_above { scroll_ * scale };
-                    const float hidden_below { content - list_area.height - hidden_above };
-                    const float shadow_height { layout_content_shadow_height * scale };
-                    if (hidden_above > 0.0f)
-                    {
-                        const float ratio { hidden_above < shadow_height ? hidden_above / shadow_height : 1.0f };
-                        draw_downward_shadow(context.canvas, { list_area.x, list_area.y, list_area.width, shadow_height }, context.palette.content_shadow, layout_content_shadow_strength * ratio);
-                    }
-                    if (hidden_below > 0.0f)
-                    {
-                        const float ratio { hidden_below < shadow_height ? hidden_below / shadow_height : 1.0f };
-                        draw_upward_shadow(context.canvas, { list_area.x, list_area.y + list_area.height - shadow_height, list_area.width, shadow_height }, context.palette.content_shadow,
-                            layout_content_shadow_strength * ratio);
-                    }
-                }
                 context.canvas.restore();
+
+                // 목록이 주변(제목·버튼 영역)과 같은 색이라 경계가 보이지 않는다.
+                // 하단 로그 콘솔과 같은 실선 경계를 둘러 스크롤 영역을 구분한다
+                // (2026-08-22 사용자 지시: 그림자 대신 solid border).
+                SkPaint list_border { solid_paint(with_alpha(context.palette.primary_foreground, 0.25f)) };
+                list_border.setStyle(SkPaint::kStroke_Style);
+                list_border.setStrokeWidth(1.0f * scale);
+                context.canvas.drawRect(SkRect::MakeXYWH(list_area.x, list_area.y, list_area.width, list_area.height), list_border);
 
                 if (message_.empty() == false)
                 {
@@ -403,9 +388,6 @@ namespace gitman::ui {
             bool stale_ { false };
             bool svn_browser_ { false };
             bool empty_ { false };
-            // 경계 그림자 판정용이다. content 높이와 숨은 양을 draw가 계산한다.
-            std::size_t row_count_ { 0 };
-            float scroll_ { 0.0f };
             std::u8string message_ {};
         };
     } // namespace
@@ -500,7 +482,8 @@ namespace gitman::ui {
 
         const float row_height { layout_switch_dialog_row_height * scale };
         // 스크롤 막대가 보이면 행을 그만큼 좁혀 막대와 겹치지 않게 한다.
-        const float scrollbar_reserved { scrollbar_->visible() ? layout_scrollbar_hit_width * scale : 0.0f };
+        const float scrollbar_margin { 1.0f * scale };
+        const float scrollbar_reserved { scrollbar_->visible() ? layout_scrollbar_hit_width * scale + scrollbar_margin : 0.0f };
         const std::span<const std::unique_ptr<ui_element>> rows { panel_->children() };
         for (std::size_t index = 0; index < rows.size(); ++index)
         {
@@ -510,9 +493,11 @@ namespace gitman::ui {
             rows[index]->arrange({ { panel->list_area.x, row_top, panel->list_area.width - scrollbar_reserved, row_height }, scale });
         }
 
-        // 스크롤 막대는 목록 영역의 오른쪽 안쪽 세로 띠다.
+        // 스크롤 막대는 목록 영역의 오른쪽 안쪽 세로 띠다. 목록 경계와
+        // 겹치지 않도록 top/right/bottom에 1px 여백을 둔다.
         const float bar_width { layout_scrollbar_hit_width * scale };
-        scrollbar_->arrange({ { panel->list_area.x + panel->list_area.width - bar_width, panel->list_area.y, bar_width, panel->list_area.height }, scale });
+        scrollbar_->arrange({ { panel->list_area.x + panel->list_area.width - scrollbar_margin - bar_width, panel->list_area.y + scrollbar_margin, bar_width,
+            panel->list_area.height - scrollbar_margin * 2.0f }, scale });
 
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
         if (children.size() >= 3)

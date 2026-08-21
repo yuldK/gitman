@@ -8,6 +8,7 @@
 #include "domain/repository_snapshot.h"
 #include "presentation/view_snapshot.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -56,6 +57,9 @@ namespace gitman {
             // 이 id로 대조해 늦은 결과를 버린다.
             std::uint64_t change_operation_id { 0 };
             operation_kind change_kind { operation_kind::update };
+            // 변경 작업의 시작 시각이다. 로그 헤더의 경과 시간 표시 기준이며
+            // change_operation_id가 0이 아닐 때만 의미가 있다.
+            std::chrono::steady_clock::time_point change_started_at {};
             // 변경 작업별 취소 source다. 조회와 달리 사용자가 카드 단위로 취소할 수
             // 있다 (stage-7-plan 4.4).
             std::optional<process_cancellation_source> change_cancellation {};

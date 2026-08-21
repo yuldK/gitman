@@ -32,5 +32,8 @@ namespace gitman::ui {
         rect_f body_ {};
         // 막대가 보일 때 본문 글자가 막대를 피해 줄어드는 폭이다 (물리 픽셀).
         float scrollbar_reserved_ { 0.0f };
+        // 실행 중 변경 작업의 경과 시간(MM:SS)을 그리는 오른쪽 한계다 (물리 픽셀).
+        // 0이면 자리가 없거나 실행 중이 아니라 그리지 않는다.
+        float elapsed_right_ { 0.0f };
     };
 } // namespace gitman::ui

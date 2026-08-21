@@ -1,5 +1,6 @@
 #include "presentation/log_presentation.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 
@@ -58,6 +59,21 @@ namespace gitman {
         if (written != 8)
             return std::u8string { u8"--:--:--" };
         return std::u8string { reinterpret_cast<const char8_t*>(text), 8 };
+    }
+
+    std::u8string format_elapsed_time(const std::chrono::steady_clock::duration elapsed)
+    {
+        std::int64_t total_seconds { std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() };
+        if (total_seconds < 0)
+            total_seconds = 0;
+        const std::int64_t minutes { total_seconds / 60 };
+        const std::int64_t seconds { total_seconds % 60 };
+
+        char text[24] {};
+        const int written { std::snprintf(text, sizeof(text), "%02lld:%02lld", static_cast<long long>(minutes), static_cast<long long>(seconds)) };
+        if (written < 5)
+            return std::u8string { u8"00:00" };
+        return std::u8string { reinterpret_cast<const char8_t*>(text), static_cast<std::size_t>(written) };
     }
 
     std::vector<log_display_line> build_log_display_lines(const std::deque<operation_log_record>& records, const log_stream_filter filter)

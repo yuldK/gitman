@@ -47,6 +47,9 @@ namespace gitman::win32 {
         // timer다. 매 render가 남은 시간을 다시 계산해 걸므로 반복 timer가 아니어도
         // 깜빡임이 이어진다.
         constexpr UINT_PTR caret_timer_id { 2 };
+        // 로그 헤더의 경과 시간(MM:SS)이 다음 초로 넘어가는 시점에 다시 그리기 위한
+        // timer다. 변경 작업이 실행 중일 때만 걸린다.
+        constexpr UINT_PTR elapsed_timer_id { 3 };
 
         // `.version-list` 문서를 고르는 Win32 파일 dialog다. UI thread 전용이다.
         [[nodiscard]] std::optional<std::u8string> choose_workspace_document(const HWND owner)
@@ -301,7 +304,7 @@ namespace gitman::win32 {
                     open_dropped_workspace_document(reinterpret_cast<HDROP>(word_parameter));
                     return 0;
                 case WM_TIMER:
-                    if (word_parameter == tooltip_timer_id || word_parameter == caret_timer_id)
+                    if (word_parameter == tooltip_timer_id || word_parameter == caret_timer_id || word_parameter == elapsed_timer_id)
                     {
                         KillTimer(window_, word_parameter);
                         InvalidateRect(window_, nullptr, FALSE);
@@ -1026,6 +1029,7 @@ namespace gitman::win32 {
 
                 schedule_tooltip_repaint(tree.get(), state.interaction);
                 schedule_caret_repaint(state.interaction);
+                schedule_elapsed_repaint();
                 return renderer_->render(state, error);
             }
 
@@ -1108,6 +1112,26 @@ namespace gitman::win32 {
                 }
                 const auto remaining { std::chrono::duration_cast<std::chrono::milliseconds>(ui::tooltip_delay - elapsed) };
                 SetTimer(window_, tooltip_timer_id, static_cast<UINT>(remaining.count() + 15), nullptr);
+            }
+
+            // 실행 중 변경 작업이 있으면 로그 헤더의 경과 시간이 다음 초로 넘어가는
+            // 시점에 다시 그리도록 timer를 건다. 위상은 시작 시각 기준이라 render가
+            // 몇 번 겹쳐도 넘어가는 시점은 같다.
+            void schedule_elapsed_repaint() noexcept
+            {
+                if (runtime_ == nullptr)
+                    return;
+                const std::shared_ptr<const view_snapshot> view { runtime_->acquire_view() };
+                if (view == nullptr || view->log.has_value() == false || view->log->change_started_at.has_value() == false)
+                {
+                    KillTimer(window_, elapsed_timer_id);
+                    return;
+                }
+
+                const auto elapsed { std::chrono::steady_clock::now() - *view->log->change_started_at };
+                const auto phase { elapsed % std::chrono::seconds { 1 } };
+                const auto remaining { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::seconds { 1 } - phase) };
+                SetTimer(window_, elapsed_timer_id, static_cast<UINT>(remaining.count() + 15), nullptr);
             }
 
             int scale_for_dpi(const int value) const noexcept

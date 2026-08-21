@@ -132,6 +132,26 @@ TEST_CASE("An update request submits a change operation with its own cancellatio
     REQUIRE(fixture.log(u8"alpha").records().front().entry.kind == gitman::log_entry_kind::lifecycle);
 }
 
+TEST_CASE("A running change exposes its start time to the log view header", "[logic][change]")
+{
+    // 로그 헤더의 경과 시간(MM:SS) 표시 기준이다. 변경 작업이 실행 중일 때만
+    // 값이 있고, 끝나면(자동 재조회가 이어져도) 사라진다.
+    change_fixture fixture {};
+    fixture.controller.handle(gitman::select_card_intent { { gitman::project_id { u8"alpha" } } });
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->log.has_value());
+        REQUIRE(view->log->change_started_at.has_value() == false);
+    }
+
+    fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->change_started_at.has_value());
+
+    fixture.controller.handle(fixture.make_completion(fixture.submitter.requests.front()));
+    REQUIRE(fixture.controller.make_view_snapshot()->log->change_started_at.has_value() == false);
+}
+
 TEST_CASE("A second change request on a busy card is refused and logged", "[logic][change]")
 {
     change_fixture fixture {};

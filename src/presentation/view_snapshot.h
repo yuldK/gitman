@@ -86,6 +86,10 @@ namespace gitman {
         float scroll_offset { 0.0f };
         // 상한 초과로 오래된 record가 제거된 적이 있다.
         bool truncated { false };
+        // 이 카드에서 변경 작업(update·switch)이 실행 중이면 그 시작 시각이다.
+        // 헤더의 경과 시간(MM:SS) 표시 기준이며, 렌더러가 draw 시각과의 차이를
+        // 그린다 (실시간 갱신은 UI thread의 timer가 일으킨다).
+        std::optional<std::chrono::steady_clock::time_point> change_started_at {};
     };
 
     // switch dialog의 불변 표시 모델이다 (REQ-007, stage-7-plan 4.5). 후보 목록은

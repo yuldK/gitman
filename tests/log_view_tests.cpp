@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <deque>
 #include <memory>
 #include <string>
@@ -131,6 +132,19 @@ TEST_CASE("The copy text carries the visible records with time and stream tags",
     REQUIRE(text.find(u8"[stderr] world\r\n") != std::u8string::npos);
     // 시각 형식은 HH:MM:SS다.
     REQUIRE(gitman::format_log_timestamp(std::chrono::system_clock::now()).size() == 8u);
+}
+
+TEST_CASE("Elapsed time formats as minutes and seconds", "[log][presentation]")
+{
+    // 로그 헤더의 경과 시간 표시다. 초 단위 내림이며 60분을 넘으면 분 자리가
+    // 그대로 늘어난다.
+    using namespace std::chrono_literals;
+    REQUIRE(gitman::format_elapsed_time(0s) == u8"00:00");
+    REQUIRE(gitman::format_elapsed_time(59s + 900ms) == u8"00:59");
+    REQUIRE(gitman::format_elapsed_time(60s) == u8"01:00");
+    REQUIRE(gitman::format_elapsed_time(75min + 7s) == u8"75:07");
+    REQUIRE(gitman::format_elapsed_time(125min + 7s) == u8"125:07");
+    REQUIRE(gitman::format_elapsed_time(-5s) == u8"00:00");
 }
 
 TEST_CASE("The list layout gives the log pane room and shrinks it before the list disappears", "[log][layout]")

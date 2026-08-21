@@ -43,7 +43,6 @@ namespace gitman::ui {
         toolbar_document_path,
         toolbar_refresh_all,
         toolbar_open_document,
-        toolbar_generate_document,
         toolbar_toggle_path_display,
         // 열린 문서를 닫는다 (2026-08-21 사용자 지시). 문서가 열려 있을 때만 둔다.
         toolbar_close_document,

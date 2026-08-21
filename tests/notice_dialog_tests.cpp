@@ -128,9 +128,10 @@ TEST_CASE("Closing a document returns to the start page and keeps the recent lis
     REQUIRE(view->log.has_value() == false);
     REQUIRE(view->selected.has_value() == false);
 
-    // 닫기 뒤에는 문서가 필요한 버튼이 비활성이고 생성 버튼이 다시 보인다.
+    // 닫기 뒤에는 문서가 필요한 버튼이 비활성이고 시작 페이지가 새 문서 만들기
+    // 진입점을 제공한다 (G2: 도구 막대에는 생성 버튼이 없다).
     const std::shared_ptr<const gitman::ui::ui_tree> tree { gitman::ui::build_ui_tree(*view) };
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document })->visible());
+    REQUIRE(tree->find({ gitman::ui::ui_element_kind::start_page_generate_document }) != nullptr);
     REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible() == false);
     REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_settings })->enabled() == false);
 

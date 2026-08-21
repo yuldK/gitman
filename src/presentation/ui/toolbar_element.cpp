@@ -15,7 +15,7 @@
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool generation_busy, const bool relative_paths, const bool document_open)
+    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool relative_paths, const bool document_open)
         : ui_element { ui_element_id { ui_element_kind::toolbar } }
         , show_open_button_ { show_open_button }
         , document_open_ { document_open }
@@ -36,15 +36,6 @@ namespace gitman::ui {
         open_document->set_visible(show_open_button);
         open_document_ = open_document.get();
         add_child(std::move(open_document));
-
-        // 새 문서 만들기는 문서가 없을 때만 둔다 (2026-08-21 사용자 지시). 열린
-        // 문서가 있으면 먼저 닫아야 한다.
-        auto generate_document { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_generate_document }, button_config { .glyph = codicons::icon_new_file }) };
-        generate_document->set_tooltip(generation_busy ? std::u8string { u8".version-list 생성 중" } : std::u8string { u8"하위 폴더 저장소로 .version-list 만들기" });
-        generate_document->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_generate_document_dialog } }; });
-        generate_document->set_enabled(generation_busy == false);
-        generate_document_ = generate_document.get();
-        add_child(std::move(generate_document));
 
         // 경로 표시 토글이다. 켜져 있으면 강조 배경으로 상태를 계속 보여 준다.
         auto toggle_path_display {
@@ -112,7 +103,6 @@ namespace gitman::ui {
         // 닫기는 오른쪽 끝이다 (2026-08-21 사용자 지시). 나머지는 그 왼쪽으로 이어진다.
         place(close_document_, document_open_);
         place(open_document_, show_open_button_);
-        place(generate_document_, document_open_ == false);
         place(toggle_path_display_, true);
         place(discover_, true);
         place(settings_, true);

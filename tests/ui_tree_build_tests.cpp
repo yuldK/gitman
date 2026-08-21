@@ -99,30 +99,18 @@ TEST_CASE("The toolbar keeps refresh at the left end and close at the right end"
     REQUIRE(close.x + close.width > settings.x + settings.width);
 }
 
-TEST_CASE("The generate document button appears only without a document", "[ui][tree]")
+TEST_CASE("The toolbar has no generate button and the close button follows the document", "[ui][tree]")
 {
-    // 문서가 열려 있으면 새 문서 만들기 아이콘을 감춘다 (2026-08-21 사용자 지시).
+    // 새 문서 만들기 진입점은 시작 페이지뿐이다 (2026-08-22 사용자 지시, G2).
+    // 도구 막대는 문서가 열려 있으면 닫기 버튼을, 없으면 열기 버튼만 보인다.
     const auto open_tree { gitman::ui::build_ui_tree(make_view(2)) };
-    REQUIRE(open_tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document })->visible() == false);
-    // 대신 문서를 닫는 버튼이 보인다.
+    REQUIRE(open_tree->ids_of_kind(gitman::ui::ui_element_kind::start_page_generate_document).empty());
     REQUIRE(open_tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible());
 
     const auto tree { gitman::ui::build_ui_tree(make_view(0, 1.0f, 0.0f, gitman::view_empty_state::no_document)) };
-    const auto* const button { tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document }) };
-    REQUIRE(button != nullptr);
-    REQUIRE(button->visible());
-    REQUIRE(button->enabled());
-    REQUIRE(button->action(gitman::ui::ui_trigger::left_click) != nullptr);
+    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_open_document })->visible());
     // 문서가 없으면 닫기 버튼은 없다.
     REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible() == false);
-
-    // 생성이 진행 중이면 비활성이고 사유 tooltip을 가진다.
-    gitman::view_snapshot busy_view { make_view(0, 1.0f, 0.0f, gitman::view_empty_state::no_document) };
-    busy_view.document_generating = true;
-    const auto busy_tree { gitman::ui::build_ui_tree(busy_view) };
-    const auto* const busy_button { busy_tree->find({ gitman::ui::ui_element_kind::toolbar_generate_document }) };
-    REQUIRE(busy_button->enabled() == false);
-    REQUIRE(busy_button->tooltip().empty() == false);
 }
 
 TEST_CASE("Only cards near the viewport become elements", "[ui][tree]")

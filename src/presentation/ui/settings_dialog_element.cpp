@@ -64,7 +64,7 @@ namespace gitman::ui {
                 const float radius { 3.0f * scale };
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(with_alpha(context.palette.primary_foreground, 0.08f)));
                 // 초점을 받은 칸은 테두리를 강조해 입력이 이곳으로 간다는 것을 보인다.
-                SkPaint border { solid_paint(focused ? context.palette.positive_accent : with_alpha(context.palette.primary_foreground, 0.35f)) };
+                SkPaint border { solid_paint(focused ? context.palette.accent : with_alpha(context.palette.primary_foreground, 0.35f)) };
                 border.setStyle(SkPaint::kStroke_Style);
                 border.setStrokeWidth(1.0f * scale);
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
@@ -133,7 +133,7 @@ namespace gitman::ui {
 
                 // 트랙: 켬이면 강조색, 끔이면 흐린 중립색이다. hover 시 살짝 밝힌다.
                 const bool hovered { interaction.hovered == id() };
-                ui_color track { on_ ? context.palette.positive_accent : context.palette.primary_foreground };
+                ui_color track { on_ ? (hovered ? context.palette.accent_hover : context.palette.accent) : context.palette.primary_foreground };
                 SkPaint track_paint { solid_paint(track) };
                 track_paint.setAlphaf(on_ ? (hovered ? 1.0f : 0.85f) : (hovered ? 0.4f : 0.28f));
                 context.canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), radius, radius), track_paint);
@@ -173,12 +173,12 @@ namespace gitman::ui {
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
                 const float radius { box.height / 2.0f };
                 const bool hovered { interaction.hovered == id() };
-                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(with_alpha(context.palette.positive_accent, hovered ? 0.3f : 0.18f)));
+                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(with_alpha(context.palette.accent_soft, hovered ? 0.3f : 0.18f)));
 
                 const SkFont font { sk_ref_sp(context.ui_typeface), 10.0f * scale };
                 const std::u8string_view text { u8"덮어씀" };
                 const float width { measure_text(text, font) };
-                draw_text(context.canvas, text, box.x + (box.width - width) / 2.0f, box.y + centered_text_baseline(font, box.height), font, solid_paint(context.palette.positive_accent));
+                draw_text(context.canvas, text, box.x + (box.width - width) / 2.0f, box.y + centered_text_baseline(font, box.height), font, solid_paint(context.palette.accent_emphasis_foreground));
             }
         };
 
@@ -271,7 +271,7 @@ namespace gitman::ui {
                 SkFont label_font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
                 label_font.setEmbolden(true);
                 static_cast<void>(
-                    draw_text_within(context.canvas, label, box.x + padding, row_top + 11.0f * scale, box.width - padding * 2.0f, label_font, solid_paint(context.palette.positive_accent)));
+                    draw_text_within(context.canvas, label, box.x + padding, row_top + 11.0f * scale, box.width - padding * 2.0f, label_font, solid_paint(context.palette.accent_emphasis_foreground)));
 
                 // 타이틀이 아닌 본문은 흐리게 그려 위계를 만든다. 빈 값은 자동
                 // 탐색 안내 문구다 (REQ-017).

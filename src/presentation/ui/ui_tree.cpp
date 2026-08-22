@@ -128,7 +128,7 @@ namespace gitman::ui {
         if (const ui_element* const target { find(drag.hovered_drop_target) }; target != nullptr)
         {
             const rect_f target_bounds { target->bounds() };
-            SkPaint highlight { solid_paint(context.palette.positive_accent) };
+            SkPaint highlight { solid_paint(context.palette.accent) };
             highlight.setStyle(SkPaint::kStroke_Style);
             highlight.setStrokeWidth(1.0f * scale);
             context.canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(target_bounds.x, target_bounds.y, target_bounds.width, target_bounds.height), 3.0f * scale, 3.0f * scale), highlight);
@@ -139,7 +139,7 @@ namespace gitman::ui {
         SkPaint fill { solid_paint(context.palette.surface_background) };
         fill.setAlphaf(0.85f);
         context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), fill);
-        SkPaint border { solid_paint(context.palette.positive_accent) };
+        SkPaint border { solid_paint(context.palette.accent) };
         border.setStyle(SkPaint::kStroke_Style);
         border.setStrokeWidth(1.0f * scale);
         context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), border);

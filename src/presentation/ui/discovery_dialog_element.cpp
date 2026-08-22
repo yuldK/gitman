@@ -124,14 +124,14 @@ namespace gitman::ui {
                 {
                     const float check_top { box.y + (box.height - check_size) / 2.0f };
                     const SkRect check_box { SkRect::MakeXYWH(text_left, check_top, check_size, check_size) };
-                    SkPaint border { solid_paint(row_.checked ? context.palette.positive_accent : context.palette.primary_foreground) };
+                    SkPaint border { solid_paint(row_.checked ? context.palette.accent : context.palette.primary_foreground) };
                     border.setStyle(SkPaint::kStroke_Style);
                     border.setStrokeWidth(1.0f * scale);
                     context.canvas.drawRRect(SkRRect::MakeRectXY(check_box, 2.0f * scale, 2.0f * scale), border);
                     if (row_.checked && context.codicon_typeface != nullptr)
                     {
                         const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
-                        draw_centered_glyph(context.canvas, codicons::icon_check, { text_left, check_top, check_size, check_size }, icon_font, solid_paint(context.palette.positive_accent));
+                        draw_centered_glyph(context.canvas, codicons::icon_check, { text_left, check_top, check_size, check_size }, icon_font, solid_paint(context.palette.accent));
                     }
                 }
                 text_left += check_size + 8.0f * scale;
@@ -146,7 +146,7 @@ namespace gitman::ui {
                 }
 
                 const SkFont font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
-                SkPaint foreground { solid_paint(row_.checked ? context.palette.positive_accent : context.palette.primary_foreground) };
+                SkPaint foreground { solid_paint(row_.checked ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (row_.candidate.selectable() == false)
                     foreground.setAlphaf(0.45f);
                 std::u8string text { row_.candidate.directory_name };

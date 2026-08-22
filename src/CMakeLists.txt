@@ -21,6 +21,19 @@ add_custom_command(
     COMMENT "Generating the Codicons C++ mapping"
     VERBATIM)
 
+# 키 컬러 표도 같은 방식이다 (T4.3). JSON이 원본이고 형식 검증은 생성 script가 한다.
+add_custom_command(
+    OUTPUT "${GITMAN_GENERATED_ACCENTS}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DINPUT_FILE=${GITMAN_ACCENT_CATALOG}"
+        "-DOUTPUT_FILE=${GITMAN_GENERATED_ACCENTS}"
+        -P "${GITMAN_CMAKE_DIRECTORY}/generate_accents.cmake"
+    DEPENDS
+        "${GITMAN_ACCENT_CATALOG}"
+        "${GITMAN_CMAKE_DIRECTORY}/generate_accents.cmake"
+    COMMENT "Generating the accent catalog"
+    VERBATIM)
+
 include("${GITMAN_CMAKE_DIRECTORY}/generate_notices.cmake")
 gitman_generate_third_party_notices("${GITMAN_THIRD_PARTY_NOTICES}")
 
@@ -47,6 +60,7 @@ set_source_files_properties(
 # 것을 피하기 위한 결정이다 (docs/window-state-and-scroll-design.md 10장).
 add_library(gitman_lib STATIC
     "${GITMAN_GENERATED_CODICONS}"
+    "${GITMAN_GENERATED_ACCENTS}"
     # 도메인: 순수 규칙과 값 타입이다. 다른 계층에 의존하지 않는다.
     domain/app_settings.cpp
     domain/app_settings.h
@@ -296,9 +310,9 @@ add_custom_command(TARGET gitman_lib PRE_BUILD
 # IDE에서 디렉터리 구조를 그대로 보여 준다. target을 합쳐도 계층은 눈에 보인다.
 # 생성 파일은 source tree 밖에 있으므로 따로 묶는다.
 get_target_property(gitman_lib_sources gitman_lib SOURCES)
-list(REMOVE_ITEM gitman_lib_sources "${GITMAN_GENERATED_CODICONS}")
+list(REMOVE_ITEM gitman_lib_sources "${GITMAN_GENERATED_CODICONS}" "${GITMAN_GENERATED_ACCENTS}")
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "src" FILES ${gitman_lib_sources})
-source_group("generated" FILES "${GITMAN_GENERATED_CODICONS}")
+source_group("generated" FILES "${GITMAN_GENERATED_CODICONS}" "${GITMAN_GENERATED_ACCENTS}")
 
 add_executable(gitman WIN32
     "${GITMAN_GENERATED_RESOURCE}"

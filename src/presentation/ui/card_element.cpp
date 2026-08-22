@@ -37,7 +37,7 @@ namespace gitman::ui {
             case card_view_state::warning:
                 return palette.warning_accent;
             case card_view_state::ready:
-                return palette.positive_accent;
+                return palette.accent;
             case card_view_state::loading:
             case card_view_state::running:
             case card_view_state::disabled:
@@ -174,7 +174,7 @@ namespace gitman::ui {
         context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), card_paint);
         if (card_.selected)
         {
-            SkPaint border { solid_paint(context.palette.positive_accent) };
+            SkPaint border { solid_paint(context.palette.accent) };
             border.setStyle(SkPaint::kStroke_Style);
             border.setStrokeWidth(1.0f * scale);
             context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), border);

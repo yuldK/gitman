@@ -22,7 +22,7 @@ namespace gitman {
     void draw_skia_smoke_view(SkCanvas& canvas, SkTypeface* codicon_typeface, SkTypeface* ui_typeface, const smoke_view_state& state)
     {
         const float scale { state.dpi_scale };
-        const ui_color_palette& colors { color_palette_for(state.theme) };
+        const ui_color_palette colors { color_palette_for(state.theme) };
         ui::draw_context context {
             .canvas = canvas,
             .codicon_typeface = codicon_typeface,
@@ -59,7 +59,7 @@ namespace gitman {
         fill_paint.setColor(colors.surface_background);
         canvas.drawRoundRect(SkRect::MakeXYWH(card_x, card_y, static_cast<float>(state.width) - 48.0F * scale, 112.0F * scale), 8.0F * scale, 8.0F * scale, fill_paint);
 
-        text_paint.setColor(state.used_fallback ? colors.warning_accent : colors.positive_accent);
+        text_paint.setColor(state.used_fallback ? colors.warning_accent : colors.accent_emphasis_foreground);
         const std::u8string_view backend_text {
             state.backend == renderer_backend::direct3d ? u8"Direct3D renderer 활성" : u8"CPU renderer 활성",
         };

@@ -30,15 +30,15 @@ namespace gitman::ui {
         const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
         const float radius { 3.0f * scale };
 
-        ui_color background { accent_ ? with_alpha(context.palette.positive_accent, 0.25f) : with_alpha(context.palette.primary_foreground, 0.08f) };
+        ui_color background { accent_ ? with_alpha(context.palette.accent_soft, 0.25f) : with_alpha(context.palette.primary_foreground, 0.08f) };
         if (enabled() && interaction.pressed == id())
             background = context.palette.button_pressed_background;
         else if (enabled() && interaction.hovered == id())
-            background = context.palette.button_hover_background;
+            background = accent_ ? with_alpha(context.palette.accent_hover, 0.35f) : context.palette.button_hover_background;
         context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(background));
 
         const SkFont font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
-        SkPaint foreground { solid_paint(accent_ ? context.palette.positive_accent : context.palette.primary_foreground) };
+        SkPaint foreground { solid_paint(accent_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
         if (enabled() == false)
             foreground.setAlphaf(0.4f);
         const float text_width { measure_text(text_, font) };

@@ -102,7 +102,7 @@ namespace gitman::ui {
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
                 if (selected_)
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.positive_accent, 0.18f)));
+                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
                 else if (interaction.hovered == id())
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
 
@@ -118,7 +118,7 @@ namespace gitman::ui {
                 }
 
                 const SkFont font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
-                SkPaint foreground { solid_paint(selected_ ? context.palette.positive_accent : context.palette.primary_foreground) };
+                SkPaint foreground { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (candidate_.stale)
                     foreground.setAlphaf(0.6f);
                 std::u8string text { candidate_.display_name };
@@ -207,14 +207,14 @@ namespace gitman::ui {
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
                 if (row_.selected)
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.positive_accent, 0.18f)));
+                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
                 else if (interaction.hovered == id())
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
                 else if (row_.current)
-                    context.canvas.drawRect(body, solid_paint(with_alpha(context.palette.positive_accent, 0.08f)));
+                    context.canvas.drawRect(body, solid_paint(with_alpha(context.palette.accent_soft, 0.08f)));
 
                 if (row_.current)
-                    context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y + 2.0f * scale, 2.0f * scale, box.height - 4.0f * scale), solid_paint(context.palette.positive_accent));
+                    context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y + 2.0f * scale, 2.0f * scale, box.height - 4.0f * scale), solid_paint(context.palette.accent));
 
                 const float inset { 6.0f * scale };
                 const float indent { row_tree_indent(row_.depth, box.width, scale) };
@@ -222,7 +222,7 @@ namespace gitman::ui {
                 if (context.codicon_typeface != nullptr)
                 {
                     const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.5f * scale };
-                    SkPaint icon_paint { solid_paint(row_.current ? context.palette.positive_accent : context.palette.primary_foreground) };
+                    SkPaint icon_paint { solid_paint(row_.current ? context.palette.accent : context.palette.primary_foreground) };
                     icon_paint.setAlphaf(row_.current ? 1.0f : 0.72f);
                     const char32_t glyph { row_.depth == 0 ? codicons::icon_repo : (row_.expanded ? codicons::icon_folder_opened : codicons::icon_folder) };
                     draw_centered_glyph(context.canvas, glyph, { text_left, box.y, 14.0f * scale, box.height }, icon_font, icon_paint);
@@ -233,7 +233,7 @@ namespace gitman::ui {
                 if (row_.current)
                     text.append(u8" (현재 위치)");
                 const SkFont font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
-                const SkPaint foreground { solid_paint(row_.current ? context.palette.positive_accent : context.palette.primary_foreground) };
+                const SkPaint foreground { solid_paint(row_.current ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 static_cast<void>(draw_text_within(context.canvas, text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - inset - text_left, font, foreground));
                 draw_children(context, interaction);
             }

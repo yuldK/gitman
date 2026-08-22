@@ -63,7 +63,7 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { panel_padding * scale };
-                const ui_color accent { dialog_.error ? context.palette.error_accent : context.palette.positive_accent };
+                const ui_color accent { dialog_.error ? context.palette.error_accent : context.palette.accent_emphasis_foreground };
                 float text_left { box.x + padding };
                 if (context.codicon_typeface != nullptr)
                 {

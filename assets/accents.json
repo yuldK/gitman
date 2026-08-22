@@ -1,0 +1,87 @@
+[
+    {
+        "id": "mint",
+        "label": "민트",
+        "swatch": "#4ec9b0",
+        "dark": {
+            "accent": "#4ec9b0",
+            "accentHover": "#63d9c2",
+            "accentSoft": "#7fdfcc",
+            "accentEmphasisFg": "#a9ece0"
+        },
+        "light": {
+            "accent": "#0f8a72",
+            "accentHover": "#0b7462",
+            "accentSoft": "#0a5f51",
+            "accentEmphasisFg": "#0a5f51"
+        }
+    },
+    {
+        "id": "blue",
+        "label": "블루",
+        "swatch": "#a2cfff",
+        "dark": {
+            "accent": "#3f7ebb",
+            "accentHover": "#5392d1",
+            "accentSoft": "#a2cfff",
+            "accentEmphasisFg": "#c6e1ff"
+        },
+        "light": {
+            "accent": "#0062ab",
+            "accentHover": "#005391",
+            "accentSoft": "#00487f",
+            "accentEmphasisFg": "#00487f"
+        }
+    },
+    {
+        "id": "purple",
+        "label": "퍼플",
+        "swatch": "#c8a2ff",
+        "dark": {
+            "accent": "#8a63d2",
+            "accentHover": "#9d7ce0",
+            "accentSoft": "#c8a2ff",
+            "accentEmphasisFg": "#ddc8ff"
+        },
+        "light": {
+            "accent": "#6c3fbb",
+            "accentHover": "#5b34a0",
+            "accentSoft": "#4e2c8a",
+            "accentEmphasisFg": "#4e2c8a"
+        }
+    },
+    {
+        "id": "amber",
+        "label": "앰버",
+        "swatch": "#f0c674",
+        "dark": {
+            "accent": "#c99b3f",
+            "accentHover": "#dcae52",
+            "accentSoft": "#f0c674",
+            "accentEmphasisFg": "#f7dda6"
+        },
+        "light": {
+            "accent": "#8a6100",
+            "accentHover": "#745200",
+            "accentSoft": "#634600",
+            "accentEmphasisFg": "#634600"
+        }
+    },
+    {
+        "id": "rose",
+        "label": "로즈",
+        "swatch": "#ff9fb0",
+        "dark": {
+            "accent": "#c0576e",
+            "accentHover": "#d46a82",
+            "accentSoft": "#ff9fb0",
+            "accentEmphasisFg": "#ffc4cf"
+        },
+        "light": {
+            "accent": "#a63d55",
+            "accentHover": "#8d3247",
+            "accentSoft": "#7a2b3d",
+            "accentEmphasisFg": "#7a2b3d"
+        }
+    }
+]

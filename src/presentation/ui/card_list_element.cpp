@@ -227,7 +227,7 @@ namespace gitman::ui {
             SkPaint fill { solid_paint(context.palette.surface_background) };
             fill.setAlphaf(0.85f);
             context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), fill);
-            SkPaint outline { solid_paint(context.palette.positive_accent) };
+            SkPaint outline { solid_paint(context.palette.accent) };
             outline.setStyle(SkPaint::kStroke_Style);
             outline.setStrokeWidth(1.0f * scale);
             context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), outline);
@@ -243,7 +243,7 @@ namespace gitman::ui {
         context.canvas.save();
         context.canvas.translate(dx, dy);
         drag.dragged_child->draw(context, interaction);
-        SkPaint border { solid_paint(context.palette.positive_accent) };
+        SkPaint border { solid_paint(context.palette.accent) };
         border.setStyle(SkPaint::kStroke_Style);
         border.setStrokeWidth(1.0f * scale);
         context.canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(card.x, card.y, card.width, card.height), 3.0f * scale, 3.0f * scale), border);

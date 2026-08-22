@@ -101,7 +101,7 @@ namespace gitman::ui {
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
                 if (row_.selected)
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.positive_accent, 0.18f)));
+                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
                 else if (interaction.hovered == id())
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
 
@@ -132,7 +132,7 @@ namespace gitman::ui {
 
                 const float path_left { box.x + inset + badge_width + 8.0f * scale };
 
-                SkPaint foreground { solid_paint(row_.selected ? context.palette.positive_accent : context.palette.primary_foreground) };
+                SkPaint foreground { solid_paint(row_.selected ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 foreground.setAlphaf(dim);
                 // 경로가 열기 아이콘과 겹치면 `...`으로 줄이고 아이콘은 유지한다.
                 const float available { text_limit_ - path_left };
@@ -220,7 +220,7 @@ namespace gitman::ui {
                             if (row.has_left)
                                 context.canvas.drawRect(SkRect::MakeXYWH(box.x, top, divider - box.x, line_height), solid_paint(with_alpha(context.palette.error_accent, 0.12f)));
                             if (row.has_right)
-                                context.canvas.drawRect(SkRect::MakeXYWH(divider, top, box.x + box.width - divider, line_height), solid_paint(with_alpha(context.palette.positive_accent, 0.12f)));
+                                context.canvas.drawRect(SkRect::MakeXYWH(divider, top, box.x + box.width - divider, line_height), solid_paint(with_alpha(context.palette.accent_soft, 0.12f)));
                         }
 
                         if (row.has_left)
@@ -232,7 +232,7 @@ namespace gitman::ui {
                         }
                         if (row.has_right)
                         {
-                            SkPaint right_paint { row.changed ? solid_paint(context.palette.positive_accent) : solid_paint(context.palette.primary_foreground) };
+                            SkPaint right_paint { row.changed ? solid_paint(context.palette.accent_emphasis_foreground) : solid_paint(context.palette.primary_foreground) };
                             if (row.changed == false)
                                 right_paint.setAlphaf(0.85f);
                             static_cast<void>(draw_text_within(context.canvas, row.right, right_text, baseline, right_width, font, right_paint));

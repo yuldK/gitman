@@ -86,7 +86,9 @@ namespace gitman::win32 {
             HFONT font { nullptr };
             HBRUSH window_brush { nullptr };
             HBRUSH input_brush { nullptr };
-            const ui_color_palette* palette { nullptr };
+            // 팔레트는 테마 해석 결과를 담은 값이다 (키 컬러가 섞이므로 상수
+            // 하나를 가리키던 포인터를 값으로 바꿨다).
+            ui_color_palette palette {};
             UINT dpi { 96 };
             // EDIT 뒤에 부모가 그리는 입력 상자 테두리 영역이다.
             RECT name_field {};
@@ -364,7 +366,7 @@ namespace gitman::win32 {
         // 표준 체크 상자는 dark theme에서 밝게 그려진다. 상자와 글자를 직접 그린다.
         void draw_dialog_check(const dialog_state& state, const DRAWITEMSTRUCT& item)
         {
-            const ui_color_palette& palette { *state.palette };
+            const ui_color_palette& palette { state.palette };
             const auto* const hover_state { reinterpret_cast<const button_state*>(GetWindowLongPtrW(item.hwndItem, GWLP_USERDATA)) };
 
             COLORREF background { to_colorref(palette.window_background) };
@@ -380,7 +382,7 @@ namespace gitman::win32 {
             const int size { scaled(check_box_size, state.dpi) };
             const int top { item.rcItem.top + ((item.rcItem.bottom - item.rcItem.top) - size) / 2 };
             RECT box { item.rcItem.left, top, item.rcItem.left + size, top + size };
-            const HBRUSH box_fill { CreateSolidBrush(to_colorref(state.same_folder ? palette.positive_accent : palette.surface_background)) };
+            const HBRUSH box_fill { CreateSolidBrush(to_colorref(state.same_folder ? palette.accent : palette.surface_background)) };
             FillRect(item.hDC, &box, box_fill);
             DeleteObject(box_fill);
             const HBRUSH border { CreateSolidBrush(to_colorref(palette.tooltip_border)) };
@@ -411,11 +413,11 @@ namespace gitman::win32 {
                 return;
             }
 
-            const ui_color_palette& palette { *state.palette };
+            const ui_color_palette& palette { state.palette };
             const bool accent { item.CtlID == static_cast<UINT>(create_button_id) };
             const auto* const hover_state { reinterpret_cast<const button_state*>(GetWindowLongPtrW(item.hwndItem, GWLP_USERDATA)) };
 
-            const COLORREF base { accent ? to_colorref(palette.positive_accent) : to_colorref(palette.surface_background) };
+            const COLORREF base { accent ? to_colorref(palette.accent) : to_colorref(palette.surface_background) };
             COLORREF fill { base };
             if ((item.itemState & ODS_SELECTED) != 0)
                 fill = blend_over(base, palette.button_pressed_background);
@@ -544,7 +546,7 @@ namespace gitman::win32 {
             GetClientRect(state.window, &client);
             FillRect(device, &client, state.window_brush);
 
-            const HBRUSH border { CreateSolidBrush(to_colorref(state.palette->tooltip_border)) };
+            const HBRUSH border { CreateSolidBrush(to_colorref(state.palette.tooltip_border)) };
             for (const RECT& field : { state.name_field, state.folder_field, state.location_field })
             {
                 RECT box { field };
@@ -573,8 +575,8 @@ namespace gitman::win32 {
                 return 0;
             case WM_CTLCOLOREDIT: {
                 const HDC device { reinterpret_cast<HDC>(word_parameter) };
-                SetTextColor(device, to_colorref(state->palette->primary_foreground));
-                SetBkColor(device, to_colorref(state->palette->surface_background));
+                SetTextColor(device, to_colorref(state->palette.primary_foreground));
+                SetBkColor(device, to_colorref(state->palette.surface_background));
                 return reinterpret_cast<LRESULT>(state->input_brush);
             }
             case WM_CTLCOLORSTATIC: {
@@ -585,13 +587,13 @@ namespace gitman::win32 {
                 if (control == state->location_edit)
                 {
                     SetTextColor(device, RGB(150, 150, 150));
-                    SetBkColor(device, to_colorref(state->palette->surface_background));
+                    SetBkColor(device, to_colorref(state->palette.surface_background));
                     return reinterpret_cast<LRESULT>(state->input_brush);
                 }
 
                 const bool error { control == state->error_label };
-                SetTextColor(device, error ? to_colorref(state->palette->error_accent) : RGB(190, 190, 190));
-                SetBkColor(device, to_colorref(state->palette->window_background));
+                SetTextColor(device, error ? to_colorref(state->palette.error_accent) : RGB(190, 190, 190));
+                SetBkColor(device, to_colorref(state->palette.window_background));
                 return reinterpret_cast<LRESULT>(state->window_brush);
             }
             case WM_DRAWITEM:
@@ -674,10 +676,10 @@ namespace gitman::win32 {
         register_dialog_class(instance);
 
         dialog_state state {};
-        state.palette = &color_palette_for(color_theme::dark);
+        state.palette = color_palette_for(color_theme::dark);
         state.dpi = owner != nullptr ? GetDpiForWindow(owner) : 96;
-        state.window_brush = CreateSolidBrush(to_colorref(state.palette->window_background));
-        state.input_brush = CreateSolidBrush(to_colorref(state.palette->surface_background));
+        state.window_brush = CreateSolidBrush(to_colorref(state.palette.window_background));
+        state.input_brush = CreateSolidBrush(to_colorref(state.palette.surface_background));
 
         const int width { scaled(dialog_width, state.dpi) };
         const int height { scaled(dialog_height, state.dpi) };

@@ -61,7 +61,7 @@ namespace gitman::ui {
             // 켜진 토글은 hover보다 진하게 남아 있어 상태를 계속 알린다.
             ui_color fill_color { pressed ? colors.pressed_background : colors.hover_background };
             if (config_.active && pressed == false && hovered == false)
-                fill_color = with_alpha(context.palette.positive_accent, 0.22f);
+                fill_color = with_alpha(context.palette.accent_soft, 0.22f);
             const SkPaint fill { solid_paint(fill_color) };
             context.canvas.drawRRect(SkRRect::MakeRectXY(background, radius, radius), fill);
         }
@@ -71,7 +71,7 @@ namespace gitman::ui {
 
         ui_color icon_color { hovered || pressed ? colors.hover_foreground : colors.foreground };
         if (config_.active && hovered == false && pressed == false)
-            icon_color = context.palette.positive_accent;
+            icon_color = context.palette.accent_emphasis_foreground;
         SkPaint icon_paint { solid_paint(icon_color) };
         if (enabled() == false)
             icon_paint.setAlphaf(0.3f);

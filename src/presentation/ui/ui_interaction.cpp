@@ -1,5 +1,6 @@
 #include "presentation/ui/ui_interaction.h"
 
+#include "domain/text_edit.h"
 #include "messaging/envelope.h"
 
 #include <cmath>
@@ -32,10 +33,24 @@ namespace gitman::ui {
         }
 
         // 초점을 받아 문자 입력을 소비하는 element다. 새 텍스트 박스는 이 목록에만
-        // 더하면 초점·caret·문자 배선이 함께 따라온다.
+        // 더하면 초점·caret·문자·클립보드 배선이 함께 따라온다.
         [[nodiscard]] bool is_text_input_kind(const ui_element_kind kind) noexcept
         {
             return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input;
+        }
+
+        [[nodiscard]] text_input_target target_for_kind(const ui_element_kind kind) noexcept
+        {
+            return kind == ui_element_kind::switch_dialog_query_input ? text_input_target::switch_query : text_input_target::settings_timeout;
+        }
+
+        [[nodiscard]] input_action text_edit_action(const ui_element_kind kind, const text_edit_command command, const bool extend = false)
+        {
+            edit_text_input_intent intent {};
+            intent.target = target_for_kind(kind);
+            intent.command = command;
+            intent.extend = extend;
+            return input_action { logic_message { std::move(intent) } };
         }
     } // namespace
 
@@ -125,12 +140,21 @@ namespace gitman::ui {
                 else if constexpr (std::is_same_v<value_type, character_typed_event>)
                 {
                     // 문자 입력은 초점을 가진 텍스트 박스로만 간다. 받을 값인지는
-                    // logic이 거른다 (제한 시간은 숫자만, 질의는 제어 문자만 뺀다).
-                    if (snapshot_.focused_input.kind == ui_element_kind::settings_timeout_input)
-                        return { input_action { logic_message { edit_settings_timeout_intent { value.character } } } };
-                    if (snapshot_.focused_input.kind == ui_element_kind::switch_dialog_query_input)
-                        return { input_action { logic_message { edit_switch_query_intent { value.character } } } };
-                    return {};
+                    // logic이 거른다 (제한 시간은 숫자만 남긴다).
+                    const ui_element_kind kind { snapshot_.focused_input.kind };
+                    if (is_text_input_kind(kind) == false)
+                        return {};
+                    if (value.character == U'\b')
+                        return { text_edit_action(kind, text_edit_command::backspace) };
+                    // 제어 문자는 키 경로(Ctrl+C 등)가 이미 다뤘다.
+                    if (value.character < U' ' || value.character == 0x7Fu)
+                        return {};
+
+                    edit_text_input_intent intent {};
+                    intent.target = target_for_kind(kind);
+                    intent.command = text_edit_command::insert;
+                    intent.text = text_edit_encode_utf8(value.character);
+                    return { input_action { logic_message { std::move(intent) } } };
                 }
                 else
                     return {};
@@ -152,6 +176,16 @@ namespace gitman::ui {
 
         if (tree_ == nullptr)
             return {};
+
+        // 텍스트 박스를 잡고 있으면 이동이 선택 범위를 늘린다. 포인터가 칸을
+        // 벗어나도 이어진다 — 같은 id로 다시 찾는다.
+        if (text_drag_id_ != ui_element_id {})
+        {
+            const ui_element* const target { tree_->find(text_drag_id_) };
+            if (target == nullptr)
+                return {};
+            return place_text_caret(*target, event.x, true, false);
+        }
 
         // 스크롤 막대를 잡고 있으면 이동은 전부 그 element의 몫이다. tree가 다시
         // 빌드되어도 같은 id로 찾아 이어서 끈다.
@@ -224,6 +258,27 @@ namespace gitman::ui {
             snapshot_.focus_started_at.reset();
         }
 
+        // 텍스트 박스는 누른 자리로 caret이 가고, 누른 채 끌면 범위가 잡힌다.
+        // 임계 시간·거리 안의 두 번째 누름은 그 자리의 낱말을 고른다 (R2.4).
+        if (event.button == pointer_button::left && is_text_input_kind(hit->id().kind))
+        {
+            const bool repeat { hit->id() == last_click_id_ && event.time - last_click_time_ <= config_.double_click_time };
+            const bool second { repeat && distance_between(last_click_x_, last_click_y_, event.x, event.y) <= config_.double_click_distance };
+            last_click_id_ = hit->id();
+            last_click_time_ = event.time;
+            last_click_x_ = event.x;
+            last_click_y_ = event.y;
+
+            pressed_id_ = hit->id();
+            pressed_button_ = event.button;
+            pressed_x_ = event.x;
+            pressed_y_ = event.y;
+            drag_candidate_ = false;
+            snapshot_.pressed = hit->id();
+            text_drag_id_ = second ? ui_element_id {} : hit->id();
+            return place_text_caret(*hit, event.x, false, second);
+        }
+
         pressed_id_ = hit->id();
         pressed_button_ = event.button;
         pressed_x_ = event.x;
@@ -249,6 +304,14 @@ namespace gitman::ui {
     {
         if (tree_ == nullptr)
             return {};
+
+        // 텍스트 범위 선택을 놓는 것은 클릭이 아니다. 선택은 이미 잡혀 있다.
+        if (text_drag_id_ != ui_element_id {} && event.button == pointer_button::left)
+        {
+            text_drag_id_ = {};
+            clear_press();
+            return {};
+        }
 
         // 스크롤 막대를 놓는 것은 클릭이 아니다. 끌기만 끝낸다.
         if (pointer_drag_id_ != ui_element_id {} && event.button == pointer_button::left)
@@ -308,12 +371,81 @@ namespace gitman::ui {
         return run_trigger(*hit, trigger, event.x, event.y, false);
     }
 
+    std::vector<input_action> interaction_controller::place_text_caret(const ui_element& element, const float x, const bool extend, const bool select_word) const
+    {
+        const std::optional<std::size_t> offset { element.offset_at(x, config_.measure_text) };
+        if (offset.has_value() == false)
+            return {};
+
+        edit_text_input_intent intent {};
+        intent.target = target_for_kind(element.id().kind);
+        intent.command = select_word ? text_edit_command::select_word : text_edit_command::place_caret;
+        intent.offset = *offset;
+        intent.extend = extend;
+        return { input_action { logic_message { std::move(intent) } } };
+    }
+
+    std::optional<std::vector<input_action>> interaction_controller::process_text_input_key(const key_pressed_event& event)
+    {
+        const ui_element_kind kind { snapshot_.focused_input.kind };
+        if (is_text_input_kind(kind) == false)
+            return std::nullopt;
+
+        switch (event.key)
+        {
+        case key_code::arrow_left:
+            return std::vector<input_action> { text_edit_action(kind, event.control ? text_edit_command::move_word_left : text_edit_command::move_left, event.shift) };
+        case key_code::arrow_right:
+            return std::vector<input_action> { text_edit_action(kind, event.control ? text_edit_command::move_word_right : text_edit_command::move_right, event.shift) };
+        case key_code::home:
+            return std::vector<input_action> { text_edit_action(kind, text_edit_command::move_line_start, event.shift) };
+        case key_code::end:
+            return std::vector<input_action> { text_edit_action(kind, text_edit_command::move_line_end, event.shift) };
+        case key_code::delete_forward:
+            return std::vector<input_action> { text_edit_action(kind, text_edit_command::delete_forward) };
+        case key_code::key_a:
+            if (event.control)
+                return std::vector<input_action> { text_edit_action(kind, text_edit_command::select_all) };
+            return std::nullopt;
+        case key_code::key_c:
+        case key_code::key_x: {
+            if (event.control == false)
+                return std::nullopt;
+            // 복사할 글은 tree가 들고 있다. 선택이 없으면 아무 일도 하지 않는다.
+            const ui_element* const element { tree_ != nullptr ? tree_->find(snapshot_.focused_input) : nullptr };
+            const std::optional<text_input_snapshot> value { element != nullptr ? element->text_input() : std::nullopt };
+            if (value.has_value() == false || value->caret == value->anchor)
+                return std::vector<input_action> {};
+
+            const std::size_t begin { value->caret < value->anchor ? value->caret : value->anchor };
+            const std::size_t end { value->caret < value->anchor ? value->anchor : value->caret };
+            std::vector<input_action> actions {};
+            actions.push_back(input_action { clipboard_copy_request { std::u8string { value->text.substr(begin, end - begin) } } });
+            if (event.key == key_code::key_x)
+                actions.push_back(text_edit_action(kind, text_edit_command::cut));
+            return actions;
+        }
+        case key_code::key_v:
+            if (event.control)
+                return std::vector<input_action> { input_action { clipboard_paste_request { target_for_kind(kind) } } };
+            return std::nullopt;
+        default:
+            break;
+        }
+        return std::nullopt;
+    }
+
     std::vector<input_action> interaction_controller::process_key(const key_pressed_event& event)
     {
         // 컨텍스트 메뉴가 열려 있으면 ↑/↓/Enter/Esc는 메뉴의 몫이다
         // (field-feedback-design 3장). 카드 목록 탐색으로 흘러가지 않는다.
         if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::context_menu }) != nullptr)
             return process_menu_key(event);
+
+        // 초점을 가진 텍스트 박스가 먼저 가져간다 (R2.4). 소비하지 않은 키만
+        // 아래의 목록 탐색·dialog 경로로 흐른다.
+        if (std::optional<std::vector<input_action>> handled { process_text_input_key(event) }; handled.has_value())
+            return std::move(*handled);
 
         switch (event.key)
         {
@@ -374,7 +506,7 @@ namespace gitman::ui {
                 return { input_action { logic_message { cancel_switch_dialog_intent {} } } };
             focused_.reset();
             return { input_action { logic_message { select_card_intent {} } } };
-        case key_code::none:
+        default:
             break;
         }
         return {};
@@ -492,7 +624,7 @@ namespace gitman::ui {
 
     void run_ui_input_pump(messaging::channel<raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const ui_tree>>& tree_slot, messaging::channel<logic_message>& logic_inbox,
         messaging::latest_slot<interaction_snapshot>& interaction_slot, const std::function<void(ui_command)>& execute_ui_command, const interaction_config config,
-        const std::function<void(open_external_request)>& execute_open_external)
+        const std::function<void(open_external_request)>& execute_open_external, const std::function<void(clipboard_request)>& execute_clipboard)
     {
         interaction_controller controller { config };
         std::uint64_t tree_version { 0 };
@@ -521,6 +653,10 @@ namespace gitman::ui {
                         execute_ui_command(*command);
                     else if (auto* const open { std::get_if<open_external_request>(&action) }; open != nullptr && execute_open_external)
                         execute_open_external(std::move(*open));
+                    else if (auto* const copy { std::get_if<clipboard_copy_request>(&action) }; copy != nullptr && execute_clipboard)
+                        execute_clipboard(clipboard_request { std::move(*copy) });
+                    else if (const auto* const paste { std::get_if<clipboard_paste_request>(&action) }; paste != nullptr && execute_clipboard)
+                        execute_clipboard(clipboard_request { *paste });
 
             if ((controller.snapshot() == published) == false)
             {

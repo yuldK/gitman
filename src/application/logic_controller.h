@@ -6,6 +6,7 @@
 #include "domain/operation_log.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
+#include "domain/text_edit.h"
 #include "presentation/view_snapshot.h"
 
 #include <chrono>
@@ -60,6 +61,10 @@ namespace gitman {
             // 변경 작업의 시작 시각이다. 로그 헤더의 경과 시간 표시 기준이며
             // change_operation_id가 0이 아닐 때만 의미가 있다.
             std::chrono::steady_clock::time_point change_started_at {};
+            // 마지막으로 끝난 변경 작업이 걸린 시간이다 (2026-08-22 지시). 명령이
+            // 끝나도 얼마나 걸렸는지 확인할 수 있도록 남기고, 다음 명령이 시작될 때
+            // 지운다. 문서를 열고 아직 아무 명령도 실행하지 않았으면 값이 없다.
+            std::optional<std::chrono::steady_clock::duration> change_elapsed {};
             // 변경 작업별 취소 source다. 조회와 달리 사용자가 카드 단위로 취소할 수
             // 있다 (stage-7-plan 4.4).
             std::optional<process_cancellation_source> change_cancellation {};
@@ -117,7 +122,6 @@ namespace gitman {
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
         void handle_select_settings_tab(const select_settings_tab_intent& intent);
         void handle_clear_settings_override(const clear_settings_override_intent& intent);
-        void handle_edit_settings_timeout(const edit_settings_timeout_intent& intent);
         void handle_confirm_settings();
         void handle_begin_switch(const begin_switch_intent& intent);
         void handle_select_switch_candidate(std::size_t index);
@@ -127,7 +131,10 @@ namespace gitman {
         void handle_switch_candidates(switch_candidates_event event);
         void handle_svn_directory(svn_directory_event event);
         void handle_switch_dialog_scroll(float delta);
-        void handle_edit_switch_query(const edit_switch_query_intent& intent);
+        // 초점을 가진 텍스트 박스의 편집이다 (switch-dialog-query-bar-design R2.2).
+        // 대상별 초안을 고른 뒤 순수 편집 모델에 맡기고, 그 대상의 규칙(숫자만,
+        // 필터 재적용)을 뒤에 덧붙인다.
+        void handle_edit_text_input(const edit_text_input_intent& intent);
         void handle_submit_switch_query();
         void handle_clear_switch_query();
         void handle_refresh_switch_dialog();
@@ -225,7 +232,7 @@ namespace gitman {
             // 질의 막대의 글이다 (switch-dialog-query-bar-design Q1). Git은 후보
             // 필터, SVN은 저장소 root 기준 경로다. SVN은 dialog가 열릴 때 현재
             // 위치로 채워지고 노드를 고를 때마다 그 경로로 덮어쓴다.
-            std::u8string query {};
+            text_edit_state query {};
             float scroll_offset { 0.0f };
             struct directory_query
             {
@@ -272,7 +279,7 @@ namespace gitman {
             std::u8string svn_path {};
             // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design
             // 1.3). 숫자만 담기며 비어 있으면 기본값이다.
-            std::u8string timeout_text {};
+            text_edit_state timeout {};
             // 업데이트 시 submodule 갱신 여부의 초안이다 (확인 overlay 대체).
             bool update_submodules { false };
             // 로컬 변경을 상관하지 않음 여부의 초안이다. status 순회를 건너뛴다.

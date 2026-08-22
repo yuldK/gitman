@@ -91,6 +91,22 @@ namespace gitman {
         // 헤더의 경과 시간(MM:SS) 표시 기준이며, 렌더러가 draw 시각과의 차이를
         // 그린다 (실시간 갱신은 UI thread의 timer가 일으킨다).
         std::optional<std::chrono::steady_clock::time_point> change_started_at {};
+        // 실행 중이 아닐 때, 마지막으로 끝난 명령이 걸린 시간이다. 값이 있으면 그
+        // 시간을 그대로 세워 그린다 — 작업이 끝난 뒤에도 확인할 수 있어야 한다
+        // (2026-08-22 지시). 다음 명령이 시작되면 `change_started_at`으로 바뀐다.
+        std::optional<std::chrono::steady_clock::duration> change_elapsed {};
+    };
+
+    // 한 줄 텍스트 박스의 표시 상태다 (switch-dialog-query-bar-design R2). caret과
+    // 선택 anchor는 UTF-8 byte offset이고 둘이 같으면 선택이 없다. element는 이
+    // 값으로 선택 띠와 caret 위치를 그린다.
+    struct text_input_view
+    {
+        std::u8string text {};
+        std::size_t caret { 0 };
+        std::size_t anchor { 0 };
+
+        [[nodiscard]] bool operator==(const text_input_view&) const = default;
     };
 
     // 질의 막대 우측 버튼이 맡은 몫이다 (switch-dialog-query-bar-design Q1).
@@ -126,7 +142,7 @@ namespace gitman {
         std::optional<std::size_t> selected {};
         // 질의 막대다 (switch-dialog-query-bar-design Q1). Git은 필터, SVN은 저장소
         // root 기준 실제 경로를 담는 주소 막대다.
-        std::u8string query {};
+        text_input_view query {};
         std::u8string query_placeholder {};
         // 후보 조회 중이거나 전환 실행 중이면 막대 전체가 비활성이다.
         bool query_enabled { false };
@@ -335,7 +351,7 @@ namespace gitman {
         // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design 1.3).
         // 숫자만 담기며, 비어 있으면 기본값(600초)을 뜻해 element가 안내 문구를
         // 대신 그린다.
-        std::u8string timeout_text {};
+        text_input_view timeout {};
         // 업데이트 시 submodule 갱신 여부의 초안이다 (확인 overlay 대체).
         bool update_submodules { false };
         // 로컬 변경을 상관하지 않음 여부의 초안이다. status 순회를 건너뛴다.

@@ -12,6 +12,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class SkCanvas;
@@ -178,6 +179,21 @@ namespace gitman::ui {
         bool control { false };
     };
 
+    // 글자 폭을 재는 함수다 (switch-dialog-query-bar-design R2.3). 텍스트 박스가
+    // 포인터 x를 글 안의 offset으로 옮길 때 쓴다. 앱은 내장 글꼴로 만들고 test는
+    // 고정 폭 가짜를 넣는다. 글꼴이 없는 thread에서도 부를 수 있어야 하므로 element
+    // 밖에서 주입한다.
+    using text_measurer = std::function<float(std::u8string_view text, float pixel_size)>;
+
+    // 텍스트 박스가 내주는 편집 상태다. 초점을 가진 박스의 선택 글을 클립보드로
+    // 복사할 때 입력 thread가 읽는다. offset은 UTF-8 byte offset이다.
+    struct text_input_snapshot
+    {
+        std::u8string_view text {};
+        std::size_t caret { 0 };
+        std::size_t anchor { 0 };
+    };
+
     // 액션은 상태를 바꾸지 않고 후속 메시지를 반환한다 (ADR-004).
     using ui_action = std::function<std::vector<input_action>(const ui_action_context&)>;
 
@@ -324,6 +340,12 @@ namespace gitman::ui {
         // 좌표를 포함하는 가장 안쪽의 상호작용 대상을 돌려준다. 기본 구현은 자식을
         // 역순(위에 그려진 것 먼저)으로 탐색한 뒤 자기 bounds를 검사한다.
         [[nodiscard]] virtual const ui_element* hit_test(float x, float y) const;
+
+        // 텍스트 박스만 구현한다 (R2.3). 창 좌표 x를 글 안의 byte offset으로 옮긴다.
+        // 글꼴 크기와 가로 스크롤은 element가 알고 있어 그리기와 같은 값을 쓴다.
+        [[nodiscard]] virtual std::optional<std::size_t> offset_at(float x, const text_measurer& measurer) const;
+        // 텍스트 박스만 구현한다. 글과 선택 범위를 그대로 내준다.
+        [[nodiscard]] virtual std::optional<text_input_snapshot> text_input() const;
 
     protected:
         void add_child(std::unique_ptr<ui_element> child);

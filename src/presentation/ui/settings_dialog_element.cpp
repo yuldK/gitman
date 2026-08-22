@@ -809,7 +809,7 @@ namespace gitman::ui {
                 }
                 case item_kind::query_timeout: {
                     // 숫자 전용 초안은 logic이 거른다 (handle_edit_settings_timeout).
-                    auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::settings_timeout_input }, dialog_.timeout_text, std::u8string { u8"600 (기본값)" }) };
+                    auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::settings_timeout_input }, dialog_.timeout, std::u8string { u8"600 (기본값)" }) };
                     input->set_tooltip(u8"숫자만 입력합니다 (10~3600초). 비우면 기본값 600초입니다.");
                     controls.push_back(input.get());
                     add_child(std::move(input));

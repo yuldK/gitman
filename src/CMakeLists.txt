@@ -86,6 +86,8 @@ add_library(gitman_lib STATIC
     domain/project.h
     domain/repository_snapshot.cpp
     domain/repository_snapshot.h
+    domain/text_edit.cpp
+    domain/text_edit.h
     domain/vcs_operation.cpp
     domain/vcs_operation.h
     domain/vcs_tool.cpp

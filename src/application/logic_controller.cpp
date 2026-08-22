@@ -1,5 +1,7 @@
 #include "application/logic_controller.h"
 
+#include "domain/text_edit.h"
+
 #include "application/svn_repository_browser.h"
 #include "domain/log_file_naming.h"
 #include "domain/path_syntax.h"
@@ -41,38 +43,6 @@ namespace gitman {
                     return true;
             }
             return false;
-        }
-
-        // 텍스트 박스는 BMP 문자만 받으므로(win32의 WM_CHAR 배선) 3바이트까지다.
-        void append_utf8(std::u8string& text, const char32_t character)
-        {
-            if (character < 0x80u)
-            {
-                text.push_back(static_cast<char8_t>(character));
-                return;
-            }
-            if (character < 0x800u)
-            {
-                text.push_back(static_cast<char8_t>(0xC0u | (character >> 6)));
-                text.push_back(static_cast<char8_t>(0x80u | (character & 0x3Fu)));
-                return;
-            }
-            text.push_back(static_cast<char8_t>(0xE0u | (character >> 12)));
-            text.push_back(static_cast<char8_t>(0x80u | ((character >> 6) & 0x3Fu)));
-            text.push_back(static_cast<char8_t>(0x80u | (character & 0x3Fu)));
-        }
-
-        // 문자 하나를 지운다. 이어지는 바이트(10xxxxxx)를 먼저 걷어내야 한글 한 글자가
-        // 반쪽만 남지 않는다.
-        void pop_utf8(std::u8string& text)
-        {
-            while (text.empty() == false)
-            {
-                const bool continuation { (static_cast<unsigned int>(text.back()) & 0xC0u) == 0x80u };
-                text.pop_back();
-                if (continuation == false)
-                    return;
-            }
         }
 
         // card_state에서 표시 상태를 정한다. 우선순위: 비활성 → 실행 중 → 초기 조회
@@ -225,8 +195,8 @@ namespace gitman {
                     switch_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, switch_dialog_scroll_intent>)
                     handle_switch_dialog_scroll(value.delta);
-                else if constexpr (std::is_same_v<value_type, edit_switch_query_intent>)
-                    handle_edit_switch_query(value);
+                else if constexpr (std::is_same_v<value_type, edit_text_input_intent>)
+                    handle_edit_text_input(value);
                 else if constexpr (std::is_same_v<value_type, submit_switch_query_intent>)
                     handle_submit_switch_query();
                 else if constexpr (std::is_same_v<value_type, clear_switch_query_intent>)
@@ -285,8 +255,6 @@ namespace gitman {
                     handle_clear_settings_override(value);
                 else if constexpr (std::is_same_v<value_type, select_settings_tab_intent>)
                     handle_select_settings_tab(value);
-                else if constexpr (std::is_same_v<value_type, edit_settings_timeout_intent>)
-                    handle_edit_settings_timeout(value);
                 else if constexpr (std::is_same_v<value_type, toggle_settings_submodules_intent>)
                 {
                     // 값을 건드리면 문서 모드에서는 그 행이 "문서에 정의됨"이 된다
@@ -829,8 +797,10 @@ namespace gitman {
         card.busy = true;
         card.change_operation_id = operation_id;
         card.change_kind = kind;
-        // 경과 시간 표시의 기준 시각이다 (로그 헤더의 MM:SS).
+        // 경과 시간 표시의 기준 시각이다 (로그 헤더의 MM:SS). 새 명령이 시작되면
+        // 직전 명령이 남긴 경과 시간을 지운다.
         card.change_started_at = std::chrono::steady_clock::now();
+        card.change_elapsed.reset();
         card.change_cancellation = std::move(cancellation);
         if (is_update)
             append_lifecycle_log(
@@ -867,6 +837,9 @@ namespace gitman {
         if (card == nullptr || event.operation_id != card->change_operation_id)
             return;
 
+        // 명령이 끝나도 걸린 시간은 남긴다. 작업이 끝난 뒤에 확인할 수 있어야 한다
+        // (2026-08-22 지시). 다음 명령이 시작될 때 지워진다.
+        card->change_elapsed = { std::chrono::steady_clock::now() - card->change_started_at };
         card->change_operation_id = 0;
         card->change_cancellation.reset();
         card->busy = false;
@@ -1285,7 +1258,7 @@ namespace gitman {
         if (effective.query_timeout_seconds.has_value())
         {
             const std::string digits { std::to_string(*effective.query_timeout_seconds) };
-            dialog.timeout_text.append(digits.begin(), digits.end());
+            dialog.timeout.text.append(digits.begin(), digits.end());
         }
         dialog.update_submodules = effective.update_submodules;
         dialog.ignore_local_changes = effective.ignore_local_changes;
@@ -1373,11 +1346,11 @@ namespace gitman {
             settings_dialog_->svn_defined = false;
             break;
         case settings_override_field::query_timeout:
-            settings_dialog_->timeout_text.clear();
+            settings_dialog_->timeout.text.clear();
             if (app_settings_.settings.query_timeout_seconds.has_value())
             {
                 const std::string digits { std::to_string(*app_settings_.settings.query_timeout_seconds) };
-                settings_dialog_->timeout_text.append(digits.begin(), digits.end());
+                settings_dialog_->timeout.text.append(digits.begin(), digits.end());
             }
             settings_dialog_->timeout_defined = false;
             break;
@@ -1404,30 +1377,6 @@ namespace gitman {
         }
     }
 
-    void logic_controller::handle_edit_settings_timeout(const edit_settings_timeout_intent& intent)
-    {
-        // 닫힌 뒤 도착한 키 입력은 버린다.
-        if (settings_dialog_.has_value() == false)
-            return;
-
-        std::u8string& text { settings_dialog_->timeout_text };
-        if (intent.character == U'\b')
-        {
-            if (text.empty() == false)
-            {
-                text.pop_back();
-                settings_dialog_->timeout_defined = true;
-            }
-            return;
-        }
-        // 숫자만 받는 텍스트 박스다. 최대값(3600)이 4자리라 그 이상은 버린다.
-        if (intent.character >= U'0' && intent.character <= U'9' && text.size() < 4)
-        {
-            text.push_back(static_cast<char8_t>(intent.character));
-            settings_dialog_->timeout_defined = true;
-        }
-    }
-
     void logic_controller::handle_confirm_settings()
     {
         if (settings_dialog_.has_value() == false || shutting_down_)
@@ -1439,10 +1388,10 @@ namespace gitman {
         // 버튼 비활성과 별개로 늦게 도착한 확인도 막는다 (view의 can_confirm과 같은
         // 판정이다).
         if (settings_executable_error(settings_dialog_->git_path).empty() == false || settings_executable_error(settings_dialog_->svn_path).empty() == false
-            || settings_timeout_error(settings_dialog_->timeout_text).empty() == false)
+            || settings_timeout_error(settings_dialog_->timeout.text).empty() == false)
             return;
 
-        const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout_text) };
+        const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout.text) };
         const workspace_settings previous_effective { effective_settings() };
 
         if (settings_dialog_->document_mode)
@@ -1560,11 +1509,18 @@ namespace gitman {
         }
 
         switch_dialog_->svn_browser = { make_svn_repository_browser(*switch_dialog_->candidates.svn_browser) };
-        // 주소 막대는 현재 작업 복사본의 경로로 시작한다. 트리는 아직 root만
-        // 조회하고, 이 경로로 내려가는 것은 사용자가 트리거를 누를 때다 (Q3).
-        switch_dialog_->query = svn_browser_relative_path(switch_dialog_->svn_browser->root_url, switch_dialog_->svn_browser->current_url);
-        const std::u8string root_url { switch_dialog_->svn_browser->root_url };
-        if (begin_svn_browser_query(*switch_dialog_->svn_browser, root_url))
+        svn_repository_browser_state& browser { *switch_dialog_->svn_browser };
+        // 주소 막대는 현재 작업 복사본의 경로로 시작한다.
+        text_edit_set_text(switch_dialog_->query, svn_browser_relative_path(browser.root_url, browser.current_url), true);
+
+        // 창을 열 때는 현재 위치까지 펼쳐 둔다 (2026-08-22 검수 정정: 자기 branch
+        // 까지는 재귀 조회가 필요하다). 그 아래와 다른 가지는 여전히 사용자가 열
+        // 때만 조회한다 — 저장소 전체를 미리 읽지 않는다.
+        const std::u8string root_url { browser.root_url };
+        const svn_browser_reveal_progress progress { begin_svn_browser_reveal(browser, browser.current_url) };
+        if (progress.query_url.has_value())
+            submit_svn_directory_query(*progress.query_url);
+        else if (begin_svn_browser_query(browser, root_url))
             submit_svn_directory_query(root_url);
     }
 
@@ -1590,7 +1546,7 @@ namespace gitman {
             return;
         switch_dialog_->message.clear();
         // 주소 막대는 고른 노드의 실제 경로를 따라간다 (repo-browser 원형 동작).
-        switch_dialog_->query = svn_browser_relative_path(switch_dialog_->svn_browser->root_url, url);
+        text_edit_set_text(switch_dialog_->query, svn_browser_relative_path(switch_dialog_->svn_browser->root_url, url), true);
     }
 
     void logic_controller::handle_toggle_svn_browser_node(const std::u8string_view url)
@@ -1701,38 +1657,92 @@ namespace gitman {
             return;
         if (progress.reached)
         {
-            switch_dialog_->query = svn_browser_relative_path(switch_dialog_->svn_browser->root_url, switch_dialog_->svn_browser->selected_url);
+            text_edit_set_text(switch_dialog_->query, svn_browser_relative_path(switch_dialog_->svn_browser->root_url, switch_dialog_->svn_browser->selected_url), true);
             switch_dialog_->message.clear();
             handle_switch_dialog_scroll(0.0f);
             return;
         }
         if (progress.not_found)
         {
-            switch_dialog_->message = std::u8string { u8"그 경로를 찾을 수 없습니다: " } + switch_dialog_->query;
+            switch_dialog_->message = std::u8string { u8"그 경로를 찾을 수 없습니다: " } + switch_dialog_->query.text;
             return;
         }
         if (progress.query_url.has_value())
             submit_svn_directory_query(*progress.query_url);
     }
 
-    void logic_controller::handle_edit_switch_query(const edit_switch_query_intent& intent)
+    void logic_controller::handle_edit_text_input(const edit_text_input_intent& intent)
     {
-        // 닫힌 뒤 도착한 키 입력과 실행 중 입력은 버린다.
-        if (switch_dialog_.has_value() == false || switch_dialog_->executing)
+        // 닫힌 뒤 도착한 키 입력은 버린다. 초안을 가진 dialog가 대상이다.
+        text_edit_state* state { nullptr };
+        if (intent.target == text_input_target::settings_timeout && settings_dialog_.has_value())
+            state = &settings_dialog_->timeout;
+        else if (intent.target == text_input_target::switch_query && switch_dialog_.has_value() && switch_dialog_->executing == false)
+            state = &switch_dialog_->query;
+        if (state == nullptr)
             return;
 
-        std::u8string& text { switch_dialog_->query };
-        if (intent.character == U'\b')
+        const std::u8string before { state->text };
+        switch (intent.command)
         {
-            if (text.empty())
-                return;
-            pop_utf8(text);
+        case text_edit_command::insert:
+            text_edit_insert(*state, intent.text);
+            break;
+        case text_edit_command::backspace:
+            text_edit_backspace(*state);
+            break;
+        case text_edit_command::delete_forward:
+            text_edit_delete_forward(*state);
+            break;
+        case text_edit_command::cut:
+            static_cast<void>(text_edit_erase_selection(*state));
+            break;
+        case text_edit_command::move_left:
+            text_edit_move(*state, text_edit_motion::left, intent.extend);
+            break;
+        case text_edit_command::move_right:
+            text_edit_move(*state, text_edit_motion::right, intent.extend);
+            break;
+        case text_edit_command::move_word_left:
+            text_edit_move(*state, text_edit_motion::word_left, intent.extend);
+            break;
+        case text_edit_command::move_word_right:
+            text_edit_move(*state, text_edit_motion::word_right, intent.extend);
+            break;
+        case text_edit_command::move_line_start:
+            text_edit_move(*state, text_edit_motion::line_start, intent.extend);
+            break;
+        case text_edit_command::move_line_end:
+            text_edit_move(*state, text_edit_motion::line_end, intent.extend);
+            break;
+        case text_edit_command::select_all:
+            text_edit_select_all(*state);
+            break;
+        case text_edit_command::select_word:
+            text_edit_select_word(*state, intent.offset);
+            break;
+        case text_edit_command::place_caret:
+            text_edit_place_caret(*state, intent.offset, intent.extend);
+            break;
         }
-        else if (intent.character >= U' ' && intent.character != 0x7Fu)
-            append_utf8(text, intent.character);
-        else
-            return;
 
+        if (intent.target == text_input_target::settings_timeout)
+        {
+            // 숫자만 받는 칸이다. 최대값(3600)이 4자리라 그 이상은 버린다. 붙여넣기가
+            // 섞인 글을 넣어도 여기서 걸러진다 (field-feedback-design 1.3).
+            std::u8string digits {};
+            for (const char8_t value : state->text)
+                if (value >= u8'0' && value <= u8'9' && digits.size() < 4)
+                    digits.push_back(value);
+            if (digits != state->text)
+                text_edit_set_text(*state, digits, true);
+            if (state->text != before)
+                settings_dialog_->timeout_defined = true;
+            return;
+        }
+
+        if (state->text == before)
+            return;
         switch_dialog_->message.clear();
         // Git 필터는 즉시 적용되어 목록이 달라진다. 사라질 수 있는 선택과 확인
         // 단계를 남겨 두지 않는다. SVN은 트리거를 눌러야 움직인다.
@@ -1763,10 +1773,10 @@ namespace gitman {
 
         if (switch_dialog_->svn_browser.has_value() == false)
             return;
-        const std::u8string target { resolve_svn_browser_path(*switch_dialog_->svn_browser, switch_dialog_->query) };
+        const std::u8string target { resolve_svn_browser_path(*switch_dialog_->svn_browser, switch_dialog_->query.text) };
         if (target.empty())
         {
-            switch_dialog_->message = std::u8string { u8"그 경로를 찾을 수 없습니다: " } + switch_dialog_->query;
+            switch_dialog_->message = std::u8string { u8"그 경로를 찾을 수 없습니다: " } + switch_dialog_->query.text;
             return;
         }
         switch_dialog_->message.clear();
@@ -1778,7 +1788,7 @@ namespace gitman {
         // 지우기 버튼은 Git 필터에만 있다. SVN 주소는 비우면 뜻이 없다.
         if (switch_dialog_.has_value() == false || switch_dialog_->executing || switch_dialog_->subversion)
             return;
-        switch_dialog_->query.clear();
+        text_edit_set_text(switch_dialog_->query, {}, true);
         switch_dialog_->selected.reset();
         switch_dialog_->tracking_confirm_pending = false;
         switch_dialog_->scroll_offset = 0.0f;
@@ -1805,7 +1815,7 @@ namespace gitman {
                 return;
             switch_dialog_->directory_queries.clear();
             switch_dialog_->message.clear();
-            switch_dialog_->query = svn_browser_relative_path(browser.root_url, browser.selected_url);
+            text_edit_set_text(switch_dialog_->query, svn_browser_relative_path(browser.root_url, browser.selected_url), true);
             if (begin_svn_browser_query(browser, target))
                 submit_svn_directory_query(target);
             handle_switch_dialog_scroll(0.0f);
@@ -1868,7 +1878,7 @@ namespace gitman {
         const std::vector<switch_candidate>& candidates { switch_dialog_->candidates.candidates };
         visible.reserve(candidates.size());
         for (std::size_t index = 0; index < candidates.size(); ++index)
-            if (switch_dialog_->subversion || contains_ignoring_ascii_case(candidates[index].display_name, switch_dialog_->query))
+            if (switch_dialog_->subversion || contains_ignoring_ascii_case(candidates[index].display_name, switch_dialog_->query.text))
                 visible.push_back(index);
         return visible;
     }
@@ -2413,9 +2423,13 @@ namespace gitman {
                     // 렌더링·스크롤은 접힌 표시 목록을, 복사는 records를 쓴다.
                     log.lines = build_log_display_lines(card.log.records(), log_filter_);
                     log.truncated = card.log.dropped_count() > 0;
-                    // 변경 작업이 실행 중이면 헤더에 경과 시간을 표시한다.
+                    // 실행 중이면 헤더의 경과 시간이 흐르고, 끝난 뒤에는 마지막
+                    // 명령이 걸린 시간을 그대로 세워 둔다. 둘 다 없으면 표시하지
+                    // 않는다 (아직 아무 명령도 실행하지 않았다).
                     if (card.change_operation_id != 0)
                         log.change_started_at = { card.change_started_at };
+                    else
+                        log.change_elapsed = card.change_elapsed;
 
                     float maximum { log_content_height() - log_viewport_height() };
                     if (maximum < 0.0f)
@@ -2451,19 +2465,19 @@ namespace gitman {
 
                 // 질의 막대다 (switch-dialog-query-bar-design Q1). Git은 필터,
                 // SVN은 실제 경로 주소 막대라 문구와 우측 버튼의 몫이 다르다.
-                dialog.query = switch_dialog_->query;
+                dialog.query = { switch_dialog_->query.text, switch_dialog_->query.caret, switch_dialog_->query.anchor };
                 dialog.query_enabled = switch_dialog_->loading == false && switch_dialog_->executing == false;
                 if (dialog.svn_browser)
                 {
                     dialog.query_placeholder = u8"이동할 경로 (예: /branches/2026-08)";
                     dialog.query_action = switch_query_action::navigate;
-                    dialog.query_action_enabled = dialog.query.empty() == false && switch_dialog_->svn_browser.has_value();
+                    dialog.query_action_enabled = dialog.query.text.empty() == false && switch_dialog_->svn_browser.has_value();
                 }
                 else
                 {
                     dialog.query_placeholder = u8"브랜치 이름으로 필터링";
-                    dialog.query_action = dialog.query.empty() ? switch_query_action::search : switch_query_action::clear;
-                    dialog.query_action_enabled = dialog.query.empty() == false;
+                    dialog.query_action = dialog.query.text.empty() ? switch_query_action::search : switch_query_action::clear;
+                    dialog.query_action_enabled = dialog.query.text.empty() == false;
                 }
 
                 // 목록이 비었을 때의 안내다. 필터가 비운 것과 후보가 없는 것은 다른
@@ -2473,7 +2487,7 @@ namespace gitman {
                     dialog.list_note = dialog.svn_browser ? u8"SVN 저장소 정보를 조회하는 중입니다..." : u8"전환 후보를 조회하는 중입니다...";
                 else if (list_empty && dialog.svn_browser)
                     dialog.list_note = u8"SVN 저장소를 탐색할 수 없습니다.";
-                else if (list_empty && dialog.query.empty() == false)
+                else if (list_empty && dialog.query.text.empty() == false)
                     dialog.list_note = u8"필터에 맞는 후보가 없습니다.";
                 else if (list_empty)
                     dialog.list_note = u8"전환할 수 있는 후보가 없습니다.";
@@ -2557,7 +2571,7 @@ namespace gitman {
             dialog.document_mode = settings_dialog_->document_mode;
             dialog.git_path = settings_dialog_->git_path;
             dialog.svn_path = settings_dialog_->svn_path;
-            dialog.timeout_text = settings_dialog_->timeout_text;
+            dialog.timeout = { settings_dialog_->timeout.text, settings_dialog_->timeout.caret, settings_dialog_->timeout.anchor };
             dialog.update_submodules = settings_dialog_->update_submodules;
             dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
             dialog.write_log_files = settings_dialog_->write_log_files;
@@ -2580,7 +2594,7 @@ namespace gitman {
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
             const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
             const std::u8string_view svn_error { settings_executable_error(settings_dialog_->svn_path) };
-            const std::u8string_view timeout_error { settings_timeout_error(settings_dialog_->timeout_text) };
+            const std::u8string_view timeout_error { settings_timeout_error(settings_dialog_->timeout.text) };
             if (git_error.empty() == false)
                 dialog.message = std::u8string { u8"Git: " } + std::u8string { git_error };
             else if (svn_error.empty() == false)

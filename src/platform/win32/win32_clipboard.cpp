@@ -46,4 +46,33 @@ namespace gitman::win32 {
             return false;
         }
     }
+
+    std::u8string read_text_from_clipboard(const HWND owner) noexcept
+    {
+        try
+        {
+            if (IsClipboardFormatAvailable(CF_UNICODETEXT) == FALSE || OpenClipboard(owner) == FALSE)
+                return {};
+
+            std::u8string result {};
+            if (const HANDLE handle { GetClipboardData(CF_UNICODETEXT) }; handle != nullptr)
+                if (const void* const memory { GlobalLock(handle) }; memory != nullptr)
+                {
+                    const utf_conversion_result<std::u8string> converted { utf16_to_utf8(static_cast<const wchar_t*>(memory)) };
+                    if (converted.value.has_value())
+                        result = *converted.value;
+                    GlobalUnlock(handle);
+                }
+            CloseClipboard();
+
+            // 한 줄 칸이라 첫 줄만 쓴다. 탭도 줄 구분과 같이 취급한다.
+            if (const std::size_t line_end { result.find_first_of(u8"\r\n\t") }; line_end != std::u8string::npos)
+                result.erase(line_end);
+            return result;
+        }
+        catch (...)
+        {
+            return {};
+        }
+    }
 } // namespace gitman::win32

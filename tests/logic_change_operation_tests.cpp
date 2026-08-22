@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -132,24 +133,51 @@ TEST_CASE("An update request submits a change operation with its own cancellatio
     REQUIRE(fixture.log(u8"alpha").records().front().entry.kind == gitman::log_entry_kind::lifecycle);
 }
 
-TEST_CASE("A running change exposes its start time to the log view header", "[logic][change]")
+TEST_CASE("The log header keeps the elapsed time after the change finishes", "[logic][change]")
 {
-    // 로그 헤더의 경과 시간(MM:SS) 표시 기준이다. 변경 작업이 실행 중일 때만
-    // 값이 있고, 끝나면(자동 재조회가 이어져도) 사라진다.
+    // 로그 헤더의 경과 시간(MM:SS)이다. 실행 중에는 시작 시각을 기준으로 흐르고,
+    // 끝난 뒤에는 걸린 시간을 그대로 세워 둔다 (2026-08-22 지시). 다음 명령이
+    // 시작되면 그 값을 지우고 다시 흐른다.
     change_fixture fixture {};
     fixture.controller.handle(gitman::select_card_intent { { gitman::project_id { u8"alpha" } } });
     {
+        // 아직 아무 명령도 실행하지 않았으면 표시가 없다.
         const auto view { fixture.controller.make_view_snapshot() };
         REQUIRE(view->log.has_value());
-        REQUIRE(view->log->change_started_at.has_value() == false);
+        REQUIRE_FALSE(view->log->change_started_at.has_value());
+        REQUIRE_FALSE(view->log->change_elapsed.has_value());
     }
 
     fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
     REQUIRE(fixture.submitter.requests.size() == 1u);
-    REQUIRE(fixture.controller.make_view_snapshot()->log->change_started_at.has_value());
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->log->change_started_at.has_value());
+        REQUIRE_FALSE(view->log->change_elapsed.has_value());
+    }
 
     fixture.controller.handle(fixture.make_completion(fixture.submitter.requests.front()));
-    REQUIRE(fixture.controller.make_view_snapshot()->log->change_started_at.has_value() == false);
+    {
+        // 끝나면 흐름은 멈추고 걸린 시간이 남는다.
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE_FALSE(view->log->change_started_at.has_value());
+        REQUIRE(view->log->change_elapsed.has_value());
+        REQUIRE(*view->log->change_elapsed >= std::chrono::steady_clock::duration::zero());
+    }
+
+    // 완료 뒤 자동 재조회가 끝나야 카드가 다음 명령을 받는다. 그동안에도 걸린
+    // 시간은 그대로 남는다.
+    REQUIRE(fixture.submitter.requests.size() == 2u);
+    fixture.controller.handle(make_local_result(u8"alpha", fixture.submitter.requests.back().generation));
+    REQUIRE(fixture.controller.make_view_snapshot()->log->change_elapsed.has_value());
+
+    // 다음 명령이 남은 값을 지우고 다시 흐른다.
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->log->change_started_at.has_value());
+    REQUIRE_FALSE(view->log->change_elapsed.has_value());
 }
 
 TEST_CASE("A second change request on a busy card is refused and logged", "[logic][change]")

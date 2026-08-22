@@ -6,6 +6,7 @@
 #include "infrastructure/json_app_settings_store.h"
 #include "infrastructure/json_project_store.h"
 #include "infrastructure/vcs_operation_executor.h"
+#include "platform/win32/embedded_assets.h"
 #include "platform/win32/project_file_system.h"
 #include "platform/win32/win32_app_settings_path.h"
 #include "platform/win32/win32_directory_enumerator.h"
@@ -14,6 +15,10 @@
 #include "platform/win32/win32_vcs_file_probe.h"
 #include "platform/win32/workspace_document_file_system.h"
 #include "presentation/ui/build_ui_tree.h"
+#include "presentation/ui/draw_primitives.h"
+
+#include "include/core/SkFont.h"
+#include "include/core/SkTypeface.h"
 
 #include <algorithm>
 #include <chrono>
@@ -34,18 +39,25 @@ namespace gitman::win32 {
 
         void input_thread_main(messaging::channel<ui::raw_input_event>& input_inbox, messaging::latest_slot<std::shared_ptr<const ui::ui_tree>>& tree_slot,
             messaging::channel<logic_message>& logic_inbox, messaging::latest_slot<ui::interaction_snapshot>& interaction_slot, const HWND wake_window, const UINT command_message,
-            const std::function<void(ui::open_external_request)> execute_open_external)
+            const std::function<void(ui::open_external_request)> execute_open_external, const std::function<void(ui::clipboard_request)> execute_clipboard)
         {
             // 더블 클릭 임계는 사용자의 시스템 설정을 따른다.
             ui::interaction_config config {};
             config.double_click_time = std::chrono::milliseconds { GetDoubleClickTime() };
+            // 텍스트 박스가 포인터 x를 offset으로 옮길 때 쓰는 측정 함수다
+            // (switch-dialog-query-bar-design R2.3). SkTypeface는 불변·공유 가능하고
+            // SkFont는 호출마다 지역으로 만든다 — 그리기 thread와 공유하지 않는다.
+            config.measure_text = [typeface = win32::load_ui_typeface()](const std::u8string_view text, const float pixel_size) {
+                const SkFont font { typeface, pixel_size };
+                return ui::measure_text(text, font);
+            };
             run_ui_input_pump(
                 input_inbox, tree_slot, logic_inbox, interaction_slot,
                 [wake_window, command_message](const ui::ui_command command) {
                     if (wake_window != nullptr)
                         PostMessageW(wake_window, command_message, static_cast<WPARAM>(command), 0);
                 },
-                config, execute_open_external);
+                config, execute_open_external, execute_clipboard);
         }
     } // namespace
 
@@ -77,12 +89,16 @@ namespace gitman::win32 {
         std::mutex open_external_mutex {};
         std::vector<ui::open_external_request> open_external_requests {};
 
+        // 클립보드 요청 큐다 (R2.5). 외부 열기와 같은 방식으로 나른다.
+        std::mutex clipboard_mutex {};
+        std::vector<ui::clipboard_request> clipboard_requests {};
+
         std::unique_ptr<task_scheduler> scheduler {};
         std::thread logic_thread {};
         std::thread input_thread {};
     };
 
-    app_runtime::app_runtime(const HWND window, const UINT snapshot_message, const UINT ui_command_message, const UINT open_external_message)
+    app_runtime::app_runtime(const HWND window, const UINT snapshot_message, const UINT ui_command_message, const UINT open_external_message, const UINT clipboard_message)
         : assembly_ { std::make_unique<assembly>() }
         , window_ { window }
         , snapshot_message_ { snapshot_message }
@@ -116,6 +132,16 @@ namespace gitman::win32 {
                 PostMessageW(wake_window, open_external_message, 0, 0);
             };
 
+        std::function<void(ui::clipboard_request)> execute_clipboard {};
+        if (wake_window != nullptr && clipboard_message != 0)
+            execute_clipboard = [&parts, wake_window, clipboard_message](ui::clipboard_request request) {
+                {
+                    const std::lock_guard<std::mutex> lock { parts.clipboard_mutex };
+                    parts.clipboard_requests.push_back(std::move(request));
+                }
+                PostMessageW(wake_window, clipboard_message, 0, 0);
+            };
+
         assembly_->input_thread = std::thread {
             &input_thread_main,
             std::ref(parts.input_inbox),
@@ -125,6 +151,7 @@ namespace gitman::win32 {
             wake_window,
             ui_command_message,
             std::move(execute_open_external),
+            std::move(execute_clipboard),
         };
     }
 
@@ -229,6 +256,12 @@ namespace gitman::win32 {
     {
         const std::lock_guard<std::mutex> lock { assembly_->open_external_mutex };
         return std::exchange(assembly_->open_external_requests, {});
+    }
+
+    std::vector<ui::clipboard_request> app_runtime::take_clipboard_requests()
+    {
+        const std::lock_guard<std::mutex> lock { assembly_->clipboard_mutex };
+        return std::exchange(assembly_->clipboard_requests, {});
     }
 
     ui::interaction_snapshot app_runtime::acquire_interaction()

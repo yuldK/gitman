@@ -62,12 +62,26 @@ namespace gitman::ui {
         enter,
         f5,
         escape,
+        // 텍스트 박스 편집용이다 (switch-dialog-query-bar-design R2.4). 초점을 가진
+        // 박스가 없으면 무시된다.
+        arrow_left,
+        arrow_right,
+        home,
+        end,
+        delete_forward,
+        // 글자 키는 **Ctrl이 눌린 동안에만** 만든다. 그러지 않으면 WM_CHAR가 막혀
+        // 그 글자를 칠 수 없다.
+        key_a,
+        key_c,
+        key_v,
+        key_x,
     };
 
     struct key_pressed_event
     {
         key_code key { key_code::none };
         bool control { false };
+        bool shift { false };
     };
 
     // WM_CHAR가 만드는 문자 입력이다 (field-feedback-design 1.3). 텍스트 박스가
@@ -125,9 +139,30 @@ namespace gitman::ui {
         [[nodiscard]] bool operator==(const open_external_request&) const noexcept = default;
     };
 
+    // 초점을 가진 텍스트 박스의 선택 글을 클립보드에 넣는다 (R2.5). 글은 입력
+    // thread가 tree에서 읽어 담고, 실제 클립보드 접근은 UI thread의 몫이다.
+    struct clipboard_copy_request
+    {
+        std::u8string text {};
+
+        [[nodiscard]] bool operator==(const clipboard_copy_request&) const noexcept = default;
+    };
+
+    // 클립보드의 글을 그 텍스트 박스에 넣으라는 요청이다. UI thread가 클립보드를
+    // 읽어 대상 target의 insert intent를 logic에 보낸다.
+    struct clipboard_paste_request
+    {
+        text_input_target target { text_input_target::settings_timeout };
+
+        [[nodiscard]] bool operator==(const clipboard_paste_request&) const noexcept = default;
+    };
+
+    // UI thread만 다룰 수 있는 클립보드 요청이다 (R2.5).
+    using clipboard_request = std::variant<clipboard_copy_request, clipboard_paste_request>;
+
     // element 액션과 interaction controller가 돌려주는 후속 조치다. 액션은 상태를
     // 직접 바꾸지 않고 이 메시지를 반환만 한다 (ADR-004).
-    using input_action = std::variant<std::monostate, logic_message, ui_command, open_external_request>;
+    using input_action = std::variant<std::monostate, logic_message, ui_command, open_external_request, clipboard_copy_request, clipboard_paste_request>;
 
     // 휠 한 눈금이 움직이는 논리 픽셀이다.
     inline constexpr float input_wheel_scroll_step { 48.0f };

@@ -147,13 +147,6 @@ namespace gitman {
         float delta { 0.0f };
     };
 
-    // switch dialog 질의 막대의 입력이다 (switch-dialog-query-bar-design Q1).
-    // backspace는 U+0008로 온다. Git은 필터, SVN은 이동할 경로다.
-    struct edit_switch_query_intent
-    {
-        char32_t character { 0 };
-    };
-
     // Enter와 SVN의 이동 버튼이다. Git은 걸러진 첫 후보를 고르고, SVN은 박스의
     // 경로로 트리를 펼쳐 내려간다.
     struct submit_switch_query_intent
@@ -244,13 +237,45 @@ namespace gitman {
         settings_override_field field { settings_override_field::git_executable };
     };
 
-    // 환경설정 dialog의 상태 확인 제한 시간 텍스트 박스 입력이다
-    // (field-feedback-design 1.3). 키 입력 문자가 그대로 오며 logic이 숫자만
-    // 초안에 반영한다: 0~9는 뒤에 붙이고 backspace(U+0008)는 마지막 자리를
-    // 지운다. 그 밖의 문자는 무시한다. 빈 초안은 기본값을 뜻한다.
-    struct edit_settings_timeout_intent
+    // 초점을 받을 수 있는 텍스트 박스다 (switch-dialog-query-bar-design R2.2).
+    // 편집 intent 하나가 대상을 담고 다니므로 박스가 늘어도 intent는 늘지 않는다.
+    enum class text_input_target
     {
-        char32_t character { 0 };
+        // 환경설정의 상태 확인 제한 시간이다. 숫자 4자리만 받는다
+        // (field-feedback-design 1.3). 빈 초안은 기본값을 뜻한다.
+        settings_timeout,
+        // switch dialog의 질의 막대다. Git은 필터, SVN은 이동할 경로다.
+        switch_query,
+    };
+
+    enum class text_edit_command
+    {
+        // `text`를 넣는다. 선택이 있으면 대체한다.
+        insert,
+        backspace,
+        delete_forward,
+        move_left,
+        move_right,
+        move_word_left,
+        move_word_right,
+        move_line_start,
+        move_line_end,
+        select_all,
+        // `offset`이 가리키는 낱말을 고른다 (더블 클릭).
+        select_word,
+        // 선택을 지운다. 클립보드 복사는 UI thread가 이미 했다.
+        cut,
+        // `offset`으로 caret을 옮긴다. `extend`면 드래그 중이라 anchor를 둔다.
+        place_caret,
+    };
+
+    struct edit_text_input_intent
+    {
+        text_input_target target { text_input_target::settings_timeout };
+        text_edit_command command { text_edit_command::insert };
+        std::u8string text {};
+        std::size_t offset { 0 };
+        bool extend { false };
     };
 
     // 환경설정의 "업데이트 시 submodule 갱신" 토글이다 (2026-08-20 검수: update
@@ -588,18 +613,17 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message
-        = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent, reorder_card_intent,
-            request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent, begin_switch_intent,
-            select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent,
-            edit_switch_query_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, begin_discovery_intent, toggle_discovery_candidate_intent,
-            confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
-            clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent,
-            toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent,
-            local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent,
-            set_accent_intent, remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent,
-            close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event,
-            svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
+    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
+        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
+        begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
+        switch_dialog_scroll_intent, edit_text_input_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, begin_discovery_intent,
+        toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent,
+        set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent,
+        toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent,
+        local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent,
+        set_accent_intent, remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
+        document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
+        local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

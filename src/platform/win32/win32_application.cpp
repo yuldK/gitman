@@ -41,6 +41,8 @@ namespace gitman::win32 {
         constexpr UINT ui_command_request_message { WM_APP + 2 };
         // input thread가 큐에 넣은 외부 열기(VSCode·탐색기) 요청의 신호다 (2.3).
         constexpr UINT open_external_request_message { WM_APP + 3 };
+        // 클립보드 요청(복사·붙여넣기)을 UI thread로 넘기는 신호다 (R2.5).
+        constexpr UINT clipboard_request_message { WM_APP + 4 };
         // tooltip 지연이 끝나는 시점에 한 번 다시 그리기 위한 timer다.
         constexpr UINT_PTR tooltip_timer_id { 1 };
 
@@ -248,7 +250,7 @@ namespace gitman::win32 {
                 // smoke test는 스레드 없이 한 frame만 그린다. 실제 앱 모드에서만
                 // runtime(스레드 4종과 채널)을 조립한다.
                 if (options_.smoke_test == false)
-                    runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, ui_command_request_message, open_external_request_message);
+                    runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, ui_command_request_message, open_external_request_message, clipboard_request_message);
                 return true;
             }
 
@@ -312,6 +314,11 @@ namespace gitman::win32 {
                     if (runtime_ != nullptr)
                         for (const ui::open_external_request& request : runtime_->take_open_external_requests())
                             execute_open_external(request);
+                    return 0;
+                case clipboard_request_message:
+                    if (runtime_ != nullptr)
+                        for (const ui::clipboard_request& request : runtime_->take_clipboard_requests())
+                            execute_clipboard_request(request);
                     return 0;
                 case WM_DROPFILES:
                     open_dropped_workspace_document(reinterpret_cast<HDROP>(word_parameter));
@@ -384,10 +391,14 @@ namespace gitman::win32 {
                 case WM_KEYDOWN:
                     if (runtime_ != nullptr)
                     {
-                        const ui::key_code key { key_from_virtual(word_parameter) };
+                        const bool control { (GetKeyState(VK_CONTROL) & 0x8000) != 0 };
+                        const bool shift { (GetKeyState(VK_SHIFT) & 0x8000) != 0 };
+                        ui::key_code key { key_from_virtual(word_parameter) };
+                        if (key == ui::key_code::none)
+                            key = control_key_from_virtual(word_parameter, control);
                         if (key != ui::key_code::none)
                         {
-                            runtime_->post_raw_input(ui::key_pressed_event { key, (GetKeyState(VK_CONTROL) & 0x8000) != 0 });
+                            runtime_->post_raw_input(ui::key_pressed_event { key, control, shift });
                             return 0;
                         }
                     }
@@ -941,6 +952,37 @@ namespace gitman::win32 {
                     return ui::key_code::f5;
                 case VK_ESCAPE:
                     return ui::key_code::escape;
+                case VK_LEFT:
+                    return ui::key_code::arrow_left;
+                case VK_RIGHT:
+                    return ui::key_code::arrow_right;
+                case VK_HOME:
+                    return ui::key_code::home;
+                case VK_END:
+                    return ui::key_code::end;
+                case VK_DELETE:
+                    return ui::key_code::delete_forward;
+                default:
+                    return ui::key_code::none;
+                }
+            }
+
+            // Ctrl 조합의 글자 키다 (switch-dialog-query-bar-design R2.4). Ctrl이
+            // 눌리지 않았으면 none이라 WM_CHAR로 흘러 그 글자를 그대로 칠 수 있다.
+            [[nodiscard]] static ui::key_code control_key_from_virtual(const WPARAM virtual_key, const bool control) noexcept
+            {
+                if (control == false)
+                    return ui::key_code::none;
+                switch (virtual_key)
+                {
+                case 'A':
+                    return ui::key_code::key_a;
+                case 'C':
+                    return ui::key_code::key_c;
+                case 'V':
+                    return ui::key_code::key_v;
+                case 'X':
+                    return ui::key_code::key_x;
                 default:
                     return ui::key_code::none;
                 }
@@ -1089,6 +1131,30 @@ namespace gitman::win32 {
                 schedule_caret_repaint(state.interaction);
                 schedule_elapsed_repaint();
                 return renderer_->render(state, error);
+            }
+
+            // 클립보드 요청을 실행한다 (switch-dialog-query-bar-design R2.5).
+            // 클립보드는 Win32 자원이라 UI thread 전용이다. 붙여넣기는 읽은 글을
+            // 그 텍스트 박스의 insert intent로 바꿔 logic에 보낸다.
+            void execute_clipboard_request(const ui::clipboard_request& request) const noexcept
+            {
+                if (const auto* const copy { std::get_if<ui::clipboard_copy_request>(&request) }; copy != nullptr)
+                {
+                    static_cast<void>(win32::copy_text_to_clipboard(window_, copy->text));
+                    return;
+                }
+                const auto* const paste { std::get_if<ui::clipboard_paste_request>(&request) };
+                if (paste == nullptr || runtime_ == nullptr)
+                    return;
+                std::u8string text { win32::read_text_from_clipboard(window_) };
+                if (text.empty())
+                    return;
+
+                edit_text_input_intent intent {};
+                intent.target = paste->target;
+                intent.command = text_edit_command::insert;
+                intent.text = std::move(text);
+                runtime_->post_logic(logic_message { std::move(intent) });
             }
 
             // 외부 열기 요청을 shell로 실행한다 (field-feedback-design 2.3). VSCode는

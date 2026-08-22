@@ -1,4 +1,5 @@
 #include "application/logic_controller.h"
+#include "domain/text_edit.h"
 #include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/settings_dialog_element.h"
 #include "presentation/ui/ui_interaction.h"
@@ -15,6 +16,24 @@
 #include <vector>
 
 namespace {
+    // 제한 시간 칸의 편집 intent다. 키 입력 한 번과 같다.
+    gitman::edit_text_input_intent timeout_insert(const std::u8string_view text)
+    {
+        gitman::edit_text_input_intent intent {};
+        intent.target = gitman::text_input_target::settings_timeout;
+        intent.command = gitman::text_edit_command::insert;
+        intent.text = text;
+        return intent;
+    }
+
+    gitman::edit_text_input_intent timeout_command(const gitman::text_edit_command command)
+    {
+        gitman::edit_text_input_intent intent {};
+        intent.target = gitman::text_input_target::settings_timeout;
+        intent.command = command;
+        return intent;
+    }
+
     class recording_submitter final : public gitman::operation_submitter
     {
     public:
@@ -632,16 +651,16 @@ TEST_CASE("Timeout characters edit the draft and only digits count", "[logic][se
     fixture.controller.handle(gitman::open_settings_intent {});
 
     // 기본 상태에서는 초안이 비어 있다 (기본값 표기).
-    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout_text.empty());
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout.text.empty());
 
     // 숫자는 뒤에 붙고, 숫자가 아닌 문자는 무시되고, backspace는 마지막 자리를
     // 지운다. 최대값(3600)이 4자리라 다섯 자리째는 버린다.
     for (const char32_t character : { U'9', U'a', U'0', U'힣', U'0', U' ', U'0', U'1' })
-        fixture.controller.handle(gitman::edit_settings_timeout_intent { character });
-    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout_text == u8"9000");
+        fixture.controller.handle(timeout_insert(gitman::text_edit_encode_utf8(character)));
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout.text == u8"9000");
 
-    fixture.controller.handle(gitman::edit_settings_timeout_intent { U'\b' });
-    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout_text == u8"900");
+    fixture.controller.handle(timeout_command(gitman::text_edit_command::backspace));
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout.text == u8"900");
     REQUIRE(fixture.submitter.requests.empty());
 }
 
@@ -649,7 +668,7 @@ TEST_CASE("An out of range timeout blocks confirmation with a Korean message", "
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
-    fixture.controller.handle(gitman::edit_settings_timeout_intent { U'5' });
+    fixture.controller.handle(timeout_insert(u8"5"));
 
     const auto view { fixture.controller.make_view_snapshot() };
     REQUIRE(view->settings_dialog->can_confirm == false);
@@ -666,7 +685,7 @@ TEST_CASE("Confirming a timeout change saves it and carries it on refresh reques
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     for (const char32_t character : { U'1', U'8', U'0', U'0' })
-        fixture.controller.handle(gitman::edit_settings_timeout_intent { character });
+        fixture.controller.handle(timeout_insert(gitman::text_edit_encode_utf8(character)));
     fixture.controller.handle(gitman::confirm_settings_intent {});
 
     REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog.has_value() == false);
@@ -684,7 +703,7 @@ TEST_CASE("Confirming a timeout change saves it and carries it on refresh reques
     // 다시 열면 저장한 값이 초안 텍스트로 돌아온다. (빈 초안의 기본값 복원 저장은
     // store 테스트가 필드 제거로 검증한다.)
     fixture.controller.handle(gitman::open_settings_intent {});
-    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout_text == u8"1800");
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->timeout.text == u8"1800");
 }
 
 TEST_CASE("Typed characters reach the timeout box only while it has focus", "[ui][settings-ui][timeout]")
@@ -721,9 +740,11 @@ TEST_CASE("Typed characters reach the timeout box only while it has focus", "[ui
     REQUIRE(actions.size() == 1u);
     const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
     REQUIRE(message != nullptr);
-    const auto* const intent { std::get_if<gitman::edit_settings_timeout_intent>(message) };
+    const auto* const intent { std::get_if<gitman::edit_text_input_intent>(message) };
     REQUIRE(intent != nullptr);
-    REQUIRE(intent->character == U'5');
+    REQUIRE(intent->target == gitman::text_input_target::settings_timeout);
+    REQUIRE(intent->command == gitman::text_edit_command::insert);
+    REQUIRE(intent->text == u8"5");
 }
 
 TEST_CASE("Focus follows presses and carries the caret phase origin", "[ui][settings-ui][timeout]")

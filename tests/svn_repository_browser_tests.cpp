@@ -24,7 +24,7 @@ namespace {
     }
 } // namespace
 
-TEST_CASE("SVN browser loads only the root when it opens", "[application][svn][browser]")
+TEST_CASE("SVN browser does not descend without a reveal target", "[application][svn][browser]")
 {
     gitman::svn_repository_browser_state state { browser() };
     REQUIRE(state.selected_url == current_url);

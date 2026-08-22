@@ -137,6 +137,16 @@ namespace gitman::ui {
         return nullptr;
     }
 
+    std::optional<std::size_t> ui_element::offset_at(float, const text_measurer&) const
+    {
+        return std::nullopt;
+    }
+
+    std::optional<text_input_snapshot> ui_element::text_input() const
+    {
+        return std::nullopt;
+    }
+
     void ui_element::add_child(std::unique_ptr<ui_element> child)
     {
         children_.push_back(std::move(child));

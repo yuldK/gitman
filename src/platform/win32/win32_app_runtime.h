@@ -32,7 +32,7 @@ namespace gitman::win32 {
         // ui_command_message는 input thread가 요청한 `ui::ui_command`를 UI thread로
         // 나르는 창 메시지다. wparam이 command 값이다. open_external_message는
         // 인자를 담는 외부 열기 요청의 신호이며 내용은 내부 큐로 나른다 (2.3).
-        app_runtime(HWND window, UINT snapshot_message, UINT ui_command_message, UINT open_external_message = 0);
+        app_runtime(HWND window, UINT snapshot_message, UINT ui_command_message, UINT open_external_message = 0, UINT clipboard_message = 0);
         app_runtime(const app_runtime&) = delete;
         app_runtime(app_runtime&&) = delete;
         app_runtime& operator=(const app_runtime&) = delete;
@@ -56,6 +56,8 @@ namespace gitman::win32 {
         [[nodiscard]] ui::interaction_snapshot acquire_interaction();
         // input thread가 큐에 넣은 외부 열기 요청을 모두 꺼낸다 (UI thread 전용).
         [[nodiscard]] std::vector<ui::open_external_request> take_open_external_requests();
+        // input thread가 큐에 넣은 클립보드 요청을 모두 꺼낸다 (UI thread 전용).
+        [[nodiscard]] std::vector<ui::clipboard_request> take_clipboard_requests();
 
     private:
         void logic_thread_main();

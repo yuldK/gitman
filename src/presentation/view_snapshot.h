@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/svn_repository_browser.h"
+#include "domain/appearance.h"
 #include "domain/discovery.h"
 #include "domain/operation_log.h"
 #include "domain/project.h"
@@ -311,6 +312,9 @@ namespace gitman {
         // 카드 경로가 문서 기준 상대 경로로 표시되고 있다. toolbar 토글의 표시
         // 상태이며, 카드의 `path`에는 이미 적용된 문자열이 들어 있다.
         bool relative_paths { false };
+        // 앱 설정의 테마·키 컬러다 (theme-and-banner-menu-design T3.2). logic은
+        // 팔레트를 만들지 않는다 — UI thread가 고대비·OS 설정과 함께 해석한다.
+        appearance_settings appearance {};
         // 문서에서 읽은 창 배치다. UI thread는 revision이 바뀔 때 한 번만 적용한다.
         // snapshot마다 창을 다시 배치하지 않도록 revision 비교가 경계를 만든다.
         std::optional<window_placement> window_placement_request {};

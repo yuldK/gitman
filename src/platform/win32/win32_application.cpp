@@ -43,6 +43,18 @@ namespace gitman::win32 {
         constexpr UINT open_external_request_message { WM_APP + 3 };
         // tooltip 지연이 끝나는 시점에 한 번 다시 그리기 위한 timer다.
         constexpr UINT_PTR tooltip_timer_id { 1 };
+
+        // OS의 앱 모드가 밝은지다 (theme-and-banner-menu-design T3.2). 값을 읽지
+        // 못하면 어두운 쪽으로 본다 — 지금까지의 모습과 같다.
+        [[nodiscard]] bool read_system_prefers_light_theme() noexcept
+        {
+            DWORD value { 0 };
+            DWORD size { sizeof(value) };
+            const LSTATUS status {
+                RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size),
+            };
+            return status == ERROR_SUCCESS && value != 0;
+        }
         // 초점을 받은 텍스트 박스의 caret이 다음에 뒤집히는 시점에 다시 그리기 위한
         // timer다. 매 render가 남은 시간을 다시 계산해 걸므로 반복 timer가 아니어도
         // 깜빡임이 이어진다.
@@ -472,6 +484,8 @@ namespace gitman::win32 {
                 }
                 case WM_SETTINGCHANGE:
                 case WM_THEMECHANGED:
+                    // OS 테마가 바뀌면 `system` 선호가 가리키는 팔레트도 바뀐다.
+                    system_prefers_light_ = read_system_prefers_light_theme();
                     InvalidateRect(window_, nullptr, FALSE);
                     return 0;
 
@@ -1006,8 +1020,16 @@ namespace gitman::win32 {
                 state.width = std::max(1L, client_rectangle.right - client_rectangle.left);
                 state.height = std::max(1L, client_rectangle.bottom - client_rectangle.top);
                 state.dpi_scale = static_cast<float>(dpi_) / 96.0F;
-                state.theme = high_contrast_enabled ? color_theme::high_contrast : color_theme::dark;
                 state.maximized = IsZoomed(window_) != FALSE;
+
+                // 테마와 키 컬러는 앱 설정에서 오고, 해석은 UI thread의 몫이다
+                // (T3.2). 설정을 아직 읽지 못했으면 기본값(system·mint)이다.
+                appearance_settings appearance {};
+                if (runtime_ != nullptr)
+                    if (const std::shared_ptr<const view_snapshot> settings_view { runtime_->acquire_view() }; settings_view != nullptr)
+                        appearance = settings_view->appearance;
+                state.theme = resolve_color_theme(appearance.theme, high_contrast_enabled, system_prefers_light_);
+                state.accent_id = appearance.accent_id;
 
                 // 앱 모드에서는 logic이 게시한 tree와 input thread의 상호작용 상태로
                 // 그린다. tree는 shared_ptr이 이 호출 동안 수명을 보장한다.
@@ -1156,6 +1178,10 @@ namespace gitman::win32 {
             // 마지막으로 적용한 창 배치 게시 번호다. 0은 아직 적용한 적이 없다는 뜻이다.
             std::uint64_t applied_window_placement_revision_ { 0 };
             ui::caption_button_hover hovered_caption_button_ { ui::caption_button_hover::none };
+            // OS의 "앱 모드" 설정이다 (theme-and-banner-menu-design T3.2). 레지스트리
+            // 조회는 프레임마다 하지 않고 시작 시 한 번, 이후 WM_SETTINGCHANGE·
+            // WM_THEMECHANGED에서만 갱신한다.
+            bool system_prefers_light_ { read_system_prefers_light_theme() };
             std::chrono::steady_clock::time_point nc_hover_since_ {};
             bool tracking_non_client_mouse_ { false };
             bool tracking_client_mouse_ { false };

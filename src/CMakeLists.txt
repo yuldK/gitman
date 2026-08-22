@@ -64,6 +64,8 @@ add_library(gitman_lib STATIC
     # 도메인: 순수 규칙과 값 타입이다. 다른 계층에 의존하지 않는다.
     domain/app_settings.cpp
     domain/app_settings.h
+    domain/appearance.cpp
+    domain/appearance.h
     domain/diagnostic.cpp
     domain/diagnostic.h
     domain/discovery.cpp

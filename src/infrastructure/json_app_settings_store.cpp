@@ -213,6 +213,41 @@ namespace gitman {
             }
             return settings;
         }
+
+        // 테마와 키 컬러다 (theme-and-banner-menu-design T3.2). 표시 설정이라 어떤
+        // 오류도 시작을 막지 않고, 알 수 없는 값은 경고 하나를 남기고 기본값을 쓴다.
+        appearance_settings parse_appearance(const json& root, app_settings_load_result& result, const std::u8string_view path)
+        {
+            appearance_settings appearance {};
+            const auto source { root.find("appearance") };
+            if (source == root.end() || source->is_null())
+                return appearance;
+            if (source->is_object() == false)
+            {
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 appearance는 object여야 합니다. 기본값을 사용합니다.", path));
+                return appearance;
+            }
+
+            if (const auto theme { source->find("theme") }; theme != source->end() && theme->is_null() == false)
+            {
+                if (theme->is_string() == false || parse_theme_preference(as_u8string(theme->get_ref<const std::string&>()), appearance.theme) == false)
+                    result.diagnostics.push_back(make_diagnostic(
+                        diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 테마는 system·light·dark 중 하나여야 합니다. 기본값을 사용합니다.", path));
+            }
+
+            if (const auto accent { source->find("accent") }; accent != source->end() && accent->is_null() == false)
+            {
+                if (accent->is_string() == false)
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 키 컬러 id는 문자열이어야 합니다. 기본값을 사용합니다.", path));
+                else if (std::u8string id { as_u8string(accent->get_ref<const std::string&>()) }; id.empty() == false)
+                    // 목록에 있는 id인지는 표시 계층이 판정한다. 여기서는 값만 나른다
+                    // — 색 목록이 바뀐 뒤에도 저장된 선택이 살아남게 하는 규칙이다.
+                    appearance.accent_id = std::move(id);
+            }
+            return appearance;
+        }
     } // namespace
 
     std::u8string serialize_app_settings_json(const app_settings& settings, const std::u8string_view shadow_source_json)
@@ -250,6 +285,15 @@ namespace gitman {
             root["settings"] = std::move(value);
         }
 
+        // 외양은 항상 두 키를 기록한다. 파일만 봐도 무엇을 고를 수 있는지 보인다.
+        {
+            const auto existing { root.find("appearance") };
+            json value { existing != root.end() && existing->is_object() ? *existing : json::object() };
+            value["theme"] = as_string(theme_preference_name(settings.appearance.theme));
+            value["accent"] = as_string(settings.appearance.accent_id);
+            root["appearance"] = std::move(value);
+        }
+
         // 값이 없으면 필드를 만들지 않고, 파일에 이미 있던 `window`는 지우지
         // 않는다 (문서 저장의 window 규칙과 동일).
         if (settings.window.has_value())
@@ -285,6 +329,7 @@ namespace gitman {
 
         result.settings.window = parse_window(root, result, path);
         result.settings.settings = parse_global_settings(root, result, path);
+        result.settings.appearance = parse_appearance(root, result, path);
 
         const auto recent { root.find("recent_documents") };
         if (recent == root.end())

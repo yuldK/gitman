@@ -281,6 +281,69 @@ TEST_CASE("Global settings in the app settings file round trip with validation",
         REQUIRE(value.severity == gitman::diagnostic_severity::warning);
 }
 
+TEST_CASE("Appearance settings round trip and fall back on unknown values", "[app-settings][json][theme]")
+{
+    // 테마와 키 컬러다 (T3.2). 표시 설정이라 어떤 오류도 시작을 막지 않는다.
+    gitman::app_settings settings {};
+    settings.appearance.theme = gitman::theme_preference::light;
+    settings.appearance.accent_id = u8"blue";
+
+    const std::u8string serialized { gitman::serialize_app_settings_json(settings, {}) };
+    const gitman::app_settings_load_result reparsed { gitman::parse_app_settings_json(serialized, settings_path) };
+    REQUIRE(reparsed.diagnostics.empty());
+    REQUIRE(reparsed.settings.appearance == settings.appearance);
+
+    // 기본값도 파일에 남아 무엇을 고를 수 있는지 보인다.
+    const gitman::app_settings_load_result defaults { gitman::parse_app_settings_json(gitman::serialize_app_settings_json(gitman::app_settings {}, {}), settings_path) };
+    REQUIRE(defaults.settings.appearance.theme == gitman::theme_preference::system);
+    REQUIRE(u8_equal(defaults.settings.appearance.accent_id, u8"mint"));
+
+    // 모르는 테마 이름은 경고 하나를 남기고 기본값이다.
+    const gitman::app_settings_load_result unknown_theme { gitman::parse_app_settings_json(u8"{ \"appearance\": { \"theme\": \"neon\" } }", settings_path) };
+    REQUIRE(unknown_theme.settings.appearance.theme == gitman::theme_preference::system);
+    REQUIRE(unknown_theme.diagnostics.size() == 1);
+    REQUIRE(unknown_theme.diagnostics.front().severity == gitman::diagnostic_severity::warning);
+
+    // 목록에 없는 키 컬러 id는 그대로 나른다. 물러서는 판정은 표시 계층의 몫이라
+    // 색 목록이 바뀐 뒤에도 저장된 선택이 살아남는다.
+    const gitman::app_settings_load_result unknown_accent { gitman::parse_app_settings_json(u8"{ \"appearance\": { \"accent\": \"teal\" } }", settings_path) };
+    REQUIRE(u8_equal(unknown_accent.settings.appearance.accent_id, u8"teal"));
+    REQUIRE(unknown_accent.diagnostics.empty());
+
+    // object가 아니거나 형식이 틀리면 경고만 남기고 기본값이다.
+    const gitman::app_settings_load_result wrong_type { gitman::parse_app_settings_json(u8"{ \"appearance\": 3 }", settings_path) };
+    REQUIRE(wrong_type.settings.appearance == gitman::appearance_settings {});
+    REQUIRE(wrong_type.diagnostics.size() == 1);
+}
+
+TEST_CASE("Theme intents update the app settings and request a save", "[logic][app-settings][theme]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.start();
+    const std::uint64_t load_id { submitter.requests.front().operation_id };
+    controller.handle(gitman::logic_message { make_loaded_settings(load_id) });
+
+    controller.handle(gitman::logic_message { gitman::set_theme_preference_intent { gitman::theme_preference::dark } });
+    const gitman::operation_request* const saved_theme { submitter.last_of(gitman::operation_kind::save_app_settings) };
+    REQUIRE(saved_theme != nullptr);
+    REQUIRE(saved_theme->app_settings_payload.has_value());
+    REQUIRE(saved_theme->app_settings_payload->appearance.theme == gitman::theme_preference::dark);
+    // 화면은 저장을 기다리지 않는다 — snapshot이 곧바로 새 값을 싣는다.
+    REQUIRE(controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::dark);
+
+    // 같은 값을 다시 보내면 저장이 늘지 않는다.
+    const std::size_t saves { submitter.count_of(gitman::operation_kind::save_app_settings) };
+    controller.handle(gitman::logic_message { gitman::set_theme_preference_intent { gitman::theme_preference::dark } });
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == saves);
+
+    // 빈 id는 무시한다. 유효한 id는 저장과 snapshot에 함께 반영된다.
+    controller.handle(gitman::logic_message { gitman::set_accent_intent { u8"" } });
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == saves);
+    controller.handle(gitman::logic_message { gitman::set_accent_intent { u8"blue" } });
+    REQUIRE(u8_equal(controller.make_view_snapshot()->appearance.accent_id, u8"blue"));
+}
+
 TEST_CASE("A broken app settings file falls back to defaults with a warning", "[app-settings][json]")
 {
     const gitman::app_settings_load_result broken { gitman::parse_app_settings_json(u8"not json", settings_path) };

@@ -207,6 +207,10 @@ namespace gitman {
                     handle_open_context_menu(value);
                 else if constexpr (std::is_same_v<value_type, open_document_context_menu_intent>)
                     handle_open_document_context_menu(value);
+                else if constexpr (std::is_same_v<value_type, set_theme_preference_intent>)
+                    handle_set_theme_preference(value);
+                else if constexpr (std::is_same_v<value_type, set_accent_intent>)
+                    handle_set_accent(value);
                 else if constexpr (std::is_same_v<value_type, close_context_menu_intent>)
                     context_menu_.reset();
                 else if constexpr (std::is_same_v<value_type, remove_recent_document_intent>)
@@ -1653,6 +1657,24 @@ namespace gitman {
         context_menu_ = { context_menu_state { context_menu_kind::document, {}, intent.anchor_x, intent.anchor_y } };
     }
 
+    void logic_controller::handle_set_theme_preference(const set_theme_preference_intent& intent)
+    {
+        if (shutting_down_ || app_settings_.appearance.theme == intent.theme)
+            return;
+        // 외양은 초안을 거치지 않고 곧바로 반영·저장한다 (T3.3). 조회 설정이
+        // 아니므로 카드 재조회도 필요 없다.
+        app_settings_.appearance.theme = intent.theme;
+        request_app_settings_save();
+    }
+
+    void logic_controller::handle_set_accent(const set_accent_intent& intent)
+    {
+        if (shutting_down_ || intent.accent_id.empty() || app_settings_.appearance.accent_id == intent.accent_id)
+            return;
+        app_settings_.appearance.accent_id = intent.accent_id;
+        request_app_settings_save();
+    }
+
     void logic_controller::handle_open_local_changes(const open_local_changes_intent& intent)
     {
         if (shutting_down_)
@@ -2078,6 +2100,7 @@ namespace gitman {
         snapshot->scale = scale_;
         snapshot->scroll_offset = scroll_offset_;
         snapshot->relative_paths = relative_paths();
+        snapshot->appearance = app_settings_.appearance;
         snapshot->window_placement_request = window_placement_;
         snapshot->window_placement_revision = window_placement_revision_;
         snapshot->document_generating = pending_generation_operation_id_ != 0;

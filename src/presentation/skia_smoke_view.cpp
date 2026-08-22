@@ -22,7 +22,7 @@ namespace gitman {
     void draw_skia_smoke_view(SkCanvas& canvas, SkTypeface* codicon_typeface, SkTypeface* ui_typeface, const smoke_view_state& state)
     {
         const float scale { state.dpi_scale };
-        const ui_color_palette colors { color_palette_for(state.theme) };
+        const ui_color_palette colors { color_palette_for(state.theme, accent_for(state.accent_id)) };
         ui::draw_context context {
             .canvas = canvas,
             .codicon_typeface = codicon_typeface,

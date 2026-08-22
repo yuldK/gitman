@@ -287,6 +287,19 @@ namespace gitman {
         float anchor_y { 0.0f };
     };
 
+    // 환경설정의 외양 행이 보내는 값이다 (theme-and-banner-menu-design T3.3).
+    // 저장·취소 초안을 거치지 않고 곧바로 앱 설정에 반영·저장한다 — 색은 눌러 보고
+    // 고르는 항목이라 미리 보기가 곧 값이어야 한다.
+    struct set_theme_preference_intent
+    {
+        theme_preference theme { theme_preference::system };
+    };
+
+    struct set_accent_intent
+    {
+        std::u8string accent_id {};
+    };
+
     // 바깥 클릭·Esc·항목 실행이 보내는 메뉴 닫기다.
     struct close_context_menu_intent
     {};
@@ -550,7 +563,7 @@ namespace gitman {
         open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent,
         toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent,
         cancel_local_changes_dialog_intent,
-        local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, remove_recent_document_intent, close_document_intent, show_notice_intent,
+        local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent, set_accent_intent, remove_recent_document_intent, close_document_intent, show_notice_intent,
         dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
         document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event,
         projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;

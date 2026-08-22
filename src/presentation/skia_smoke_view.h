@@ -5,6 +5,8 @@
 #include "presentation/ui/ui_tree.h"
 #include "presentation/ui_theme.h"
 
+#include <string>
+
 class SkCanvas;
 class SkTypeface;
 
@@ -17,6 +19,8 @@ namespace gitman {
         renderer_backend backend { renderer_backend::cpu };
         bool used_fallback { false };
         color_theme theme { color_theme::dark };
+        // 앱 설정이 고른 키 컬러 id다 (T4). 비어 있거나 목록에 없으면 기본색이다.
+        std::u8string accent_id {};
         bool maximized { false };
 
         // input thread가 게시한 상호작용 상태다. caption의 비클라이언트 hover는

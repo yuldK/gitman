@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/appearance.h"
 #include "domain/project.h"
 
 #include <chrono>
@@ -46,6 +47,9 @@ namespace gitman {
         // 앱 단위 전역 설정이다 (같은 설계 G3). 모든 필드가 구체 값이며, 문서가
         // 덮어쓰지 않은 항목의 유효 값이 된다.
         workspace_settings settings {};
+        // 테마와 키 컬러다 (theme-and-banner-menu-design T3). 문서가 덮어쓰지
+        // 않는 앱 단위 값이라 `settings` 밖에 둔다.
+        appearance_settings appearance {};
 
         [[nodiscard]] bool operator==(const app_settings&) const noexcept = default;
     };

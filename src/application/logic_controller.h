@@ -101,6 +101,8 @@ namespace gitman {
         void handle_open_settings();
         void handle_open_context_menu(const open_context_menu_intent& intent);
         void handle_open_document_context_menu(const open_document_context_menu_intent& intent);
+        void handle_set_theme_preference(const set_theme_preference_intent& intent);
+        void handle_set_accent(const set_accent_intent& intent);
         void handle_open_local_changes(const open_local_changes_intent& intent);
         void handle_select_local_change(std::size_t index);
         void handle_local_changes(local_changes_event event);

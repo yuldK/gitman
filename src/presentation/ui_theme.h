@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/appearance.h"
+
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -10,6 +12,9 @@ namespace gitman {
     enum class color_theme
     {
         dark,
+        // 밝은 바탕이다 (theme-and-banner-menu-design T3). 설정의 선호나 OS 설정이
+        // 고른다.
+        light,
         high_contrast,
     };
 
@@ -97,4 +102,8 @@ namespace gitman {
     [[nodiscard]] ui_color_palette color_palette_for(color_theme theme, const accent_definition& accent) noexcept;
     // 기본 키 컬러(mint)를 쓰는 팔레트다. 설정을 아직 모르는 경로가 쓴다.
     [[nodiscard]] ui_color_palette color_palette_for(color_theme theme) noexcept;
+
+    // 설정의 선호를 실제 팔레트 선택으로 바꾼다 (T3.2). 고대비가 가장 세고,
+    // `system`은 OS의 밝은 앱 설정(`system_prefers_light`)을 따른다.
+    [[nodiscard]] color_theme resolve_color_theme(theme_preference preference, bool high_contrast, bool system_prefers_light) noexcept;
 } // namespace gitman

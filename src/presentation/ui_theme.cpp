@@ -58,6 +58,32 @@ namespace gitman {
             },
         };
 
+        // 밝은 바탕이다 (T3.2). 중립 색은 VSCode Light Modern에 맞췄다. 낮은
+        // 알파로 primary_foreground를 겹쳐 쓰는 그리기 코드는 전경색이 뒤집히면서
+        // 그대로 성립한다.
+        constexpr ui_color_palette light_neutral_palette {
+            .window_background = make_ui_color(248, 248, 248),
+            .surface_background = make_ui_color(255, 255, 255),
+            .primary_foreground = make_ui_color(31, 31, 31),
+            .warning_accent = make_ui_color(154, 103, 0),
+            .error_accent = make_ui_color(192, 48, 58),
+            .button_hover_background = make_ui_color(0, 0, 0, 20),
+            .button_hover_foreground = make_ui_color(31, 31, 31),
+            .button_pressed_background = make_ui_color(0, 0, 0, 36),
+            .tooltip_background = make_ui_color(255, 255, 255),
+            .tooltip_border = make_ui_color(200, 200, 200),
+            .content_shadow = make_ui_color(0, 0, 0),
+            .notice_background = make_ui_color(253, 231, 233),
+            .caption = {
+                .background = make_ui_color(240, 240, 240),
+                .foreground = make_ui_color(31, 31, 31),
+                .button_hover_background = make_ui_color(218, 218, 218),
+                .button_hover_foreground = make_ui_color(31, 31, 31),
+                .close_button_hover_background = make_ui_color(196, 43, 28),
+                .close_button_hover_foreground = make_ui_color(255, 255, 255),
+            },
+        };
+
         constexpr ui_color_palette high_contrast_palette {
             .window_background = make_ui_color(0, 0, 0),
             .surface_background = make_ui_color(0, 0, 0),
@@ -91,6 +117,8 @@ namespace gitman {
     {
         switch (theme)
         {
+        case color_theme::light:
+            return light;
         case color_theme::high_contrast:
         case color_theme::dark:
         default:
@@ -130,7 +158,7 @@ namespace gitman {
             return high_contrast_palette;
 
         const accent_color_set& colors { accent.for_theme(theme) };
-        ui_color_palette palette { dark_neutral_palette };
+        ui_color_palette palette { theme == color_theme::light ? light_neutral_palette : dark_neutral_palette };
         palette.accent = colors.accent;
         palette.accent_hover = colors.hover;
         palette.accent_soft = colors.soft;
@@ -141,5 +169,22 @@ namespace gitman {
     ui_color_palette color_palette_for(const color_theme theme) noexcept
     {
         return color_palette_for(theme, accent_for(default_accent_id));
+    }
+
+    color_theme resolve_color_theme(const theme_preference preference, const bool high_contrast, const bool system_prefers_light) noexcept
+    {
+        // 고대비는 접근성 설정이라 어떤 선호보다 세다.
+        if (high_contrast)
+            return color_theme::high_contrast;
+        switch (preference)
+        {
+        case theme_preference::light:
+            return color_theme::light;
+        case theme_preference::dark:
+            return color_theme::dark;
+        case theme_preference::system:
+        default:
+            return system_prefers_light ? color_theme::light : color_theme::dark;
+        }
     }
 } // namespace gitman

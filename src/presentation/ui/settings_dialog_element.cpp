@@ -41,12 +41,11 @@ namespace gitman::ui {
         constexpr float item_bottom_margin { 8.0f };
         // 제한 시간 항목만 값 줄에 텍스트 박스가 들어가 조금 높다.
         constexpr float timeout_value_height { 26.0f };
-        // 문서 모드에서 항목 제목 줄의 오른쪽 끝에 두는 배지 열이다 (D2). 행
-        // 컨트롤은 이 열만큼 왼쪽으로 밀린다.
+        // 문서 모드에서 항목 제목 **바로 위**에 오는 배지 줄이다 (E3). 제목 줄
+        // 오른쪽은 행 컨트롤이 그대로 쓴다 — 배지 때문에 조작 요소가 밀리지 않는다.
         constexpr float badge_width { 62.0f };
-        constexpr float badge_height { 18.0f };
-        constexpr float badge_gap { 10.0f };
-        constexpr float badge_column { badge_width + badge_gap };
+        constexpr float badge_height { 17.0f };
+        constexpr float badge_row_height { 20.0f };
         constexpr float row_button_width { 68.0f };
         constexpr float row_button_height { 22.0f };
         constexpr float row_button_gap { 6.0f };
@@ -114,7 +113,9 @@ namespace gitman::ui {
             rect_f block {};
             rect_f title_line {};
             rect_f value_line {};
-            // 행 컨트롤의 오른쪽 한계다. 문서 모드에서는 배지 열만큼 안쪽이다 (D2).
+            // 제목 바로 위의 배지 자리다. 배지가 없는 항목은 폭이 0이다 (E3).
+            rect_f badge {};
+            // 행 컨트롤의 오른쪽 한계다. 제목 줄의 오른쪽 끝을 그대로 쓴다.
             float controls_right { 0.0f };
         };
 
@@ -172,10 +173,16 @@ namespace gitman::ui {
             return kind == item_kind::query_timeout ? timeout_value_height : item_value_height;
         }
 
-        // 항목 높이다. 색 격자와 파일 연결 버튼만 기본 높이보다 크다.
-        float item_height_for(const item_model& item, const float available_width, const std::size_t accent_count)
+        // 덮어쓸 수 있는 항목은 문서 모드에서 제목 위에 배지 줄을 하나 갖는다 (E3).
+        float badge_row_for(const item_model& item, const bool document_mode)
         {
-            const float base { item_title_height + value_height_for(item.kind) };
+            return document_mode && item.override_field.has_value() ? badge_row_height : 0.0f;
+        }
+
+        // 항목 높이다. 색 격자와 파일 연결 버튼만 기본 높이보다 크다.
+        float item_height_for(const item_model& item, const bool document_mode, const float available_width, const std::size_t accent_count)
+        {
+            const float base { badge_row_for(item, document_mode) + item_title_height + value_height_for(item.kind) };
             if (item.kind == item_kind::accent)
             {
                 const std::size_t rows { swatch_rows(accent_count, available_width) };
@@ -187,14 +194,14 @@ namespace gitman::ui {
             return base + item_bottom_margin;
         }
 
-        float tab_content_height(const tab_model& tab, const std::size_t accent_count)
+        float tab_content_height(const tab_model& tab, const bool document_mode, const std::size_t accent_count)
         {
             float total { 0.0f };
             for (std::size_t index = 0; index < tab.sections.size(); ++index)
             {
                 total += section_header_height;
                 for (const item_model& item : tab.sections[index].items)
-                    total += item_height_for(item, content_width, accent_count);
+                    total += item_height_for(item, document_mode, content_width, accent_count);
                 if (index + 1 < tab.sections.size())
                     total += section_gap;
             }
@@ -202,12 +209,12 @@ namespace gitman::ui {
         }
 
         // 탭을 옮길 때 창이 튀지 않도록 가장 높은 탭에 맞춘다 (S1.3).
-        float panel_height_for(const std::vector<tab_model>& tabs, const std::size_t accent_count)
+        float panel_height_for(const std::vector<tab_model>& tabs, const bool document_mode, const std::size_t accent_count)
         {
             float content { static_cast<float>(tabs.size()) * rail_row_height };
             for (const tab_model& tab : tabs)
             {
-                const float height { tab_content_height(tab, accent_count) };
+                const float height { tab_content_height(tab, document_mode, accent_count) };
                 if (height > content)
                     content = height;
             }
@@ -216,9 +223,6 @@ namespace gitman::ui {
 
         tab_layout layout_for(const rect_f& panel, const float scale, const tab_model& tab, const bool document_mode, const std::size_t accent_count)
         {
-            // 배지 열은 제목 줄의 오른쪽 끝을 쓴다. 항목 글자는 폭 전체를 그대로
-            // 쓰고 컨트롤만 그만큼 왼쪽으로 밀린다 (D2).
-            const float controls_inset { document_mode ? badge_column : 0.0f };
             tab_layout layout {};
             float top { panel.y + content_top * scale };
             for (std::size_t section = 0; section < tab.sections.size(); ++section)
@@ -227,12 +231,16 @@ namespace gitman::ui {
                 top += section_header_height * scale;
                 for (const item_model& item : tab.sections[section].items)
                 {
-                    const float height { item_height_for(item, content_width, accent_count) * scale };
+                    const float height { item_height_for(item, document_mode, content_width, accent_count) * scale };
+                    const float badge_row { badge_row_for(item, document_mode) * scale };
                     item_bounds bounds {};
                     bounds.block = { panel.x + content_left * scale, top, content_width * scale, height };
-                    bounds.title_line = { bounds.block.x, top, content_width * scale, item_title_height * scale };
-                    bounds.value_line = { bounds.title_line.x, top + item_title_height * scale, bounds.title_line.width, value_height_for(item.kind) * scale };
-                    bounds.controls_right = bounds.title_line.x + bounds.title_line.width - controls_inset * scale;
+                    // 배지는 항목 제목 바로 위 왼쪽이다 (E3). 없으면 빈 사각형이다.
+                    if (badge_row > 0.0f)
+                        bounds.badge = { bounds.block.x, top, badge_width * scale, badge_height * scale };
+                    bounds.title_line = { bounds.block.x, top + badge_row, content_width * scale, item_title_height * scale };
+                    bounds.value_line = { bounds.title_line.x, bounds.title_line.y + item_title_height * scale, bounds.title_line.width, value_height_for(item.kind) * scale };
+                    bounds.controls_right = bounds.title_line.x + bounds.title_line.width;
                     layout.items.push_back(bounds);
                     top += height;
                 }
@@ -769,11 +777,9 @@ namespace gitman::ui {
                     context.canvas.drawRRect(SkRRect::MakeRectXY(block, 4.0f * scale, 4.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.10f)));
                 }
 
-                // 세부 기능 타이틀은 키 컬러 + semi-bold로 강조한다. 문서 모드에서는
-                // 오른쪽 배지 열을 침범하지 않도록 폭을 줄인다 (D2).
-                const float title_width { bounds.controls_right - bounds.title_line.x };
-                static_cast<void>(draw_text_within(
-                    context.canvas, item.title, bounds.title_line.x, bounds.title_line.y + 15.0f * scale, title_width, title_font, solid_paint(context.palette.accent_emphasis_foreground)));
+                // 세부 기능 타이틀은 키 컬러 + semi-bold로 강조한다.
+                static_cast<void>(draw_text_within(context.canvas, item.title, bounds.title_line.x, bounds.title_line.y + 15.0f * scale, bounds.title_line.width, title_font,
+                    solid_paint(context.palette.accent_emphasis_foreground)));
 
                 // 타이틀이 아닌 본문은 흐리게 그려 위계를 만든다. 빈 값은 안내 문구다.
                 if (item.value.empty() && item.placeholder.empty())
@@ -812,7 +818,7 @@ namespace gitman::ui {
 
         const std::vector<tab_model> tabs { build_tabs(dialog_) };
         const std::size_t accent_count { accent_catalog().size() };
-        panel_height_ = panel_height_for(tabs, accent_count);
+        panel_height_ = panel_height_for(tabs, dialog_.document_mode, accent_count);
 
         const tab_model* active { &tabs.front() };
         for (const tab_model& tab : tabs)
@@ -1063,9 +1069,9 @@ namespace gitman::ui {
             if (index >= layout.items.size())
                 continue;
             const item_bounds& bounds { layout.items[index] };
-            const float badge_top { bounds.block.y + (item_title_height - badge_height) / 2.0f * scale };
-            const float badge_left { bounds.title_line.x + bounds.title_line.width - badge_width * scale };
-            badge->arrange({ { badge_left, badge_top, badge_width * scale, badge_height * scale }, scale });
+            if (bounds.badge.width <= 0.0f)
+                continue;
+            badge->arrange({ bounds.badge, scale });
         }
 
         const float button_width { action_button_width * scale };

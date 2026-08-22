@@ -507,9 +507,10 @@ TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[
     REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height == tools->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height);
 }
 
-TEST_CASE("The scope badge sits at the right end of the item title line", "[ui][settings-ui]")
+TEST_CASE("The scope badge sits above the item title without moving the controls", "[ui][settings-ui]")
 {
-    // 배지는 제목 줄의 오른쪽 끝이고 행 컨트롤이 그만큼 왼쪽으로 밀린다 (D2).
+    // 배지는 항목 제목 바로 위 왼쪽이고, 행 컨트롤은 제목 줄 오른쪽 끝을 그대로
+    // 쓴다 (E3).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
@@ -517,16 +518,25 @@ TEST_CASE("The scope badge sits at the right end of the item title line", "[ui][
     const gitman::ui::ui_element* const badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } }) };
     REQUIRE(badge != nullptr);
     const gitman::ui::rect_f badge_bounds { badge->bounds() };
-    REQUIRE(badge_bounds.height >= 18.0f);
+    REQUIRE(badge_bounds.height >= 16.0f);
 
-    // 같은 항목의 지우기 버튼과 같은 줄에 있고 그보다 오른쪽이며 겹치지 않는다.
+    // 같은 항목의 지우기 버튼보다 위에 있고 줄이 겹치지 않는다.
     const gitman::ui::rect_f clear { tree->find({ gitman::ui::ui_element_kind::settings_git_clear })->bounds() };
-    REQUIRE(badge_bounds.x >= clear.x + clear.width);
-    REQUIRE(badge_bounds.y + badge_bounds.height > clear.y);
-    REQUIRE(badge_bounds.y < clear.y + clear.height);
-    // panel 오른쪽 여백 안이다.
+    REQUIRE(badge_bounds.y + badge_bounds.height <= clear.y);
+    // 배지는 항목 왼쪽 끝에서 시작한다.
     const gitman::ui::rect_f panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
-    REQUIRE(badge_bounds.x + badge_bounds.width <= panel.x + panel.width);
+    REQUIRE(badge_bounds.x > panel.x);
+    REQUIRE(badge_bounds.x + badge_bounds.width < clear.x);
+
+    // 컨트롤은 전역 모드와 같은 오른쪽 끝에 있다 — 배지 때문에 밀리지 않는다.
+    recording_submitter global_submitter {};
+    gitman::logic_controller global_controller { global_submitter };
+    global_controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
+    global_controller.handle(gitman::open_settings_intent {});
+    const auto global_tree { gitman::ui::build_ui_tree(*global_controller.make_view_snapshot()) };
+    const gitman::ui::rect_f global_clear { global_tree->find({ gitman::ui::ui_element_kind::settings_git_clear })->bounds() };
+    const gitman::ui::rect_f global_panel { global_tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    REQUIRE(clear.x - panel.x == global_clear.x - global_panel.x);
 
     // 외양 항목도 같은 규칙이다. 초안을 고치면 `문서 설정`이 되어 누를 수 있다 (D4).
     fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });

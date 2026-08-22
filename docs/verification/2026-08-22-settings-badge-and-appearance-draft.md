@@ -57,3 +57,28 @@ tree 빌드 → Skia raster surface로 그려 확인했다(확인용 임시 코�
 - 테마를 고르고 `취소`로 닫으면 화면 색이 그대로인지, `저장`을 누르면 즉시
   바뀌는지.
 - 고대비 테마에서 `전역 설정` 배지의 대비.
+
+## 4. 후속 지시 반영 (E1~E3)
+
+| 항목 | 결과 |
+| --- | --- |
+| `ctest --preset vs2022-tests-debug` | **757/757 통과** |
+| `ctest --preset vs2022-tests-release` | **757/757 통과** |
+| `cmake --build --preset vs2022-analysis` | 분석 경고 없음 |
+| `cmake --build --preset vs2022-release` (앱) | 성공 |
+| `scripts/check_source_style.ps1 -root .` | 441 files 통과 |
+
+- `외양` 탭을 `테마`로 부른다.
+- dialog가 열려 있는 동안 테마·키 컬러 초안을 화면에 그대로 미리 보여 주고,
+  `취소`로 닫으면 원래 값으로 돌아간다. 파일은 `저장` 전까지 바뀌지 않는다.
+- 배지를 항목 제목 **바로 위 왼쪽**으로 옮겼다. 행 컨트롤(찾아보기·지우기·토글·
+  세그먼트)은 제목 줄 오른쪽 끝을 그대로 써서 문서/전역 모드에서 같은 자리다.
+  test가 두 모드의 컨트롤 x 좌표가 같은지 확인한다.
+- 화면 확인: `도구`·`테마` 탭(문서·다크), `테마`·`시스템` 탭(전역·라이트)에서
+  배지가 제목 위에 오고 조작 요소가 밀리지 않는 것을 확인했다. panel은 600 × 456
+  (문서 모드 기준)이다.
+- 고쳐 쓴 test: `Cancelling the settings dialog rolls the appearance preview back`,
+  `Appearance clicks preview at once and need the save button to persist`,
+  `The scope badge sits above the item title without moving the controls`,
+  `The appearance draft lands in the document on save`,
+  `Theme intents update the app settings and request a save`.

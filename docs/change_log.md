@@ -1,5 +1,51 @@
 # 변경 이력
 
+## 2026-08-22 - 전환 dialog 질의 막대 · SVN lazy 탐색
+
+### 사용자 지시
+
+- 전환 dialog 타이틀 밑에 검색 바 같은 텍스트 박스를 제공한다.
+- 막대 우측 끝에 트리거 버튼, 좌측 끝에 갱신 버튼을 둔다.
+- SVN은 미리 다 읽지 않는다. 최상단 폴더만 읽고 사용자가 직접 연 경로만 동적으로
+  확장한다.
+- Git에서는 필터로 쓰지만 SVN에서는 느낌이 다르다. SVN에서는 repo-browser처럼
+  실제 경로를 표시한다 (Git과 branch 나열 방식이 달라 생긴 문제다).
+- (검수) Git 우측 버튼은 `close` 지우기로, SVN 갱신은 선택 노드로, `현재 위치로`
+  버튼은 두지 않는다.
+- (진행 방식) 별도 브랜치에서 커밋까지 자동 진행한다.
+
+### 반영 내용
+
+- **질의 막대**: 제목과 목록 사이에 갱신 버튼 · 텍스트 박스 · 동작 버튼 한 줄을
+  넣었다. dialog 높이가 Git 320 → 352, SVN 430 → 462로 자라고 목록 높이(190 /
+  300)는 그대로다. `switch_dialog_list_height`의 literal `130`을
+  `layout_switch_dialog_chrome_height`로 뽑았다.
+- **Git 필터**: 입력하는 즉시 `display_name`을 대소문자 무시로 걸러 view에 담는다.
+  view의 후보 목록과 선택 index는 **거른 목록** 기준이고 logic이 원본 index로
+  되돌린다 — element는 그대로다. 질의가 바뀌면 선택을 지운다. 우측 버튼은 질의가
+  비면 `search` 장식(비활성), 있으면 `close` 지우기다. Enter는 첫 후보를 고른다.
+- **SVN 주소 막대**: 저장소 root 기준 실제 경로(`/trunk/source`)를 보여 준다.
+  트리에서 노드를 고르면 그 경로로 덮이고, 경로를 쳐서 `arrow-right`나 Enter를
+  누르면 그 위치까지 한 단계씩 조회하며 내려간다. 없는 경로는 메시지로 알린다.
+  전체 URL과 root 기준 상대 경로를 모두 받는다.
+- **lazy 탐색**: `complete_svn_browser_query`가 현재 위치까지 자동으로 내려가던
+  `advance_current_path`를 지웠다. 대신 사용자가 세운 `reveal_url` 목표가 있을
+  때만 내려간다. dialog를 열면 root 조회 하나로 끝나고, 주소 막대에 현재 위치가
+  미리 채워져 있어 트리거 한 번으로 거기까지 펼칠 수 있다.
+- **갱신**: Git은 후보 조회를 다시 내고 필터 글은 유지한다. SVN은 선택 노드(없으면
+  root)의 cache와 그 아래 노드를 버리고 다시 조회하며 펼침 상태는 유지한다.
+- **공용 텍스트 박스**: 환경설정에만 있던 텍스트 박스 element를 `dialog_elements`로
+  옮겨 두 dialog가 공유한다. 초점 판정도 kind 목록 하나(`is_text_input_kind`)로
+  모았고, 초점을 가진 element가 tree에서 사라지면 초점을 거둔다.
+- 목록이 비었을 때의 안내 문구를 logic이 정한다 — `필터에 맞는 후보가 없습니다.`와
+  `전환할 수 있는 후보가 없습니다.`가 다른 말이기 때문이다.
+- 신규 test 16 case. `SVN browser expands the path to the current directory
+  lazily`는 `SVN browser loads only the root when it opens`로 바뀌었다.
+
+### 영향 요구사항
+
+- REQ-007 (전환)
+
 ## 2026-08-22 - 테마 탭 이름 · 초안 미리 보기 · 배지 위치 재조정
 
 ### 사용자 지시

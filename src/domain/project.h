@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/appearance.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -138,6 +140,9 @@ namespace gitman {
         std::u8string document_path {};
         // 문서가 덮어쓴 설정만 담는다. 정의하지 않은 항목은 앱 설정을 따른다.
         workspace_settings_overrides settings {};
+        // 문서가 덮어쓴 테마와 키 컬러다 (S2.2). `settings`와 성격이 달라 문서
+        // JSON에서도 별도 object(`appearance`)다.
+        appearance_overrides appearance {};
         // 값이 없으면 문서에 배치가 없거나 읽을 수 없었다는 뜻이다. 저장 시 기존
         // 문서의 `window` 필드를 지우지 않는다.
         std::optional<window_placement> window {};

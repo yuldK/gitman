@@ -271,6 +271,10 @@ namespace gitman {
         bool submodules_follows_app { false };
         bool ignore_local_follows_app { false };
         bool log_files_follows_app { false };
+        // 외양도 문서가 덮어쓸 수 있다 (settings-tabs-and-appearance-scope-design
+        // S2.3). 초안이 없어 문서의 정의 여부를 그대로 싣는다.
+        bool theme_follows_app { false };
+        bool accent_follows_app { false };
         std::u8string git_path {};
         std::u8string svn_path {};
         // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design 1.3).
@@ -283,10 +287,10 @@ namespace gitman {
         bool ignore_local_changes { false };
         // 카드 로그를 문서 폴더에 파일로 남길지의 초안이다 (app-shell-design A4.5).
         bool write_log_files { true };
-        // 테마와 키 컬러다 (theme-and-banner-menu-design T3.3). 문서 모드에서도
-        // 앱 설정을 그대로 편집하며(외양은 문서 단위가 아니다) 클릭 즉시 반영·
-        // 저장되므로 `저장`/`취소` 초안에 들어가지 않는다. 고를 수 있는 색 목록은
-        // 표시 계층이 직접 안다 (`accent_catalog`).
+        // 테마와 키 컬러의 현재 유효 값이다 (S2.3). 클릭 즉시 반영·저장되므로
+        // `저장`/`취소` 초안에 들어가지 않으며, 문서가 열려 있으면 문서 override를
+        // 편집한다. 고를 수 있는 색 목록은 표시 계층이 직접 안다
+        // (`accent_catalog`).
         theme_preference theme { theme_preference::system };
         std::u8string accent_id {};
         // 검증 오류다. 비어 있으면 표시하지 않는다.

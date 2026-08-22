@@ -102,7 +102,45 @@ namespace gitman {
 
         bool is_known_top_level_field(const std::string_view field) noexcept
         {
-            return field == "schema_version" || field == "settings" || field == "window" || field == "projects";
+            return field == "schema_version" || field == "settings" || field == "window" || field == "appearance" || field == "projects";
+        }
+
+        // 외양은 표시 설정이라 어떤 오류도 문서 열기를 막지 않는다. 읽을 수 없는
+        // 항목은 경고 하나를 남기고 앱 설정을 따른다
+        // (settings-tabs-and-appearance-scope-design S2.2).
+        appearance_overrides parse_appearance(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
+        {
+            appearance_overrides appearance {};
+            const auto source { root.find("appearance") };
+            if (source == root.end() || source->is_null())
+                return appearance;
+
+            if (source->is_object() == false)
+            {
+                add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"appearance는 object여야 합니다. 앱 설정의 외양을 사용합니다.", document_path,
+                    u8"/appearance");
+                return appearance;
+            }
+
+            if (const auto theme { source->find("theme") }; theme != source->end() && theme->is_null() == false)
+            {
+                theme_preference value {};
+                if (theme->is_string() && parse_theme_preference(as_utf8(theme->get_ref<const std::string&>()), value))
+                    appearance.theme = { value };
+                else
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"appearance의 theme은 system·light·dark 중 하나여야 합니다. 앱 설정을 따릅니다.",
+                        document_path, u8"/appearance/theme");
+            }
+
+            if (const auto accent { source->find("accent") }; accent != source->end() && accent->is_null() == false)
+            {
+                if (accent->is_string() == false)
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"appearance의 accent는 문자열이어야 합니다. 앱 설정을 따릅니다.", document_path,
+                        u8"/appearance/accent");
+                else if (std::u8string id { as_utf8(accent->get_ref<const std::string&>()) }; id.empty() == false)
+                    appearance.accent_id = { std::move(id) };
+            }
+            return appearance;
         }
 
         std::u8string window_field_pointer(const std::string_view field)
@@ -619,6 +657,7 @@ namespace gitman {
         document.document_path = document_path;
         document.settings = parse_settings(root, result, document_path);
         document.window = parse_window(root, result, document_path);
+        document.appearance = parse_appearance(root, result, document_path);
         std::unordered_set<std::u8string> project_ids {};
         for (std::size_t project_index = 0; project_index < projects->size(); ++project_index)
         {

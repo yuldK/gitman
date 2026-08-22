@@ -203,6 +203,10 @@ namespace gitman {
         update_submodules,
         ignore_local_changes,
         write_log_files,
+        // 외양 항목이다 (settings-tabs-and-appearance-scope-design S2.3). 초안이
+        // 아니라 문서를 곧바로 고친다.
+        theme,
+        accent,
     };
 
     // 문서 모드에서 그 행의 문서 override를 삭제해 앱 설정을 따르게 한다.

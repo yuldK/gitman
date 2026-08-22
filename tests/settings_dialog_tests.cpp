@@ -75,6 +75,16 @@ namespace {
         }
     };
 
+    // 마지막으로 제출된 그 종류의 요청이다. 없으면 nullptr다.
+    const gitman::operation_request* last_of(const recording_submitter& submitter, const gitman::operation_kind kind)
+    {
+        const gitman::operation_request* found { nullptr };
+        for (const gitman::operation_request& request : submitter.requests)
+            if (request.kind == kind)
+                found = &request;
+        return found;
+    }
+
     std::chrono::steady_clock::time_point at(const int milliseconds)
     {
         return std::chrono::steady_clock::time_point {} + std::chrono::milliseconds { milliseconds };
@@ -647,6 +657,77 @@ TEST_CASE("The log file toggle edits the draft and confirm saves it", "[logic][s
     const gitman::operation_request& save { fixture.submitter.requests[0] };
     REQUIRE(save.kind == gitman::operation_kind::save_document);
     REQUIRE(save.document->settings.write_log_files == false);
+}
+
+TEST_CASE("The appearance follows the document scope while a document is open", "[logic][settings-ui][theme]")
+{
+    // 외양도 전역/문서로 나뉜다 (settings-tabs-and-appearance-scope-design S2.3).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::set_theme_preference_intent { gitman::theme_preference::light });
+
+    // 문서가 열려 있으면 문서 override로 남고 문서 저장이 예약된다.
+    const gitman::operation_request* const theme_save { last_of(fixture.submitter, gitman::operation_kind::save_document) };
+    REQUIRE(theme_save != nullptr);
+    REQUIRE(theme_save->document.has_value());
+    REQUIRE(theme_save->document->appearance.theme == std::optional<gitman::theme_preference> { gitman::theme_preference::light });
+
+    // 진행 중인 저장이 끝나야 다음 변경이 자기 저장 요청을 낸다 (저장 합치기).
+    gitman::document_saved_event saved_event {};
+    saved_event.operation_id = theme_save->operation_id;
+    saved_event.revision = { gitman::workspace_revision_token {} };
+    fixture.controller.handle(std::move(saved_event));
+
+    fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
+    const gitman::operation_request* const accent_save { last_of(fixture.submitter, gitman::operation_kind::save_document) };
+    REQUIRE(accent_save != nullptr);
+    REQUIRE(accent_save->document.has_value());
+    REQUIRE(accent_save->document->appearance.accent_id == std::optional<std::u8string> { u8"blue" });
+    // 앱 설정은 그대로다.
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_app_settings) == nullptr);
+
+    // 유효 값은 문서 override다.
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->appearance.theme == gitman::theme_preference::light);
+    REQUIRE(view->appearance.accent_id == u8"blue");
+
+    // dialog는 덮어쓴 항목을 표시한다.
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto dialog_view { fixture.controller.make_view_snapshot() };
+    REQUIRE(dialog_view->settings_dialog.has_value());
+    REQUIRE_FALSE(dialog_view->settings_dialog->theme_follows_app);
+    REQUIRE_FALSE(dialog_view->settings_dialog->accent_follows_app);
+
+    // 배지가 문서 정의를 지우면 앱 설정을 따른다.
+    fixture.controller.handle(gitman::clear_settings_override_intent { gitman::settings_override_field::theme });
+    fixture.controller.handle(gitman::clear_settings_override_intent { gitman::settings_override_field::accent });
+    const auto cleared { fixture.controller.make_view_snapshot() };
+    REQUIRE(cleared->appearance.theme == gitman::theme_preference::system);
+    REQUIRE(cleared->appearance.accent_id == gitman::default_accent_id);
+    REQUIRE(cleared->settings_dialog->theme_follows_app);
+    REQUIRE(cleared->settings_dialog->accent_follows_app);
+}
+
+TEST_CASE("The appearance edits the app settings without a document", "[logic][settings-ui][theme]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
+    controller.start();
+    gitman::app_settings_loaded_event loaded {};
+    loaded.operation_id = submitter.requests.front().operation_id;
+    controller.handle(std::move(loaded));
+
+    controller.handle(gitman::set_accent_intent { u8"blue" });
+    const gitman::operation_request* const saved { last_of(submitter, gitman::operation_kind::save_app_settings) };
+    REQUIRE(saved != nullptr);
+    REQUIRE(saved->app_settings_payload.has_value());
+    REQUIRE(saved->app_settings_payload->appearance.accent_id == u8"blue");
+
+    controller.handle(gitman::open_settings_intent {});
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE(view->settings_dialog.has_value());
+    REQUIRE_FALSE(view->settings_dialog->document_mode);
+    REQUIRE(view->settings_dialog->accent_id == u8"blue");
 }
 
 TEST_CASE("The appearance rows show the app settings in both dialog modes", "[ui][settings-ui][theme]")

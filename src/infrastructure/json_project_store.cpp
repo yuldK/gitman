@@ -120,6 +120,36 @@ namespace gitman {
                 root["settings"] = std::move(value);
         }
 
+        // 외양도 `settings`와 같은 규칙이다 — 정의된 키만 남기고, 정의를 거둔 키는
+        // 지우며, 알 수 없는 키는 보존한다
+        // (settings-tabs-and-appearance-scope-design S2.2).
+        void write_appearance(json& root, const appearance_overrides& appearance)
+        {
+            const auto existing { root.find("appearance") };
+            const bool had_appearance { existing != root.end() && existing->is_object() };
+            if (had_appearance == false && appearance.empty())
+            {
+                if (existing != root.end())
+                    root.erase("appearance");
+                return;
+            }
+
+            json value { had_appearance ? *existing : json::object() };
+            if (appearance.theme.has_value())
+                value["theme"] = as_string(theme_preference_name(*appearance.theme));
+            else
+                value.erase("theme");
+            if (appearance.accent_id.has_value())
+                value["accent"] = as_string(*appearance.accent_id);
+            else
+                value.erase("accent");
+
+            if (value.empty())
+                root.erase("appearance");
+            else
+                root["appearance"] = std::move(value);
+        }
+
         // 창 배치는 표시 상태라 문서에 없던 값을 새로 만들지 않고, 문서에 있던 값을
         // 지우지도 않는다. 배치를 아는 경우에만 기존 object를 template으로 갱신한다.
         void write_window(json& root, const std::optional<window_placement>& placement)
@@ -211,6 +241,7 @@ namespace gitman {
 
             root["schema_version"] = document.schema_version;
             write_settings(root, document.settings);
+            write_appearance(root, document.appearance);
             write_window(root, document.window);
             root["projects"] = std::move(projects);
 

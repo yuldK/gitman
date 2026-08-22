@@ -446,6 +446,49 @@ TEST_CASE("Project store round-trips workspace settings and unknown keys", "[wor
     REQUIRE(reloaded.document->settings.svn_executable == std::optional<std::u8string> { u8"D:/tools/svn/bin/svn.exe" });
 }
 
+TEST_CASE("Project store round-trips the document appearance", "[workspace][store][save][settings]")
+{
+    constexpr std::u8string_view source {
+        u8R"({
+    "schema_version": 1,
+    "appearance": {
+        "accent": "blue",
+        "future_appearance": 1
+    },
+    "projects": []
+})",
+    };
+
+    fake_workspace_document_file_system file_system {};
+    file_system.set_file(fake_document_path, source);
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE(loaded.document.has_value());
+    REQUIRE(loaded.document->appearance.accent_id == std::optional<std::u8string> { u8"blue" });
+
+    // 환경설정이 테마를 문서 override로 정의하고 색 정의는 거둔 상황이다.
+    loaded.document->appearance.theme = { gitman::theme_preference::dark };
+    loaded.document->appearance.accent_id.reset();
+
+    const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+
+    const std::u8string* output { file_system.file_bytes(fake_document_path) };
+    REQUIRE(output != nullptr);
+    REQUIRE(output->find(u8"\"theme\": \"dark\"") != std::u8string::npos);
+    // 정의를 거둔 키는 남지 않는다 — 남기면 다음 열기에서 override로 되살아난다.
+    REQUIRE(output->find(u8"\"accent\"") == std::u8string::npos);
+    // 알 수 없는 키는 보존한다.
+    REQUIRE(output->find(u8"\"future_appearance\"") != std::u8string::npos);
+
+    const gitman::project_store_load_result reloaded { store.load(fake_document_path) };
+    REQUIRE(reloaded.document.has_value());
+    REQUIRE(reloaded.document->appearance.theme == std::optional<gitman::theme_preference> { gitman::theme_preference::dark });
+    REQUIRE_FALSE(reloaded.document->appearance.accent_id.has_value());
+}
+
 TEST_CASE("Project store writes and removes the query timeout setting", "[workspace][store][save][settings]")
 {
     constexpr std::u8string_view source {

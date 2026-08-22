@@ -154,6 +154,8 @@ namespace gitman {
         // 전역 설정 위에 문서 override를 얹은 유효 설정이다. 조회·작업 요청과 표시,
         // 파일 로그 여부가 모두 이 값을 쓴다 (G3.1).
         [[nodiscard]] workspace_settings effective_settings() const;
+        // 앱 외양 위에 문서 override를 얹은 유효 값이다 (S2.2).
+        [[nodiscard]] appearance_settings effective_appearance() const;
         // 선택 카드가 있어 하단 로그 pane이 보이는 상태다. layout 계산과 view 구성이
         // 같은 판정을 써야 스크롤 한계가 어긋나지 않는다.
         [[nodiscard]] bool has_log_pane() const noexcept;

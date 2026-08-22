@@ -1,6 +1,21 @@
 #include "domain/appearance.h"
 
 namespace gitman {
+    bool appearance_overrides::empty() const noexcept
+    {
+        return theme.has_value() == false && accent_id.has_value() == false;
+    }
+
+    appearance_settings apply_overrides(const appearance_settings& base, const appearance_overrides& overrides)
+    {
+        appearance_settings effective { base };
+        if (overrides.theme.has_value())
+            effective.theme = *overrides.theme;
+        if (overrides.accent_id.has_value())
+            effective.accent_id = *overrides.accent_id;
+        return effective;
+    }
+
     std::u8string_view theme_preference_name(const theme_preference preference) noexcept
     {
         switch (preference)

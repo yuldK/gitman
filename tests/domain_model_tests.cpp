@@ -58,6 +58,25 @@ TEST_CASE("Workspace documents expose approved defaults", "[domain][project]")
     // override가 없으면 전역 값이 그대로다.
     REQUIRE(gitman::apply_overrides(global, {}) == global);
 
+    // 외양도 같은 계층이다 (settings-tabs-and-appearance-scope-design S2.2).
+    gitman::appearance_settings base_appearance {};
+    base_appearance.theme = gitman::theme_preference::dark;
+    base_appearance.accent_id = u8"mint";
+    REQUIRE(gitman::appearance_overrides {}.empty());
+    REQUIRE(gitman::apply_overrides(base_appearance, {}) == base_appearance);
+
+    gitman::appearance_overrides appearance {};
+    appearance.accent_id = { u8"blue" };
+    REQUIRE_FALSE(appearance.empty());
+    const gitman::appearance_settings accent_only { gitman::apply_overrides(base_appearance, appearance) };
+    REQUIRE(accent_only.theme == gitman::theme_preference::dark);
+    REQUIRE(accent_only.accent_id == u8"blue");
+
+    appearance.theme = { gitman::theme_preference::light };
+    const gitman::appearance_settings both { gitman::apply_overrides(base_appearance, appearance) };
+    REQUIRE(both.theme == gitman::theme_preference::light);
+    REQUIRE(both.accent_id == u8"blue");
+
     const gitman::project_definition project {};
     REQUIRE(project.id.value.empty());
     REQUIRE(project.path.original.empty());

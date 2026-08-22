@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -25,6 +26,25 @@ namespace gitman {
 
         [[nodiscard]] bool operator==(const appearance_settings&) const noexcept = default;
     };
+
+    // 문서가 덮어쓴 외양만 담는다 (settings-tabs-and-appearance-scope-design
+    // S2.2). 값이 없는 항목은 앱 설정을 따르며, 문서 JSON의 `appearance`에는
+    // 정의된 키만 남는다.
+    struct appearance_overrides
+    {
+        std::optional<theme_preference> theme {};
+        // 빈 문자열은 정의로 보지 않는다 — 고를 수 있는 색은 항상 id가 있다.
+        std::optional<std::u8string> accent_id {};
+
+        [[nodiscard]] bool operator==(const appearance_overrides&) const noexcept = default;
+        // 모든 항목이 "앱 설정 따름"이다. 저장 시 appearance object를 만들지 않는
+        // 판정이다.
+        [[nodiscard]] bool empty() const noexcept;
+    };
+
+    // 앱 단위 외양 위에 문서 override를 얹은 유효 값이다. 표시 계층이 이 결과만
+    // 본다.
+    [[nodiscard]] appearance_settings apply_overrides(const appearance_settings& base, const appearance_overrides& overrides);
 
     // JSON에 적는 이름이다 (`"system"`·`"light"`·`"dark"`).
     [[nodiscard]] std::u8string_view theme_preference_name(theme_preference preference) noexcept;

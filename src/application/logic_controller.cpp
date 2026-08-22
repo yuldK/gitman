@@ -1295,8 +1295,9 @@ namespace gitman {
     void logic_controller::handle_clear_settings_override(const clear_settings_override_intent& intent)
     {
         // 문서 모드에서만 의미가 있다. 그 행의 문서 정의를 지우고 초안에는 앱의
-        // 값이 다시 보인다 (G3.2 `덮어씀` 배지).
-        if (settings_dialog_.has_value() == false || settings_dialog_->document_mode == false)
+        // 값이 다시 보인다 (G3.2 `덮어씀` 배지). 외양 항목은 문서를 곧바로 고치므로
+        // 문서가 사라진 뒤 도착한 늦은 배지 클릭도 막는다.
+        if (settings_dialog_.has_value() == false || settings_dialog_->document_mode == false || document_.has_value() == false)
             return;
 
         switch (intent.field)
@@ -1329,6 +1330,22 @@ namespace gitman {
         case settings_override_field::write_log_files:
             settings_dialog_->write_log_files = app_settings_.settings.write_log_files;
             settings_dialog_->log_files_defined = false;
+            break;
+        case settings_override_field::theme:
+            // 외양은 초안이 아니라 문서를 곧바로 고친다 (S2.3). 배지도 같은 규칙으로
+            // 문서 정의를 지우고 저장을 예약한다.
+            if (document_->appearance.theme.has_value())
+            {
+                document_->appearance.theme.reset();
+                request_save();
+            }
+            break;
+        case settings_override_field::accent:
+            if (document_->appearance.accent_id.has_value())
+            {
+                document_->appearance.accent_id.reset();
+                request_save();
+            }
             break;
         }
     }
@@ -1685,17 +1702,42 @@ namespace gitman {
 
     void logic_controller::handle_set_theme_preference(const set_theme_preference_intent& intent)
     {
-        if (shutting_down_ || app_settings_.appearance.theme == intent.theme)
+        if (shutting_down_)
             return;
+
         // 외양은 초안을 거치지 않고 곧바로 반영·저장한다 (T3.3). 조회 설정이
-        // 아니므로 카드 재조회도 필요 없다.
+        // 아니므로 카드 재조회도 필요 없다. 문서가 열려 있으면 다른 설정과 같이
+        // 문서 override를 편집한다 (S2.3).
+        if (document_.has_value())
+        {
+            if (document_->appearance.theme.has_value() && *document_->appearance.theme == intent.theme)
+                return;
+            document_->appearance.theme = { intent.theme };
+            request_save();
+            return;
+        }
+
+        if (app_settings_.appearance.theme == intent.theme)
+            return;
         app_settings_.appearance.theme = intent.theme;
         request_app_settings_save();
     }
 
     void logic_controller::handle_set_accent(const set_accent_intent& intent)
     {
-        if (shutting_down_ || intent.accent_id.empty() || app_settings_.appearance.accent_id == intent.accent_id)
+        if (shutting_down_ || intent.accent_id.empty())
+            return;
+
+        if (document_.has_value())
+        {
+            if (document_->appearance.accent_id.has_value() && *document_->appearance.accent_id == intent.accent_id)
+                return;
+            document_->appearance.accent_id = { intent.accent_id };
+            request_save();
+            return;
+        }
+
+        if (app_settings_.appearance.accent_id == intent.accent_id)
             return;
         app_settings_.appearance.accent_id = intent.accent_id;
         request_app_settings_save();
@@ -2042,6 +2084,15 @@ namespace gitman {
         return app_settings_.settings;
     }
 
+    appearance_settings logic_controller::effective_appearance() const
+    {
+        // 외양도 다른 설정과 같은 계층이다 (settings-tabs-and-appearance-scope-
+        // design S2.2). 문서가 덮어쓴 항목만 앱 값 위에 얹힌다.
+        if (document_.has_value())
+            return apply_overrides(app_settings_.appearance, document_->appearance);
+        return app_settings_.appearance;
+    }
+
     std::u8string logic_controller::display_path(const project_definition& project) const
     {
         // 표시 전용이라 구분자를 `/`로 통일한다 (T2). 원형 경로는 project가 그대로
@@ -2126,7 +2177,7 @@ namespace gitman {
         snapshot->scale = scale_;
         snapshot->scroll_offset = scroll_offset_;
         snapshot->relative_paths = relative_paths();
-        snapshot->appearance = app_settings_.appearance;
+        snapshot->appearance = effective_appearance();
         snapshot->window_placement_request = window_placement_;
         snapshot->window_placement_revision = window_placement_revision_;
         snapshot->document_generating = pending_generation_operation_id_ != 0;
@@ -2271,10 +2322,10 @@ namespace gitman {
             dialog.update_submodules = settings_dialog_->update_submodules;
             dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
             dialog.write_log_files = settings_dialog_->write_log_files;
-            // 외양은 문서 모드에서도 앱 설정을 그대로 보여 준다 (T3.3). 초안이
-            // 아니라 현재 값이며 클릭 즉시 바뀐다.
-            dialog.theme = app_settings_.appearance.theme;
-            dialog.accent_id = app_settings_.appearance.accent_id;
+            // 외양은 초안이 아니라 현재 유효 값이며 클릭 즉시 바뀐다 (S2.3).
+            const appearance_settings appearance { effective_appearance() };
+            dialog.theme = appearance.theme;
+            dialog.accent_id = appearance.accent_id;
             // 문서 모드에서 정의되지 않은 행은 "앱 설정 따름"으로 표시된다 (G3.2).
             if (settings_dialog_->document_mode)
             {
@@ -2284,6 +2335,9 @@ namespace gitman {
                 dialog.submodules_follows_app = settings_dialog_->submodules_defined == false;
                 dialog.ignore_local_follows_app = settings_dialog_->ignore_local_defined == false;
                 dialog.log_files_follows_app = settings_dialog_->log_files_defined == false;
+                // 외양은 초안이 없어 문서의 정의 여부를 그대로 본다 (S2.3).
+                dialog.theme_follows_app = document_->appearance.theme.has_value() == false;
+                dialog.accent_follows_app = document_->appearance.accent_id.has_value() == false;
             }
             // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.

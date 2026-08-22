@@ -226,6 +226,32 @@ TEST_CASE("The settings query timeout accepts the allowed range and warns otherw
     REQUIRE(find_diagnostic(type_result, gitman::diagnostic_code::invalid_project_field, u8"/settings/query_timeout_seconds") != nullptr);
 }
 
+TEST_CASE("Schema parser reads the document appearance override", "[workspace][schema][settings]")
+{
+    // 정의한 키만 override다 (settings-tabs-and-appearance-scope-design S2.2).
+    constexpr std::u8string_view source { u8"{\"schema_version\":1,\"appearance\":{\"theme\":\"light\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+    REQUIRE(result.document.has_value());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE(result.document->appearance.theme == std::optional<gitman::theme_preference> { gitman::theme_preference::light });
+    REQUIRE_FALSE(result.document->appearance.accent_id.has_value());
+
+    // 모르는 값은 경고 하나를 남기고 앱 설정을 따른다. 문서 열기는 막지 않는다.
+    constexpr std::u8string_view broken { u8"{\"schema_version\":1,\"appearance\":{\"theme\":\"neon\",\"accent\":\"blue\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result broken_result { gitman::parse_workspace_document_json(broken, test_document_path) };
+    REQUIRE(broken_result.document.has_value());
+    REQUIRE_FALSE(broken_result.has_errors());
+    REQUIRE(broken_result.has_warnings());
+    REQUIRE_FALSE(broken_result.document->appearance.theme.has_value());
+    REQUIRE(broken_result.document->appearance.accent_id == std::optional<std::u8string> { u8"blue" });
+
+    // appearance가 없는 문서는 그대로 앱 설정을 따른다.
+    constexpr std::u8string_view without { u8"{\"schema_version\":1,\"projects\":[]}" };
+    const gitman::workspace_document_parse_result without_result { gitman::parse_workspace_document_json(without, test_document_path) };
+    REQUIRE(without_result.document.has_value());
+    REQUIRE(without_result.document->appearance.empty());
+}
+
 TEST_CASE("Schema parser accepts minimal and empty documents", "[workspace][schema]")
 {
     constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };

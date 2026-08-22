@@ -115,6 +115,7 @@ namespace gitman {
         void request_selected_file_diff();
         void handle_set_settings_executable(set_settings_executable_intent intent);
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
+        void handle_select_settings_tab(const select_settings_tab_intent& intent);
         void handle_clear_settings_override(const clear_settings_override_intent& intent);
         void handle_edit_settings_timeout(const edit_settings_timeout_intent& intent);
         void handle_confirm_settings();
@@ -248,6 +249,8 @@ namespace gitman {
         // 있다. 저장 전까지 문서·앱 settings를 건드리지 않는다.
         struct settings_dialog_state
         {
+            // 보고 있는 탭이다 (S1.2). 초안과 무관하다.
+            settings_tab active_tab { settings_tab::tools };
             // 문서가 열려 있으면 문서 override를, 없으면 전역 설정을 편집한다
             // (global-settings-and-ui-fixes-design G3.2).
             bool document_mode { false };

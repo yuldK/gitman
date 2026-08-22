@@ -243,6 +243,8 @@ namespace gitman {
                     handle_clear_settings_executable(value);
                 else if constexpr (std::is_same_v<value_type, clear_settings_override_intent>)
                     handle_clear_settings_override(value);
+                else if constexpr (std::is_same_v<value_type, select_settings_tab_intent>)
+                    handle_select_settings_tab(value);
                 else if constexpr (std::is_same_v<value_type, edit_settings_timeout_intent>)
                     handle_edit_settings_timeout(value);
                 else if constexpr (std::is_same_v<value_type, toggle_settings_submodules_intent>)
@@ -1292,6 +1294,14 @@ namespace gitman {
         }
     }
 
+    void logic_controller::handle_select_settings_tab(const select_settings_tab_intent& intent)
+    {
+        // 탭은 초안이 아니라 보기 상태다 (S1.2). 다른 탭에서 고친 초안은 남는다.
+        if (settings_dialog_.has_value() == false)
+            return;
+        settings_dialog_->active_tab = intent.tab;
+    }
+
     void logic_controller::handle_clear_settings_override(const clear_settings_override_intent& intent)
     {
         // 문서 모드에서만 의미가 있다. 그 행의 문서 정의를 지우고 초안에는 앱의
@@ -2315,6 +2325,7 @@ namespace gitman {
         if (settings_dialog_.has_value())
         {
             settings_dialog_view dialog {};
+            dialog.active_tab = settings_dialog_->active_tab;
             dialog.document_mode = settings_dialog_->document_mode;
             dialog.git_path = settings_dialog_->git_path;
             dialog.svn_path = settings_dialog_->svn_path;

@@ -258,8 +258,38 @@ namespace gitman {
     // 환경설정 dialog의 불변 표시 모델이다 (REQ-017, stage-8-plan 5.1). 경로가
     // 비어 있으면 자동 탐색을 뜻하고 element가 안내 문구를 대신 그린다. message와
     // can_confirm은 logic이 초안 검증에서 계산해 UI는 그대로 그린다.
+    // 환경설정 dialog의 섹션 묶음이다 (settings-tabs-and-appearance-scope-design
+    // S1.2). 탭 하나가 섹션 여러 개를, 섹션 하나가 항목 여러 개를 담는다.
+    enum class settings_tab
+    {
+        tools,
+        operations,
+        appearance,
+        system,
+    };
+
+    // element의 정체성과 test가 쓰는 이름이다.
+    [[nodiscard]] constexpr std::u8string_view settings_tab_name(const settings_tab tab) noexcept
+    {
+        switch (tab)
+        {
+        case settings_tab::operations:
+            return u8"operations";
+        case settings_tab::appearance:
+            return u8"appearance";
+        case settings_tab::system:
+            return u8"system";
+        case settings_tab::tools:
+        default:
+            return u8"tools";
+        }
+    }
+
     struct settings_dialog_view
     {
+        // 지금 보고 있는 탭이다 (S1.2). 초안과 무관하므로 탭을 옮겨도 다른 탭에서
+        // 고친 값은 그대로 남는다.
+        settings_tab active_tab { settings_tab::tools };
         // true면 문서 override 편집(제목 "환경설정 (문서)"), false면 전역 설정
         // 편집이다 (global-settings-and-ui-fixes-design G3.2).
         bool document_mode { false };

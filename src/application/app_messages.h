@@ -209,6 +209,13 @@ namespace gitman {
         accent,
     };
 
+    // 환경설정 dialog의 탭을 바꾼다 (settings-tabs-and-appearance-scope-design
+    // S1.2). dialog 상태만 바꾸며 초안은 건드리지 않는다.
+    struct select_settings_tab_intent
+    {
+        settings_tab tab { settings_tab::tools };
+    };
+
     // 문서 모드에서 그 행의 문서 override를 삭제해 앱 설정을 따르게 한다.
     // `덮어씀` 배지 클릭이 보낸다 (2026-08-22 지시).
     struct clear_settings_override_intent
@@ -564,7 +571,7 @@ namespace gitman {
         reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
         switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
-        open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent,
+        open_settings_intent, select_settings_tab_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent,
         toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent,
         cancel_local_changes_dialog_intent,
         local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent, set_accent_intent, remove_recent_document_intent, close_document_intent, show_notice_intent,

@@ -406,6 +406,8 @@ TEST_CASE("The settings dialog association buttons request the UI commands", "[u
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
+    // 파일 연결은 시스템 탭이다 (settings-tabs-and-appearance-scope-design S1.2).
+    fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::system });
     const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
 
     const std::vector<gitman::ui::input_action> associate { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_associate }) };
@@ -455,6 +457,86 @@ TEST_CASE("Escape closes the settings dialog before clearing the selection", "[u
     const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
     REQUIRE(message != nullptr);
     REQUIRE(std::holds_alternative<gitman::cancel_settings_dialog_intent>(*message));
+}
+
+TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[ui][settings-ui][tabs]")
+{
+    // 탭은 보기 상태다 — 옮겨도 다른 탭의 초안은 남는다
+    // (settings-tabs-and-appearance-scope-design S1.2).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+
+    const auto tools { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    // 네 탭 모두 rail에 있고, 기본 탭은 도구다.
+    for (const std::u8string_view name : { std::u8string_view { u8"tools" }, std::u8string_view { u8"operations" }, std::u8string_view { u8"appearance" }, std::u8string_view { u8"system" } })
+        REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_tab_item, gitman::project_id { std::u8string { name } } }) != nullptr);
+    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_git_browse }) != nullptr);
+    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_timeout_input }) != nullptr);
+    // 다른 탭의 컨트롤은 만들어지지 않는다.
+    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_submodules_toggle }) == nullptr);
+    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_associate }) == nullptr);
+    REQUIRE(tools->ids_of_kind(gitman::ui::ui_element_kind::settings_accent_swatch).empty());
+
+    // 초안을 고친 뒤 탭을 옮겨도 값은 남는다.
+    fixture.controller.handle(gitman::set_settings_executable_intent { gitman::repository_kind::subversion, u8"C:\\tools\\svn.exe" });
+    const std::vector<gitman::ui::input_action> actions {
+        click(*tools, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_tab_item, gitman::project_id { u8"operations" } }),
+    };
+    REQUIRE(actions.size() == 1u);
+    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+    REQUIRE(message != nullptr);
+    const auto* const intent { std::get_if<gitman::select_settings_tab_intent>(message) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->tab == gitman::settings_tab::operations);
+    fixture.controller.handle(*message);
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->settings_dialog->active_tab == gitman::settings_tab::operations);
+    REQUIRE(view->settings_dialog->svn_path == u8"C:\\tools\\svn.exe");
+
+    const auto operations { gitman::ui::build_ui_tree(*view) };
+    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_submodules_toggle }) != nullptr);
+    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_log_files_toggle }) != nullptr);
+    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_git_browse }) == nullptr);
+
+    // panel 높이는 탭을 옮겨도 같다 — 창이 튀지 않는다 (S1.3).
+    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height == tools->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height);
+}
+
+TEST_CASE("The override badge sits in the column beside the item title", "[ui][settings-ui]")
+{
+    // 배지는 항목 제목 바로 왼쪽 열이고 제목은 그만큼 들여쓰인다 (S4.2).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+
+    const gitman::ui::ui_element* const badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } }) };
+    REQUIRE(badge != nullptr);
+    const gitman::ui::rect_f badge_bounds { badge->bounds() };
+    // 이전(48x14)보다 두껍다.
+    REQUIRE(badge_bounds.height >= 18.0f);
+
+    // 같은 항목의 찾아보기 버튼과 같은 줄에 있고 그보다 왼쪽이다.
+    const gitman::ui::rect_f browse { tree->find({ gitman::ui::ui_element_kind::settings_git_browse })->bounds() };
+    REQUIRE(badge_bounds.x < browse.x);
+    REQUIRE(badge_bounds.y + badge_bounds.height > browse.y);
+    REQUIRE(badge_bounds.y < browse.y + browse.height);
+
+    // 외양 항목도 문서가 덮어쓰면 배지를 갖는다 (S2.3).
+    fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+    fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
+    const auto appearance { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const gitman::ui::ui_element* const accent_badge { appearance->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"accent" } }) };
+    REQUIRE(accent_badge != nullptr);
+    REQUIRE(appearance->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"theme" } }) == nullptr);
+
+    const std::vector<gitman::ui::input_action> cleared { click(*appearance, accent_badge->id()) };
+    REQUIRE(cleared.size() == 1u);
+    const auto* const message { std::get_if<gitman::logic_message>(&cleared.front()) };
+    REQUIRE(message != nullptr);
+    const auto* const intent { std::get_if<gitman::clear_settings_override_intent>(message) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->field == gitman::settings_override_field::accent);
 }
 
 TEST_CASE("Timeout characters edit the draft and only digits count", "[logic][settings-ui][timeout]")
@@ -599,6 +681,8 @@ TEST_CASE("The submodule toggle edits the draft and confirm saves it", "[logic][
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
+    // 토글은 작업 탭이다 (S1.2).
+    fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::operations });
     REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->update_submodules == false);
 
     // 토글 버튼이 intent를 보내고 초안이 뒤집힌다.
@@ -639,6 +723,7 @@ TEST_CASE("The log file toggle edits the draft and confirm saves it", "[logic][s
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::operations });
     // 기본값은 켬이다 (app-shell-design A4.5).
     REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->write_log_files);
 
@@ -730,14 +815,14 @@ TEST_CASE("The appearance edits the app settings without a document", "[logic][s
     REQUIRE(view->settings_dialog->accent_id == u8"blue");
 }
 
-TEST_CASE("The appearance rows show the app settings in both dialog modes", "[ui][settings-ui][theme]")
+TEST_CASE("The appearance items show the effective values and a wrapped swatch grid", "[ui][settings-ui][theme]")
 {
-    // 외양은 문서 단위가 아니라 앱 단위다. 문서 모드에서도 같은 행이 보이고
-    // `덮어씀` 배지가 붙지 않는다 (T3.3).
+    // 외양은 외양 탭이고, 문서가 열려 있으면 문서 override를 편집한다 (S2.3).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
     fixture.controller.handle(gitman::set_theme_preference_intent { gitman::theme_preference::light });
     fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
 
     const auto view { fixture.controller.make_view_snapshot() };
     REQUIRE(view->settings_dialog.has_value());
@@ -765,12 +850,36 @@ TEST_CASE("The appearance rows show the app settings in both dialog modes", "[ui
     REQUIRE(system_bounds.x + system_bounds.width <= panel.x + panel.width);
     REQUIRE(tree->find(light)->bounds().x < system_bounds.x);
     REQUIRE(tree->find(dark)->bounds().x > system_bounds.x);
+
+    // 색 격자는 왼쪽에서 오른쪽으로 채우고 panel을 넘지 않는다. 줄이 바뀌면 x가
+    // 처음으로 돌아가고 y가 내려간다 (S2.4).
+    std::vector<gitman::ui::rect_f> swatches {};
+    for (const gitman::accent_definition& accent : gitman::accent_catalog())
+        swatches.push_back(tree->find({ gitman::ui::ui_element_kind::settings_accent_swatch, gitman::project_id { std::u8string { accent.id } } })->bounds());
+    for (const gitman::ui::rect_f& swatch : swatches)
+    {
+        REQUIRE(swatch.x >= panel.x);
+        REQUIRE(swatch.x + swatch.width <= panel.x + panel.width);
+        REQUIRE(swatch.y + swatch.height <= panel.y + panel.height);
+    }
+    for (std::size_t index = 1; index < swatches.size(); ++index)
+    {
+        const bool same_row { swatches[index].y == swatches[index - 1].y };
+        if (same_row)
+            REQUIRE(swatches[index].x > swatches[index - 1].x);
+        else
+        {
+            REQUIRE(swatches[index].y > swatches[index - 1].y);
+            REQUIRE(swatches[index].x == swatches.front().x);
+        }
+    }
 }
 
 TEST_CASE("Appearance clicks apply immediately without the save button", "[ui][settings-ui][theme]")
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
     const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
 
     const std::vector<gitman::ui::input_action> theme_actions {

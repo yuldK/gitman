@@ -87,6 +87,9 @@ namespace gitman::ui {
         // 흡수한다.
         settings_dialog,
         settings_dialog_panel,
+        // 왼쪽 탭 rail의 한 칸이다 (settings-tabs-and-appearance-scope-design
+        // S1.2). owner 값에 탭 이름(`tools`·`operations`·…)을 담는다.
+        settings_tab_item,
         settings_git_browse,
         settings_git_clear,
         settings_svn_browse,

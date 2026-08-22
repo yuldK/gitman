@@ -2142,8 +2142,7 @@ namespace gitman {
             model.revision = card.snapshot.local_revision;
             // status 순회가 원격 조회와 병렬로 도는 동안에는 요약 대신 진행 표시를
             // 그린다 (대형 작업 복사본에서 분 단위로 걸린다).
-            model.working_tree_text =
-                card.snapshot.working_tree_scan_pending ? std::u8string { u8"로컬 변경 확인 중" } : working_tree_summary_text(card.snapshot.working_tree);
+            model.working_tree_text = card.snapshot.working_tree_scan_pending ? std::u8string { u8"로컬 변경 확인 중" } : working_tree_summary_text(card.snapshot.working_tree);
             model.comparison_target = card.snapshot.comparison_target;
             model.local_checked_at = card.snapshot.local_checked_at;
             model.remote_checked_at = card.snapshot.remote_checked_at;

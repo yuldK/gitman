@@ -452,8 +452,9 @@ namespace gitman::ui {
         const float bar_content { static_cast<float>(bar_rows) * layout_switch_dialog_row_height * effective };
         const float bar_viewport { switch_dialog_list_height(dialog_.svn_browser, window_height / effective) * effective };
         auto bar {
-            std::make_unique<scrollbar_element>(ui_element_id { ui_element_kind::switch_dialog_scrollbar },
-                [](const float delta) { return logic_message { switch_dialog_scroll_intent { delta } }; }, bar_content, bar_viewport, dialog_.scroll_offset * effective, effective),
+            std::make_unique<scrollbar_element>(
+                ui_element_id { ui_element_kind::switch_dialog_scrollbar }, [](const float delta) { return logic_message { switch_dialog_scroll_intent { delta } }; }, bar_content, bar_viewport,
+                dialog_.scroll_offset * effective, effective),
         };
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();
@@ -496,8 +497,9 @@ namespace gitman::ui {
         // 스크롤 막대는 목록 영역의 오른쪽 안쪽 세로 띠다. 목록 경계와
         // 겹치지 않도록 top/right/bottom에 1px 여백을 둔다.
         const float bar_width { layout_scrollbar_hit_width * scale };
-        scrollbar_->arrange({ { panel->list_area.x + panel->list_area.width - scrollbar_margin - bar_width, panel->list_area.y + scrollbar_margin, bar_width,
-            panel->list_area.height - scrollbar_margin * 2.0f }, scale });
+        const float bar_left { panel->list_area.x + panel->list_area.width - scrollbar_margin - bar_width };
+        const float bar_height { panel->list_area.height - scrollbar_margin * 2.0f };
+        scrollbar_->arrange({ { bar_left, panel->list_area.y + scrollbar_margin, bar_width, bar_height }, scale });
 
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
         if (children.size() >= 3)

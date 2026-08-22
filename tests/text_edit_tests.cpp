@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
+#include <string_view>
 
 namespace {
     gitman::text_edit_state at_end(const std::u8string_view text)
@@ -160,4 +161,91 @@ TEST_CASE("Text edit encodes BMP characters as UTF-8", "[domain][text-edit]")
     REQUIRE(gitman::text_edit_encode_utf8(U'a') == u8"a");
     REQUIRE(gitman::text_edit_encode_utf8(U'é') == u8"é");
     REQUIRE(gitman::text_edit_encode_utf8(U'가') == u8"가");
+}
+
+TEST_CASE("Text edit undo groups a typing run and redo replays it", "[domain][text-edit][undo]")
+{
+    gitman::text_edit_state state {};
+    for (const char8_t value : std::u8string_view { u8"main" })
+        gitman::text_edit_insert(state, std::u8string_view { &value, 1u });
+    REQUIRE(state.text == u8"main");
+
+    // 이어 친 글자는 한 덩어리다. 한 번의 실행 취소로 모두 사라진다.
+    REQUIRE(gitman::text_edit_undo(state));
+    REQUIRE(state.text.empty());
+    REQUIRE_FALSE(gitman::text_edit_undo(state));
+
+    REQUIRE(gitman::text_edit_redo(state));
+    REQUIRE(state.text == u8"main");
+    REQUIRE(state.caret == 4u);
+    REQUIRE_FALSE(gitman::text_edit_redo(state));
+}
+
+TEST_CASE("Text edit undo breaks the group when the caret moves", "[domain][text-edit][undo]")
+{
+    gitman::text_edit_state state {};
+    gitman::text_edit_insert(state, u8"ab");
+    gitman::text_edit_move(state, gitman::text_edit_motion::line_start, false);
+    gitman::text_edit_insert(state, u8"cd");
+    REQUIRE(state.text == u8"cdab");
+
+    // caret을 옮긴 뒤의 입력은 새 덩어리다.
+    REQUIRE(gitman::text_edit_undo(state));
+    REQUIRE(state.text == u8"ab");
+    REQUIRE(gitman::text_edit_undo(state));
+    REQUIRE(state.text.empty());
+}
+
+TEST_CASE("Text edit undo restores the selection that a replacement consumed", "[domain][text-edit][undo]")
+{
+    gitman::text_edit_state state {};
+    gitman::text_edit_insert(state, u8"origin/main");
+    gitman::text_edit_select_all(state);
+    gitman::text_edit_insert(state, u8"dev");
+    REQUIRE(state.text == u8"dev");
+
+    REQUIRE(gitman::text_edit_undo(state));
+    REQUIRE(state.text == u8"origin/main");
+    REQUIRE(gitman::text_edit_selected_text(state) == u8"origin/main");
+
+    // 지우기도 되돌아간다.
+    REQUIRE(gitman::text_edit_redo(state));
+    REQUIRE(state.text == u8"dev");
+    gitman::text_edit_move(state, gitman::text_edit_motion::line_end, false);
+    gitman::text_edit_backspace(state);
+    gitman::text_edit_backspace(state);
+    REQUIRE(state.text == u8"d");
+    REQUIRE(gitman::text_edit_undo(state));
+    REQUIRE(state.text == u8"dev");
+}
+
+TEST_CASE("Text edit deletes whole words with Ctrl", "[domain][text-edit]")
+{
+    gitman::text_edit_state state {};
+    gitman::text_edit_insert(state, u8"origin/feature-a");
+
+    // Ctrl+Backspace는 낱말과 그 앞의 구분자까지 지운다 (Windows 관례).
+    gitman::text_edit_delete_word_left(state);
+    REQUIRE(state.text == u8"origin/feature-");
+    gitman::text_edit_delete_word_left(state);
+    REQUIRE(state.text == u8"origin/");
+
+    // Ctrl+Delete는 다음 낱말의 시작까지 지운다.
+    gitman::text_edit_move(state, gitman::text_edit_motion::line_start, false);
+    gitman::text_edit_delete_word_right(state);
+    REQUIRE(state.text.empty());
+
+    // 되돌리면 낱말이 통째로 돌아온다.
+    REQUIRE(gitman::text_edit_undo(state));
+    REQUIRE(state.text == u8"origin/");
+}
+
+TEST_CASE("Text edit history is dropped when the text comes from outside", "[domain][text-edit][undo]")
+{
+    gitman::text_edit_state state {};
+    gitman::text_edit_insert(state, u8"typed");
+    gitman::text_edit_set_text(state, u8"/trunk", true);
+    // 사용자의 편집이 아니므로 되돌릴 것이 없다.
+    REQUIRE_FALSE(gitman::text_edit_undo(state));
+    REQUIRE(state.text == u8"/trunk");
 }

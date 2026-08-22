@@ -30,6 +30,8 @@ namespace gitman::ui {
         float y { 0.0f };
         pointer_button button { pointer_button::left };
         std::chrono::steady_clock::time_point time {};
+        // Shift+클릭은 텍스트 박스에서 선택을 그 자리까지 늘린다 (R2.4).
+        bool shift { false };
     };
 
     struct pointer_released_event
@@ -75,6 +77,11 @@ namespace gitman::ui {
         key_c,
         key_v,
         key_x,
+        key_y,
+        key_z,
+        // Ctrl+Insert·Shift+Insert·Shift+Delete의 예전 클립보드 배치다. Ctrl이나
+        // Shift가 눌린 동안에만 만든다.
+        insert,
     };
 
     struct key_pressed_event

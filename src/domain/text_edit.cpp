@@ -57,6 +57,43 @@ namespace gitman {
                 offset = next_boundary(text, offset);
             return offset;
         }
+        // 선택 범위만 지운다. 기록은 호출한 쪽이 연다.
+        void erase_selection_only(text_edit_state& state)
+        {
+            if (text_edit_has_selection(state) == false)
+                return;
+            const std::size_t begin { text_edit_selection_begin(state) };
+            state.text.erase(begin, text_edit_selection_end(state) - begin);
+            state.caret = begin;
+            state.anchor = begin;
+        }
+
+        // 새 편집 덩어리를 연다. 종류가 같고 caret이 직전 편집이 끝난 자리에서
+        // 이어질 때만 묶어 기록을 남기지 않는다.
+        void begin_edit(text_edit_state& state, const text_edit_group group)
+        {
+            const bool joins { group != text_edit_group::replace && group == state.group && state.caret == state.group_caret && state.undo.empty() == false };
+            if (joins == false)
+            {
+                state.undo.push_back({ state.text, state.caret, state.anchor });
+                if (state.undo.size() > text_edit_history_limit)
+                    state.undo.erase(state.undo.begin());
+            }
+            state.redo.clear();
+            state.group = group;
+        }
+
+        // 편집이 끝난 자리를 기억한다. 다음 같은 종류의 편집이 여기서 이어지면 묶인다.
+        void end_edit(text_edit_state& state)
+        {
+            state.group_caret = state.caret;
+        }
+
+        // caret 이동·선택은 다음 편집을 새 덩어리로 만든다.
+        void break_group(text_edit_state& state)
+        {
+            state.group = text_edit_group::none;
+        }
     } // namespace
 
     std::u8string text_edit_encode_utf8(const char32_t character)
@@ -114,47 +151,121 @@ namespace gitman {
     {
         if (text_edit_has_selection(state) == false)
             return false;
-        const std::size_t begin { text_edit_selection_begin(state) };
-        state.text.erase(begin, text_edit_selection_end(state) - begin);
-        state.caret = begin;
-        state.anchor = begin;
+        begin_edit(state, text_edit_group::replace);
+        erase_selection_only(state);
+        end_edit(state);
         return true;
     }
 
     void text_edit_insert(text_edit_state& state, const std::u8string_view text)
     {
-        static_cast<void>(text_edit_erase_selection(state));
         if (text.empty())
             return;
+        // 선택을 덮어쓰거나 한 글자보다 긴 조각을 넣는 것은 묶지 않는다 — 붙여넣기와
+        // 대체는 한 번에 되돌아가야 한다.
+        const bool replaces { text_edit_has_selection(state) || text.size() > 3u };
+        begin_edit(state, replaces ? text_edit_group::replace : text_edit_group::insert);
+        erase_selection_only(state);
         state.caret = text_edit_clamp_offset(state.text, state.caret);
         state.text.insert(state.caret, text);
         state.caret += text.size();
         state.anchor = state.caret;
+        end_edit(state);
     }
 
     void text_edit_backspace(text_edit_state& state)
     {
-        if (text_edit_erase_selection(state))
+        if (text_edit_has_selection(state))
+        {
+            begin_edit(state, text_edit_group::replace);
+            erase_selection_only(state);
+            end_edit(state);
             return;
+        }
         state.caret = text_edit_clamp_offset(state.text, state.caret);
         if (state.caret == 0)
             return;
+        begin_edit(state, text_edit_group::erase);
         const std::size_t begin { previous_boundary(state.text, state.caret) };
         state.text.erase(begin, state.caret - begin);
         state.caret = begin;
         state.anchor = begin;
+        end_edit(state);
     }
 
     void text_edit_delete_forward(text_edit_state& state)
     {
-        if (text_edit_erase_selection(state))
+        if (text_edit_has_selection(state))
+        {
+            begin_edit(state, text_edit_group::replace);
+            erase_selection_only(state);
+            end_edit(state);
             return;
+        }
         state.caret = text_edit_clamp_offset(state.text, state.caret);
         if (state.caret >= state.text.size())
             return;
+        begin_edit(state, text_edit_group::erase);
         const std::size_t end { next_boundary(state.text, state.caret) };
         state.text.erase(state.caret, end - state.caret);
         state.anchor = state.caret;
+        end_edit(state);
+    }
+
+    void text_edit_delete_word_left(text_edit_state& state)
+    {
+        if (text_edit_has_selection(state) == false)
+        {
+            state.caret = text_edit_clamp_offset(state.text, state.caret);
+            state.anchor = word_left(state.text, state.caret);
+        }
+        if (text_edit_has_selection(state) == false)
+            return;
+        begin_edit(state, text_edit_group::replace);
+        erase_selection_only(state);
+        end_edit(state);
+    }
+
+    void text_edit_delete_word_right(text_edit_state& state)
+    {
+        if (text_edit_has_selection(state) == false)
+        {
+            state.caret = text_edit_clamp_offset(state.text, state.caret);
+            state.anchor = word_right(state.text, state.caret);
+        }
+        if (text_edit_has_selection(state) == false)
+            return;
+        begin_edit(state, text_edit_group::replace);
+        erase_selection_only(state);
+        end_edit(state);
+    }
+
+    bool text_edit_undo(text_edit_state& state)
+    {
+        if (state.undo.empty())
+            return false;
+        state.redo.push_back({ state.text, state.caret, state.anchor });
+        const text_edit_revision previous { std::move(state.undo.back()) };
+        state.undo.pop_back();
+        state.text = previous.text;
+        state.caret = text_edit_clamp_offset(state.text, previous.caret);
+        state.anchor = text_edit_clamp_offset(state.text, previous.anchor);
+        break_group(state);
+        return true;
+    }
+
+    bool text_edit_redo(text_edit_state& state)
+    {
+        if (state.redo.empty())
+            return false;
+        state.undo.push_back({ state.text, state.caret, state.anchor });
+        const text_edit_revision next { std::move(state.redo.back()) };
+        state.redo.pop_back();
+        state.text = next.text;
+        state.caret = text_edit_clamp_offset(state.text, next.caret);
+        state.anchor = text_edit_clamp_offset(state.text, next.anchor);
+        break_group(state);
+        return true;
     }
 
     void text_edit_move(text_edit_state& state, const text_edit_motion motion, const bool extend)
@@ -168,6 +279,7 @@ namespace gitman {
         {
             state.caret = motion == text_edit_motion::left ? text_edit_selection_begin(state) : text_edit_selection_end(state);
             state.anchor = state.caret;
+            break_group(state);
             return;
         }
 
@@ -194,12 +306,14 @@ namespace gitman {
         }
         if (extend == false)
             state.anchor = state.caret;
+        break_group(state);
     }
 
     void text_edit_select_all(text_edit_state& state)
     {
         state.anchor = 0;
         state.caret = state.text.size();
+        break_group(state);
     }
 
     void text_edit_select_word(text_edit_state& state, const std::size_t offset)
@@ -224,6 +338,7 @@ namespace gitman {
             end = next_boundary(text, end);
         state.anchor = begin;
         state.caret = end;
+        break_group(state);
     }
 
     void text_edit_place_caret(text_edit_state& state, const std::size_t offset, const bool extend)
@@ -233,10 +348,15 @@ namespace gitman {
             state.anchor = state.caret;
         else
             state.anchor = text_edit_clamp_offset(state.text, state.anchor);
+        break_group(state);
     }
 
     void text_edit_set_text(text_edit_state& state, const std::u8string_view text, const bool caret_to_end)
     {
+        // 사용자의 편집이 아니라 밖에서 온 값이다. 되돌릴 것이 없다.
+        state.undo.clear();
+        state.redo.clear();
+        break_group(state);
         state.text = text;
         if (caret_to_end)
         {
@@ -246,5 +366,6 @@ namespace gitman {
         }
         state.caret = text_edit_clamp_offset(state.text, state.caret);
         state.anchor = text_edit_clamp_offset(state.text, state.anchor);
+        state.group_caret = state.caret;
     }
 } // namespace gitman

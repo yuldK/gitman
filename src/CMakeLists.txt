@@ -298,6 +298,7 @@ target_link_libraries(gitman_lib
         dwmapi
         dxgi
         gdi32
+        imm32
         ole32
         shell32
         user32)

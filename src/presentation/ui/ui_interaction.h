@@ -6,6 +6,7 @@
 #include "presentation/ui/ui_tree.h"
 
 #include <chrono>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -49,6 +50,9 @@ namespace gitman::ui {
         // 초점을 가진 텍스트 박스의 키 처리다 (R2.4). 그 박스가 소비한 키만
         // 값을 돌려주고, 아니면 nullopt라 기존 키 경로가 이어진다.
         [[nodiscard]] std::optional<std::vector<input_action>> process_text_input_key(const key_pressed_event& event);
+        // 초점을 가진 박스의 선택을 클립보드로 넘기는 요청이다. `erase`면 지우기까지
+        // 함께 낸다 (잘라내기). 선택이 없으면 빈 목록이다.
+        [[nodiscard]] std::vector<input_action> copy_focused_selection(ui_element_kind kind, bool erase) const;
         // 포인터 x를 그 텍스트 박스의 caret 자리로 옮기는 intent다.
         [[nodiscard]] std::vector<input_action> place_text_caret(const ui_element& element, float x, bool extend, bool select_word) const;
         void update_hover(float x, float y, std::chrono::steady_clock::time_point time);
@@ -77,7 +81,9 @@ namespace gitman::ui {
         float pressed_y_ { 0.0f };
         bool drag_candidate_ { false };
 
-        // 더블 클릭 판정: 직전 클릭의 대상·시각·위치다.
+        // 더블 클릭 판정: 직전 클릭의 대상·시각·위치다. `click_streak_`은 같은 자리를
+        // 연달아 누른 횟수로, 텍스트 박스에서 2는 낱말·3 이상은 전체 선택이다.
+        std::size_t click_streak_ { 0 };
         ui_element_id last_click_id_ {};
         std::chrono::steady_clock::time_point last_click_time_ {};
         float last_click_x_ { 0.0f };

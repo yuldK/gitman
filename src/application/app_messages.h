@@ -254,6 +254,12 @@ namespace gitman {
         insert,
         backspace,
         delete_forward,
+        // Ctrl+Backspace·Ctrl+Delete다. 선택이 없으면 낱말 하나를 지운다.
+        delete_word_left,
+        delete_word_right,
+        // Ctrl+Z·Ctrl+Y(Ctrl+Shift+Z)다. 한 덩어리씩 되돌리고 다시 실행한다.
+        undo,
+        redo,
         move_left,
         move_right,
         move_word_left,

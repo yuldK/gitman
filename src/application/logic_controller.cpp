@@ -1694,6 +1694,18 @@ namespace gitman {
         case text_edit_command::delete_forward:
             text_edit_delete_forward(*state);
             break;
+        case text_edit_command::delete_word_left:
+            text_edit_delete_word_left(*state);
+            break;
+        case text_edit_command::delete_word_right:
+            text_edit_delete_word_right(*state);
+            break;
+        case text_edit_command::undo:
+            static_cast<void>(text_edit_undo(*state));
+            break;
+        case text_edit_command::redo:
+            static_cast<void>(text_edit_redo(*state));
+            break;
         case text_edit_command::cut:
             static_cast<void>(text_edit_erase_selection(*state));
             break;

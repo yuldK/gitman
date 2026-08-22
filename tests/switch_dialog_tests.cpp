@@ -1032,3 +1032,87 @@ TEST_CASE("The switch query applies edits at the caret and the timeout box keeps
     fixture.controller.handle(query_command(gitman::text_edit_command::cut));
     REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->query.text.empty());
 }
+
+TEST_CASE("The query bar routes undo, word delete and the legacy clipboard keys", "[ui][switch-ui][query][text-edit]")
+{
+    gitman::view_snapshot view {};
+    view.window_width = 800.0f;
+    view.window_height = 600.0f;
+    view.scale = 1.0f;
+
+    gitman::switch_dialog_view dialog {};
+    dialog.card.value = u8"alpha";
+    dialog.title = u8"alpha";
+    dialog.loading = false;
+    dialog.query.text = u8"origin/main";
+    dialog.query.anchor = 7u;
+    dialog.query.caret = 11u;
+    dialog.query_enabled = true;
+    view.switch_dialog = { dialog };
+
+    const gitman::ui::ui_element_id input_id { gitman::ui::ui_element_kind::switch_dialog_query_input, gitman::project_id { u8"alpha" } };
+    const auto tree { gitman::ui::build_ui_tree(view) };
+    gitman::ui::interaction_config config {};
+    config.measure_text = [](const std::u8string_view text, float) { return static_cast<float>(text.size()) * 7.0f; };
+    gitman::ui::interaction_controller controller { config };
+    controller.set_tree(tree);
+
+    const gitman::ui::rect_f box { tree->find(input_id)->bounds() };
+    const auto at = [](const int milliseconds) { return std::chrono::steady_clock::time_point {} + std::chrono::milliseconds { milliseconds }; };
+    static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { box.x + 10.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(0) }));
+    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 10.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(10) }));
+    REQUIRE(controller.snapshot().focused_input == input_id);
+
+    const auto command_of = [](const std::vector<gitman::ui::input_action>& actions) {
+        const gitman::logic_message message { first_logic_message(actions) };
+        const auto* const intent { std::get_if<gitman::edit_text_input_intent>(&message) };
+        REQUIRE(intent != nullptr);
+        return intent->command;
+    };
+
+    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_z, true })) == gitman::text_edit_command::undo);
+    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_z, true, true })) == gitman::text_edit_command::redo);
+    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_y, true })) == gitman::text_edit_command::redo);
+
+    // Ctrl+Backspace는 WM_CHAR가 U+007F로 준다. Ctrl+Delete는 오른쪽 낱말이다.
+    REQUIRE(command_of(controller.process(gitman::ui::character_typed_event { 0x7Fu })) == gitman::text_edit_command::delete_word_left);
+    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::delete_forward, true })) == gitman::text_edit_command::delete_word_right);
+
+    // 예전 클립보드 배치다. 이 view에는 선택이 있어 복사가 나온다.
+    {
+        const std::vector<gitman::ui::input_action> actions { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::insert, true }) };
+        REQUIRE(actions.size() == 1u);
+        const auto* const copy { std::get_if<gitman::ui::clipboard_copy_request>(&actions.front()) };
+        REQUIRE(copy != nullptr);
+        REQUIRE(copy->text == u8"main");
+    }
+    {
+        const std::vector<gitman::ui::input_action> actions { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::insert, false, true }) };
+        REQUIRE(actions.size() == 1u);
+        REQUIRE(std::get_if<gitman::ui::clipboard_paste_request>(&actions.front()) != nullptr);
+    }
+    {
+        const std::vector<gitman::ui::input_action> actions { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::delete_forward, false, true }) };
+        REQUIRE(actions.size() == 2u);
+        REQUIRE(std::get_if<gitman::ui::clipboard_copy_request>(&actions.front()) != nullptr);
+    }
+
+    // Shift+클릭은 caret만 옮겨 선택을 늘린다.
+    {
+        const gitman::ui::pointer_pressed_event press { box.x + 7.0f + 14.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(2000), true };
+        const gitman::logic_message message { first_logic_message(controller.process(press)) };
+        const auto* const intent { std::get_if<gitman::edit_text_input_intent>(&message) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->command == gitman::text_edit_command::place_caret);
+        REQUIRE(intent->offset == 2u);
+        REQUIRE(intent->extend);
+    }
+    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(2010) }));
+
+    // 같은 자리를 세 번 누르면 전부 선택이다.
+    static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3000) }));
+    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3010) }));
+    REQUIRE(command_of(controller.process(gitman::ui::pointer_pressed_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3100) })) == gitman::text_edit_command::select_word);
+    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3110) }));
+    REQUIRE(command_of(controller.process(gitman::ui::pointer_pressed_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3200) })) == gitman::text_edit_command::select_all);
+}

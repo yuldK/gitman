@@ -348,7 +348,7 @@ namespace gitman::win32 {
                     if (runtime_ != nullptr)
                     {
                         SetCapture(window_);
-                        post_pointer_pressed(long_parameter, ui::pointer_button::left);
+                        post_pointer_pressed(word_parameter, long_parameter, ui::pointer_button::left);
                         return 0;
                     }
                     break;
@@ -357,7 +357,7 @@ namespace gitman::win32 {
                     if (runtime_ != nullptr)
                     {
                         SetCapture(window_);
-                        post_pointer_pressed(long_parameter, ui::pointer_button::right);
+                        post_pointer_pressed(word_parameter, long_parameter, ui::pointer_button::right);
                         return 0;
                     }
                     break;
@@ -402,6 +402,12 @@ namespace gitman::win32 {
                             return 0;
                         }
                     }
+                    break;
+                case WM_IME_STARTCOMPOSITION:
+                case WM_IME_COMPOSITION:
+                    // 한글 같은 조합 입력의 조합 창을 caret 자리로 옮긴다. 조합 자체는
+                    // 시스템 IME가 그리고 완성된 글자만 WM_CHAR로 온다.
+                    place_composition_window();
                     break;
                 case WM_CHAR:
                     // 텍스트 박스 입력이다 (field-feedback-design 1.3). surrogate 쌍은
@@ -658,10 +664,16 @@ namespace gitman::win32 {
                 InvalidateRect(window_, nullptr, FALSE);
             }
 
-            void post_pointer_pressed(const LPARAM long_parameter, const ui::pointer_button button) const noexcept
+            void post_pointer_pressed(const WPARAM word_parameter, const LPARAM long_parameter, const ui::pointer_button button) const noexcept
             {
-                runtime_->post_raw_input(
-                    ui::pointer_pressed_event { static_cast<float>(GET_X_LPARAM(long_parameter)), static_cast<float>(GET_Y_LPARAM(long_parameter)), button, std::chrono::steady_clock::now() });
+                ui::pointer_pressed_event event {};
+                event.x = static_cast<float>(GET_X_LPARAM(long_parameter));
+                event.y = static_cast<float>(GET_Y_LPARAM(long_parameter));
+                event.button = button;
+                event.time = std::chrono::steady_clock::now();
+                // Shift+클릭은 텍스트 박스에서 선택을 늘린다 (R2.4).
+                event.shift = (word_parameter & MK_SHIFT) != 0;
+                runtime_->post_raw_input(event);
             }
 
             void post_pointer_released(const LPARAM long_parameter, const ui::pointer_button button) const noexcept
@@ -971,6 +983,9 @@ namespace gitman::win32 {
             // 눌리지 않았으면 none이라 WM_CHAR로 흘러 그 글자를 그대로 칠 수 있다.
             [[nodiscard]] static ui::key_code control_key_from_virtual(const WPARAM virtual_key, const bool control) noexcept
             {
+                // Insert는 예전 클립보드 배치라 Ctrl이나 Shift와 함께일 때만 뜻이 있다.
+                if (virtual_key == VK_INSERT)
+                    return ui::key_code::insert;
                 if (control == false)
                     return ui::key_code::none;
                 switch (virtual_key)
@@ -983,6 +998,10 @@ namespace gitman::win32 {
                     return ui::key_code::key_v;
                 case 'X':
                     return ui::key_code::key_x;
+                case 'Y':
+                    return ui::key_code::key_y;
+                case 'Z':
+                    return ui::key_code::key_z;
                 default:
                     return ui::key_code::none;
                 }
@@ -1131,6 +1150,33 @@ namespace gitman::win32 {
                 schedule_caret_repaint(state.interaction);
                 schedule_elapsed_repaint();
                 return renderer_->render(state, error);
+            }
+
+            // 조합 창(IME)을 초점을 가진 텍스트 박스 아래로 옮긴다. 자리를 잡아 주지
+            // 않으면 조합 중인 글자가 창 구석에 떨어져 보인다. 초점이 없으면 아무
+            // 일도 하지 않아 시스템 기본 위치가 그대로 쓰인다.
+            void place_composition_window() const noexcept
+            {
+                if (runtime_ == nullptr)
+                    return;
+                const ui::interaction_snapshot interaction { runtime_->acquire_interaction() };
+                if (interaction.focused_input.kind == ui::ui_element_kind::none)
+                    return;
+                const std::shared_ptr<const ui::ui_tree> tree { runtime_->acquire_ui_tree() };
+                const ui::ui_element* const element { tree != nullptr ? tree->find(interaction.focused_input) : nullptr };
+                if (element == nullptr)
+                    return;
+
+                const HIMC context { ImmGetContext(window_) };
+                if (context == nullptr)
+                    return;
+                const ui::rect_f box { element->bounds() };
+                COMPOSITIONFORM form {};
+                form.dwStyle = CFS_POINT;
+                form.ptCurrentPos.x = static_cast<LONG>(box.x);
+                form.ptCurrentPos.y = static_cast<LONG>(box.y + box.height);
+                static_cast<void>(ImmSetCompositionWindow(context, &form));
+                static_cast<void>(ImmReleaseContext(window_, context));
             }
 
             // 클립보드 요청을 실행한다 (switch-dialog-query-bar-design R2.5).

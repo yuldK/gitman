@@ -146,8 +146,11 @@ namespace gitman::ui {
                         return {};
                     if (value.character == U'\b')
                         return { text_edit_action(kind, text_edit_command::backspace) };
-                    // 제어 문자는 키 경로(Ctrl+C 등)가 이미 다뤘다.
-                    if (value.character < U' ' || value.character == 0x7Fu)
+                    // Ctrl+Backspace는 WM_CHAR가 U+007F로 준다.
+                    if (value.character == 0x7Fu)
+                        return { text_edit_action(kind, text_edit_command::delete_word_left) };
+                    // 나머지 제어 문자는 키 경로(Ctrl+C 등)가 이미 다뤘다.
+                    if (value.character < U' ')
                         return {};
 
                     edit_text_input_intent intent {};
@@ -263,7 +266,8 @@ namespace gitman::ui {
         if (event.button == pointer_button::left && is_text_input_kind(hit->id().kind))
         {
             const bool repeat { hit->id() == last_click_id_ && event.time - last_click_time_ <= config_.double_click_time };
-            const bool second { repeat && distance_between(last_click_x_, last_click_y_, event.x, event.y) <= config_.double_click_distance };
+            const bool same_spot { repeat && distance_between(last_click_x_, last_click_y_, event.x, event.y) <= config_.double_click_distance };
+            click_streak_ = same_spot ? click_streak_ + 1 : 1;
             last_click_id_ = hit->id();
             last_click_time_ = event.time;
             last_click_x_ = event.x;
@@ -275,8 +279,15 @@ namespace gitman::ui {
             pressed_y_ = event.y;
             drag_candidate_ = false;
             snapshot_.pressed = hit->id();
-            text_drag_id_ = second ? ui_element_id {} : hit->id();
-            return place_text_caret(*hit, event.x, false, second);
+            // 두 번째 누름은 낱말, 세 번째부터는 전부다. Shift+클릭은 선택을 늘린다.
+            if (click_streak_ >= 3)
+            {
+                text_drag_id_ = {};
+                return { text_edit_action(hit->id().kind, text_edit_command::select_all) };
+            }
+            const bool word { click_streak_ == 2 };
+            text_drag_id_ = word ? ui_element_id {} : hit->id();
+            return place_text_caret(*hit, event.x, word == false && event.shift, word);
         }
 
         pressed_id_ = hit->id();
@@ -385,6 +396,23 @@ namespace gitman::ui {
         return { input_action { logic_message { std::move(intent) } } };
     }
 
+    std::vector<input_action> interaction_controller::copy_focused_selection(const ui_element_kind kind, const bool erase) const
+    {
+        // 복사할 글은 tree가 들고 있다. 선택이 없으면 아무 일도 하지 않는다.
+        const ui_element* const element { tree_ != nullptr ? tree_->find(snapshot_.focused_input) : nullptr };
+        const std::optional<text_input_snapshot> value { element != nullptr ? element->text_input() : std::nullopt };
+        if (value.has_value() == false || value->caret == value->anchor)
+            return {};
+
+        const std::size_t begin { value->caret < value->anchor ? value->caret : value->anchor };
+        const std::size_t end { value->caret < value->anchor ? value->anchor : value->caret };
+        std::vector<input_action> actions {};
+        actions.push_back(input_action { clipboard_copy_request { std::u8string { value->text.substr(begin, end - begin) } } });
+        if (erase)
+            actions.push_back(text_edit_action(kind, text_edit_command::cut));
+        return actions;
+    }
+
     std::optional<std::vector<input_action>> interaction_controller::process_text_input_key(const key_pressed_event& event)
     {
         const ui_element_kind kind { snapshot_.focused_input.kind };
@@ -402,29 +430,34 @@ namespace gitman::ui {
         case key_code::end:
             return std::vector<input_action> { text_edit_action(kind, text_edit_command::move_line_end, event.shift) };
         case key_code::delete_forward:
-            return std::vector<input_action> { text_edit_action(kind, text_edit_command::delete_forward) };
+            // Shift+Delete는 예전 배치의 잘라내기다. Ctrl+Delete는 낱말 지우기다.
+            if (event.shift && event.control == false)
+                return copy_focused_selection(kind, true);
+            return std::vector<input_action> { text_edit_action(kind, event.control ? text_edit_command::delete_word_right : text_edit_command::delete_forward) };
+        case key_code::insert:
+            // Ctrl+Insert는 복사, Shift+Insert는 붙여넣기다.
+            if (event.control)
+                return copy_focused_selection(kind, false);
+            if (event.shift)
+                return std::vector<input_action> { input_action { clipboard_paste_request { target_for_kind(kind) } } };
+            return std::nullopt;
+        case key_code::key_z:
+            if (event.control)
+                return std::vector<input_action> { text_edit_action(kind, event.shift ? text_edit_command::redo : text_edit_command::undo) };
+            return std::nullopt;
+        case key_code::key_y:
+            if (event.control)
+                return std::vector<input_action> { text_edit_action(kind, text_edit_command::redo) };
+            return std::nullopt;
         case key_code::key_a:
             if (event.control)
                 return std::vector<input_action> { text_edit_action(kind, text_edit_command::select_all) };
             return std::nullopt;
         case key_code::key_c:
-        case key_code::key_x: {
+        case key_code::key_x:
             if (event.control == false)
                 return std::nullopt;
-            // 복사할 글은 tree가 들고 있다. 선택이 없으면 아무 일도 하지 않는다.
-            const ui_element* const element { tree_ != nullptr ? tree_->find(snapshot_.focused_input) : nullptr };
-            const std::optional<text_input_snapshot> value { element != nullptr ? element->text_input() : std::nullopt };
-            if (value.has_value() == false || value->caret == value->anchor)
-                return std::vector<input_action> {};
-
-            const std::size_t begin { value->caret < value->anchor ? value->caret : value->anchor };
-            const std::size_t end { value->caret < value->anchor ? value->anchor : value->caret };
-            std::vector<input_action> actions {};
-            actions.push_back(input_action { clipboard_copy_request { std::u8string { value->text.substr(begin, end - begin) } } });
-            if (event.key == key_code::key_x)
-                actions.push_back(text_edit_action(kind, text_edit_command::cut));
-            return actions;
-        }
+            return copy_focused_selection(kind, event.key == key_code::key_x);
         case key_code::key_v:
             if (event.control)
                 return std::vector<input_action> { input_action { clipboard_paste_request { target_for_kind(kind) } } };

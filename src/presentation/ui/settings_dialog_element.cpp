@@ -306,7 +306,9 @@ namespace gitman::ui {
             operations.sections.push_back(std::move(logs));
             tabs.push_back(std::move(operations));
 
-            tab_model appearance { settings_tab::appearance, std::u8string { u8"외양" }, codicons::icon_symbol_color, {} };
+            // 탭 이름은 `테마`다 (E1). 열거자 이름(`appearance`)은 저장 값·id로 이미
+            // 쓰이고 있어 표시 문자열만 바꾼다.
+            tab_model appearance { settings_tab::appearance, std::u8string { u8"테마" }, codicons::icon_symbol_color, {} };
             section_model theme { std::u8string { u8"테마" }, {} };
             theme.items.push_back(
                 make_item(item_kind::theme, u8"테마", theme_description(dialog.theme), {}, { settings_override_field::theme }, u8"theme", overridden(dialog, dialog.theme_follows_app)));

@@ -2184,6 +2184,14 @@ namespace gitman {
         snapshot->scroll_offset = scroll_offset_;
         snapshot->relative_paths = relative_paths();
         snapshot->appearance = effective_appearance();
+        // 환경설정이 열려 있는 동안에는 초안을 그대로 미리 보여 준다 (E2). `저장`이
+        // 초안을 문서·앱 설정에 남기고, `취소`는 초안을 버려 원래 값으로 돌아간다.
+        if (settings_dialog_.has_value())
+        {
+            snapshot->appearance.theme = settings_dialog_->theme;
+            if (settings_dialog_->accent_id.empty() == false)
+                snapshot->appearance.accent_id = settings_dialog_->accent_id;
+        }
         snapshot->window_placement_request = window_placement_;
         snapshot->window_placement_revision = window_placement_revision_;
         snapshot->document_generating = pending_generation_operation_id_ != 0;

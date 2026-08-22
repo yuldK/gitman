@@ -829,10 +829,10 @@ TEST_CASE("The appearance draft lands in the document on save", "[logic][setting
     fixture.controller.handle(gitman::set_theme_preference_intent { gitman::theme_preference::light });
     fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
 
-    // 저장 전에는 화면도 문서도 그대로다.
+    // dialog가 열려 있는 동안에는 초안을 미리 보여 준다 (E2). 문서는 그대로다.
     const auto drafted { fixture.controller.make_view_snapshot() };
-    REQUIRE(drafted->appearance.theme == gitman::theme_preference::system);
-    REQUIRE(drafted->appearance.accent_id == gitman::default_accent_id);
+    REQUIRE(drafted->appearance.theme == gitman::theme_preference::light);
+    REQUIRE(drafted->appearance.accent_id == u8"blue");
     REQUIRE(drafted->settings_dialog->theme == gitman::theme_preference::light);
     REQUIRE(drafted->settings_dialog->accent_id == u8"blue");
     REQUIRE_FALSE(drafted->settings_dialog->theme_follows_app);
@@ -868,13 +868,20 @@ TEST_CASE("The appearance draft lands in the document on save", "[logic][setting
     REQUIRE(followed->appearance.accent_id == gitman::default_accent_id);
 }
 
-TEST_CASE("Cancelling the settings dialog drops the appearance draft", "[logic][settings-ui][theme]")
+TEST_CASE("Cancelling the settings dialog rolls the appearance preview back", "[logic][settings-ui][theme]")
 {
-    // `저장`을 누르지 않으면 테마가 적용되지 않는다 (D4).
+    // 고르는 즉시 미리 보여 주되, 취소하면 원래 값으로 돌아간다 (E2).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     fixture.controller.handle(gitman::set_theme_preference_intent { gitman::theme_preference::dark });
     fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
+
+    const auto previewed { fixture.controller.make_view_snapshot() };
+    REQUIRE(previewed->appearance.theme == gitman::theme_preference::dark);
+    REQUIRE(previewed->appearance.accent_id == u8"blue");
+    // 미리 보기는 저장을 일으키지 않는다.
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) == nullptr);
+
     fixture.controller.handle(gitman::cancel_settings_dialog_intent {});
 
     const auto view { fixture.controller.make_view_snapshot() };
@@ -977,7 +984,7 @@ TEST_CASE("The appearance items show the effective values and a wrapped swatch g
     }
 }
 
-TEST_CASE("Appearance clicks edit the draft and need the save button", "[ui][settings-ui][theme]")
+TEST_CASE("Appearance clicks preview at once and need the save button to persist", "[ui][settings-ui][theme]")
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
@@ -1004,9 +1011,11 @@ TEST_CASE("Appearance clicks edit the draft and need the save button", "[ui][set
     REQUIRE(accent_intent != nullptr);
     REQUIRE(accent_intent->accent_id == u8"blue");
 
-    // 클릭은 초안만 바꾼다. 저장해야 화면에 반영된다 (D4).
+    // 클릭은 곧바로 미리 보여 주지만 저장은 `저장`이 한다 (E2).
     fixture.controller.handle(*theme_message);
-    REQUIRE(fixture.controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::system);
+    REQUIRE(fixture.controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::dark);
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) == nullptr);
     fixture.controller.handle(gitman::confirm_settings_intent {});
     REQUIRE(fixture.controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::dark);
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) != nullptr);
 }

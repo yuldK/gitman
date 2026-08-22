@@ -331,8 +331,8 @@ TEST_CASE("Theme intents update the app settings and request a save", "[logic][a
 
     controller.handle(gitman::logic_message { gitman::open_settings_intent {} });
     controller.handle(gitman::logic_message { gitman::set_theme_preference_intent { gitman::theme_preference::dark } });
-    // 초안만 바뀐다 — 화면 색은 저장 전까지 그대로다.
-    REQUIRE(controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::system);
+    // dialog가 열려 있는 동안에는 초안을 미리 보여 준다. 저장은 아직 없다 (E2).
+    REQUIRE(controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::dark);
     REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == 0);
 
     controller.handle(gitman::logic_message { gitman::confirm_settings_intent {} });

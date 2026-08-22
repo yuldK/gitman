@@ -1250,6 +1250,10 @@ namespace gitman {
         dialog.update_submodules = effective.update_submodules;
         dialog.ignore_local_changes = effective.ignore_local_changes;
         dialog.write_log_files = effective.write_log_files;
+        // 외양도 같은 초안 규칙이다 (D4). 유효 값에서 시작한다.
+        const appearance_settings appearance { effective_appearance() };
+        dialog.theme = appearance.theme;
+        dialog.accent_id = appearance.accent_id;
         if (dialog.document_mode)
         {
             dialog.git_defined = document_->settings.git_executable.has_value();
@@ -1258,6 +1262,8 @@ namespace gitman {
             dialog.submodules_defined = document_->settings.update_submodules.has_value();
             dialog.ignore_local_defined = document_->settings.ignore_local_changes.has_value();
             dialog.log_files_defined = document_->settings.write_log_files.has_value();
+            dialog.theme_defined = document_->appearance.theme.has_value();
+            dialog.accent_defined = document_->appearance.accent_id.has_value();
         }
         settings_dialog_ = { std::move(dialog) };
     }
@@ -1348,20 +1354,12 @@ namespace gitman {
             settings_dialog_->log_files_defined = false;
             break;
         case settings_override_field::theme:
-            // 외양은 초안이 아니라 문서를 곧바로 고친다 (S2.3). 배지도 같은 규칙으로
-            // 문서 정의를 지우고 저장을 예약한다.
-            if (document_->appearance.theme.has_value())
-            {
-                document_->appearance.theme.reset();
-                request_save();
-            }
+            settings_dialog_->theme = app_settings_.appearance.theme;
+            settings_dialog_->theme_defined = false;
             break;
         case settings_override_field::accent:
-            if (document_->appearance.accent_id.has_value())
-            {
-                document_->appearance.accent_id.reset();
-                request_save();
-            }
+            settings_dialog_->accent_id = app_settings_.appearance.accent_id;
+            settings_dialog_->accent_defined = false;
             break;
         }
     }
@@ -1420,11 +1418,18 @@ namespace gitman {
             overrides.ignore_local_changes = settings_dialog_->ignore_local_defined ? std::optional<bool> { settings_dialog_->ignore_local_changes } : std::nullopt;
             overrides.write_log_files = settings_dialog_->log_files_defined ? std::optional<bool> { settings_dialog_->write_log_files } : std::nullopt;
 
-            if ((overrides == document_->settings) == false)
-            {
+            appearance_overrides appearance { document_->appearance };
+            appearance.theme = settings_dialog_->theme_defined ? std::optional<theme_preference> { settings_dialog_->theme } : std::nullopt;
+            appearance.accent_id = settings_dialog_->accent_defined ? std::optional<std::u8string> { settings_dialog_->accent_id } : std::nullopt;
+
+            const bool settings_changed { (overrides == document_->settings) == false };
+            const bool appearance_changed { (appearance == document_->appearance) == false };
+            if (settings_changed)
                 document_->settings = std::move(overrides);
+            if (appearance_changed)
+                document_->appearance = std::move(appearance);
+            if (settings_changed || appearance_changed)
                 request_save();
-            }
         }
         else
         {
@@ -1437,11 +1442,20 @@ namespace gitman {
             global.update_submodules = settings_dialog_->update_submodules;
             global.ignore_local_changes = settings_dialog_->ignore_local_changes;
             global.write_log_files = settings_dialog_->write_log_files;
-            if ((global == app_settings_.settings) == false)
-            {
+            // 전역 모드는 외양도 구체 값이다 (D4).
+            appearance_settings appearance { app_settings_.appearance };
+            appearance.theme = settings_dialog_->theme;
+            if (settings_dialog_->accent_id.empty() == false)
+                appearance.accent_id = settings_dialog_->accent_id;
+
+            const bool settings_changed { (global == app_settings_.settings) == false };
+            const bool appearance_changed { (appearance == app_settings_.appearance) == false };
+            if (settings_changed)
                 app_settings_.settings = std::move(global);
+            if (appearance_changed)
+                app_settings_.appearance = std::move(appearance);
+            if (settings_changed || appearance_changed)
                 request_app_settings_save();
-            }
         }
 
         // 유효 설정이 실제로 바뀐 경우에만 적재 대상을 갱신하고 활성 카드를
@@ -1718,45 +1732,22 @@ namespace gitman {
 
     void logic_controller::handle_set_theme_preference(const set_theme_preference_intent& intent)
     {
-        if (shutting_down_)
+        // 외양도 다른 항목과 같은 초안이다 (D4). 화면 색은 `저장` 전까지 그대로이고,
+        // 닫힌 뒤 도착한 클릭은 버린다.
+        if (settings_dialog_.has_value() == false)
             return;
 
-        // 외양은 초안을 거치지 않고 곧바로 반영·저장한다 (T3.3). 조회 설정이
-        // 아니므로 카드 재조회도 필요 없다. 문서가 열려 있으면 다른 설정과 같이
-        // 문서 override를 편집한다 (S2.3).
-        if (document_.has_value())
-        {
-            if (document_->appearance.theme.has_value() && *document_->appearance.theme == intent.theme)
-                return;
-            document_->appearance.theme = { intent.theme };
-            request_save();
-            return;
-        }
-
-        if (app_settings_.appearance.theme == intent.theme)
-            return;
-        app_settings_.appearance.theme = intent.theme;
-        request_app_settings_save();
+        settings_dialog_->theme = intent.theme;
+        settings_dialog_->theme_defined = true;
     }
 
     void logic_controller::handle_set_accent(const set_accent_intent& intent)
     {
-        if (shutting_down_ || intent.accent_id.empty())
+        if (settings_dialog_.has_value() == false || intent.accent_id.empty())
             return;
 
-        if (document_.has_value())
-        {
-            if (document_->appearance.accent_id.has_value() && *document_->appearance.accent_id == intent.accent_id)
-                return;
-            document_->appearance.accent_id = { intent.accent_id };
-            request_save();
-            return;
-        }
-
-        if (app_settings_.appearance.accent_id == intent.accent_id)
-            return;
-        app_settings_.appearance.accent_id = intent.accent_id;
-        request_app_settings_save();
+        settings_dialog_->accent_id = intent.accent_id;
+        settings_dialog_->accent_defined = true;
     }
 
     void logic_controller::handle_open_local_changes(const open_local_changes_intent& intent)
@@ -2338,10 +2329,9 @@ namespace gitman {
             dialog.update_submodules = settings_dialog_->update_submodules;
             dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
             dialog.write_log_files = settings_dialog_->write_log_files;
-            // 외양은 초안이 아니라 현재 유효 값이며 클릭 즉시 바뀐다 (S2.3).
-            const appearance_settings appearance { effective_appearance() };
-            dialog.theme = appearance.theme;
-            dialog.accent_id = appearance.accent_id;
+            // 외양도 초안이다 (D4). 화면 색은 `저장` 전까지 바뀌지 않는다.
+            dialog.theme = settings_dialog_->theme;
+            dialog.accent_id = settings_dialog_->accent_id;
             // 문서 모드에서 정의되지 않은 행은 "앱 설정 따름"으로 표시된다 (G3.2).
             if (settings_dialog_->document_mode)
             {
@@ -2351,9 +2341,8 @@ namespace gitman {
                 dialog.submodules_follows_app = settings_dialog_->submodules_defined == false;
                 dialog.ignore_local_follows_app = settings_dialog_->ignore_local_defined == false;
                 dialog.log_files_follows_app = settings_dialog_->log_files_defined == false;
-                // 외양은 초안이 없어 문서의 정의 여부를 그대로 본다 (S2.3).
-                dialog.theme_follows_app = document_->appearance.theme.has_value() == false;
-                dialog.accent_follows_app = document_->appearance.accent_id.has_value() == false;
+                dialog.theme_follows_app = settings_dialog_->theme_defined == false;
+                dialog.accent_follows_app = settings_dialog_->accent_defined == false;
             }
             // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
             // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.

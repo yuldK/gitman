@@ -265,6 +265,10 @@ namespace gitman {
             bool ignore_local_changes { false };
             // 카드 로그를 문서 폴더에 파일로 남길지의 초안이다 (A4.5).
             bool write_log_files { true };
+            // 테마와 키 컬러의 초안이다 (D4). 다른 항목과 같이 `저장`에서만 반영되며
+            // 화면 색은 그때까지 그대로다.
+            theme_preference theme { theme_preference::system };
+            std::u8string accent_id {};
             // 문서 모드에서 "문서에 정의됨" 표시다 (G3.2 암묵 덮어쓰기: 값을
             // 건드리면 켜지고, 저장 시 켜진 행만 override로 남는다). 전역 모드에서는
             // 쓰지 않는다.
@@ -274,6 +278,8 @@ namespace gitman {
             bool submodules_defined { false };
             bool ignore_local_defined { false };
             bool log_files_defined { false };
+            bool theme_defined { false };
+            bool accent_defined { false };
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};

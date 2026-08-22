@@ -324,23 +324,39 @@ TEST_CASE("Theme intents update the app settings and request a save", "[logic][a
     const std::uint64_t load_id { submitter.requests.front().operation_id };
     controller.handle(gitman::logic_message { make_loaded_settings(load_id) });
 
+    // 외양도 환경설정의 초안이다 (D4). dialog 밖에서 온 클릭은 버린다.
     controller.handle(gitman::logic_message { gitman::set_theme_preference_intent { gitman::theme_preference::dark } });
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == 0);
+    REQUIRE(controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::system);
+
+    controller.handle(gitman::logic_message { gitman::open_settings_intent {} });
+    controller.handle(gitman::logic_message { gitman::set_theme_preference_intent { gitman::theme_preference::dark } });
+    // 초안만 바뀐다 — 화면 색은 저장 전까지 그대로다.
+    REQUIRE(controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::system);
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == 0);
+
+    controller.handle(gitman::logic_message { gitman::confirm_settings_intent {} });
     const gitman::operation_request* const saved_theme { submitter.last_of(gitman::operation_kind::save_app_settings) };
     REQUIRE(saved_theme != nullptr);
     REQUIRE(saved_theme->app_settings_payload.has_value());
     REQUIRE(saved_theme->app_settings_payload->appearance.theme == gitman::theme_preference::dark);
-    // 화면은 저장을 기다리지 않는다 — snapshot이 곧바로 새 값을 싣는다.
     REQUIRE(controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::dark);
 
-    // 같은 값을 다시 보내면 저장이 늘지 않는다.
+    // 같은 값을 다시 저장하면 저장이 늘지 않는다.
     const std::size_t saves { submitter.count_of(gitman::operation_kind::save_app_settings) };
+    controller.handle(gitman::logic_message { gitman::open_settings_intent {} });
     controller.handle(gitman::logic_message { gitman::set_theme_preference_intent { gitman::theme_preference::dark } });
+    controller.handle(gitman::logic_message { gitman::confirm_settings_intent {} });
     REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == saves);
 
-    // 빈 id는 무시한다. 유효한 id는 저장과 snapshot에 함께 반영된다.
+    // 빈 id는 무시한다. 유효한 id는 저장 후 snapshot에 반영된다.
+    controller.handle(gitman::logic_message { gitman::open_settings_intent {} });
     controller.handle(gitman::logic_message { gitman::set_accent_intent { u8"" } });
+    controller.handle(gitman::logic_message { gitman::confirm_settings_intent {} });
     REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == saves);
+    controller.handle(gitman::logic_message { gitman::open_settings_intent {} });
     controller.handle(gitman::logic_message { gitman::set_accent_intent { u8"blue" } });
+    controller.handle(gitman::logic_message { gitman::confirm_settings_intent {} });
     REQUIRE(u8_equal(controller.make_view_snapshot()->appearance.accent_id, u8"blue"));
 }
 

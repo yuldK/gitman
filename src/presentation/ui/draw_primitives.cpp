@@ -1,5 +1,6 @@
 #include "presentation/ui/draw_primitives.h"
 
+#include "domain/utf8_text.h"
 #include "gitman/generated/codicons.h"
 
 #include "include/core/SkCanvas.h"
@@ -39,11 +40,21 @@ namespace gitman::ui {
         return paint;
     }
 
+    std::u8string_view drawable_text(const std::u8string_view text, std::u8string& storage)
+    {
+        if (utf8_is_valid(text))
+            return text;
+        storage = utf8_replace_invalid(text);
+        return storage;
+    }
+
     void draw_text(SkCanvas& canvas, const std::u8string_view text, const float x, const float y, const SkFont& font, const SkPaint& paint)
     {
         if (text.empty())
             return;
-        canvas.drawSimpleText(text.data(), text.size(), SkTextEncoding::kUTF8, x, y, font, paint);
+        std::u8string storage {};
+        const std::u8string_view drawable { drawable_text(text, storage) };
+        canvas.drawSimpleText(drawable.data(), drawable.size(), SkTextEncoding::kUTF8, x, y, font, paint);
     }
 
     ui_color with_alpha(const ui_color color, const float alpha) noexcept
@@ -57,7 +68,9 @@ namespace gitman::ui {
     {
         if (text.empty())
             return 0.0f;
-        return font.measureText(text.data(), text.size(), SkTextEncoding::kUTF8);
+        std::u8string storage {};
+        const std::u8string_view drawable { drawable_text(text, storage) };
+        return font.measureText(drawable.data(), drawable.size(), SkTextEncoding::kUTF8);
     }
 
     std::u8string elide_text(const std::u8string_view text, const float max_width, const SkFont& font)

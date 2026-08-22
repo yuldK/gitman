@@ -13,6 +13,17 @@ namespace gitman::ui {
     // 않으므로 호출자가 paint를 소유한다.
     [[nodiscard]] SkPaint solid_paint(ui_color color);
 
+    // Skia로 가는 모든 글은 이 관문을 지난다
+    // (text-input-and-font-fallback-design E3.2). 잘못된 UTF-8을 Skia에 넘기면
+    // `SkFont::countText`가 -1을 돌려주고 그 값이 `AutoSTArray::reset`의
+    // `SkASSERT(count >= 0)`에 걸려 **프로세스가 죽는다**. 밖에서 오는 글(프로세스
+    // 출력·경로·설정 파일·클립보드)은 언제든 깨질 수 있으므로 근본 원인을 고쳐도
+    // 관문은 남긴다.
+    //
+    // 온전한 글이면 `text`를 그대로 돌려주고 `storage`를 건드리지 않는다 — 위반이
+    // 없으면 할당도 복사도 없다.
+    [[nodiscard]] std::u8string_view drawable_text(std::u8string_view text, std::u8string& storage);
+
     void draw_text(SkCanvas& canvas, std::u8string_view text, float x, float y, const SkFont& font, const SkPaint& paint);
 
     // 같은 색의 투명도만 바꾼 값이다. chip 배경처럼 강조색을 옅게 깔 때 쓴다.

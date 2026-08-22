@@ -1,5 +1,64 @@
 # 변경 이력
 
+## 2026-08-23 - IME · BMP 밖 문자 · 글꼴 대체 · 설정 dialog 스크롤
+
+진행 중이다. 설계는 `docs/text-input-and-font-fallback-design.md`이고 세부 단계마다
+검수를 받는다.
+
+### 사용자 지시
+
+- 클라이언트 높이가 설정 팝업보다 낮으면 스타일이 깨진다. 스크롤을 주어 스타일을
+  지킨다.
+- 한글 조합이 텍스트 박스에서 이루어지게 한다. BMP 밖 문자(이모지)도 칠 수 있게
+  시스템을 개선한다. `WM_CHAR`보다 현대적인 방식을 쓰고, Skia 버전 문제라면 올리는
+  것도 검토한다.
+- 글꼴 dialog를 너무 빨리 내리면 exception이 뜬다 (`SkAutoToGlyphs` 콜스택 첨부).
+- `Cascadia Code`에서 한글이 제대로 나오지 않는다. 원인을 찾아 고친다.
+
+### 검수 결정
+
+| 지점 | 결정 |
+|---|---|
+| 대체 해석기 전달 | A · platform이 시작 시 presentation에 한 번 등록한다 |
+| IME 방식 | TSF (`ITextStoreACP2`). IMM32 인라인 조합이 아니다 |
+| 설정 스크롤 범위 | 항목 열만. rail·제목·메시지·버튼은 고정 |
+
+### 조사 결과
+
+- **글꼴 dialog abort와 `Cascadia Code` 한글은 뿌리가 같다.** Skia가 `UNICODE` 없이
+  빌드되어 GDI font manager가 ANSI API(`EnumFontFamiliesExA`)로 컴파일된다. 한국어
+  Windows에서 `맑은 고딕` 같은 이름이 CP949 바이트로 오고, 그것을 UTF-8이라 믿고
+  그리면 `SkFont::countText`가 -1을 돌려주어 `SkASSERT(count >= 0)`이 프로세스를
+  죽인다. 이 PC에서 GDI는 289개 중 **22개**가 UTF-8이 아니었고 DirectWrite는 0개다.
+  재현 조건은 스크롤 속도가 아니라 한글 이름 글꼴 행이 화면에 들어오는 순간이다.
+- **`Cascadia Code`에는 한글 글리프가 없다** (글리프 1483개, `U+AC00`·`U+D55C`
+  없음). VS Code·Windows Terminal에서 보이는 것은 그 앱들이 글꼴 대체를 하기
+  때문이다. Gitman은 `drawSimpleText` 한 번으로 typeface 하나만 써서 없는 글자가
+  `.notdef`가 된다. 그리고 GDI 관리자는 `onMatchFamilyStyleCharacter`가
+  `return nullptr`이라 대체가 아예 불가능했다.
+- **Skia 버전 문제가 아니다** (m148). `WM_CHAR`가 surrogate를 버리고 IME 조합을
+  시스템 창에 맡기고 있어서 생긴 일이다. 재빌드도 필요 없었다 — DirectWrite 심볼도
+  `dwrite` 링크도 이미 있다.
+
+### 반영 내용 (1단계)
+
+- **글꼴 관리자 교체**: `win32_fonts`가 GDI 대신 DirectWrite를 쓴다.
+  `embedded_assets`가 이미 쓰던 것과 같아져 앱에 관리자가 하나만 남는다. 이름이
+  사용자 로캘의 UTF-8로 오고, 글자 단위 대체의 길도 열린다 (2단계에서 쓴다).
+- **UTF-8 관문**: `domain/utf8_text`를 만들고 `draw_primitives`의
+  `measure_text`·`draw_text`가 이 관문을 지나게 했다. 잘못된 바이트는 `U+FFFD`로
+  바뀐다. 온전한 글에는 할당도 복사도 없다. Skia로 가던 나머지 두 진입점(tooltip
+  폭 측정, smoke view)도 이 경로로 모아 이제 통로가 하나다. 원인을 고쳐도 관문은
+  남긴다 — 밖에서 오는 글은 언제든 깨질 수 있고, 그 한 글자가 프로세스를 죽인다.
+- **목록 방어**: `installed_font_families()`가 이름 끝의 NUL을 떼고 UTF-8이 아닌
+  이름은 목록에서 뺀다.
+- 신규 test 5 case (`utf8_tests` 4, `win32_fonts_tests` 1). 마지막 것은 설치된
+  글꼴 이름 전부를 실제로 `measure_text`로 재 보는 회귀 test다.
+
+### 영향 요구사항
+
+- REQ-017 (환경설정), NFR (안정성)
+
 ## 2026-08-23 - 실행 취소 · 글꼴 설정 · 새 문서 dialog의 앱 UI 통일
 
 ### 사용자 지시

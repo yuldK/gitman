@@ -90,7 +90,7 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
         const std::u8string& text { hovered->tooltip() };
-        const float text_width { font.measureText(text.data(), text.size(), SkTextEncoding::kUTF8) };
+        const float text_width { measure_text(text, font) };
         const float padding { 5.0f * scale };
         const float box_width { text_width + padding * 2.0f };
         const float box_height { 22.0f * scale };

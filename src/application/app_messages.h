@@ -278,6 +278,15 @@ namespace gitman {
         float anchor_y { 0.0f };
     };
 
+    // 배너(도구 막대) 우클릭이 여는 문서 컨텍스트 메뉴다
+    // (theme-and-banner-menu-design T1). 좌표 규칙은 카드 메뉴와 같다. 열린 문서가
+    // 없으면 logic이 메뉴를 열지 않는다.
+    struct open_document_context_menu_intent
+    {
+        float anchor_x { 0.0f };
+        float anchor_y { 0.0f };
+    };
+
     // 바깥 클릭·Esc·항목 실행이 보내는 메뉴 닫기다.
     struct close_context_menu_intent
     {};
@@ -541,7 +550,7 @@ namespace gitman {
         open_settings_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent,
         toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent,
         cancel_local_changes_dialog_intent,
-        local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, close_context_menu_intent, remove_recent_document_intent, close_document_intent, show_notice_intent,
+        local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, remove_recent_document_intent, close_document_intent, show_notice_intent,
         dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
         document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event,
         projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;

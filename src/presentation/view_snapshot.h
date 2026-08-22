@@ -153,8 +153,9 @@ namespace gitman {
         float diff_scroll { 0.0f };
     };
 
-    // 카드 컨텍스트 메뉴의 항목 종류다 (field-feedback-design 3장). element가 이
-    // 값으로 클릭 액션과 아이콘을 정한다.
+    // 컨텍스트 메뉴의 항목 종류다 (field-feedback-design 3장,
+    // theme-and-banner-menu-design T1). element가 이 값으로 클릭 액션과 아이콘을
+    // 정한다. 앞의 여섯은 카드 메뉴, 뒤의 둘은 배너(문서) 메뉴의 항목이다.
     enum class context_menu_entry
     {
         open_repository,
@@ -165,6 +166,10 @@ namespace gitman {
         refresh,
         update,
         switch_to,
+        // 배너 우클릭 메뉴다 (T1). 문서가 있는 폴더를 탐색기로 열고 문서를 선택
+        // 상태로 두거나, 그 폴더를 VSCode workspace로 연다.
+        open_document_folder,
+        open_document_in_vscode,
     };
 
     struct context_menu_item_view
@@ -173,18 +178,22 @@ namespace gitman {
         std::u8string label {};
         // 진행 중 작업으로 카드 버튼이 비활성이면 해당 항목도 비활성이다.
         bool enabled { true };
+        // 외부 열기 항목이 셸에 넘길 절대 경로다 (T1). 항목마다 대상이 달라서
+        // 메뉴가 아니라 항목이 들고 있다 — 배너 메뉴의 탐색기 항목은 문서 파일을,
+        // VSCode 항목은 문서가 있는 폴더를 받는다. Windows 원형 그대로이며 표시용
+        // 변환(`/`)을 적용하지 않는다. 외부 열기가 아닌 항목은 비어 있다.
+        std::u8string target_path {};
     };
 
-    // 카드 body 우클릭이 여는 컨텍스트 메뉴의 불변 표시 모델이다 (3장). anchor는
-    // 우클릭 지점의 창 좌표(물리 픽셀)이며, panel이 창 밖으로 나가면 element가
-    // 안쪽으로 민다.
+    // 카드 body 또는 배너 우클릭이 여는 컨텍스트 메뉴의 불변 표시 모델이다 (3장,
+    // T1). anchor는 우클릭 지점의 창 좌표(물리 픽셀)이며, panel이 창 밖으로 나가면
+    // element가 안쪽으로 민다.
     struct context_menu_view
     {
+        // 카드 메뉴에서만 채운다. 배너(문서) 메뉴는 비어 있다.
         project_id owner {};
         float anchor_x { 0.0f };
         float anchor_y { 0.0f };
-        // "저장소 열기"가 탐색기로 여는 작업 복사본 절대 경로다.
-        std::u8string repository_path {};
         std::vector<context_menu_item_view> items {};
     };
 

@@ -205,6 +205,8 @@ namespace gitman {
                     handle_discovery_dialog_scroll(value.delta);
                 else if constexpr (std::is_same_v<value_type, open_context_menu_intent>)
                     handle_open_context_menu(value);
+                else if constexpr (std::is_same_v<value_type, open_document_context_menu_intent>)
+                    handle_open_document_context_menu(value);
                 else if constexpr (std::is_same_v<value_type, close_context_menu_intent>)
                     context_menu_.reset();
                 else if constexpr (std::is_same_v<value_type, remove_recent_document_intent>)
@@ -1632,7 +1634,23 @@ namespace gitman {
 
         // 우클릭한 카드를 선택 카드로 만든 뒤 연다 (로그 pane 연동 유지, 3장).
         handle_select_card(select_card_intent { { intent.id } });
-        context_menu_ = { context_menu_state { intent.id, intent.anchor_x, intent.anchor_y } };
+        context_menu_ = { context_menu_state { context_menu_kind::card, intent.id, intent.anchor_x, intent.anchor_y } };
+    }
+
+    void logic_controller::handle_open_document_context_menu(const open_document_context_menu_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        // 열린 문서가 없으면 열 메뉴가 없다 (T1). 배너도 같은 조건에서 intent를
+        // 내지 않지만 늦게 도착한 요청을 여기서 한 번 더 막는다.
+        if (document_.has_value() == false || document_path_.empty())
+        {
+            context_menu_.reset();
+            return;
+        }
+
+        // 문서 메뉴는 선택 카드를 바꾸지 않는다 — 카드와 무관한 대상이다.
+        context_menu_ = { context_menu_state { context_menu_kind::document, {}, intent.anchor_x, intent.anchor_y } };
     }
 
     void logic_controller::handle_open_local_changes(const open_local_changes_intent& intent)
@@ -2268,7 +2286,23 @@ namespace gitman {
         if (notice_dialog_.has_value())
             snapshot->notice_dialog = notice_dialog_;
 
-        if (context_menu_.has_value())
+        if (context_menu_.has_value() && context_menu_->kind == context_menu_kind::document)
+        {
+            // 배너 우클릭 메뉴다 (T1). 탐색기는 문서 파일을 선택 상태로 열고,
+            // VSCode는 문서가 있는 폴더를 workspace로 연다. 두 경로 모두 Windows
+            // 원형이라 셸이 그대로 받는다.
+            const std::u8string folder { windows_parent_directory(document_path_) };
+            if (document_path_.empty() == false && folder.empty() == false)
+            {
+                context_menu_view menu {};
+                menu.anchor_x = context_menu_->anchor_x;
+                menu.anchor_y = context_menu_->anchor_y;
+                menu.items.push_back({ context_menu_entry::open_document_folder, u8"경로를 탐색기로 열기", true, document_path_ });
+                menu.items.push_back({ context_menu_entry::open_document_in_vscode, u8"VSCode로 열기", true, folder });
+                snapshot->context_menu = { std::move(menu) };
+            }
+        }
+        else if (context_menu_.has_value())
         {
             for (const card_state& card : cards_)
             {
@@ -2279,16 +2313,16 @@ namespace gitman {
                 menu.owner = card.project.id;
                 menu.anchor_x = context_menu_->anchor_x;
                 menu.anchor_y = context_menu_->anchor_y;
-                menu.repository_path = card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized;
+                const std::u8string repository_path { card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized };
 
                 // 항목 활성 여부는 카드 버튼과 같은 판정이다 (3장: 버튼이 비활성이면
                 // 메뉴 항목도 비활성). 실행 중에는 update 버튼이 취소 버튼으로
                 // 바뀌므로 메뉴의 업데이트는 비활성이다.
                 const bool can_change { card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready };
                 const bool change_running { card.change_operation_id != 0 };
-                menu.items.push_back({ context_menu_entry::open_repository, u8"저장소 열기", true });
+                menu.items.push_back({ context_menu_entry::open_repository, u8"저장소 열기", true, repository_path });
                 // 미추적·변경 정리는 편집기에서 하는 편이 낫다 (2026-08-22 지시).
-                menu.items.push_back({ context_menu_entry::open_in_vscode, u8"VSCode로 열기", true });
+                menu.items.push_back({ context_menu_entry::open_in_vscode, u8"VSCode로 열기", true, repository_path });
                 menu.items.push_back({ context_menu_entry::show_local_changes, u8"로컬 변경 확인", true });
                 menu.items.push_back({ context_menu_entry::refresh, u8"상태 갱신", true });
                 menu.items.push_back({ context_menu_entry::update, u8"업데이트", can_change && change_running == false });

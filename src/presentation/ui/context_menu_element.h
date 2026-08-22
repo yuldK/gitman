@@ -6,9 +6,10 @@
 #include <cstddef>
 
 namespace gitman::ui {
-    // 카드 body 우클릭이 여는 컨텍스트 메뉴다 (field-feedback-design 3장). 화면
-    // 전체를 덮는 투명 overlay가 바깥 클릭을 흡수해 닫고, 앵커 좌표에 소형 panel을
-    // 붙인다. panel이 창 밖으로 나가면 안쪽으로 민다. Esc와 항목 실행도 닫는다.
+    // 카드 body 또는 배너 우클릭이 여는 컨텍스트 메뉴다 (field-feedback-design
+    // 3장, theme-and-banner-menu-design T1). 화면 전체를 덮는 투명 overlay가 바깥
+    // 클릭을 흡수해 닫고, 앵커 좌표에 소형 panel을 붙인다. panel이 창 밖으로 나가면
+    // 안쪽으로 민다. Esc와 항목 실행도 닫는다.
     class context_menu_element final : public ui_element
     {
     public:

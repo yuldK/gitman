@@ -100,6 +100,7 @@ namespace gitman {
         void handle_discovery_dialog_scroll(float delta);
         void handle_open_settings();
         void handle_open_context_menu(const open_context_menu_intent& intent);
+        void handle_open_document_context_menu(const open_document_context_menu_intent& intent);
         void handle_open_local_changes(const open_local_changes_intent& intent);
         void handle_select_local_change(std::size_t index);
         void handle_local_changes(local_changes_event event);
@@ -289,11 +290,20 @@ namespace gitman {
 
         std::optional<local_changes_dialog_state> local_changes_dialog_ {};
 
-        // 카드 컨텍스트 메뉴의 상태다 (field-feedback-design 3장). 값이 있으면
-        // 메뉴가 앵커 좌표(창 좌표, 물리 픽셀)에 떠 있다. 항목 목록과 활성 여부는
-        // view 구성 시 카드 상태로 그때그때 계산한다.
+        // 컨텍스트 메뉴의 상태다 (field-feedback-design 3장,
+        // theme-and-banner-menu-design T1). 값이 있으면 메뉴가 앵커 좌표(창 좌표,
+        // 물리 픽셀)에 떠 있다. 항목 목록과 활성 여부는 view 구성 시 카드·문서
+        // 상태로 그때그때 계산한다.
+        enum class context_menu_kind
+        {
+            card,
+            // 배너(도구 막대) 우클릭이 연 문서 메뉴다. `card`는 비어 있다.
+            document,
+        };
+
         struct context_menu_state
         {
+            context_menu_kind kind { context_menu_kind::card };
             project_id card {};
             float anchor_x { 0.0f };
             float anchor_y { 0.0f };

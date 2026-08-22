@@ -20,6 +20,19 @@ namespace gitman::ui {
         , show_open_button_ { show_open_button }
         , document_open_ { document_open }
     {
+        // 배너 우클릭은 문서 컨텍스트 메뉴다 (theme-and-banner-menu-design T1).
+        // 자식 버튼이 hit test에 먼저 걸리므로 빈 곳과 문서 경로 글자만 메뉴를
+        // 연다. 문서가 없으면 열 대상이 없어 액션을 붙이지 않는다.
+        if (document_open)
+        {
+            set_action(ui_trigger::right_click, [](const ui_action_context& context) -> std::vector<input_action> {
+                return { input_action { logic_message { open_document_context_menu_intent { context.x, context.y } } } };
+            });
+            // 우클릭 액션이 생기면 배너가 hit test에 걸린다. 지금까지 root로
+            // 흘러가 선택을 해제하던 좌클릭을 그대로 유지한다.
+            set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
+        }
+
         auto document_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::toolbar_document_path }, label_config { .text = std::move(document_text) }) };
         document_label_ = document_label.get();
         add_child(std::move(document_label));

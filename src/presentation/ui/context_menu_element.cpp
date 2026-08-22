@@ -48,23 +48,36 @@ namespace gitman::ui {
                 return codicons::icon_repo_pull;
             case context_menu_entry::switch_to:
                 return codicons::icon_source_control;
+            case context_menu_entry::open_document_folder:
+                return codicons::icon_folder_opened;
+            case context_menu_entry::open_document_in_vscode:
+                return codicons::icon_vscode;
             }
             return codicons::icon_question;
         }
 
         // 항목의 클릭 결과다. 어느 항목이든 먼저 메뉴를 닫고 이어서 본 동작을 낸다.
-        std::vector<input_action> entry_actions(const context_menu_entry entry, const project_id& owner, const std::u8string& repository_path)
+        // `target_path`는 외부 열기 항목이 셸에 넘길 경로이고, `owner`는 카드 항목이
+        // 대상으로 삼는 카드다 (배너 메뉴에서는 비어 있다).
+        std::vector<input_action> entry_actions(const context_menu_entry entry, const project_id& owner, const std::u8string& target_path)
         {
             std::vector<input_action> actions { input_action { logic_message { close_context_menu_intent {} } } };
             switch (entry)
             {
             case context_menu_entry::open_repository:
-                actions.push_back(input_action { open_external_request { external_open_target::explorer_folder, repository_path } });
+                actions.push_back(input_action { open_external_request { external_open_target::explorer_folder, target_path } });
                 break;
             case context_menu_entry::open_in_vscode:
                 // 로컬 변경 dialog의 파일 열기와 같은 UI thread 경로다. 폴더를 주면
                 // VSCode가 workspace로 연다.
-                actions.push_back(input_action { open_external_request { external_open_target::vscode, repository_path } });
+                actions.push_back(input_action { open_external_request { external_open_target::vscode, target_path } });
+                break;
+            case context_menu_entry::open_document_folder:
+                // 문서 파일을 선택 상태로 두고 그 폴더를 연다 (T1).
+                actions.push_back(input_action { open_external_request { external_open_target::explorer, target_path } });
+                break;
+            case context_menu_entry::open_document_in_vscode:
+                actions.push_back(input_action { open_external_request { external_open_target::vscode, target_path } });
                 break;
             case context_menu_entry::show_local_changes:
                 actions.push_back(input_action { logic_message { open_local_changes_intent { owner } } });
@@ -87,12 +100,13 @@ namespace gitman::ui {
         class menu_item_element final : public ui_element
         {
         public:
-            menu_item_element(const std::size_t index, const context_menu_item_view& item, const project_id& owner, const std::u8string& repository_path)
+            menu_item_element(const std::size_t index, const context_menu_item_view& item, const project_id& owner)
                 : ui_element { context_menu_item_id(index) }
                 , item_ { item }
             {
                 set_enabled(item.enabled);
-                set_action(ui_trigger::left_click, [entry = item.entry, owner, repository_path](const ui_action_context&) { return entry_actions(entry, owner, repository_path); });
+                set_action(ui_trigger::left_click,
+                    [entry = item.entry, owner, target = item.target_path](const ui_action_context&) { return entry_actions(entry, owner, target); });
             }
 
             void arrange(const arrange_context& context) override
@@ -192,7 +206,7 @@ namespace gitman::ui {
 
         auto panel { std::make_unique<menu_panel_element>() };
         for (std::size_t index = 0; index < menu_.items.size(); ++index)
-            panel->adopt(std::make_unique<menu_item_element>(index, menu_.items[index], menu_.owner, menu_.repository_path));
+            panel->adopt(std::make_unique<menu_item_element>(index, menu_.items[index], menu_.owner));
         panel_ = panel.get();
         add_child(std::move(panel));
     }

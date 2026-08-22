@@ -87,6 +87,45 @@ namespace {
         return controller.process(gitman::ui::pointer_released_event { x, y, button, at(10) });
     }
 
+    // 배너(도구 막대) 우클릭이 여는 문서 메뉴를 담은 view다 (T1).
+    gitman::view_snapshot make_document_menu_view()
+    {
+        gitman::view_snapshot view {};
+        view.window_width = 800.0f;
+        view.window_height = 600.0f;
+        view.scale = 1.0f;
+        view.empty_state = gitman::view_empty_state::none;
+        view.document_path = u8"C:\\work\\p.version-list";
+        view.document_display_path = u8"C:/work/p.version-list";
+
+        gitman::context_menu_view menu {};
+        menu.anchor_x = 100.0f;
+        menu.anchor_y = 60.0f;
+        menu.items.push_back({ gitman::context_menu_entry::open_document_folder, u8"경로를 탐색기로 열기", true, u8"C:\\work\\p.version-list" });
+        menu.items.push_back({ gitman::context_menu_entry::open_document_in_vscode, u8"VSCode로 열기", true, u8"C:\\work" });
+        view.context_menu = { std::move(menu) };
+        return view;
+    }
+
+    // 문서가 열린 상태의 기본 view다. 배너 우클릭 경로를 확인한다.
+    gitman::view_snapshot make_document_view()
+    {
+        gitman::view_snapshot view {};
+        view.window_width = 800.0f;
+        view.window_height = 600.0f;
+        view.scale = 1.0f;
+        view.empty_state = gitman::view_empty_state::none;
+        view.document_path = u8"C:\\work\\p.version-list";
+        view.document_display_path = u8"C:/work/p.version-list";
+        return view;
+    }
+
+    std::vector<gitman::ui::input_action> click_at(gitman::ui::interaction_controller& controller, const float x, const float y, const gitman::ui::pointer_button button)
+    {
+        static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { x, y, button, at(0) }));
+        return controller.process(gitman::ui::pointer_released_event { x, y, button, at(10) });
+    }
+
     // 카드 목록과 임의 항목의 메뉴를 담은 view다. UI element 검증용이다.
     gitman::view_snapshot make_menu_view(const float anchor_x, const float anchor_y, const std::vector<bool>& enabled_flags)
     {
@@ -103,7 +142,6 @@ namespace {
         menu.owner.value = u8"card-0";
         menu.anchor_x = anchor_x;
         menu.anchor_y = anchor_y;
-        menu.repository_path = u8"C:\\work\\card-0";
         const std::vector<gitman::context_menu_entry> entries {
             gitman::context_menu_entry::open_repository,
             gitman::context_menu_entry::open_in_vscode,
@@ -113,7 +151,7 @@ namespace {
             gitman::context_menu_entry::switch_to,
         };
         for (std::size_t index = 0; index < enabled_flags.size() && index < entries.size(); ++index)
-            menu.items.push_back({ entries[index], u8"항목", enabled_flags[index] });
+            menu.items.push_back({ entries[index], u8"항목", enabled_flags[index], u8"C:\\work\\card-0" });
         view.context_menu = { std::move(menu) };
         return view;
     }
@@ -131,7 +169,8 @@ TEST_CASE("A right click intent selects the card and opens the menu with button 
     REQUIRE(view->context_menu->owner.value == u8"alpha");
     REQUIRE(view->context_menu->anchor_x == 120.0f);
     REQUIRE(view->context_menu->anchor_y == 240.0f);
-    REQUIRE(view->context_menu->repository_path == u8"C:\\work\\alpha");
+    // 외부 열기 항목이 셸에 넘길 경로는 항목이 들고 있다 (T1).
+    REQUIRE(view->context_menu->items[0].target_path == u8"C:\\work\\alpha");
     REQUIRE(view->context_menu->items.size() == 6u);
     // VSCode 열기는 저장소 열기 바로 아래다 (2026-08-22 지시).
     REQUIRE(view->context_menu->items[0].entry == gitman::context_menu_entry::open_repository);
@@ -367,5 +406,116 @@ TEST_CASE("The keyboard walks enabled items, runs the highlight, and escape clos
         controller.set_tree(gitman::ui::build_ui_tree(plain));
         static_cast<void>(controller.process(gitman::ui::pointer_moved_event { 5.0f, 5.0f, at(50) }));
         REQUIRE(controller.snapshot().menu_highlight == gitman::ui::ui_element_id {});
+    }
+}
+
+
+TEST_CASE("A banner right click opens the document menu without changing the selected card", "[logic][context-menu][banner]")
+{
+    menu_fixture fixture {};
+    fixture.controller.handle(gitman::select_card_intent { { gitman::project_id { u8"alpha" } } });
+    fixture.controller.handle(gitman::open_document_context_menu_intent { 40.0f, 50.0f });
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->context_menu.has_value());
+    // 문서 메뉴는 카드와 무관하다 — owner가 비어 있고 선택 카드도 그대로다.
+    REQUIRE(view->context_menu->owner.value.empty());
+    REQUIRE(view->selected.has_value());
+    REQUIRE(view->selected->value == u8"alpha");
+    REQUIRE(view->context_menu->anchor_x == 40.0f);
+    REQUIRE(view->context_menu->anchor_y == 50.0f);
+
+    REQUIRE(view->context_menu->items.size() == 2u);
+    REQUIRE(view->context_menu->items[0].entry == gitman::context_menu_entry::open_document_folder);
+    REQUIRE(view->context_menu->items[0].enabled);
+    // 탐색기는 문서 파일을, VSCode는 그 폴더를 받는다. 둘 다 Windows 원형이다.
+    REQUIRE(view->context_menu->items[0].target_path == u8"C:\\work\\p.version-list");
+    REQUIRE(view->context_menu->items[1].entry == gitman::context_menu_entry::open_document_in_vscode);
+    REQUIRE(view->context_menu->items[1].target_path == u8"C:\\work");
+}
+
+TEST_CASE("The document menu does not open without an open document", "[logic][context-menu][banner]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
+    controller.handle(gitman::open_document_context_menu_intent { 40.0f, 50.0f });
+
+    REQUIRE(controller.make_view_snapshot()->context_menu.has_value() == false);
+}
+
+TEST_CASE("The banner opens the document menu on right click only while a document is open", "[ui][context-menu][banner]")
+{
+    SECTION("문서가 열려 있으면 우클릭이 메뉴 intent를 낸다")
+    {
+        const auto tree { gitman::ui::build_ui_tree(make_document_view()) };
+        gitman::ui::interaction_controller controller {};
+        controller.set_tree(tree);
+
+        const gitman::ui::ui_element* const toolbar { tree->find({ gitman::ui::ui_element_kind::toolbar }) };
+        REQUIRE(toolbar != nullptr);
+        // 가운데는 문서 경로 label 자리다. 버튼은 오른쪽 끝에 모여 있다.
+        const float x { toolbar->bounds().x + toolbar->bounds().width / 2.0f };
+        const float y { toolbar->bounds().y + toolbar->bounds().height / 2.0f };
+
+        const auto actions { click_at(controller, x, y, gitman::ui::pointer_button::right) };
+        REQUIRE(actions.size() == 1u);
+        const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+        REQUIRE(message != nullptr);
+        const auto* const intent { std::get_if<gitman::open_document_context_menu_intent>(message) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->anchor_x == x);
+        REQUIRE(intent->anchor_y == y);
+
+        // 좌클릭은 지금까지처럼 선택 해제다.
+        const auto left { click_at(controller, x, y, gitman::ui::pointer_button::left) };
+        REQUIRE(left.size() == 1u);
+        REQUIRE(std::holds_alternative<gitman::select_card_intent>(*std::get_if<gitman::logic_message>(&left.front())));
+    }
+
+    SECTION("문서가 없으면 배너 우클릭은 아무 일도 하지 않는다")
+    {
+        gitman::view_snapshot view {};
+        view.window_width = 800.0f;
+        view.window_height = 600.0f;
+        view.scale = 1.0f;
+        view.empty_state = gitman::view_empty_state::no_document;
+        const auto tree { gitman::ui::build_ui_tree(view) };
+        gitman::ui::interaction_controller controller {};
+        controller.set_tree(tree);
+
+        const gitman::ui::ui_element* const toolbar { tree->find({ gitman::ui::ui_element_kind::toolbar }) };
+        REQUIRE(toolbar != nullptr);
+        const float x { toolbar->bounds().x + toolbar->bounds().width / 2.0f };
+        const float y { toolbar->bounds().y + toolbar->bounds().height / 2.0f };
+        REQUIRE(click_at(controller, x, y, gitman::ui::pointer_button::right).empty());
+    }
+}
+
+TEST_CASE("Document menu items open the explorer selection and the folder in VSCode", "[ui][context-menu][banner]")
+{
+    const auto tree { gitman::ui::build_ui_tree(make_document_menu_view()) };
+    gitman::ui::interaction_controller controller {};
+    controller.set_tree(tree);
+
+    SECTION("경로를 탐색기로 열기는 문서를 선택 상태로 연다")
+    {
+        const auto actions { click(controller, tree->find(gitman::ui::context_menu_item_id(0))->bounds()) };
+        REQUIRE(actions.size() == 2u);
+        REQUIRE(std::holds_alternative<gitman::close_context_menu_intent>(*std::get_if<gitman::logic_message>(&actions[0])));
+        const auto* const open { std::get_if<gitman::ui::open_external_request>(&actions[1]) };
+        REQUIRE(open != nullptr);
+        REQUIRE(open->target == gitman::ui::external_open_target::explorer);
+        REQUIRE(open->absolute_path == u8"C:\\work\\p.version-list");
+    }
+
+    SECTION("VSCode로 열기는 문서가 있는 폴더를 연다")
+    {
+        const auto actions { click(controller, tree->find(gitman::ui::context_menu_item_id(1))->bounds()) };
+        REQUIRE(actions.size() == 2u);
+        const auto* const open { std::get_if<gitman::ui::open_external_request>(&actions[1]) };
+        REQUIRE(open != nullptr);
+        REQUIRE(open->target == gitman::ui::external_open_target::vscode);
+        REQUIRE(open->absolute_path == u8"C:\\work");
     }
 }

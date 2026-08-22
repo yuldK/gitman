@@ -2,6 +2,7 @@
 
 #include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
+#include "presentation/ui/button_element.h"
 #include "presentation/ui/dialog_elements.h"
 #include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/scrollbar_element.h"
@@ -16,6 +17,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace gitman::ui {
@@ -23,9 +25,36 @@ namespace gitman::ui {
         constexpr float dialog_padding { 14.0f };
         constexpr float action_button_width { 120.0f };
         constexpr float action_button_height { 28.0f };
-        constexpr float list_top_offset { 34.0f };
         constexpr float tree_indent { 16.0f };
         constexpr float tree_glyph_width { 16.0f };
+
+        char32_t query_action_glyph(const switch_query_action action) noexcept
+        {
+            switch (action)
+            {
+            case switch_query_action::search:
+                return codicons::icon_search;
+            case switch_query_action::clear:
+                return codicons::icon_close;
+            case switch_query_action::navigate:
+                return codicons::icon_arrow_right;
+            }
+            return codicons::icon_search;
+        }
+
+        std::u8string_view query_action_tooltip(const switch_query_action action) noexcept
+        {
+            switch (action)
+            {
+            case switch_query_action::search:
+                return u8"입력한 글자가 들어간 후보만 남깁니다";
+            case switch_query_action::clear:
+                return u8"필터를 지웁니다";
+            case switch_query_action::navigate:
+                return u8"입력한 경로로 이동합니다 (Enter)";
+            }
+            return u8"";
+        }
 
         float row_tree_indent(const std::size_t depth, const float row_width, const float scale) noexcept
         {
@@ -293,7 +322,7 @@ namespace gitman::ui {
                 , loading_ { dialog.loading }
                 , stale_ { dialog.stale }
                 , svn_browser_ { dialog.svn_browser }
-                , empty_ { dialog.svn_browser ? dialog.svn_rows.empty() : dialog.candidates.empty() }
+                , list_note_ { dialog.list_note }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -333,16 +362,13 @@ namespace gitman::ui {
                     context.canvas, heading, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
 
                 const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
-                if (loading_ || empty_)
+                // 목록이 비었을 때의 안내 문구는 logic이 정한다 (필터 결과 없음과
+                // 후보 없음이 다른 말이다).
+                if (list_note_.empty() == false)
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.6f);
-                    std::u8string_view note {};
-                    if (svn_browser_)
-                        note = loading_ ? std::u8string_view { u8"SVN 저장소 정보를 조회하는 중입니다..." } : std::u8string_view { u8"SVN 저장소를 탐색할 수 없습니다." };
-                    else
-                        note = loading_ ? std::u8string_view { u8"전환 후보를 조회하는 중입니다..." } : std::u8string_view { u8"전환할 수 있는 후보가 없습니다." };
-                    draw_text(context.canvas, note, list_area.x, list_area.y + 16.0f * scale, body_font, dim);
+                    static_cast<void>(draw_text_within(context.canvas, list_note_, list_area.x + 4.0f * scale, list_area.y + 16.0f * scale, list_area.width - 8.0f * scale, body_font, dim));
                 }
 
                 context.canvas.save();
@@ -387,7 +413,7 @@ namespace gitman::ui {
             bool loading_ { false };
             bool stale_ { false };
             bool svn_browser_ { false };
-            bool empty_ { false };
+            std::u8string list_note_ {};
             std::u8string message_ {};
         };
     } // namespace
@@ -438,10 +464,12 @@ namespace gitman::ui {
         auto confirm { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::switch_dialog_confirm, dialog_.card }, dialog_.confirm_label, true) };
         confirm->set_enabled(dialog_.can_confirm);
         confirm->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { confirm_switch_intent {} } } }; });
+        confirm_ = confirm.get();
         add_child(std::move(confirm));
 
         auto cancel { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::switch_dialog_cancel, dialog_.card }, std::u8string { u8"취소" }, false) };
         cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_switch_dialog_intent {} } } }; });
+        cancel_ = cancel.get();
         add_child(std::move(cancel));
 
         // 목록의 스크롤 막대다. 내용이 목록 영역보다 길 때만 보인다. content·
@@ -459,6 +487,37 @@ namespace gitman::ui {
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();
         add_child(std::move(bar));
+
+        // 질의 막대는 panel이 아니라 dialog의 자식이다. panel은 목록 영역 안에서만
+        // 자식을 hit test하므로, 막대가 panel의 자식이면 클릭이 닿지 않는다.
+        button_config refresh_config {};
+        refresh_config.glyph = codicons::icon_refresh;
+        refresh_config.icon_size = 13.0f;
+        auto refresh { std::make_unique<button_element>(ui_element_id { ui_element_kind::switch_dialog_query_refresh, dialog_.card }, refresh_config) };
+        refresh->set_enabled(dialog_.query_enabled);
+        refresh->set_tooltip(dialog_.svn_browser ? u8"선택한 디렉터리를 다시 조회합니다" : u8"전환 후보를 다시 조회합니다");
+        refresh->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { refresh_switch_dialog_intent {} } } }; });
+        query_refresh_ = refresh.get();
+        add_child(std::move(refresh));
+
+        auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::switch_dialog_query_input, dialog_.card }, dialog_.query, dialog_.query_placeholder) };
+        input->set_enabled(dialog_.query_enabled);
+        input->set_tooltip(dialog_.svn_browser ? u8"저장소 최상단을 기준으로 한 경로입니다. Enter로 이동합니다" : u8"이름의 일부를 입력해 후보를 거릅니다. Enter가 첫 후보를 고릅니다");
+        query_input_ = input.get();
+        add_child(std::move(input));
+
+        button_config action_config {};
+        action_config.glyph = query_action_glyph(dialog_.query_action);
+        action_config.icon_size = 13.0f;
+        auto action { std::make_unique<button_element>(ui_element_id { ui_element_kind::switch_dialog_query_action, dialog_.card }, action_config) };
+        action->set_enabled(dialog_.query_enabled && dialog_.query_action_enabled);
+        action->set_tooltip(std::u8string { query_action_tooltip(dialog_.query_action) });
+        if (dialog_.query_action == switch_query_action::clear)
+            action->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_switch_query_intent {} } } }; });
+        else if (dialog_.query_action == switch_query_action::navigate)
+            action->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { submit_switch_query_intent {} } } }; });
+        query_action_ = action.get();
+        add_child(std::move(action));
     }
 
     void switch_dialog_element::arrange(const arrange_context& context)
@@ -479,7 +538,20 @@ namespace gitman::ui {
         const float padding { dialog_padding * scale };
         auto* const panel { static_cast<switch_panel_element*>(panel_) };
         const float list_height { switch_dialog_list_height(dialog_.svn_browser, context.slot.height / scale) * scale };
-        panel->list_area = { left + padding, top + list_top_offset * scale, width - padding * 2.0f, list_height };
+        panel->list_area = { left + padding, top + layout_switch_dialog_list_top * scale, width - padding * 2.0f, list_height };
+
+        // 질의 막대다. 좌우 끝의 정사각 버튼 사이를 텍스트 박스가 채운다.
+        const float query_top { top + layout_switch_dialog_query_top * scale };
+        const float query_height { layout_switch_dialog_query_height * scale };
+        const float query_gap { layout_switch_dialog_query_gap * scale };
+        const float query_left { left + padding };
+        const float query_width { width - padding * 2.0f };
+        query_refresh_->arrange({ { query_left, query_top, query_height, query_height }, scale });
+        query_action_->arrange({ { query_left + query_width - query_height, query_top, query_height, query_height }, scale });
+        float input_width { query_width - (query_height + query_gap) * 2.0f };
+        if (input_width < 0.0f)
+            input_width = 0.0f;
+        query_input_->arrange({ { query_left + query_height + query_gap, query_top, input_width, query_height }, scale });
 
         const float row_height { layout_switch_dialog_row_height * scale };
         // 스크롤 막대가 보이면 행을 그만큼 좁혀 막대와 겹치지 않게 한다.
@@ -501,15 +573,11 @@ namespace gitman::ui {
         const float bar_height { panel->list_area.height - scrollbar_margin * 2.0f };
         scrollbar_->arrange({ { bar_left, panel->list_area.y + scrollbar_margin, bar_width, bar_height }, scale });
 
-        const std::span<const std::unique_ptr<ui_element>> children { this->children() };
-        if (children.size() >= 3)
-        {
-            const float button_width { action_button_width * scale };
-            const float button_height { action_button_height * scale };
-            const float button_top { top + height - padding - button_height };
-            children[1]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
-            children[2]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
-        }
+        const float button_width { action_button_width * scale };
+        const float button_height { action_button_height * scale };
+        const float button_top { top + height - padding - button_height };
+        confirm_->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
+        cancel_->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
     }
 
     void switch_dialog_element::draw(draw_context& context, const interaction_snapshot& interaction) const

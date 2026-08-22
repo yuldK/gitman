@@ -30,6 +30,13 @@ namespace gitman::ui {
             const float delta_y { to_y - from_y };
             return std::sqrt(delta_x * delta_x + delta_y * delta_y);
         }
+
+        // 초점을 받아 문자 입력을 소비하는 element다. 새 텍스트 박스는 이 목록에만
+        // 더하면 초점·caret·문자 배선이 함께 따라온다.
+        [[nodiscard]] bool is_text_input_kind(const ui_element_kind kind) noexcept
+        {
+            return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input;
+        }
     } // namespace
 
     interaction_controller::interaction_controller(const interaction_config config) noexcept
@@ -39,6 +46,10 @@ namespace gitman::ui {
     void interaction_controller::set_tree(std::shared_ptr<const ui_tree> tree) noexcept
     {
         tree_ = std::move(tree);
+
+        // 사라진 element를 가리키는 초점·강조는 새 tree를 받는 즉시 거둔다. snapshot을
+        // 곧바로 읽는 렌더러가 없어진 텍스트 박스의 caret을 기다리지 않게 한다.
+        update_input_focus();
 
         // 포인터가 머문 자리에서 내용이 스크롤로 흐르면 커서 아래 element가
         // 바뀐다. 새 tree를 받을 때 마지막 위치로 hover를 다시 판정해 tooltip이
@@ -113,11 +124,12 @@ namespace gitman::ui {
                     return process_key(value);
                 else if constexpr (std::is_same_v<value_type, character_typed_event>)
                 {
-                    // 문자 입력은 초점을 가진 텍스트 박스로만 간다. 현재 유일한
-                    // 대상은 환경설정 dialog의 제한 시간 칸이다. 숫자 여부는 logic이
-                    // 거른다.
+                    // 문자 입력은 초점을 가진 텍스트 박스로만 간다. 받을 값인지는
+                    // logic이 거른다 (제한 시간은 숫자만, 질의는 제어 문자만 뺀다).
                     if (snapshot_.focused_input.kind == ui_element_kind::settings_timeout_input)
                         return { input_action { logic_message { edit_settings_timeout_intent { value.character } } } };
+                    if (snapshot_.focused_input.kind == ui_element_kind::switch_dialog_query_input)
+                        return { input_action { logic_message { edit_switch_query_intent { value.character } } } };
                     return {};
                 }
                 else
@@ -201,7 +213,7 @@ namespace gitman::ui {
 
         // 텍스트 박스를 누르면 초점을 주고, 다른 곳을 누르면 거둔다. 초점 시각은
         // caret 깜빡임의 위상 기준이다.
-        if (hit->id().kind == ui_element_kind::settings_timeout_input)
+        if (is_text_input_kind(hit->id().kind))
         {
             snapshot_.focused_input = hit->id();
             snapshot_.focus_started_at = event.time;
@@ -332,6 +344,10 @@ namespace gitman::ui {
             return { input_action { logic_message { select_card_intent { { cards[next].owner } } } } };
         }
         case key_code::enter:
+            // 초점을 가진 질의 박스가 있으면 Enter는 그 박스의 몫이다. 카드 갱신으로
+            // 흘러가지 않는다 (switch-dialog-query-bar-design Q1).
+            if (snapshot_.focused_input.kind == ui_element_kind::switch_dialog_query_input)
+                return { input_action { logic_message { submit_switch_query_intent {} } } };
             if (focused_.has_value())
                 return { input_action { logic_message { refresh_card_intent { *focused_ } } } };
             return {};
@@ -447,16 +463,12 @@ namespace gitman::ui {
     void interaction_controller::update_input_focus()
     {
         // 초점은 텍스트 박스를 눌러야 생긴다 (검수 지시: 열릴 때 자동 초점 없음).
-        // dialog가 닫히면 남아 있던 초점을 거둔다.
-        const bool open { tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr };
-        if (open != settings_dialog_open_)
+        // 초점을 가진 박스가 tree에서 사라지면(그 dialog가 닫혔다) 초점을 거둔다.
+        // dialog 종류마다 edge를 따로 세지 않고 element의 존재만 본다.
+        if (is_text_input_kind(snapshot_.focused_input.kind) && (tree_ == nullptr || tree_->find(snapshot_.focused_input) == nullptr))
         {
-            settings_dialog_open_ = open;
-            if (open == false)
-            {
-                snapshot_.focused_input = {};
-                snapshot_.focus_started_at.reset();
-            }
+            snapshot_.focused_input = {};
+            snapshot_.focus_started_at.reset();
         }
 
         // 컨텍스트 메뉴가 열리고 닫힐 때마다 키보드 강조를 지운다. 새 메뉴는 강조

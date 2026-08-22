@@ -31,5 +31,11 @@ namespace gitman::ui {
         switch_dialog_view dialog_ {};
         ui_element* panel_ { nullptr };
         ui_element* scrollbar_ { nullptr };
+        // 제목 아래 질의 막대의 세 칸이다 (switch-dialog-query-bar-design Q1).
+        ui_element* query_refresh_ { nullptr };
+        ui_element* query_input_ { nullptr };
+        ui_element* query_action_ { nullptr };
+        ui_element* confirm_ { nullptr };
+        ui_element* cancel_ { nullptr };
     };
 } // namespace gitman::ui

@@ -54,19 +54,29 @@ namespace gitman {
     // switch dialog의 치수다. 후보 목록의 스크롤 한계 계산을 logic과 element가
     // 같은 값으로 하도록 여기에 둔다 (stage-7-plan 4.5).
     inline constexpr float layout_switch_dialog_width { 400.0f };
-    inline constexpr float layout_switch_dialog_height { 320.0f };
+    inline constexpr float layout_switch_dialog_height { 352.0f };
     inline constexpr float layout_switch_dialog_row_height { 22.0f };
     inline constexpr float layout_switch_dialog_list_height { 190.0f };
     inline constexpr float layout_svn_browser_dialog_width { 640.0f };
-    inline constexpr float layout_svn_browser_dialog_height { 430.0f };
+    inline constexpr float layout_svn_browser_dialog_height { 462.0f };
     inline constexpr float layout_svn_browser_list_height { 300.0f };
+    // 제목 아래 질의 막대다 (switch-dialog-query-bar-design Q1). 좌우 정사각 버튼과
+    // 가운데 텍스트 박스가 한 줄을 이룬다.
+    inline constexpr float layout_switch_dialog_query_top { 32.0f };
+    inline constexpr float layout_switch_dialog_query_height { 26.0f };
+    inline constexpr float layout_switch_dialog_query_gap { 6.0f };
+    // 목록 영역이 시작하는 panel 위쪽부터의 거리다 (제목 34 + 막대 26 + 간격 6).
+    inline constexpr float layout_switch_dialog_list_top { 66.0f };
+    // panel 높이에서 목록이 아닌 부분(제목·질의 막대·메시지·버튼 줄)이 차지하는
+    // 높이다. logic의 스크롤 한계와 element의 배치가 같은 값을 쓴다.
+    inline constexpr float layout_switch_dialog_chrome_height { 162.0f };
 
     [[nodiscard]] inline float switch_dialog_list_height(const bool svn_browser, const float window_height) noexcept
     {
         const float dialog_height { svn_browser ? layout_svn_browser_dialog_height : layout_switch_dialog_height };
         const float preferred { svn_browser ? layout_svn_browser_list_height : layout_switch_dialog_list_height };
         const float panel_height { window_height < dialog_height ? window_height : dialog_height };
-        float available { panel_height - 130.0f };
+        float available { panel_height - layout_switch_dialog_chrome_height };
         if (available < layout_switch_dialog_row_height)
             available = layout_switch_dialog_row_height;
         return available < preferred ? available : preferred;

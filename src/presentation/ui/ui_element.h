@@ -81,6 +81,11 @@ namespace gitman::ui {
         switch_dialog_svn_status,
         // 후보 목록의 스크롤 막대다. 내용이 목록 영역보다 길 때만 만든다.
         switch_dialog_scrollbar,
+        // 제목 아래 질의 막대다 (switch-dialog-query-bar-design Q1). Git은 필터,
+        // SVN은 실제 경로 주소 막대다.
+        switch_dialog_query_input,
+        switch_dialog_query_action,
+        switch_dialog_query_refresh,
         switch_dialog_confirm,
         switch_dialog_cancel,
         // 환경설정 dialog다 (REQ-017, 단계 8). 배경 클릭은 닫기이고 panel이 클릭을

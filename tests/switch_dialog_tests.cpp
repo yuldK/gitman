@@ -135,6 +135,13 @@ namespace {
         return gitman::logic_message { gitman::shutdown_message {} };
     }
 
+    // 질의 막대에 ASCII 문자열을 한 글자씩 친다. backspace는 U+0008이다.
+    void type_query(gitman::logic_controller& controller, const std::u8string_view text)
+    {
+        for (const char8_t value : text)
+            controller.handle(gitman::edit_switch_query_intent { static_cast<char32_t>(value) });
+    }
+
     std::vector<gitman::ui::input_action> click(const gitman::ui::ui_tree& tree, const gitman::ui::ui_element_id& id)
     {
         const gitman::ui::ui_element* const element { tree.find(id) };
@@ -545,4 +552,274 @@ TEST_CASE("An executor switch creates the confirmed tracking branch on a real re
     REQUIRE(final_event->result.executed);
     REQUIRE(final_event->result.succeeded);
     REQUIRE(final_event->result.snapshot.current_reference == u8"feature");
+}
+
+TEST_CASE("The Git query bar filters candidates while it is typed", "[logic][switch-ui][query]")
+{
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    candidates.push_back(make_candidate(u8"origin/feature-a", gitman::switch_candidate_kind::git_remote_branch));
+    candidates.push_back(make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch));
+    candidates.push_back(make_candidate(u8"feature-b", gitman::switch_candidate_kind::git_local_branch));
+    fixture.deliver_candidates(std::move(candidates));
+
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->query.empty());
+        REQUIRE(view->switch_dialog->query_enabled);
+        REQUIRE(view->switch_dialog->query_action == gitman::switch_query_action::search);
+        REQUIRE_FALSE(view->switch_dialog->query_action_enabled);
+        REQUIRE(view->switch_dialog->candidates.size() == 3u);
+    }
+
+    // 대소문자를 가리지 않는다 (카드 목록 필터와 같은 규칙).
+    type_query(fixture.controller, u8"FEATURE");
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->query == u8"FEATURE");
+        REQUIRE(view->switch_dialog->query_action == gitman::switch_query_action::clear);
+        REQUIRE(view->switch_dialog->query_action_enabled);
+        REQUIRE(view->switch_dialog->candidates.size() == 2u);
+        REQUIRE(view->switch_dialog->candidates[0].display_name == u8"origin/feature-a");
+        REQUIRE(view->switch_dialog->candidates[1].display_name == u8"feature-b");
+    }
+
+    // 선택 index는 거른 목록 기준이다. 1번은 feature-b다.
+    fixture.controller.handle(gitman::select_switch_candidate_intent { 1 });
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::confirm_switch_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().switch_target->display_name == u8"feature-b");
+}
+
+TEST_CASE("Editing the Git query drops the selection and empty results say so", "[logic][switch-ui][query]")
+{
+    dialog_fixture fixture {};
+    fixture.deliver_candidates({ make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch) });
+    fixture.controller.handle(gitman::select_switch_candidate_intent { 0 });
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->can_confirm);
+
+    type_query(fixture.controller, u8"zzz");
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE_FALSE(view->switch_dialog->selected.has_value());
+        REQUIRE_FALSE(view->switch_dialog->can_confirm);
+        REQUIRE(view->switch_dialog->candidates.empty());
+        REQUIRE(view->switch_dialog->list_note == u8"필터에 맞는 후보가 없습니다.");
+    }
+
+    // backspace 한 번은 한 글자다.
+    fixture.controller.handle(gitman::edit_switch_query_intent { U'\b' });
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->query == u8"zz");
+
+    fixture.controller.handle(gitman::clear_switch_query_intent {});
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->query.empty());
+        REQUIRE(view->switch_dialog->candidates.size() == 1u);
+        REQUIRE(view->switch_dialog->list_note.empty());
+    }
+}
+
+TEST_CASE("Enter picks the first filtered Git candidate", "[logic][switch-ui][query]")
+{
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    candidates.push_back(make_candidate(u8"main", gitman::switch_candidate_kind::git_local_branch));
+    candidates.push_back(make_candidate(u8"release/1", gitman::switch_candidate_kind::git_local_branch));
+    candidates.push_back(make_candidate(u8"release/2", gitman::switch_candidate_kind::git_local_branch));
+    fixture.deliver_candidates(std::move(candidates));
+
+    type_query(fixture.controller, u8"release");
+    fixture.controller.handle(gitman::submit_switch_query_intent {});
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->selected == 0u);
+    REQUIRE(view->switch_dialog->can_confirm);
+    REQUIRE(view->switch_dialog->candidates[0].display_name == u8"release/1");
+}
+
+TEST_CASE("Refreshing the Git switch dialog queries again and keeps the filter", "[logic][switch-ui][query]")
+{
+    dialog_fixture fixture {};
+    fixture.deliver_candidates({ make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch) });
+    type_query(fixture.controller, u8"dev");
+    fixture.submitter.requests.clear();
+
+    fixture.controller.handle(gitman::refresh_switch_dialog_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().kind == gitman::operation_kind::query_switch_candidates);
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->loading);
+        REQUIRE(view->switch_dialog->query == u8"dev");
+        // 조회 중에는 막대 전체가 비활성이다.
+        REQUIRE_FALSE(view->switch_dialog->query_enabled);
+    }
+
+    // 새 조회의 결과만 반영된다. 필터는 그대로 걸린다.
+    fixture.candidates_operation_id = fixture.submitter.requests.front().operation_id;
+    fixture.deliver_candidates({ make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch), make_candidate(u8"main", gitman::switch_candidate_kind::git_local_branch) });
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->loading == false);
+    REQUIRE(view->switch_dialog->candidates.size() == 1u);
+    REQUIRE(view->switch_dialog->candidates.front().display_name == u8"develop");
+}
+
+TEST_CASE("The SVN address bar starts at the current path without descending", "[logic][switch-ui][svn][query]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser(u8"https://svn.example.com/repo", u8"https://svn.example.com/repo/trunk/source") };
+    fixture.submitter.requests.clear();
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
+
+    // 현재 위치가 두 단계 아래여도 조회는 root 하나로 끝난다.
+    REQUIRE(fixture.submitter.requests.empty());
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->query == u8"/trunk/source");
+    REQUIRE(view->switch_dialog->query_action == gitman::switch_query_action::navigate);
+    REQUIRE(view->switch_dialog->query_action_enabled);
+    REQUIRE(view->switch_dialog->svn_rows.size() == 3u);
+    REQUIRE_FALSE(view->switch_dialog->svn_rows[2].expanded);
+}
+
+TEST_CASE("The SVN address bar walks down to the typed path one query at a time", "[logic][switch-ui][svn][query]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser(u8"https://svn.example.com/repo", u8"https://svn.example.com/repo/trunk/source") };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
+    fixture.submitter.requests.clear();
+
+    // 미리 채워진 현재 경로로 이동한다 (전용 버튼 없이 트리거 한 번).
+    fixture.controller.handle(gitman::submit_switch_query_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().svn_directory_url == u8"https://svn.example.com/repo/trunk");
+    const std::uint64_t trunk_operation { fixture.submitter.requests.front().operation_id };
+
+    fixture.submitter.requests.clear();
+    fixture.deliver_svn_directory(trunk_operation, u8"https://svn.example.com/repo/trunk", { u8"docs", u8"source" });
+    // 목표에 닿으면 멈춘다. 그 아래는 조회하지 않는다.
+    REQUIRE(fixture.submitter.requests.empty());
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->query == u8"/trunk/source");
+    REQUIRE(view->switch_dialog->svn_rows.size() == 5u);
+    REQUIRE(view->switch_dialog->svn_rows.back().text == u8"source");
+    REQUIRE(view->switch_dialog->svn_rows.back().selected);
+}
+
+TEST_CASE("The SVN address bar reports a path the repository does not have", "[logic][switch-ui][svn][query]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser() };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
+
+    // 노드를 고르면 주소 막대가 그 실제 경로로 덮인다.
+    fixture.controller.handle(gitman::select_svn_browser_node_intent { std::u8string { u8"https://svn.example.com/repo" } });
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->query == u8"/");
+
+    type_query(fixture.controller, u8"nope");
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::submit_switch_query_intent {});
+    REQUIRE(fixture.submitter.requests.empty());
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->message == u8"그 경로를 찾을 수 없습니다: /nope");
+}
+
+TEST_CASE("Selecting an SVN node rewrites the address bar", "[logic][switch-ui][svn][query]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser() };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
+
+    fixture.controller.handle(gitman::select_svn_browser_node_intent { std::u8string { u8"https://svn.example.com/repo/branches" } });
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->query == u8"/branches");
+}
+
+TEST_CASE("Refreshing the SVN dialog requeries the selected directory", "[logic][switch-ui][svn][query]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser() };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
+    fixture.controller.handle(gitman::select_svn_browser_node_intent { std::u8string { u8"https://svn.example.com/repo/trunk" } });
+    fixture.submitter.requests.clear();
+
+    fixture.controller.handle(gitman::refresh_switch_dialog_intent {});
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().svn_directory_url == u8"https://svn.example.com/repo/trunk");
+    const std::uint64_t trunk_operation { fixture.submitter.requests.front().operation_id };
+
+    fixture.deliver_svn_directory(trunk_operation, u8"https://svn.example.com/repo/trunk", { u8"source" });
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->svn_rows.size() == 4u);
+    REQUIRE(view->switch_dialog->svn_rows.back().text == u8"source");
+}
+
+TEST_CASE("The switch dialog tree wires the query bar", "[ui][switch-ui][query]")
+{
+    gitman::view_snapshot view {};
+    view.window_width = 800.0f;
+    view.window_height = 600.0f;
+    view.scale = 1.0f;
+
+    gitman::switch_dialog_view dialog {};
+    dialog.card.value = u8"alpha";
+    dialog.title = u8"alpha";
+    dialog.loading = false;
+    dialog.query = u8"feat";
+    dialog.query_enabled = true;
+    dialog.query_action = gitman::switch_query_action::clear;
+    dialog.query_action_enabled = true;
+    dialog.candidates.push_back(make_candidate(u8"feature", gitman::switch_candidate_kind::git_local_branch));
+    view.switch_dialog = { dialog };
+
+    const gitman::ui::ui_element_id input_id { gitman::ui::ui_element_kind::switch_dialog_query_input, gitman::project_id { u8"alpha" } };
+    const gitman::ui::ui_element_id action_id { gitman::ui::ui_element_kind::switch_dialog_query_action, gitman::project_id { u8"alpha" } };
+    const gitman::ui::ui_element_id refresh_id { gitman::ui::ui_element_kind::switch_dialog_query_refresh, gitman::project_id { u8"alpha" } };
+
+    {
+        const auto tree { gitman::ui::build_ui_tree(view) };
+        REQUIRE(tree->find(input_id) != nullptr);
+        REQUIRE(tree->find(input_id)->enabled());
+        REQUIRE(tree->find(action_id)->enabled());
+        const gitman::logic_message cleared { first_logic_message(click(*tree, action_id)) };
+        REQUIRE(std::get_if<gitman::clear_switch_query_intent>(&cleared) != nullptr);
+        const gitman::logic_message refreshed { first_logic_message(click(*tree, refresh_id)) };
+        REQUIRE(std::get_if<gitman::refresh_switch_dialog_intent>(&refreshed) != nullptr);
+
+        // 질의 박스를 누르면 초점을 받고, 그 뒤의 문자와 Enter가 그리로 간다.
+        gitman::ui::interaction_controller controller {};
+        controller.set_tree(tree);
+        const gitman::ui::rect_f box { tree->find(input_id)->bounds() };
+        static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { box.x + 4.0f, box.y + 4.0f, gitman::ui::pointer_button::left, {} }));
+        REQUIRE(controller.snapshot().focused_input == input_id);
+
+        const gitman::logic_message typed { first_logic_message(controller.process(gitman::ui::character_typed_event { U'x' })) };
+        const auto* const edit { std::get_if<gitman::edit_switch_query_intent>(&typed) };
+        REQUIRE(edit != nullptr);
+        REQUIRE(edit->character == U'x');
+
+        const gitman::logic_message entered { first_logic_message(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::enter })) };
+        REQUIRE(std::get_if<gitman::submit_switch_query_intent>(&entered) != nullptr);
+
+        // dialog가 닫히면 초점도 사라진다.
+        gitman::view_snapshot closed {};
+        closed.window_width = 800.0f;
+        closed.window_height = 600.0f;
+        closed.scale = 1.0f;
+        controller.set_tree(gitman::ui::build_ui_tree(closed));
+        REQUIRE(controller.snapshot().focused_input == gitman::ui::ui_element_id {});
+    }
+
+    // SVN은 이동 버튼이고, 조회 중에는 막대 전체가 비활성이다.
+    gitman::switch_dialog_view svn { dialog };
+    svn.svn_browser = true;
+    svn.loading = true;
+    svn.query_enabled = false;
+    svn.query_action = gitman::switch_query_action::navigate;
+    view.switch_dialog = { std::move(svn) };
+    const auto tree { gitman::ui::build_ui_tree(view) };
+    REQUIRE_FALSE(tree->find(input_id)->enabled());
+    REQUIRE_FALSE(tree->find(action_id)->enabled());
+    REQUIRE_FALSE(tree->find(refresh_id)->enabled());
+    const gitman::logic_message navigated { first_logic_message(click(*tree, action_id)) };
+    REQUIRE(std::get_if<gitman::submit_switch_query_intent>(&navigated) != nullptr);
 }

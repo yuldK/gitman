@@ -147,6 +147,27 @@ namespace gitman {
         float delta { 0.0f };
     };
 
+    // switch dialog 질의 막대의 입력이다 (switch-dialog-query-bar-design Q1).
+    // backspace는 U+0008로 온다. Git은 필터, SVN은 이동할 경로다.
+    struct edit_switch_query_intent
+    {
+        char32_t character { 0 };
+    };
+
+    // Enter와 SVN의 이동 버튼이다. Git은 걸러진 첫 후보를 고르고, SVN은 박스의
+    // 경로로 트리를 펼쳐 내려간다.
+    struct submit_switch_query_intent
+    {};
+
+    // Git 질의 막대의 지우기 버튼이다. SVN에는 없다.
+    struct clear_switch_query_intent
+    {};
+
+    // 질의 막대 왼쪽의 갱신 버튼이다. Git은 후보를 다시 조회하고, SVN은 선택 노드의
+    // cache를 버리고 다시 조회한다.
+    struct refresh_switch_dialog_intent
+    {};
+
     // toolbar 탐색 버튼이 여는 탐색 후보 선택 등록 dialog다 (REQ-004, stage-8-plan
     // 5.2). 스캔 루트는 UI thread의 폴더 선택 dialog가 채운다. 열면서 곧바로 깊이 1
     // 탐색을 worker에 제출한다.
@@ -567,17 +588,18 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
-        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
-        begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
-        switch_dialog_scroll_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
-        open_settings_intent, select_settings_tab_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent,
-        toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent,
-        select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent,
-        close_context_menu_intent, set_theme_preference_intent, set_accent_intent, remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent,
-        window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event,
-        change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event,
-        app_settings_saved_event, shutdown_message>;
+    using logic_message
+        = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent, reorder_card_intent,
+            request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent, begin_switch_intent,
+            select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent, switch_dialog_scroll_intent,
+            edit_switch_query_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, begin_discovery_intent, toggle_discovery_candidate_intent,
+            confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
+            clear_settings_executable_intent, clear_settings_override_intent, edit_settings_timeout_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent,
+            toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent,
+            local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent,
+            set_accent_intent, remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent,
+            close_intent, document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event,
+            svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

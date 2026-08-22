@@ -72,10 +72,6 @@ namespace gitman::ui {
         // 키보드 탐색의 초점이다. 선택의 진실은 logic이 소유한다 (ADR-004).
         std::optional<project_id> focused_ {};
 
-        // 환경설정 dialog의 열림 상태다. 열리는 순간 텍스트 박스에 초점을 주고
-        // 닫히면 거두기 위한 edge 감지용이다.
-        bool settings_dialog_open_ { false };
-
         // 컨텍스트 메뉴의 열림 상태다. 여닫는 edge에서 키보드 강조를 지운다.
         bool context_menu_open_ { false };
 

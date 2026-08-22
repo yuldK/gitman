@@ -93,6 +93,18 @@ namespace gitman {
         std::optional<std::chrono::steady_clock::time_point> change_started_at {};
     };
 
+    // 질의 막대 우측 버튼이 맡은 몫이다 (switch-dialog-query-bar-design Q1).
+    // element가 이 값으로 glyph와 클릭 intent를 정한다.
+    enum class switch_query_action
+    {
+        // Git · 질의가 비었다. 장식이라 누를 수 없다.
+        search,
+        // Git · 질의가 있다. 누르면 필터를 지운다.
+        clear,
+        // SVN · 누르면 박스의 경로로 이동한다.
+        navigate,
+    };
+
     // switch dialog의 불변 표시 모델이다 (REQ-007, stage-7-plan 4.5). 후보 목록은
     // provider가 만든 순서 그대로다 (remote group 먼저). confirm_label과 message는
     // logic이 검증 상태에서 계산해 UI는 그대로 그린다.
@@ -107,9 +119,22 @@ namespace gitman {
         // true이면 candidates 대신 svn_rows를 그리는 저장소 브라우저다. 초기 저장소
         // 정보 조회 중에도 true라 제목과 안내 문구가 SVN용으로 유지된다.
         bool svn_browser { false };
+        // Git은 질의로 **거른** 후보다. `selected`와 선택 intent의 index도 이 목록
+        // 기준이며 logic이 원본 index로 되돌린다.
         std::vector<switch_candidate> candidates {};
         std::vector<svn_repository_browser_row> svn_rows {};
         std::optional<std::size_t> selected {};
+        // 질의 막대다 (switch-dialog-query-bar-design Q1). Git은 필터, SVN은 저장소
+        // root 기준 실제 경로를 담는 주소 막대다.
+        std::u8string query {};
+        std::u8string query_placeholder {};
+        // 후보 조회 중이거나 전환 실행 중이면 막대 전체가 비활성이다.
+        bool query_enabled { false };
+        switch_query_action query_action { switch_query_action::search };
+        bool query_action_enabled { false };
+        // 목록이 비었거나 조회 중일 때 목록 자리에 그릴 흐린 안내다. 비어 있으면
+        // 그리지 않는다.
+        std::u8string list_note {};
         bool can_confirm { false };
         std::u8string confirm_label {};
         // 검증·거부·안내 메시지다. 비어 있으면 표시하지 않는다.

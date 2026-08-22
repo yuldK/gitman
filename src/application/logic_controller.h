@@ -127,8 +127,18 @@ namespace gitman {
         void handle_switch_candidates(switch_candidates_event event);
         void handle_svn_directory(svn_directory_event event);
         void handle_switch_dialog_scroll(float delta);
+        void handle_edit_switch_query(const edit_switch_query_intent& intent);
+        void handle_submit_switch_query();
+        void handle_clear_switch_query();
+        void handle_refresh_switch_dialog();
+        // reveal 한 걸음의 결과를 dialog 상태에 반영한다. 조회가 필요하면 제출하고,
+        // 없는 경로면 안내를 남긴다.
+        void apply_svn_browser_reveal(const svn_browser_reveal_progress& progress);
         void submit_svn_directory_query(std::u8string url);
         [[nodiscard]] std::size_t switch_dialog_row_count() const;
+        // Git 질의로 거른 후보의 원본 index다. 질의가 비면 전체 순서 그대로다.
+        // view의 목록·선택 index가 모두 이 목록 기준이다.
+        [[nodiscard]] std::vector<std::size_t> filtered_switch_candidates() const;
         void install_document(workspace_document document, workspace_revision_token revision, std::vector<diagnostic> diagnostics);
         void request_refresh(card_state& card);
         void request_save();
@@ -212,6 +222,10 @@ namespace gitman {
             bool executing { false };
             // 실행 거부·실패 사유다. 후보를 다시 고르면 지워진다.
             std::u8string message {};
+            // 질의 막대의 글이다 (switch-dialog-query-bar-design Q1). Git은 후보
+            // 필터, SVN은 저장소 root 기준 경로다. SVN은 dialog가 열릴 때 현재
+            // 위치로 채워지고 노드를 고를 때마다 그 경로로 덮어쓴다.
+            std::u8string query {};
             float scroll_offset { 0.0f };
             struct directory_query
             {

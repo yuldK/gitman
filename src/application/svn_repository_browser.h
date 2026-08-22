@@ -66,7 +66,20 @@ namespace gitman {
         std::u8string root_url {};
         std::u8string current_url {};
         std::u8string selected_url {};
+        // 사용자가 주소 막대로 요청한 이동 목표다. dialog를 열 때는 비어 있어
+        // root 한 번만 조회한다 (switch-dialog-query-bar-design Q3). 도달하거나
+        // 실패하면 비운다.
+        std::u8string reveal_url {};
         std::map<std::u8string, svn_repository_browser_node, std::less<>> nodes {};
+    };
+
+    // reveal 한 걸음의 결과다. 조회가 더 필요한지, 도달했는지, 조회 목록에 그
+    // 경로가 없어 포기했는지를 호출자가 구분해야 안내 문구를 정할 수 있다.
+    struct svn_browser_reveal_progress
+    {
+        std::optional<std::u8string> query_url {};
+        bool reached { false };
+        bool not_found { false };
     };
 
     enum class svn_browser_row_kind
@@ -105,9 +118,24 @@ namespace gitman {
     // process 요청 없이 다시 펼친다.
     [[nodiscard]] std::optional<std::u8string> toggle_svn_browser_node(svn_repository_browser_state& state, std::u8string_view url);
 
-    // 한 노드의 조회 결과를 cache한다. 현재 위치가 더 아래라면 다음 조상을 자동으로
-    // 펼치고, 조회가 필요한 첫 URL을 돌려준다.
-    [[nodiscard]] std::optional<std::u8string> complete_svn_browser_query(svn_repository_browser_state& state, std::u8string_view url, const svn_directory_query_result& result);
+    // 한 노드의 조회 결과를 cache한다. 진행 중인 reveal 목표가 있으면 그 쪽으로 한
+    // 걸음 더 내려간다. 목표가 없으면 cache만 하고 끝난다.
+    [[nodiscard]] svn_browser_reveal_progress complete_svn_browser_query(svn_repository_browser_state& state, std::u8string_view url, const svn_directory_query_result& result);
+
+    // 이동 목표를 세우고 cache된 만큼 펼친다. 목표가 root 밖이면 `not_found`다.
+    [[nodiscard]] svn_browser_reveal_progress begin_svn_browser_reveal(svn_repository_browser_state& state, std::u8string_view url);
+
+    // 한 노드의 cache와 그 아래 노드를 모두 버리고 다시 조회할 수 있게 만든다.
+    // 펼침 상태는 유지한다. 선택이 버려진 하위에 있었으면 이 노드로 되돌린다.
+    [[nodiscard]] bool reset_svn_browser_node(svn_repository_browser_state& state, std::u8string_view url);
+
+    // 저장소 root를 기준으로 한 표시 경로다. root 자신은 `/`, 아래는 `/trunk/source`
+    // 형태다. root 밖이면 빈 값이다.
+    [[nodiscard]] std::u8string svn_browser_relative_path(std::u8string_view root_url, std::u8string_view url);
+
+    // 주소 막대의 글을 URL로 바꾼다. root로 시작하는 전체 URL은 그대로 정규화하고,
+    // 그 밖에는 `/`로 잘라 조각마다 인코딩해 붙인다. 해석할 수 없으면 빈 값이다.
+    [[nodiscard]] std::u8string resolve_svn_browser_path(const svn_repository_browser_state& state, std::u8string_view text);
 
     [[nodiscard]] bool select_svn_browser_node(svn_repository_browser_state& state, std::u8string_view url);
     [[nodiscard]] std::vector<svn_repository_browser_row> build_svn_repository_browser_rows(const svn_repository_browser_state& state);

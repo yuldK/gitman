@@ -337,76 +337,6 @@ namespace gitman::ui {
             return tabs;
         }
 
-        // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design
-        // 1.3). 키 입력은 dialog가 열려 있는 동안 interaction이 그대로 intent로
-        // 보내고 logic이 숫자만 초안에 반영한다. 상태가 없어 클릭·초점 개념이
-        // 필요하지 않다 — dialog의 유일한 입력 칸이다.
-        class timeout_input_element final : public ui_element
-        {
-        public:
-            explicit timeout_input_element(std::u8string text)
-                : ui_element { ui_element_id { ui_element_kind::settings_timeout_input } }
-                , text_ { std::move(text) }
-            {
-                set_tooltip(u8"숫자만 입력합니다 (10~3600초). 비우면 기본값 600초입니다.");
-            }
-
-            void arrange(const arrange_context& context) override
-            {
-                set_bounds(context.slot);
-            }
-
-            void draw(draw_context& context, const interaction_snapshot& interaction) const override
-            {
-                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
-                const bool focused { interaction.focused_input == id() };
-                const rect_f box { bounds() };
-                const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
-                const float radius { 3.0f * scale };
-                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(with_alpha(context.palette.primary_foreground, 0.08f)));
-                // 초점을 받은 칸은 테두리를 강조해 입력이 이곳으로 간다는 것을 보인다.
-                SkPaint border { solid_paint(focused ? context.palette.accent : with_alpha(context.palette.primary_foreground, 0.35f)) };
-                border.setStyle(SkPaint::kStroke_Style);
-                border.setStrokeWidth(1.0f * scale);
-                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
-
-                const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
-                const float text_left { box.x + 7.0f * scale };
-                const float baseline { box.y + centered_text_baseline(font, box.height) };
-
-                float caret_left { text_left };
-                if (text_.empty())
-                {
-                    // 빈 값은 기본값이다. 초점이 없을 때만 안내를 흐리게 그린다.
-                    if (focused == false)
-                    {
-                        SkPaint placeholder { solid_paint(context.palette.primary_foreground) };
-                        placeholder.setAlphaf(0.5f);
-                        draw_text(context.canvas, u8"600 (기본값)", text_left, baseline, font, placeholder);
-                    }
-                }
-                else
-                {
-                    draw_text(context.canvas, text_, text_left, baseline, font, solid_paint(context.palette.primary_foreground));
-                    caret_left += measure_text(text_, font) + 1.0f * scale;
-                }
-
-                // caret은 초점을 받은 동안 글 끝에서 깜빡인다. 초점을 받은 시각이
-                // 위상 기준이라 받는 순간에는 항상 켜져 있다. 다시 그리기는 UI
-                // thread의 caret timer가 반주기마다 일으킨다. 커서 이동은 지원하지
-                // 않으므로 위치는 항상 끝이다.
-                const bool caret_on { focused && interaction.focus_started_at.has_value() && ((context.now - *interaction.focus_started_at) / caret_blink_interval) % 2 == 0 };
-                if (caret_on)
-                {
-                    const float caret_top { box.y + 4.0f * scale };
-                    context.canvas.drawRect(SkRect::MakeXYWH(caret_left, caret_top, 1.0f * scale, box.height - 8.0f * scale), solid_paint(context.palette.primary_foreground));
-                }
-            }
-
-        private:
-            std::u8string text_ {};
-        };
-
         // 켬·끔 상태가 한눈에 보이는 토글 스위치다. 트랙 색과 손잡이 위치가 현재
         // 값을 보여 주고, 클릭이 값을 뒤집는 intent를 낸다.
         class toggle_element final : public ui_element
@@ -878,7 +808,9 @@ namespace gitman::ui {
                     break;
                 }
                 case item_kind::query_timeout: {
-                    auto input { std::make_unique<timeout_input_element>(dialog_.timeout_text) };
+                    // 숫자 전용 초안은 logic이 거른다 (handle_edit_settings_timeout).
+                    auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::settings_timeout_input }, dialog_.timeout_text, std::u8string { u8"600 (기본값)" }) };
+                    input->set_tooltip(u8"숫자만 입력합니다 (10~3600초). 비우면 기본값 600초입니다.");
                     controls.push_back(input.get());
                     add_child(std::move(input));
                     break;

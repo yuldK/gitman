@@ -44,4 +44,65 @@ namespace gitman::ui {
         const float text_width { measure_text(text_, font) };
         draw_text(context.canvas, text_, box.x + (box.width - text_width) / 2.0f, box.y + centered_text_baseline(font, box.height), font, foreground);
     }
+
+    text_input_element::text_input_element(const ui_element_id id, std::u8string text, std::u8string placeholder)
+        : ui_element { id }
+        , text_ { std::move(text) }
+        , placeholder_ { std::move(placeholder) }
+    {}
+
+    void text_input_element::arrange(const arrange_context& context)
+    {
+        set_bounds(context.slot);
+    }
+
+    void text_input_element::draw(draw_context& context, const interaction_snapshot& interaction) const
+    {
+        const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+        const bool focused { interaction.focused_input == id() };
+        const rect_f box { bounds() };
+        const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
+        const float radius { 3.0f * scale };
+        context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(with_alpha(context.palette.primary_foreground, 0.08f)));
+        // 초점을 받은 칸은 테두리를 강조해 입력이 이곳으로 간다는 것을 보인다.
+        SkPaint border { solid_paint(focused ? context.palette.accent : with_alpha(context.palette.primary_foreground, 0.35f)) };
+        border.setStyle(SkPaint::kStroke_Style);
+        border.setStrokeWidth(1.0f * scale);
+        context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
+
+        const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+        const float inset { 7.0f * scale };
+        const float text_left { box.x + inset };
+        const float baseline { box.y + centered_text_baseline(font, box.height) };
+        const float available { box.x + box.width - inset - text_left };
+
+        float caret_left { text_left };
+        if (text_.empty())
+        {
+            // 빈 값의 뜻은 안내가 설명한다. 초점이 없을 때만 흐리게 그린다.
+            if (focused == false && placeholder_.empty() == false)
+            {
+                SkPaint placeholder { solid_paint(context.palette.primary_foreground) };
+                placeholder.setAlphaf(0.5f);
+                static_cast<void>(draw_text_within(context.canvas, placeholder_, text_left, baseline, available, font, placeholder));
+            }
+        }
+        else
+        {
+            SkPaint foreground { solid_paint(context.palette.primary_foreground) };
+            if (enabled() == false)
+                foreground.setAlphaf(0.45f);
+            caret_left += draw_text_within(context.canvas, text_, text_left, baseline, available, font, foreground) + 1.0f * scale;
+        }
+
+        // caret은 초점을 받은 동안 글 끝에서 깜빡인다. 초점을 받은 시각이 위상
+        // 기준이라 받는 순간에는 항상 켜져 있다. 다시 그리기는 UI thread의 caret
+        // timer가 반주기마다 일으킨다.
+        const bool caret_on { focused && interaction.focus_started_at.has_value() && ((context.now - *interaction.focus_started_at) / caret_blink_interval) % 2 == 0 };
+        if (caret_on && caret_left < box.x + box.width - inset)
+        {
+            const float caret_top { box.y + 4.0f * scale };
+            context.canvas.drawRect(SkRect::MakeXYWH(caret_left, caret_top, 1.0f * scale, box.height - 8.0f * scale), solid_paint(context.palette.primary_foreground));
+        }
+    }
 } // namespace gitman::ui

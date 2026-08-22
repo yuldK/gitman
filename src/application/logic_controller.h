@@ -77,6 +77,9 @@ namespace gitman {
         void handle_select_card(const select_card_intent& intent);
         void handle_toggle_path_display();
         void handle_window_placement(const window_placement_intent& intent);
+        // 문서를 열기 직전의 창 배치를 앱 설정에 남긴다 (S3.2). 문서가 열려 있으면
+        // 아무것도 하지 않는다.
+        void record_app_window_placement();
         void handle_document_saved(document_saved_event event);
         void handle_request_update(const request_update_intent& intent);
         void handle_request_switch(const request_switch_intent& intent);
@@ -322,6 +325,9 @@ namespace gitman {
         // 문서에서 읽은 창 배치와 그 게시 번호다. UI thread는 번호가 바뀔 때만
         // 창을 다시 배치한다.
         std::optional<window_placement> window_placement_ {};
+        // UI thread가 마지막으로 알린 실제 창 배치다 (S3.2). 문서를 여는 순간 앱
+        // 설정에 남길 값이라 문서 유무와 무관하게 갱신한다.
+        std::optional<window_placement> current_placement_ {};
         std::uint64_t window_placement_revision_ { 0 };
         // 종료 시 배치를 문서에 저장해야 하는지다. UI thread가 보낸 배치가 문서의
         // 값과 다를 때만 켜진다.

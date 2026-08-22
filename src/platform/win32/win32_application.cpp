@@ -462,6 +462,18 @@ namespace gitman::win32 {
                     break;
                 case WM_SIZE:
                     update_caption_hover(ui::caption_button_hover::none);
+                    // 최대화 ↔ 복원 전환만 배치로 알린다 (settings-tabs-and-
+                    // appearance-scope-design S3.2). 끌어서 크기를 바꾸는 동안에도
+                    // SIZE_RESTORED가 연속으로 오므로 상태가 바뀐 경우로 한정한다.
+                    if (word_parameter == SIZE_MAXIMIZED || word_parameter == SIZE_RESTORED)
+                    {
+                        const bool maximized { word_parameter == SIZE_MAXIMIZED };
+                        if (maximized != posted_maximized_)
+                        {
+                            posted_maximized_ = maximized;
+                            post_window_placement();
+                        }
+                    }
                     if (renderer_ != nullptr && word_parameter != SIZE_MINIMIZED)
                     {
                         std::u8string error {};
@@ -473,6 +485,11 @@ namespace gitman::win32 {
                         post_window_metrics();
                         InvalidateRect(window_, nullptr, FALSE);
                     }
+                    return 0;
+                case WM_EXITSIZEMOVE:
+                    // 이동·크기 조절이 끝난 시점의 배치다. logic이 문서를 여는 순간
+                    // 앱 설정에 남길 값을 알고 있어야 한다 (S3.2).
+                    post_window_placement();
                     return 0;
                 case WM_DPICHANGED: {
                     dpi_ = HIWORD(word_parameter);
@@ -1195,6 +1212,9 @@ namespace gitman::win32 {
             std::uint32_t dpi_ { 96 };
             // 마지막으로 적용한 창 배치 게시 번호다. 0은 아직 적용한 적이 없다는 뜻이다.
             std::uint64_t applied_window_placement_revision_ { 0 };
+            // 마지막으로 배치를 알린 최대화 상태다 (S3.2). WM_SIZE 폭주 중에 같은
+            // 상태를 반복해서 보내지 않는다.
+            bool posted_maximized_ { false };
             ui::caption_button_hover hovered_caption_button_ { ui::caption_button_hover::none };
             // OS의 "앱 모드" 설정이다 (theme-and-banner-menu-design T3.2). 레지스트리
             // 조회는 프레임마다 하지 않고 시작 시 한 번, 이후 WM_SETTINGCHANGE·

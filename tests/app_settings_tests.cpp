@@ -557,6 +557,88 @@ TEST_CASE("The app settings placement restores the window only when nothing was 
     }
 }
 
+TEST_CASE("A document keeps the window placement out of the app settings", "[logic][app-settings][window]")
+{
+    // 앱 단위 배치는 문서를 열지 않은 경우에만 유지한다
+    // (settings-tabs-and-appearance-scope-design S3.2).
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+
+    controller.start();
+    const std::uint64_t load_id { submitter.requests.front().operation_id };
+    controller.handle(gitman::logic_message { make_loaded_settings(load_id) });
+
+    gitman::window_placement start_page {};
+    start_page.x = 10;
+    start_page.y = 20;
+    start_page.width = 800;
+    start_page.height = 600;
+    controller.handle(gitman::logic_message { gitman::window_placement_intent { start_page } });
+
+    // 문서를 여는 순간, 문서 없이 쓰던 배치가 앱 설정에 남는다.
+    controller.handle(gitman::logic_message { gitman::open_document_intent { u8"D:\\workspaces\\team.version-list" } });
+    controller.handle(gitman::logic_message { make_loaded_document() });
+    const gitman::operation_request* const opened { submitter.last_of(gitman::operation_kind::save_app_settings) };
+    REQUIRE(opened != nullptr);
+    REQUIRE(opened->app_settings_payload->window.has_value());
+    REQUIRE(*opened->app_settings_payload->window == start_page);
+
+    // 문서를 연 뒤의 배치는 문서에만 남는다.
+    gitman::window_placement document_placement {};
+    document_placement.x = 300;
+    document_placement.y = 150;
+    document_placement.width = 1280;
+    document_placement.height = 720;
+    controller.handle(gitman::logic_message { gitman::window_placement_intent { document_placement } });
+
+    controller.handle(gitman::logic_message { gitman::close_intent {} });
+    const gitman::operation_request* const document_save { submitter.last_of(gitman::operation_kind::save_document) };
+    REQUIRE(document_save != nullptr);
+    REQUIRE(document_save->document.has_value());
+    REQUIRE(document_save->document->window.has_value());
+    REQUIRE(*document_save->document->window == document_placement);
+
+    const gitman::operation_request* const shutdown_save { submitter.last_of(gitman::operation_kind::save_app_settings) };
+    REQUIRE(shutdown_save != nullptr);
+    REQUIRE(shutdown_save->app_settings_payload->window.has_value());
+    REQUIRE(*shutdown_save->app_settings_payload->window == start_page);
+}
+
+TEST_CASE("Closing the document returns the placement to the app settings", "[logic][app-settings][window]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+
+    controller.start();
+    const std::uint64_t load_id { submitter.requests.front().operation_id };
+    controller.handle(gitman::logic_message { make_loaded_settings(load_id) });
+
+    controller.handle(gitman::logic_message { gitman::open_document_intent { u8"D:\\workspaces\\team.version-list" } });
+    controller.handle(gitman::logic_message { make_loaded_document() });
+
+    gitman::window_placement document_placement {};
+    document_placement.x = 1;
+    document_placement.y = 2;
+    document_placement.width = 640;
+    document_placement.height = 480;
+    controller.handle(gitman::logic_message { gitman::window_placement_intent { document_placement } });
+
+    // 문서를 닫으면 다시 앱 단위로 기록한다.
+    controller.handle(gitman::logic_message { gitman::close_document_intent {} });
+    gitman::window_placement start_page {};
+    start_page.x = 40;
+    start_page.y = 60;
+    start_page.width = 1000;
+    start_page.height = 700;
+    controller.handle(gitman::logic_message { gitman::window_placement_intent { start_page } });
+
+    controller.handle(gitman::logic_message { gitman::close_intent {} });
+    const gitman::operation_request* const save { submitter.last_of(gitman::operation_kind::save_app_settings) };
+    REQUIRE(save != nullptr);
+    REQUIRE(save->app_settings_payload->window.has_value());
+    REQUIRE(*save->app_settings_payload->window == start_page);
+}
+
 TEST_CASE("A failing app settings save is reported once", "[logic][app-settings]")
 {
     recording_submitter submitter {};

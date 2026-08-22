@@ -348,6 +348,10 @@ namespace gitman {
         if (shutting_down_)
             return;
 
+        // 문서를 열기 전의 배치를 앱 설정에 남긴다 (S3.2). 아래에서 document_를
+        // 비우므로 열려 있었는지 판정이 가능한 지금 호출한다.
+        record_app_window_placement();
+
         // 이전 문서에서 진행 중인 변경 작업은 결과가 버려질 것이므로 프로세스도
         // 계속 둘 이유가 없다. 카드가 사라지기 전에 취소를 전파한다.
         cancel_running_changes();
@@ -419,7 +423,9 @@ namespace gitman {
         }
 
         // 생성된 문서를 곧바로 연다. 이전 문서의 진행 중 결과가 새 문서에 적용되지
-        // 않도록 열기와 같은 규칙으로 대기 상태를 정리한다.
+        // 않도록 열기와 같은 규칙으로 대기 상태를 정리한다. 문서를 여는 것이므로
+        // 열기와 같은 배치 기록 규칙을 따른다 (S3.2).
+        record_app_window_placement();
         document_path_ = std::move(event.document_path);
         document_loading_ = false;
         pending_save_operation_id_ = 0;
@@ -644,22 +650,42 @@ namespace gitman {
         if (intent.placement.valid() == false)
             return;
 
-        // 앱 설정에는 문서 유무와 무관하게 마지막 배치를 남긴다 (G1). 배치 intent는
-        // 종료 직전에만 오므로 저장은 begin_shutdown이 한 번 내보낸다.
+        // 문서를 여는 순간 앱 설정에 남길 값이라 문서 유무와 무관하게 기억한다
+        // (settings-tabs-and-appearance-scope-design S3.2).
+        current_placement_ = intent.placement;
+
+        if (document_.has_value())
+        {
+            // 문서가 열려 있는 동안의 배치는 문서에만 남는다. 앱 단위 배치는 문서
+            // 없이 시작할 때의 값이라 문서의 크기·위치로 덮이면 안 된다 (S3.2).
+            if (document_->window.has_value() && *document_->window == intent.placement)
+                return;
+
+            document_->window = intent.placement;
+            window_placement_ = intent.placement;
+            window_placement_dirty_ = true;
+            return;
+        }
+
+        // 문서가 없을 때만 앱 설정에 남긴다. 저장은 begin_shutdown이 한 번 내보낸다.
         if (app_settings_.window.has_value() == false || *app_settings_.window != intent.placement)
         {
             app_settings_.window = { intent.placement };
             app_settings_window_dirty_ = true;
         }
+    }
 
-        if (document_.has_value() == false)
+    void logic_controller::record_app_window_placement()
+    {
+        // 문서를 여는 순간의 배치가 "문서 없이 쓰던" 마지막 배치다 (S3.2). 문서가
+        // 이미 열려 있었다면 그 배치는 문서의 것이라 앱 설정으로 올리지 않는다.
+        if (document_.has_value() || current_placement_.has_value() == false)
             return;
-        if (document_->window.has_value() && *document_->window == intent.placement)
+        if (app_settings_.window.has_value() && *app_settings_.window == *current_placement_)
             return;
 
-        document_->window = intent.placement;
-        window_placement_ = intent.placement;
-        window_placement_dirty_ = true;
+        app_settings_.window = current_placement_;
+        app_settings_window_dirty_ = true;
     }
 
     void logic_controller::handle_document_saved(document_saved_event event)

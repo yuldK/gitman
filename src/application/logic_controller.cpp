@@ -1067,7 +1067,13 @@ namespace gitman {
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
-        window_placement_.reset();
+        // 문서를 닫으면 다시 "문서 없이 쓰는" 상태다. 문서가 남긴 크기·위치를 그대로
+        // 두지 않고 앱 단위 배치로 되돌린다 (D1). 게시 번호를 올려 UI thread가 한 번
+        // 적용한다 — 문서를 열 때 문서 배치를 적용하는 것과 같은 경로다.
+        window_placement_ = app_settings_.window;
+        current_placement_ = app_settings_.window;
+        if (window_placement_.has_value())
+            ++window_placement_revision_;
         // 진행 중이던 저장·생성 결과는 도착해도 버린다.
         pending_save_operation_id_ = 0;
         save_queued_ = false;

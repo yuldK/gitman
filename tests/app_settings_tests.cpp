@@ -639,6 +639,47 @@ TEST_CASE("Closing the document returns the placement to the app settings", "[lo
     REQUIRE(*save->app_settings_payload->window == start_page);
 }
 
+TEST_CASE("Closing the document restores the app window placement", "[logic][app-settings][window]")
+{
+    // 문서를 닫으면 문서가 남긴 크기·위치가 아니라 앱 단위 배치로 돌아간다 (D1).
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+
+    controller.start();
+    const std::uint64_t load_id { submitter.requests.front().operation_id };
+
+    gitman::window_placement stored {};
+    stored.x = 40;
+    stored.y = 60;
+    stored.width = 1000;
+    stored.height = 700;
+    gitman::app_settings settings {};
+    settings.window = { stored };
+    controller.handle(gitman::logic_message { make_loaded_settings(load_id, std::move(settings)) });
+
+    gitman::window_placement document_placement {};
+    document_placement.x = 1;
+    document_placement.y = 2;
+    document_placement.width = 640;
+    document_placement.height = 480;
+    controller.handle(gitman::logic_message { gitman::open_document_intent { u8"D:\\workspaces\\team.version-list" } });
+    gitman::document_loaded_event loaded { make_loaded_document() };
+    loaded.document->window = { document_placement };
+    controller.handle(gitman::logic_message { std::move(loaded) });
+
+    const std::shared_ptr<const gitman::view_snapshot> opened { controller.make_view_snapshot() };
+    REQUIRE(opened->window_placement_request.has_value());
+    REQUIRE(*opened->window_placement_request == document_placement);
+    const std::uint64_t opened_revision { opened->window_placement_revision };
+
+    controller.handle(gitman::logic_message { gitman::close_document_intent {} });
+    const std::shared_ptr<const gitman::view_snapshot> closed { controller.make_view_snapshot() };
+    REQUIRE(closed->window_placement_request.has_value());
+    REQUIRE(*closed->window_placement_request == stored);
+    // 게시 번호가 올라야 UI thread가 한 번 더 적용한다.
+    REQUIRE(closed->window_placement_revision > opened_revision);
+}
+
 TEST_CASE("A failing app settings save is reported once", "[logic][app-settings]")
 {
     recording_submitter submitter {};

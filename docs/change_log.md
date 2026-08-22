@@ -1,5 +1,51 @@
 # 변경 이력
 
+## 2026-08-22 - 텍스트 편집 · SVN 여는 순간 reveal · 경과 시간 유지
+
+### 사용자 지시
+
+- SVN은 열 때 자기 branch까지는 재귀적으로 `svn ls`가 필요하다. 앞선 판단을
+  정정한다.
+- 텍스트 박스에 드래그 범위 선택, caret 이동, Ctrl+C·V·X 등 "일반적으로 기대하는
+  텍스트 편집 기능"이 있어야 한다.
+- 출력 로그의 시간 경과를 명령이 끝나도 남긴다. 처음엔 없고, 실행 중엔 있고,
+  다음 명령이 시작하면 새 값으로 갱신한다.
+- (진행 방식) 같은 브랜치에서 이어서 커밋까지 자동 진행한다.
+
+### 반영 내용
+
+- **여는 순간의 reveal**: dialog가 SVN 브라우저를 만들 때 `reveal_url`을 현재 작업
+  복사본 경로로 세운다. 현재 위치로 가는 길만 한 단계씩 조회하고 형제 가지는 열지
+  않는다. 브라우저 모듈은 그대로여서 "목표가 없으면 내려가지 않는다"는 계약이
+  유지된다.
+- **편집 모델**: `domain/text_edit.{h,cpp}`에 글꼴도 화면도 모르는 순수 모델을
+  뒀다. caret·anchor는 UTF-8 byte offset이고 항상 문자 경계다. 낱말 경계는 ASCII
+  영숫자와 비 ASCII를 낱말로, 나머지를 구분자로 본다 — branch 이름의 `/`·`-`에서
+  멈춘다.
+- **intent 통합**: `edit_settings_timeout_intent`와 `edit_switch_query_intent`를
+  없애고 대상(`text_input_target`)과 명령(`text_edit_command`)을 담은
+  `edit_text_input_intent` 하나로 모았다. 텍스트 박스가 늘어도 intent는 늘지 않는다.
+- **포인터 → offset**: 글꼴이 필요한 계산이라 element가 하고, 측정 함수는
+  `interaction_config`로 입력 thread에 주입한다(앱은 내장 글꼴, test는 고정 폭
+  가짜). 글자 크기와 가로 스크롤을 element가 그리기와 hit test 양쪽에서 같은
+  규칙으로 계산해 어긋날 수 없다.
+- **조작**: 클릭으로 caret 두기, 끌어 범위 선택, 더블 클릭 낱말 선택,
+  ←/→(+Ctrl 낱말, +Shift 확장), Home/End(+Shift), Backspace/Delete, Ctrl+A/C/X/V.
+  글자 키는 Ctrl이 눌린 동안에만 키 이벤트가 되어 그 글자를 그대로 칠 수 있다.
+- **클립보드**: 복사할 글은 입력 thread가 tree에서 읽어 담고, 실제 접근은 UI
+  thread가 한다(기존 규칙). 붙여넣기는 UI thread가 읽어 그 대상의 insert intent로
+  바꿔 보내며, 한 줄 칸이라 첫 줄만 쓴다.
+- **그리기**: 선택 띠와 caret 자리를 그리고, 글이 칸보다 길면 잘라 `…`를 붙이는
+  대신 clip + 가로 스크롤로 그린다.
+- **경과 시간**: `card_state.change_elapsed`를 더해 명령이 끝나면 걸린 시간을
+  남기고 다음 명령이 시작할 때 지운다. UI thread의 1초 timer는 실행 중일 때만
+  걸린다.
+- 신규 test 11 case, 고쳐 쓴 test 4 case.
+
+### 영향 요구사항
+
+- REQ-007 (전환), REQ-008 (로그), REQ-017 (환경설정)
+
 ## 2026-08-22 - 전환 dialog 질의 막대 · SVN lazy 탐색
 
 ### 사용자 지시

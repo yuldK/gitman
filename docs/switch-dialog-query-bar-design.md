@@ -265,3 +265,157 @@ struct svn_browser_reveal_progress
 | `switch_dialog_tests` | Git 필터 걸림·선택 index 매핑·질의 변경이 선택을 지움·Enter가 첫 후보를 고름·지우기·갱신이 재조회를 냄. SVN 선택이 박스를 덮어씀·이동·없는 경로 메시지·갱신이 하위 cache를 버림 |
 | `ui_interaction_tests` | 질의 박스 초점 획득/상실, 문자가 `edit_switch_query_intent`로 감, Enter가 `submit_switch_query_intent`, dialog가 닫히면 초점 해제 |
 | `ui_tree_build_tests` | 전환 dialog에 세 element가 생기고 조회 중에는 비활성 |
+
+---
+
+# 후속 지시 (R1~R3) — 2026-08-22
+
+상태: **구현 완료** (같은 브랜치에서 이어서 진행했다).
+
+| 항목 | 요구 |
+|---|---|
+| R1 | SVN은 창을 열 때 **자기 branch까지는** 재귀 `svn ls`가 필요하다. Q3의 판단을 정정한다 |
+| R2 | 텍스트 박스에 드래그 범위 선택, caret 이동, Ctrl+C·V·X 등 "일반적으로 기대하는 텍스트 편집 기능"을 갖춘다 |
+| R3 | 로그 헤더의 경과 시간을 명령이 끝나도 남긴다. 처음엔 없고, 실행 중엔 흐르고, 끝나면 그대로 서 있다가, 다음 명령이 시작하면 새 값으로 갱신한다 |
+
+## R1. 여는 순간의 reveal을 되살린다
+
+Q3에서 지운 것은 **자동 하강 기계**가 아니라 *목표 없는* 하강이었다. reveal 기계는
+그대로 두고, dialog가 SVN 브라우저를 만들 때 `reveal_url`을 현재 작업 복사본
+경로로 세운다.
+
+- 여전히 **현재 위치로 가는 길만** 조회한다. 형제 가지(`branches` 등)는 열지
+  않으므로 "저장소를 미리 다 읽는" 동작은 아니다.
+- 목표 노드 자신은 펼치지 않는다. 그 아래는 사용자가 열 때 조회한다.
+- `svn_repository_browser` 모듈은 그대로다 — `make_svn_repository_browser`는
+  목표를 세우지 않고, 목표를 세우는 것은 logic이다. 모듈 test는 "목표가 없으면
+  내려가지 않는다"를 계속 확인한다.
+
+## R2. 텍스트 편집
+
+### R2.1 편집 모델은 domain에 둔다
+
+`domain/text_edit.{h,cpp}`에 글꼴도 UI도 모르는 순수 모델을 둔다. caret과 anchor는
+**UTF-8 byte offset**이며 항상 문자 경계다.
+
+```cpp
+struct text_edit_state { std::u8string text {}; std::size_t caret {}; std::size_t anchor {}; };
+enum class text_edit_motion { left, right, word_left, word_right, line_start, line_end };
+```
+
+- 선택 = `[min(caret, anchor), max(caret, anchor))`. 둘이 같으면 선택이 없다.
+- 낱말 경계: ASCII 영숫자와 비 ASCII 바이트(≥0x80)가 낱말 문자, 나머지가 구분자다.
+  branch 이름의 `/`·`-`와 경로 구분자에서 Ctrl+←/→가 멈춘다.
+- 글이 밖에서 바뀌면(`text_edit_set_text`) caret·anchor를 범위 안 문자 경계로
+  되돌린다.
+
+### R2.2 편집 intent를 하나로 모은다
+
+`edit_settings_timeout_intent`와 `edit_switch_query_intent`를 없애고 대상과 명령을
+담은 하나로 바꾼다. 텍스트 박스가 늘어도 intent는 늘지 않는다.
+
+```cpp
+enum class text_input_target { settings_timeout, switch_query };
+enum class text_edit_command {
+    insert, backspace, delete_forward,
+    move_left, move_right, move_word_left, move_word_right, move_line_start, move_line_end,
+    select_all, select_word, cut, place_caret,
+};
+struct edit_text_input_intent
+{
+    text_input_target target {};
+    text_edit_command command {};
+    std::u8string text {};      // insert 전용 (UTF-8 조각)
+    std::size_t offset { 0 };   // place_caret·select_word 전용
+    bool extend { false };      // Shift로 선택을 늘린다
+};
+```
+
+`cut`은 **지우기만** 한다 — 복사는 클립보드를 만질 수 있는 UI thread가 이미 했다.
+
+logic은 대상별 후처리를 그대로 유지한다.
+
+- `settings_timeout`: 넣는 글에서 숫자만 남기고 4자리를 넘기지 않는다. 글이 바뀌면
+  `timeout_defined`를 켠다.
+- `switch_query`: Git이면 글이 바뀔 때 선택·확인 단계·스크롤을 되돌린다.
+
+### R2.3 포인터 → offset은 element가 옮긴다
+
+글꼴이 필요한 계산이라 logic thread(`build_ui_tree`)에서는 할 수 없고, 그리기
+thread의 상태를 입력 thread가 읽으면 경쟁이 된다. 그래서 **측정 함수를 입력
+thread에 주입**하고, 계산은 element가 한다.
+
+```cpp
+// 글자 폭을 재는 함수다. 앱은 내장 글꼴로 만들고 test는 고정 폭 가짜를 넣는다.
+using text_measurer = std::function<float(std::u8string_view text, float pixel_size)>;
+
+// ui_element의 새 virtual이다. 텍스트 박스가 아니면 nullopt다.
+[[nodiscard]] virtual std::optional<std::size_t> offset_at(float x, const text_measurer&) const;
+```
+
+- 글자 크기(11 × scale)는 element가 arrange에서 기억하므로 그리기와 hit test가
+  같은 값을 쓴다 — 두 곳이 어긋날 수 없다.
+- `interaction_controller`가 `interaction_config`로 측정 함수를 받는다. 없으면
+  caret을 글 끝에 둔다(첫 프레임 안전장치).
+- **가로 스크롤**도 같은 규칙으로 양쪽에서 계산한다: caret이 보이도록 최소한만
+  밀고 `[0, max(0, 글 폭 - 안쪽 폭)]`으로 자른다. 글·caret·폭만으로 정해지므로
+  그리기와 hit test가 같은 값을 낸다.
+
+### R2.4 마우스와 키
+
+| 입력 | 결과 |
+|---|---|
+| 누름 | `place_caret(offset, extend=false)` — `pointer_drag_target::on_press` |
+| 누른 채 이동 | `place_caret(offset, extend=true)` — 드래그 범위 선택 |
+| 더블 클릭 | `select_word(offset)` |
+| ←/→ | `move_left`/`move_right` (+Ctrl → word, +Shift → extend) |
+| Home/End | `move_line_start`/`move_line_end` (+Shift → extend) |
+| Backspace (WM_CHAR U+0008) | `backspace` |
+| Delete | `delete_forward` |
+| Ctrl+A | `select_all` |
+| Ctrl+C | 선택을 클립보드로 (`clipboard_copy_request`) |
+| Ctrl+X | 위와 같이 복사한 뒤 `cut` |
+| Ctrl+V | `clipboard_paste_request { target }` |
+
+- `key_code`에 `arrow_left`·`arrow_right`·`home`·`end`·`delete_forward`·`key_a`·
+  `key_c`·`key_v`·`key_x`를 더하고 `key_pressed_event`에 `shift`를 더한다.
+- 글자 키(A·C·V·X)는 **Ctrl이 눌린 동안에만** `key_pressed_event`로 만든다.
+  그러지 않으면 WM_CHAR가 막혀 그 글자를 칠 수 없다.
+- 초점을 가진 텍스트 박스가 없으면 새 키는 모두 지금처럼 무시된다.
+
+### R2.5 클립보드
+
+`input_action` variant에 둘을 더한다.
+
+```cpp
+struct clipboard_copy_request { std::u8string text {}; };
+struct clipboard_paste_request { text_input_target target {}; };
+```
+
+- 복사할 글은 입력 thread가 tree에서 읽는다 — element에 `text_input()` virtual을
+  두어 글·caret·anchor를 내준다.
+- 붙여넣기는 UI thread가 클립보드를 읽어(`read_text_from_clipboard`) 대상 target의
+  `insert` intent를 logic에 보낸다. 여러 줄이면 첫 줄만 쓴다(한 줄 박스다).
+- 클립보드는 계속 UI thread 전용이다 (기존 규칙).
+
+### R2.6 그리기
+
+- 선택 범위를 `accent_soft` 18%로 깔고 그 위에 글을 그린다.
+- caret은 이제 글 끝이 아니라 caret offset 위치에 선다.
+- 글이 칸보다 길면 잘라 `…`를 붙이는 대신 **clip + 가로 스크롤**로 그린다. 편집
+  중에는 잘린 표시보다 caret 주변이 보이는 것이 중요하다.
+
+## R3. 경과 시간을 명령이 끝나도 남긴다
+
+`card_state`에 `std::optional<duration> change_elapsed`를 더한다.
+
+| 시점 | `change_started_at` | `change_elapsed` | 화면 |
+|---|---|---|---|
+| 문서를 열고 명령 없음 | — | — | 표시 없음 |
+| 실행 중 | 시작 시각 | — | 흐른다 (UI timer가 1초마다 다시 그린다) |
+| 끝난 뒤 | — | 걸린 시간 | 그 값으로 서 있다 |
+| 다음 명령 시작 | 새 시작 시각 | — | 다시 흐른다 |
+
+- view는 두 값을 모두 담고 element는 `change_started_at`이 있으면 흐르는 값을,
+  없고 `change_elapsed`가 있으면 그 값을 그린다.
+- UI thread의 1초 timer는 `change_started_at`만 보므로 멈춘 값에서는 저절로 꺼진다.

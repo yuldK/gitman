@@ -2461,7 +2461,7 @@ namespace gitman {
                 }
                 else
                 {
-                    dialog.query_placeholder = u8"브랜치 이름으로 거르기";
+                    dialog.query_placeholder = u8"브랜치 이름으로 필터링";
                     dialog.query_action = dialog.query.empty() ? switch_query_action::search : switch_query_action::clear;
                     dialog.query_action_enabled = dialog.query.empty() == false;
                 }

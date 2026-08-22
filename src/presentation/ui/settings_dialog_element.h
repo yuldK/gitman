@@ -26,5 +26,9 @@ namespace gitman::ui {
         // 문서가 덮어쓴 행의 `덮어씀` 배지다 (행 index, element). 문서 모드에서
         // 덮어쓴 행에만 만들어지고 클릭이 그 행의 문서 정의를 지운다 (G3.2).
         std::vector<std::pair<std::size_t, ui_element*>> badges_ {};
+        // 외양 행의 컨트롤이다 (theme-and-banner-menu-design T3.3). 테마 세 칸과
+        // 색 동그라미들이며, index가 아니라 이 목록으로 배치한다.
+        std::vector<ui_element*> theme_options_ {};
+        std::vector<ui_element*> swatches_ {};
     };
 } // namespace gitman::ui

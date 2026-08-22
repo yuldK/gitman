@@ -670,13 +670,13 @@ namespace gitman::win32 {
         }
     } // namespace
 
-    std::optional<generate_document_intent> show_version_list_generation_dialog(const HWND owner)
+    std::optional<generate_document_intent> show_version_list_generation_dialog(const HWND owner, const color_theme theme, const accent_definition& accent)
     {
         const HINSTANCE instance { reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(owner, GWLP_HINSTANCE)) };
         register_dialog_class(instance);
 
         dialog_state state {};
-        state.palette = color_palette_for(color_theme::dark);
+        state.palette = color_palette_for(theme, accent);
         state.dpi = owner != nullptr ? GetDpiForWindow(owner) : 96;
         state.window_brush = CreateSolidBrush(to_colorref(state.palette.window_background));
         state.input_brush = CreateSolidBrush(to_colorref(state.palette.surface_background));
@@ -704,9 +704,9 @@ namespace gitman::win32 {
             return std::nullopt;
         }
 
-        // 본 창과 같은 어두운 계열로 시스템 caption을 칠한다. 미지원 OS에서는 무해한
+        // 본 창과 같은 계열로 시스템 caption을 칠한다. 미지원 OS에서는 무해한
         // 실패다.
-        const BOOL dark_mode { TRUE };
+        const BOOL dark_mode { theme == color_theme::light ? FALSE : TRUE };
         static_cast<void>(DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark_mode, sizeof(dark_mode)));
 
         if (owner != nullptr)

@@ -283,6 +283,12 @@ namespace gitman {
         bool ignore_local_changes { false };
         // 카드 로그를 문서 폴더에 파일로 남길지의 초안이다 (app-shell-design A4.5).
         bool write_log_files { true };
+        // 테마와 키 컬러다 (theme-and-banner-menu-design T3.3). 문서 모드에서도
+        // 앱 설정을 그대로 편집하며(외양은 문서 단위가 아니다) 클릭 즉시 반영·
+        // 저장되므로 `저장`/`취소` 초안에 들어가지 않는다. 고를 수 있는 색 목록은
+        // 표시 계층이 직접 안다 (`accent_catalog`).
+        theme_preference theme { theme_preference::system };
+        std::u8string accent_id {};
         // 검증 오류다. 비어 있으면 표시하지 않는다.
         std::u8string message {};
         bool can_confirm { true };

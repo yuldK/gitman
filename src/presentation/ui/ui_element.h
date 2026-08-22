@@ -102,6 +102,10 @@ namespace gitman::ui {
         settings_ignore_local_toggle,
         // 카드 로그를 문서 폴더에 파일로 남기는 토글이다 (app-shell-design A4.5).
         settings_log_files_toggle,
+        // 외양 행이다 (theme-and-banner-menu-design T3.3). 테마 세그먼트는 owner
+        // 값에 `system`·`light`·`dark`를, 색 동그라미는 accent id를 담는다.
+        settings_theme_option,
+        settings_accent_swatch,
         settings_dialog_confirm,
         settings_dialog_cancel,
         // 환경설정 dialog의 file association 등록·제거 버튼이다 (REQ-016, 단계 8).

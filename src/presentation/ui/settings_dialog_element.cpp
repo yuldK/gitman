@@ -20,7 +20,7 @@ namespace gitman::ui {
     namespace {
         // panel의 논리 치수다. 이 dialog에서만 쓰므로 이 파일에 둔다.
         constexpr float panel_width { 460.0f };
-        constexpr float panel_height { 440.0f };
+        constexpr float panel_height { 544.0f };
         constexpr float panel_padding { 14.0f };
         // 행 배치: 제목 아래에서 시작해 행마다 label 한 줄과 값 한 줄을 그린다.
         constexpr float first_row_top { 40.0f };
@@ -34,7 +34,27 @@ namespace gitman::ui {
         constexpr float toggle_height { 20.0f };
         constexpr float action_button_width { 88.0f };
         constexpr float action_button_height { 28.0f };
-        constexpr std::size_t row_count { 6 };
+        constexpr std::size_t row_count { 8 };
+        // 외양 행(테마 세그먼트·색 동그라미)의 치수다.
+        constexpr float theme_option_width { 34.0f };
+        constexpr float theme_option_height { 22.0f };
+        constexpr float swatch_diameter { 20.0f };
+        constexpr float swatch_gap { 8.0f };
+
+        // 테마 행의 값 줄이다. 지금 무엇을 따르는지 한 줄로 알린다.
+        std::u8string theme_description(const theme_preference value)
+        {
+            switch (value)
+            {
+            case theme_preference::light:
+                return std::u8string { u8"라이트 - 밝은 화면" };
+            case theme_preference::dark:
+                return std::u8string { u8"다크 - 어두운 화면" };
+            case theme_preference::system:
+            default:
+                return std::u8string { u8"시스템 - Windows 앱 모드를 따름" };
+            }
+        }
 
         // 상태 확인 제한 시간의 숫자 전용 텍스트 박스다 (field-feedback-design
         // 1.3). 키 입력은 dialog가 열려 있는 동안 interaction이 그대로 intent로
@@ -148,6 +168,99 @@ namespace gitman::ui {
             bool on_ { false };
         };
 
+        // 테마 세 값을 붙여 놓은 세그먼트 토글의 한 칸이다 (T3.3). 고른 칸만
+        // 강조 바탕과 강조 글자색을 갖는다. 아이콘은 codicon이다.
+        class theme_option_element final : public ui_element
+        {
+        public:
+            theme_option_element(const theme_preference value, const bool selected, const char32_t glyph, std::u8string tooltip)
+                : ui_element { ui_element_id { ui_element_kind::settings_theme_option, project_id { std::u8string { theme_preference_name(value) } } } }
+                , selected_ { selected }
+                , glyph_ { glyph }
+            {
+                set_tooltip(std::move(tooltip));
+                set_action(ui_trigger::left_click,
+                    [value](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_theme_preference_intent { value } } } }; });
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context& context, const interaction_snapshot& interaction) const override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const rect_f box { bounds() };
+                const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
+                const float radius { 3.0f * scale };
+                const bool hovered { interaction.hovered == id() };
+
+                ui_color background { with_alpha(context.palette.primary_foreground, 0.08f) };
+                if (selected_)
+                    background = with_alpha(context.palette.accent_soft, 0.30f);
+                else if (hovered)
+                    background = context.palette.button_hover_background;
+                context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), solid_paint(background));
+
+                if (context.codicon_typeface == nullptr)
+                    return;
+                SkPaint icon { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
+                if (selected_ == false)
+                    icon.setAlphaf(hovered ? 0.85f : 0.6f);
+                const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 13.0f * scale };
+                draw_centered_glyph(context.canvas, glyph_, box, icon_font, icon);
+            }
+
+        private:
+            bool selected_ { false };
+            char32_t glyph_ { 0 };
+        };
+
+        // 키 컬러 하나를 고르는 색 동그라미다 (T3.3). 고른 색만 바깥 링을 갖는다.
+        class accent_swatch_element final : public ui_element
+        {
+        public:
+            accent_swatch_element(const accent_definition& accent, const bool selected)
+                : ui_element { ui_element_id { ui_element_kind::settings_accent_swatch, project_id { std::u8string { accent.id } } } }
+                , swatch_ { accent.swatch }
+                , selected_ { selected }
+            {
+                set_tooltip(std::u8string { accent.label });
+                set_action(ui_trigger::left_click, [id = std::u8string { accent.id }](const ui_action_context&) -> std::vector<input_action> {
+                    return { input_action { logic_message { set_accent_intent { id } } } };
+                });
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context& context, const interaction_snapshot& interaction) const override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const rect_f box { bounds() };
+                const float center_x { box.x + box.width / 2.0f };
+                const float center_y { box.y + box.height / 2.0f };
+                const float outer { (box.width < box.height ? box.width : box.height) / 2.0f };
+
+                // 고른 색은 바깥 링으로, hover는 옅은 링으로 알린다.
+                if (selected_ || interaction.hovered == id())
+                {
+                    SkPaint ring { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : with_alpha(context.palette.primary_foreground, 0.45f)) };
+                    ring.setStyle(SkPaint::kStroke_Style);
+                    ring.setStrokeWidth(1.5f * scale);
+                    context.canvas.drawCircle(center_x, center_y, outer - 1.0f * scale, ring);
+                }
+                context.canvas.drawCircle(center_x, center_y, outer - 4.0f * scale, solid_paint(swatch_));
+            }
+
+        private:
+            ui_color swatch_ { 0 };
+            bool selected_ { false };
+        };
+
         // 문서가 덮어쓴 행에 붙는 `덮어씀` 배지다 (G3.2). 클릭하면 그 행의 문서
         // override를 지워 앱 설정을 따르게 한다.
         class override_badge_element final : public ui_element
@@ -195,6 +308,8 @@ namespace gitman::ui {
                 , submodules_text_ { dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" } }
                 , ignore_local_text_ { dialog.ignore_local_changes ? std::u8string { u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" } : std::u8string { u8"끔 - 로컬 변경을 확인한 뒤 진행" } }
                 , log_files_text_ { dialog.write_log_files ? std::u8string { u8"켬 - .<문서>.version-list.log 폴더에 저장소별로 남김" } : std::u8string { u8"끔 - 화면 로그만 유지" } }
+                , theme_text_ { theme_description(dialog.theme) }
+                , accent_text_ { std::u8string { accent_for(dialog.accent_id).label } }
                 , message_ { dialog.message }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
@@ -247,6 +362,10 @@ namespace gitman::ui {
                 draw_row(context, 4, u8"로컬 변경을 상관하지 않음 (SVN)", ignore_local_text_, u8"");
                 // 카드 로그를 문서 폴더에 파일로 남긴다 (app-shell-design A4).
                 draw_row(context, 5, u8"로그를 문서 폴더에 파일로 남김", log_files_text_, u8"");
+                // 외양 2행은 문서가 아니라 언제나 앱 설정을 편집한다 (T3.3). 제목에
+                // `(전역)`을 붙여 `덮어씀` 배지가 없는 이유를 알린다.
+                draw_row(context, 6, u8"테마 (전역)", theme_text_, u8"");
+                draw_row(context, 7, u8"키 컬러 (전역)", accent_text_, u8"");
 
                 if (message_.empty() == false)
                 {
@@ -289,6 +408,8 @@ namespace gitman::ui {
             std::u8string submodules_text_ {};
             std::u8string ignore_local_text_ {};
             std::u8string log_files_text_ {};
+            std::u8string theme_text_ {};
+            std::u8string accent_text_ {};
             std::u8string message_ {};
         };
     } // namespace
@@ -366,6 +487,27 @@ namespace gitman::ui {
         cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_settings_dialog_intent {} } } }; });
         add_child(std::move(cancel));
 
+        // 외양 행의 컨트롤이다 (T3.3). index가 아니라 포인터 목록으로 배치하므로
+        // 앞 자식들의 index 기반 배치는 그대로다.
+        {
+            const auto add_theme = [this](const theme_preference value, const char32_t glyph, const char8_t* const tooltip) {
+                auto option { std::make_unique<theme_option_element>(value, dialog_.theme == value, glyph, std::u8string { tooltip }) };
+                theme_options_.push_back(option.get());
+                add_child(std::move(option));
+            };
+            // codicon에는 sun/moon이 없어 의미가 가장 가까운 3종을 골랐다 (검수 결정).
+            add_theme(theme_preference::light, codicons::icon_lightbulb, u8"밝은 화면을 씁니다");
+            add_theme(theme_preference::system, codicons::icon_device_desktop, u8"Windows의 앱 모드를 따릅니다");
+            add_theme(theme_preference::dark, codicons::icon_color_mode, u8"어두운 화면을 씁니다");
+
+            for (const accent_definition& accent : accent_catalog())
+            {
+                auto swatch { std::make_unique<accent_swatch_element>(accent, accent.id == dialog_.accent_id) };
+                swatches_.push_back(swatch.get());
+                add_child(std::move(swatch));
+            }
+        }
+
         // 문서가 덮어쓴 행의 `덮어씀` 배지다 (2026-08-22 지시). 맨 뒤에 붙여 앞
         // 자식들의 index 기반 배치가 흔들리지 않는다.
         if (dialog_.document_mode)
@@ -442,6 +584,34 @@ namespace gitman::ui {
             children[10]->arrange({ { left + padding + button_width + 8.0f * scale, button_top, button_width, button_height }, scale });
             children[11]->arrange({ { left + width - padding - button_width * 2.0f - 8.0f * scale, button_top, button_width, button_height }, scale });
             children[12]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
+        }
+
+        // 테마 세그먼트는 6행 오른쪽에 세 칸이 붙어 있다 (T3.3).
+        {
+            const float option_width { theme_option_width * scale };
+            const float option_height { theme_option_height * scale };
+            const float row_top { top + (first_row_top + row_height * 6.0f) * scale + row_control_offset * scale };
+            float option_left { left + width - padding - option_width * static_cast<float>(theme_options_.size()) };
+            for (ui_element* const option : theme_options_)
+            {
+                option->arrange({ { option_left, row_top, option_width, option_height }, scale });
+                option_left += option_width;
+            }
+        }
+
+        // 색 동그라미는 7행 오른쪽에 나란히 놓인다. 자리가 모자라면 왼쪽 것부터
+        // 잘리므로 목록이 길어지면 panel 폭을 함께 키운다.
+        {
+            const float diameter { swatch_diameter * scale };
+            const float gap { swatch_gap * scale };
+            const float row_top { top + (first_row_top + row_height * 7.0f) * scale + row_control_offset * scale };
+            const float total { static_cast<float>(swatches_.size()) * diameter + (swatches_.empty() ? 0.0f : static_cast<float>(swatches_.size() - 1) * gap) };
+            float swatch_left { left + width - padding - total };
+            for (ui_element* const swatch : swatches_)
+            {
+                swatch->arrange({ { swatch_left, row_top, diameter, diameter }, scale });
+                swatch_left += diameter + gap;
+            }
         }
 
         // `덮어씀` 배지는 각 행 라벨 줄의 오른쪽 끝이다. 행 컨트롤(찾아보기·토글)이

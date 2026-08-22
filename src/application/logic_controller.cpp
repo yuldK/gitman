@@ -2245,6 +2245,10 @@ namespace gitman {
             dialog.update_submodules = settings_dialog_->update_submodules;
             dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
             dialog.write_log_files = settings_dialog_->write_log_files;
+            // 외양은 문서 모드에서도 앱 설정을 그대로 보여 준다 (T3.3). 초안이
+            // 아니라 현재 값이며 클릭 즉시 바뀐다.
+            dialog.theme = app_settings_.appearance.theme;
+            dialog.accent_id = app_settings_.appearance.accent_id;
             // 문서 모드에서 정의되지 않은 행은 "앱 설정 따름"으로 표시된다 (G3.2).
             if (settings_dialog_->document_mode)
             {

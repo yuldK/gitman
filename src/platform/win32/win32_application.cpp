@@ -44,6 +44,14 @@ namespace gitman::win32 {
         // tooltip 지연이 끝나는 시점에 한 번 다시 그리기 위한 timer다.
         constexpr UINT_PTR tooltip_timer_id { 1 };
 
+        // 초점을 받은 텍스트 박스의 caret이 다음에 뒤집히는 시점에 다시 그리기 위한
+        // timer다. 매 render가 남은 시간을 다시 계산해 걸므로 반복 timer가 아니어도
+        // 깜빡임이 이어진다.
+        constexpr UINT_PTR caret_timer_id { 2 };
+        // 로그 헤더의 경과 시간(MM:SS)이 다음 초로 넘어가는 시점에 다시 그리기 위한
+        // timer다. 변경 작업이 실행 중일 때만 걸린다.
+        constexpr UINT_PTR elapsed_timer_id { 3 };
+
         // OS의 앱 모드가 밝은지다 (theme-and-banner-menu-design T3.2). 값을 읽지
         // 못하면 어두운 쪽으로 본다 — 지금까지의 모습과 같다.
         [[nodiscard]] bool read_system_prefers_light_theme() noexcept
@@ -55,13 +63,6 @@ namespace gitman::win32 {
             };
             return status == ERROR_SUCCESS && value != 0;
         }
-        // 초점을 받은 텍스트 박스의 caret이 다음에 뒤집히는 시점에 다시 그리기 위한
-        // timer다. 매 render가 남은 시간을 다시 계산해 걸므로 반복 timer가 아니어도
-        // 깜빡임이 이어진다.
-        constexpr UINT_PTR caret_timer_id { 2 };
-        // 로그 헤더의 경과 시간(MM:SS)이 다음 초로 넘어가는 시점에 다시 그리기 위한
-        // timer다. 변경 작업이 실행 중일 때만 걸린다.
-        constexpr UINT_PTR elapsed_timer_id { 3 };
 
         // `.version-list` 문서를 고르는 Win32 파일 dialog다. UI thread 전용이다.
         [[nodiscard]] std::optional<std::u8string> choose_workspace_document(const HWND owner)
@@ -712,7 +713,8 @@ namespace gitman::win32 {
                 case ui::ui_command::show_generate_document_dialog:
                     if (runtime_ != nullptr)
                     {
-                        if (const std::optional<generate_document_intent> intent { show_version_list_generation_dialog(window_) }; intent.has_value())
+                        if (const std::optional<generate_document_intent> intent { show_version_list_generation_dialog(window_, current_color_theme(), accent_for(current_appearance().accent_id)) };
+                            intent.has_value())
                             runtime_->post_logic(logic_message { *intent });
                     }
                     return;
@@ -1003,6 +1005,25 @@ namespace gitman::win32 {
                 runtime_->post_logic(logic_message { metrics });
             }
 
+            // 앱 설정의 외양 값이다. 아직 읽지 못했으면 기본값(system·mint)이다.
+            [[nodiscard]] appearance_settings current_appearance() const
+            {
+                if (runtime_ == nullptr)
+                    return {};
+                const std::shared_ptr<const view_snapshot> view { runtime_->acquire_view() };
+                return view != nullptr ? view->appearance : appearance_settings {};
+            }
+
+            // 지금 화면이 쓰는 팔레트 종류다. 본 창 밖의 Win32 dialog도 같은 값을
+            // 써서 색이 갈리지 않는다 (T3.2).
+            [[nodiscard]] color_theme current_color_theme() const
+            {
+                HIGHCONTRASTW high_contrast {};
+                high_contrast.cbSize = sizeof(high_contrast);
+                const bool enabled { FALSE != SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(high_contrast), &high_contrast, 0) && (high_contrast.dwFlags & HCF_HIGHCONTRASTON) != 0 };
+                return resolve_color_theme(current_appearance().theme, enabled, system_prefers_light_);
+            }
+
             [[nodiscard]] bool render_one_frame(std::u8string& error)
             {
                 RECT client_rectangle {};
@@ -1024,10 +1045,7 @@ namespace gitman::win32 {
 
                 // 테마와 키 컬러는 앱 설정에서 오고, 해석은 UI thread의 몫이다
                 // (T3.2). 설정을 아직 읽지 못했으면 기본값(system·mint)이다.
-                appearance_settings appearance {};
-                if (runtime_ != nullptr)
-                    if (const std::shared_ptr<const view_snapshot> settings_view { runtime_->acquire_view() }; settings_view != nullptr)
-                        appearance = settings_view->appearance;
+                const appearance_settings appearance { current_appearance() };
                 state.theme = resolve_color_theme(appearance.theme, high_contrast_enabled, system_prefers_light_);
                 state.accent_id = appearance.accent_id;
 

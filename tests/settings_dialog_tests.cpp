@@ -1,6 +1,7 @@
 #include "application/logic_controller.h"
 #include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/settings_dialog_element.h"
+#include "presentation/ui_theme.h"
 #include "presentation/ui/ui_interaction.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -646,4 +647,73 @@ TEST_CASE("The log file toggle edits the draft and confirm saves it", "[logic][s
     const gitman::operation_request& save { fixture.submitter.requests[0] };
     REQUIRE(save.kind == gitman::operation_kind::save_document);
     REQUIRE(save.document->settings.write_log_files == false);
+}
+
+TEST_CASE("The appearance rows show the app settings in both dialog modes", "[ui][settings-ui][theme]")
+{
+    // 외양은 문서 단위가 아니라 앱 단위다. 문서 모드에서도 같은 행이 보이고
+    // `덮어씀` 배지가 붙지 않는다 (T3.3).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
+    fixture.controller.handle(gitman::set_theme_preference_intent { gitman::theme_preference::light });
+    fixture.controller.handle(gitman::open_settings_intent {});
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->settings_dialog.has_value());
+    REQUIRE(view->settings_dialog->document_mode);
+    REQUIRE(view->settings_dialog->theme == gitman::theme_preference::light);
+    REQUIRE(view->settings_dialog->accent_id == u8"blue");
+
+    const auto tree { gitman::ui::build_ui_tree(*view) };
+    const gitman::ui::ui_element_id light { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"light" } };
+    const gitman::ui::ui_element_id system { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"system" } };
+    const gitman::ui::ui_element_id dark { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"dark" } };
+    REQUIRE(tree->find(light) != nullptr);
+    REQUIRE(tree->find(system) != nullptr);
+    REQUIRE(tree->find(dark) != nullptr);
+
+    // 색 동그라미는 내장 목록만큼 있고, 각자 자기 id를 가진다.
+    REQUIRE(tree->ids_of_kind(gitman::ui::ui_element_kind::settings_accent_swatch).size() == gitman::accent_catalog().size());
+    for (const gitman::accent_definition& accent : gitman::accent_catalog())
+        REQUIRE(tree->find({ gitman::ui::ui_element_kind::settings_accent_swatch, gitman::project_id { std::u8string { accent.id } } }) != nullptr);
+
+    // 세 칸과 동그라미는 서로 겹치지 않고 panel 안에 있다.
+    const gitman::ui::rect_f panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    const gitman::ui::rect_f system_bounds { tree->find(system)->bounds() };
+    REQUIRE(system_bounds.x >= panel.x);
+    REQUIRE(system_bounds.x + system_bounds.width <= panel.x + panel.width);
+    REQUIRE(tree->find(light)->bounds().x < system_bounds.x);
+    REQUIRE(tree->find(dark)->bounds().x > system_bounds.x);
+}
+
+TEST_CASE("Appearance clicks apply immediately without the save button", "[ui][settings-ui][theme]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+
+    const std::vector<gitman::ui::input_action> theme_actions {
+        click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"dark" } }),
+    };
+    REQUIRE(theme_actions.size() == 1u);
+    const auto* const theme_message { std::get_if<gitman::logic_message>(&theme_actions.front()) };
+    REQUIRE(theme_message != nullptr);
+    const auto* const theme_intent { std::get_if<gitman::set_theme_preference_intent>(theme_message) };
+    REQUIRE(theme_intent != nullptr);
+    REQUIRE(theme_intent->theme == gitman::theme_preference::dark);
+
+    const std::vector<gitman::ui::input_action> accent_actions {
+        click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_accent_swatch, gitman::project_id { u8"blue" } }),
+    };
+    REQUIRE(accent_actions.size() == 1u);
+    const auto* const accent_message { std::get_if<gitman::logic_message>(&accent_actions.front()) };
+    REQUIRE(accent_message != nullptr);
+    const auto* const accent_intent { std::get_if<gitman::set_accent_intent>(accent_message) };
+    REQUIRE(accent_intent != nullptr);
+    REQUIRE(accent_intent->accent_id == u8"blue");
+
+    // 취소로 닫아도 외양은 되돌아가지 않는다 — 초안이 아니라 즉시 값이다.
+    fixture.controller.handle(*theme_message);
+    fixture.controller.handle(gitman::cancel_settings_dialog_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::dark);
 }

@@ -36,7 +36,8 @@ namespace gitman::ui {
         // 더하면 초점·caret·문자·클립보드 배선이 함께 따라온다.
         [[nodiscard]] bool is_text_input_kind(const ui_element_kind kind) noexcept
         {
-            return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input || kind == ui_element_kind::font_dialog_query_input;
+            return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input || kind == ui_element_kind::font_dialog_query_input
+                || kind == ui_element_kind::generate_dialog_name_input;
         }
 
         [[nodiscard]] text_input_target target_for_kind(const ui_element_kind kind) noexcept
@@ -45,6 +46,8 @@ namespace gitman::ui {
                 return text_input_target::switch_query;
             if (kind == ui_element_kind::font_dialog_query_input)
                 return text_input_target::font_filter;
+            if (kind == ui_element_kind::generate_dialog_name_input)
+                return text_input_target::generate_document_name;
             return text_input_target::settings_timeout;
         }
 
@@ -541,6 +544,8 @@ namespace gitman::ui {
                 return { input_action { logic_message { cancel_local_changes_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::discovery_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_discovery_dialog_intent {} } } };
+            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::generate_dialog }) != nullptr)
+                return { input_action { logic_message { cancel_generate_document_intent {} } } };
             // 글꼴 선택 dialog가 환경설정 위에 있으므로 먼저 닫는다.
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::font_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_font_dialog_intent {} } } };

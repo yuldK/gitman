@@ -15,6 +15,20 @@
 
 namespace gitman {
     namespace {
+        // 문서 이름의 어휘 검증이다 (F3). 파일 이름으로 쓸 수 없는 문자를 막는다.
+        // 존재·중복 확인은 worker의 생성 service가 원자적으로 한다.
+        std::u8string_view generate_document_name_error(const std::u8string_view name) noexcept
+        {
+            if (name.empty())
+                return u8"";
+            if (name == u8"." || name == u8"..")
+                return u8"그 이름은 파일 이름으로 쓸 수 없습니다.";
+            for (const char8_t value : name)
+                if (value < u8' ' || value == u8'\\' || value == u8'/' || value == u8':' || value == u8'*' || value == u8'?' || value == u8'"' || value == u8'<' || value == u8'>' || value == u8'|')
+                    return u8"이름에 파일 이름으로 쓸 수 없는 문자가 있습니다.";
+            return u8"";
+        }
+
         // 글꼴 목록 첫 항목의 표시 이름이다. 고르면 빈 이름 = 내장 글꼴이다.
         constexpr std::u8string_view default_font_display_name { u8"(기본 글꼴)" };
         // 글꼴 미리 보기 문구다. 한글·영문·숫자·기호를 한 줄에 담아 코드 글꼴 판단에 쓴다.
@@ -208,6 +222,37 @@ namespace gitman {
                     handle_clear_switch_query();
                 else if constexpr (std::is_same_v<value_type, refresh_switch_dialog_intent>)
                     handle_refresh_switch_dialog();
+                else if constexpr (std::is_same_v<value_type, open_generate_document_intent>)
+                    handle_open_generate_document();
+                else if constexpr (std::is_same_v<value_type, set_generate_scan_root_intent>)
+                {
+                    if (generate_dialog_.has_value())
+                    {
+                        generate_dialog_->scan_root = std::move(value.path);
+                        generate_dialog_->message.clear();
+                    }
+                }
+                else if constexpr (std::is_same_v<value_type, set_generate_location_intent>)
+                {
+                    if (generate_dialog_.has_value())
+                    {
+                        generate_dialog_->location = std::move(value.path);
+                        generate_dialog_->same_folder = false;
+                        generate_dialog_->message.clear();
+                    }
+                }
+                else if constexpr (std::is_same_v<value_type, toggle_generate_same_folder_intent>)
+                {
+                    if (generate_dialog_.has_value())
+                    {
+                        generate_dialog_->same_folder = generate_dialog_->same_folder == false;
+                        generate_dialog_->message.clear();
+                    }
+                }
+                else if constexpr (std::is_same_v<value_type, confirm_generate_document_intent>)
+                    handle_confirm_generate_document();
+                else if constexpr (std::is_same_v<value_type, cancel_generate_document_intent>)
+                    generate_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, open_font_dialog_intent>)
                     handle_open_font_dialog(value);
                 else if constexpr (std::is_same_v<value_type, select_font_family_intent>)
@@ -441,13 +486,21 @@ namespace gitman {
 
         if (event.document.has_value() == false || event.revision.has_value() == false)
         {
-            // 실패는 현재 문서를 유지한 채 진단만 알린다.
+            // 실패는 현재 문서를 유지한 채 진단만 알린다. dialog는 열어 둔 채 사유를
+            // 보여 주어 이름이나 위치를 고쳐 다시 시도할 수 있게 한다 (F3).
             notices_.clear();
             for (const diagnostic& value : event.diagnostics)
                 if (value.severity != diagnostic_severity::information)
                     notices_.push_back(value.message);
+            if (generate_dialog_.has_value())
+            {
+                generate_dialog_->executing = false;
+                generate_dialog_->message = notices_.empty() ? std::u8string { u8"문서를 만들지 못했습니다." } : notices_.front();
+            }
             return;
         }
+        // 성공하면 만든 문서를 곧바로 열므로 dialog는 닫는다.
+        generate_dialog_.reset();
 
         // 생성된 문서를 곧바로 연다. 이전 문서의 진행 중 결과가 새 문서에 적용되지
         // 않도록 열기와 같은 규칙으로 대기 상태를 정리한다. 문서를 여는 것이므로
@@ -1288,6 +1341,53 @@ namespace gitman {
         return families;
     }
 
+    void logic_controller::handle_open_generate_document()
+    {
+        if (shutting_down_)
+            return;
+        generate_dialog_ = { generate_dialog_state {} };
+    }
+
+    void logic_controller::handle_confirm_generate_document()
+    {
+        if (generate_dialog_.has_value() == false || generate_dialog_->executing)
+            return;
+        const std::u8string path { generate_document_path() };
+        if (path.empty())
+            return;
+
+        generate_document_intent intent {};
+        intent.scan_root = generate_dialog_->scan_root;
+        intent.document_path = path;
+        handle_generate_document(intent);
+        generate_dialog_->executing = pending_generation_operation_id_ != 0;
+        if (generate_dialog_->executing == false)
+            generate_dialog_->message = u8"문서 생성을 시작하지 못했습니다.";
+    }
+
+    std::u8string logic_controller::generate_document_path() const
+    {
+        if (generate_dialog_.has_value() == false)
+            return {};
+        const std::u8string_view name { generate_dialog_->name.text };
+        if (name.empty() || generate_dialog_->scan_root.empty())
+            return {};
+        if (generate_dialog_->same_folder == false && generate_dialog_->location.empty())
+            return {};
+        if (generate_document_name_error(name).empty() == false)
+            return {};
+
+        std::u8string folder { generate_dialog_->same_folder ? generate_dialog_->scan_root : generate_dialog_->location };
+        while (folder.empty() == false && (folder.back() == u8'\\' || folder.back() == u8'/'))
+            folder.pop_back();
+        if (folder.empty())
+            return {};
+        folder.push_back(u8'\\');
+        folder.append(name);
+        folder.append(u8".version-list");
+        return folder;
+    }
+
     void logic_controller::handle_open_font_dialog(const open_font_dialog_intent& intent)
 
     {
@@ -1831,6 +1931,10 @@ namespace gitman {
             state = &settings_dialog_->timeout;
         else if (intent.target == text_input_target::switch_query && switch_dialog_.has_value() && switch_dialog_->executing == false)
             state = &switch_dialog_->query;
+        else if (intent.target == text_input_target::font_filter && font_dialog_.has_value())
+            state = &font_dialog_->query;
+        else if (intent.target == text_input_target::generate_document_name && generate_dialog_.has_value() && generate_dialog_->executing == false)
+            state = &generate_dialog_->name;
         if (state == nullptr)
             return;
 
@@ -1894,6 +1998,22 @@ namespace gitman {
             break;
         }
 
+        if (intent.target == text_input_target::font_filter)
+        {
+            // 목록이 달라지므로 사라질 수 있는 선택을 남겨 두지 않는다.
+            if (state->text != before)
+            {
+                font_dialog_->selected.reset();
+                font_dialog_->scroll_offset = 0.0f;
+            }
+            return;
+        }
+        if (intent.target == text_input_target::generate_document_name)
+        {
+            if (state->text != before)
+                generate_dialog_->message.clear();
+            return;
+        }
         if (intent.target == text_input_target::settings_timeout)
         {
             // 숫자만 받는 칸이다. 최대값(3600)이 4자리라 그 이상은 버린다. 붙여넣기가
@@ -2562,6 +2682,34 @@ namespace gitman {
             if (settings_dialog_->accent_id.empty() == false)
                 snapshot->appearance.accent_id = settings_dialog_->accent_id;
         }
+        if (generate_dialog_.has_value())
+        {
+            generate_document_dialog_view dialog {};
+            dialog.name = { generate_dialog_->name.text, generate_dialog_->name.caret, generate_dialog_->name.anchor };
+            dialog.name_placeholder = u8"확장자 없이 문서 이름";
+            dialog.scan_root = generate_dialog_->scan_root;
+            dialog.location = generate_dialog_->location;
+            dialog.same_folder = generate_dialog_->same_folder;
+            dialog.executing = generate_dialog_->executing;
+            dialog.document_path = generate_document_path();
+            dialog.can_confirm = dialog.document_path.empty() == false && dialog.executing == false;
+
+            // 안내는 실패 사유가 있으면 그것이고, 없으면 아직 덜 채운 것을 알린다.
+            dialog.message = generate_dialog_->message;
+            if (dialog.message.empty() && dialog.can_confirm == false && dialog.executing == false)
+            {
+                if (const std::u8string_view error { generate_document_name_error(generate_dialog_->name.text) }; error.empty() == false)
+                    dialog.message = error;
+                else if (generate_dialog_->name.text.empty())
+                    dialog.message = u8"만들 문서의 이름을 입력하세요.";
+                else if (generate_dialog_->scan_root.empty())
+                    dialog.message = u8"저장소들을 담은 폴더를 지정하세요.";
+                else
+                    dialog.message = u8"문서를 저장할 폴더를 지정하세요.";
+            }
+            snapshot->generate_dialog = { std::move(dialog) };
+        }
+
         // 글꼴은 앱 단위라 UI thread가 이 값으로 registry를 갱신한다 (F1).
         snapshot->fonts = app_settings_.fonts;
 

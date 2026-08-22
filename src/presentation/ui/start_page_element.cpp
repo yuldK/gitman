@@ -48,12 +48,12 @@ namespace gitman::ui {
         class start_action_element final : public ui_element
         {
         public:
-            start_action_element(const ui_element_kind kind, const char32_t glyph, std::u8string label, const ui_command command)
+            start_action_element(const ui_element_kind kind, const char32_t glyph, std::u8string label, input_action action)
                 : ui_element { ui_element_id { kind } }
                 , glyph_ { glyph }
                 , label_ { std::move(label) }
             {
-                set_action(ui_trigger::left_click, [command](const ui_action_context&) -> std::vector<input_action> { return { input_action { command } }; });
+                set_action(ui_trigger::left_click, [action = std::move(action)](const ui_action_context&) -> std::vector<input_action> { return { action }; });
             }
 
             void arrange(const arrange_context& context) override
@@ -200,8 +200,10 @@ namespace gitman::ui {
         : ui_element { ui_element_id { ui_element_kind::start_page } }
         , page_ { page }
     {
-        add_child(std::make_unique<start_action_element>(ui_element_kind::start_page_open_document, codicons::icon_folder_opened, u8"문서 열기…", ui_command::show_open_document_dialog));
-        add_child(std::make_unique<start_action_element>(ui_element_kind::start_page_generate_document, codicons::icon_new_file, u8"새 문서 만들기…", ui_command::show_generate_document_dialog));
+        add_child(
+            std::make_unique<start_action_element>(ui_element_kind::start_page_open_document, codicons::icon_folder_opened, u8"문서 열기…", input_action { ui_command::show_open_document_dialog }));
+        add_child(std::make_unique<start_action_element>(
+            ui_element_kind::start_page_generate_document, codicons::icon_new_file, u8"새 문서 만들기…", input_action { logic_message { open_generate_document_intent {} } }));
         for (std::size_t index = 0; index < page_.recents.size(); ++index)
             add_child(std::make_unique<recent_item_element>(index, page_.recents[index]));
     }

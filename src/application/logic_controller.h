@@ -137,6 +137,12 @@ namespace gitman {
         void handle_edit_text_input(const edit_text_input_intent& intent);
         // 글꼴 선택 dialog다 (fonts-and-in-app-dialogs-design F2). 목록은 UI thread가
         // 한 번 열거해 보낸 것을 그대로 쓴다.
+        // 새 문서 만들기 dialog다 (fonts-and-in-app-dialogs-design F3). 폴더는 UI
+        // thread의 Win32 dialog가 고르고 검증과 경로 조립은 여기서 한다.
+        void handle_open_generate_document();
+        void handle_confirm_generate_document();
+        // 지금 값으로 만들어질 문서 경로다. 검증을 통과하지 못하면 빈 값이다.
+        [[nodiscard]] std::u8string generate_document_path() const;
         void handle_open_font_dialog(const open_font_dialog_intent& intent);
         void handle_select_font_family(std::size_t index);
         void handle_confirm_font_dialog();
@@ -264,6 +270,20 @@ namespace gitman {
         };
 
         std::optional<font_dialog_state> font_dialog_ {};
+
+        // 새 문서 만들기 dialog의 상태다 (F3). 값이 있으면 dialog가 열려 있다.
+        struct generate_dialog_state
+        {
+            text_edit_state name {};
+            std::u8string scan_root {};
+            std::u8string location {};
+            // 켜면 문서를 스캔 폴더 안에 만든다. 저장 위치 칸은 비활성이 된다.
+            bool same_folder { true };
+            std::u8string message {};
+            bool executing { false };
+        };
+
+        std::optional<generate_dialog_state> generate_dialog_ {};
         // UI thread가 열거해 보낸 시스템 글꼴 가족 이름이다 (F2.4). 앱이 사는 동안
         // 바뀌지 않는다고 본다.
         std::vector<std::u8string> font_families_ {};

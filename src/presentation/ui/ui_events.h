@@ -106,7 +106,10 @@ namespace gitman::ui {
     enum class ui_command
     {
         show_open_document_dialog,
-        show_generate_document_dialog,
+        // 새 문서 dialog의 두 폴더 선택이다 (fonts-and-in-app-dialogs-design F3).
+        // 고른 경로는 intent로 logic에 돌아온다. 취소하면 아무 일도 없다.
+        show_generate_scan_folder_picker,
+        show_generate_location_picker,
         // 하단 로그 뷰의 표시 중 내용을 클립보드에 넣는다. 클립보드는 Win32 자원이라
         // UI thread 전용이다.
         copy_selected_log,

@@ -123,6 +123,15 @@ namespace gitman::ui {
         // 글꼴 항목의 `선택…` 버튼이다 (fonts-and-in-app-dialogs-design F2.5).
         settings_ui_font_pick,
         settings_code_font_pick,
+        // 새 문서 만들기 dialog다 (fonts-and-in-app-dialogs-design F3).
+        generate_dialog,
+        generate_dialog_panel,
+        generate_dialog_name_input,
+        generate_dialog_scan_browse,
+        generate_dialog_same_folder,
+        generate_dialog_location_browse,
+        generate_dialog_confirm,
+        generate_dialog_cancel,
         // 글꼴 선택 dialog다. 목록 행은 owner 값에 index를 담아 구분한다.
         font_dialog,
         font_dialog_panel,

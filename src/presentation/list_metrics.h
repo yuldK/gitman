@@ -105,6 +105,12 @@ namespace gitman {
     inline constexpr float layout_font_dialog_list_height { 214.0f };
     inline constexpr float layout_font_dialog_preview_height { 48.0f };
 
+    // 새 문서 만들기 dialog의 치수다 (fonts-and-in-app-dialogs-design F3).
+    inline constexpr float layout_generate_dialog_width { 520.0f };
+    inline constexpr float layout_generate_dialog_height { 300.0f };
+    inline constexpr float layout_generate_dialog_row_height { 30.0f };
+    inline constexpr float layout_generate_dialog_label_width { 76.0f };
+
     // 카드 컨텍스트 메뉴의 치수다 (field-feedback-design 3장).
     inline constexpr float layout_context_menu_width { 190.0f };
     inline constexpr float layout_context_menu_row_height { 26.0f };

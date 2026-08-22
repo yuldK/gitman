@@ -124,8 +124,10 @@ TEST_CASE("The start page tree exposes the start actions and hides the empty lab
     REQUIRE(open.size() == 1);
     REQUIRE(std::get<gitman::ui::ui_command>(open.front()) == gitman::ui::ui_command::show_open_document_dialog);
 
+    // 새 문서 만들기는 Win32 팝업이 아니라 앱 UI dialog를 연다 (F3).
     const std::vector<gitman::ui::input_action> generate { click(*tree, { gitman::ui::ui_element_kind::start_page_generate_document }) };
-    REQUIRE(std::get<gitman::ui::ui_command>(generate.front()) == gitman::ui::ui_command::show_generate_document_dialog);
+    const auto& message { std::get<gitman::logic_message>(generate.front()) };
+    REQUIRE(std::get_if<gitman::open_generate_document_intent>(&message) != nullptr);
 }
 
 TEST_CASE("A recent row opens its document and the remove icon only drops the entry", "[ui][start-page]")

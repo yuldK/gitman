@@ -7,6 +7,7 @@
 #include "presentation/ui/discovery_dialog_element.h"
 #include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/font_dialog_element.h"
+#include "presentation/ui/generate_document_dialog_element.h"
 #include "presentation/ui/label_element.h"
 #include "presentation/ui/local_changes_dialog_element.h"
 #include "presentation/ui/log_view_element.h"
@@ -126,6 +127,13 @@ namespace gitman::ui {
                     settings_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
+                // 새 문서 만들기 dialog다 (F3).
+                if (view.generate_dialog.has_value())
+                {
+                    auto dialog { std::make_unique<generate_document_dialog_element>(*view.generate_dialog) };
+                    generate_dialog_ = dialog.get();
+                    add_child(std::move(dialog));
+                }
                 // 글꼴 선택 dialog는 환경설정 위에 뜬다 (F2.5).
                 if (view.font_dialog.has_value())
                 {
@@ -184,6 +192,8 @@ namespace gitman::ui {
                     switch_dialog_->arrange({ context.slot, scale });
                 if (settings_dialog_ != nullptr)
                     settings_dialog_->arrange({ context.slot, scale });
+                if (generate_dialog_ != nullptr)
+                    generate_dialog_->arrange({ context.slot, scale });
                 if (font_dialog_ != nullptr)
                     font_dialog_->arrange({ context.slot, scale });
                 if (discovery_dialog_ != nullptr)
@@ -220,6 +230,7 @@ namespace gitman::ui {
             ui_element* switch_dialog_ { nullptr };
             ui_element* settings_dialog_ { nullptr };
             ui_element* font_dialog_ { nullptr };
+            ui_element* generate_dialog_ { nullptr };
             ui_element* discovery_dialog_ { nullptr };
             ui_element* local_changes_dialog_ { nullptr };
             ui_element* notice_dialog_ { nullptr };

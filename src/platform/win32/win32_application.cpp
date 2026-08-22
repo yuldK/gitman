@@ -6,7 +6,6 @@
 #include "platform/win32/resources/resource_ids.h"
 #include "platform/win32/skia_renderer.h"
 #include "platform/win32/utf8.h"
-#include "platform/win32/version_list_generation_dialog.h"
 #include "platform/win32/win32_app_runtime.h"
 #include "platform/win32/win32_clipboard.h"
 #include "platform/win32/win32_file_association.h"
@@ -762,12 +761,20 @@ namespace gitman::win32 {
                             runtime_->post_logic(logic_message { open_document_intent { absolute_workspace_document_path(*path) } });
                     }
                     return;
-                case ui::ui_command::show_generate_document_dialog:
+                case ui::ui_command::show_generate_scan_folder_picker:
+                    // 새 문서 dialog의 폴더 선택이다 (F3). 탐색기는 Win32가 맡고 값은
+                    // intent로 logic에 돌아간다.
                     if (runtime_ != nullptr)
                     {
-                        if (const std::optional<generate_document_intent> intent { show_version_list_generation_dialog(window_, current_color_theme(), accent_for(current_appearance().accent_id)) };
-                            intent.has_value())
-                            runtime_->post_logic(logic_message { *intent });
+                        if (const std::optional<std::u8string> folder { choose_discovery_folder(window_, {}) }; folder.has_value())
+                            runtime_->post_logic(logic_message { set_generate_scan_root_intent { *folder } });
+                    }
+                    return;
+                case ui::ui_command::show_generate_location_picker:
+                    if (runtime_ != nullptr)
+                    {
+                        if (const std::optional<std::u8string> folder { choose_discovery_folder(window_, {}) }; folder.has_value())
+                            runtime_->post_logic(logic_message { set_generate_location_intent { *folder } });
                     }
                     return;
                 case ui::ui_command::register_file_association:

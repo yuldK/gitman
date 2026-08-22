@@ -189,6 +189,27 @@ namespace gitman {
         float scroll_offset { 0.0f };
     };
 
+    // 새 문서 만들기 dialog의 불변 표시 모델이다 (fonts-and-in-app-dialogs-design
+    // F3). 이전의 Win32 모달 팝업을 앱 UI로 옮긴 것이라 검증 문구도 logic이 정한다.
+    struct generate_document_dialog_view
+    {
+        // 문서 이름이다 (확장자 없이). 유일한 편집 칸이다.
+        text_input_view name {};
+        std::u8string name_placeholder {};
+        // 저장소들을 담은 폴더다. Win32 폴더 dialog가 고른다.
+        std::u8string scan_root {};
+        // 문서를 저장할 폴더다. `same_folder`이면 쓰지 않는다.
+        std::u8string location {};
+        bool same_folder { true };
+        // 지금 값으로 만들어질 최종 경로다. 비어 있으면 아직 정해지지 않았다.
+        std::u8string document_path {};
+        // 검증 실패 사유다. 비어 있으면 표시하지 않는다.
+        std::u8string message {};
+        bool can_confirm { false };
+        // 생성이 제출되어 결과를 기다린다.
+        bool executing { false };
+    };
+
     // 로컬 변경 확인 dialog의 목록 한 행이다 (field-feedback-design 2.3).
     struct local_change_row_view
     {
@@ -443,6 +464,8 @@ namespace gitman {
         std::optional<switch_dialog_view> switch_dialog {};
         // 값이 있으면 글꼴 선택 dialog가 환경설정 위에 뜬다 (F2.5).
         std::optional<font_dialog_view> font_dialog {};
+        // 값이 있으면 새 문서 만들기 dialog가 화면을 덮는다 (F3).
+        std::optional<generate_document_dialog_view> generate_dialog {};
         // 값이 있으면 환경설정 dialog가 화면을 덮는다.
         std::optional<settings_dialog_view> settings_dialog {};
         // 값이 있으면 로컬 변경 확인 dialog가 화면을 덮는다 (2.3).

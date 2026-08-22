@@ -204,6 +204,8 @@ add_library(gitman_lib STATIC
     presentation/ui/draw_primitives.cpp
     presentation/ui/font_dialog_element.cpp
     presentation/ui/font_dialog_element.h
+    presentation/ui/generate_document_dialog_element.cpp
+    presentation/ui/generate_document_dialog_element.h
     presentation/ui/draw_primitives.h
     presentation/ui/label_element.cpp
     presentation/ui/label_element.h
@@ -261,8 +263,6 @@ add_library(gitman_lib STATIC
     platform/win32/skia_renderer.h
     platform/win32/utf8.cpp
     platform/win32/utf8.h
-    platform/win32/version_list_generation_dialog.cpp
-    platform/win32/version_list_generation_dialog.h
     platform/win32/win32_app_runtime.cpp
     platform/win32/win32_app_runtime.h
     platform/win32/win32_app_settings_path.cpp

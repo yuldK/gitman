@@ -198,7 +198,8 @@ namespace gitman::ui {
         context.canvas.save();
         context.canvas.clipRect(SkRect::MakeXYWH(body.x, body.y, body.width, body.height));
 
-        const SkFont font { sk_ref_sp(context.ui_typeface), 10.5f * scale };
+        // 본문은 외부 명령의 출력이라 코드 글꼴을 쓴다 (fonts-and-in-app-dialogs-design F1).
+        const SkFont font { sk_ref_sp(context.code_typeface != nullptr ? context.code_typeface : context.ui_typeface), 10.5f * scale };
         const float inset { layout_log_text_inset * scale };
 
         if (log_.records.empty())

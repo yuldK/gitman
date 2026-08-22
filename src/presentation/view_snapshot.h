@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/svn_repository_browser.h"
+#include "domain/app_settings.h"
 #include "domain/appearance.h"
 #include "domain/discovery.h"
 #include "domain/operation_log.h"
@@ -158,6 +159,33 @@ namespace gitman {
         // 전환 실행이 제출되어 결과를 기다리는 중이다.
         bool executing { false };
         // 후보 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
+        float scroll_offset { 0.0f };
+    };
+
+    // 글꼴 선택 dialog의 불변 표시 모델이다 (fonts-and-in-app-dialogs-design F2.5).
+    // 목록의 각 행은 **그 글꼴로** 그려 미리 보기가 되고, 아래 미리 보기 칸은 고른
+    // 글꼴로 한글·영문·숫자·기호를 한 줄에 보여 준다.
+    struct font_dialog_view
+    {
+        // true이면 코드 글꼴을 고르는 중이다. 제목이 이 값으로 갈린다.
+        std::u8string title {};
+        // 표시 이름이다. 첫 항목은 `(기본 글꼴)`이고 그 `family`가 비어 있다.
+        std::vector<std::u8string> names {};
+        // `names`와 같은 길이의 실제 가족 이름이다. 빈 값은 내장 글꼴이다.
+        std::vector<std::u8string> families {};
+        std::optional<std::size_t> selected {};
+        // 이름 필터다. switch dialog의 질의 막대와 같은 편집 규칙이다.
+        text_input_view query {};
+        std::u8string query_placeholder {};
+        // 질의가 있을 때만 지우기 버튼이 활성이다.
+        bool query_action_enabled { false };
+        // 목록이 비었을 때의 흐린 안내다.
+        std::u8string list_note {};
+        // 미리 보기 문구다. 고른 글꼴로 그린다.
+        std::u8string preview {};
+        // 미리 보기에 쓸 가족 이름이다 (빈 값이면 내장 글꼴).
+        std::u8string preview_family {};
+        bool can_confirm { false };
         float scroll_offset { 0.0f };
     };
 
@@ -352,6 +380,10 @@ namespace gitman {
         // 숫자만 담기며, 비어 있으면 기본값(600초)을 뜻해 element가 안내 문구를
         // 대신 그린다.
         text_input_view timeout {};
+        // 앱 단위 글꼴이다 (fonts-and-in-app-dialogs-design F1). 비어 있으면 내장
+        // 글꼴이라 항목이 `(기본 글꼴)`을 대신 그린다.
+        std::u8string ui_font_family {};
+        std::u8string code_font_family {};
         // 업데이트 시 submodule 갱신 여부의 초안이다 (확인 overlay 대체).
         bool update_submodules { false };
         // 로컬 변경을 상관하지 않음 여부의 초안이다. status 순회를 건너뛴다.
@@ -396,6 +428,9 @@ namespace gitman {
         // 앱 설정의 테마·키 컬러다 (theme-and-banner-menu-design T3.2). logic은
         // 팔레트를 만들지 않는다 — UI thread가 고대비·OS 설정과 함께 해석한다.
         appearance_settings appearance {};
+        // UI·코드 글꼴이다 (fonts-and-in-app-dialogs-design F1). UI thread가 이 값으로
+        // 글꼴 registry를 갱신한다. 앱 단위라 문서 override가 없다.
+        font_settings fonts {};
         // 문서에서 읽은 창 배치다. UI thread는 revision이 바뀔 때 한 번만 적용한다.
         // snapshot마다 창을 다시 배치하지 않도록 revision 비교가 경계를 만든다.
         std::optional<window_placement> window_placement_request {};
@@ -406,6 +441,8 @@ namespace gitman {
         std::optional<log_view_model> log {};
         // 값이 있으면 switch dialog가 화면을 덮는다.
         std::optional<switch_dialog_view> switch_dialog {};
+        // 값이 있으면 글꼴 선택 dialog가 환경설정 위에 뜬다 (F2.5).
+        std::optional<font_dialog_view> font_dialog {};
         // 값이 있으면 환경설정 dialog가 화면을 덮는다.
         std::optional<settings_dialog_view> settings_dialog {};
         // 값이 있으면 로컬 변경 확인 dialog가 화면을 덮는다 (2.3).

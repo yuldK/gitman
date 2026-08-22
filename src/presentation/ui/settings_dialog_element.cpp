@@ -65,6 +65,12 @@ namespace gitman::ui {
         constexpr float swatch_top_margin { 6.0f };
 
         // 항목 종류다. 값 줄의 뜻과 컨트롤 배치를 이것으로 정한다.
+        // 글꼴 항목의 값 줄이다. 빈 이름은 내장 글꼴을 뜻한다.
+        std::u8string font_value(const std::u8string_view family)
+        {
+            return family.empty() ? std::u8string { u8"(기본 글꼴)" } : std::u8string { family };
+        }
+
         enum class item_kind
         {
             git_executable,
@@ -75,6 +81,8 @@ namespace gitman::ui {
             write_log_files,
             theme,
             accent,
+            ui_font,
+            code_font,
             file_association,
         };
 
@@ -325,6 +333,12 @@ namespace gitman::ui {
             accent.items.push_back(make_item(item_kind::accent, u8"키 컬러", std::u8string { accent_for(dialog.accent_id).label }, {}, { settings_override_field::accent }, u8"accent",
                 overridden(dialog, dialog.accent_follows_app)));
             appearance.sections.push_back(std::move(accent));
+            // 글꼴은 앱에만 남는다 (fonts-and-in-app-dialogs-design F1). 문서 override가
+            // 없어 배지도 없다.
+            section_model fonts { std::u8string { u8"글꼴" }, {} };
+            fonts.items.push_back(make_item(item_kind::ui_font, u8"UI 글꼴", font_value(dialog.ui_font_family), {}, {}, u8"", false));
+            fonts.items.push_back(make_item(item_kind::code_font, u8"코드 글꼴", font_value(dialog.code_font_family), {}, {}, u8"", false));
+            appearance.sections.push_back(std::move(fonts));
             tabs.push_back(std::move(appearance));
 
             // 파일 연결은 문서가 아니라 현재 사용자 registry의 상태다 (REQ-016).
@@ -851,6 +865,17 @@ namespace gitman::ui {
                     }
                     break;
                 }
+                case item_kind::ui_font:
+                case item_kind::code_font: {
+                    const bool code { item.kind == item_kind::code_font };
+                    text_button_element* const pick {
+                        add_text_button(code ? ui_element_kind::settings_code_font_pick : ui_element_kind::settings_ui_font_pick, u8"선택…", controls),
+                    };
+                    pick->set_tooltip(code ? u8"로그와 diff 본문에 쓸 글꼴을 고릅니다" : u8"창 전체에 쓸 글꼴을 고릅니다");
+                    pick->set_action(
+                        ui_trigger::left_click, [code](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_font_dialog_intent { code } } } }; });
+                    break;
+                }
                 case item_kind::file_association: {
                     // registry 작업은 UI thread의 ui_command로 수행되고 결과는 시스템
                     // dialog로 알린다 (REQ-016).
@@ -973,6 +998,16 @@ namespace gitman::ui {
                 }
                 break;
             }
+            case item_kind::ui_font:
+            case item_kind::code_font:
+                // `선택…` 버튼 하나가 제목 줄 오른쪽 끝에 붙는다.
+                if (controls.empty() == false)
+                {
+                    const float button { action_button_width * scale };
+                    const float button_top { bounds.title_line.y + (bounds.title_line.height - action_button_height * scale) / 2.0f };
+                    controls.front()->arrange({ { bounds.controls_right - button, button_top, button, action_button_height * scale }, scale });
+                }
+                break;
             case item_kind::file_association: {
                 if (controls.size() < 2)
                     break;

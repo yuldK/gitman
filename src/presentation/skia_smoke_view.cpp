@@ -27,6 +27,8 @@ namespace gitman {
             .canvas = canvas,
             .codicon_typeface = codicon_typeface,
             .ui_typeface = ui_typeface,
+            .code_typeface = state.code_typeface != nullptr ? state.code_typeface : ui_typeface,
+            .fonts = state.fonts,
             .palette = colors,
             .scale = scale,
             .now = std::chrono::steady_clock::now(),

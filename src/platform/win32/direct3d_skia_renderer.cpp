@@ -1,6 +1,7 @@
 #include "platform/win32/skia_renderer.h"
 
 #include "platform/win32/embedded_assets.h"
+#include "platform/win32/win32_fonts.h"
 
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkSurface.h"
@@ -218,7 +219,9 @@ namespace gitman::win32 {
                     return false;
                 }
 
-                draw_skia_smoke_view(*surfaces_[frame_index]->getCanvas(), codicon_typeface_.get(), ui_typeface_.get(), state);
+                // UI 글꼴은 설정이 정한다 (F2.1). registry가 cache하므로 매 frame 물어도 된다.
+                const sk_sp<SkTypeface> ui { configured_ui_typeface() };
+                draw_skia_smoke_view(*surfaces_[frame_index]->getCanvas(), codicon_typeface_.get(), ui.get(), state);
                 GrFlushInfo flush_info {};
                 context_->flush(surfaces_[frame_index].get(), SkSurfaces::BackendSurfaceAccess::kPresent, flush_info);
                 context_->submit();

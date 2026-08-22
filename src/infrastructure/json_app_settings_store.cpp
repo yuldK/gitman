@@ -216,6 +216,27 @@ namespace gitman {
 
         // 테마와 키 컬러다 (theme-and-banner-menu-design T3.2). 표시 설정이라 어떤
         // 오류도 시작을 막지 않고, 알 수 없는 값은 경고 하나를 남기고 기본값을 쓴다.
+        // 글꼴은 이름 문자열 둘뿐이다 (F1). 값이 없거나 문자열이 아니면 내장 글꼴을
+        // 뜻하는 빈 이름으로 남긴다.
+        font_settings parse_fonts(const json& root, app_settings_load_result& result, const std::u8string_view path)
+        {
+            font_settings fonts {};
+            const auto source { root.find("fonts") };
+            if (source == root.end())
+                return fonts;
+            if (source->is_object() == false)
+            {
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 fonts는 object여야 합니다. 기본값을 사용합니다.", path));
+                return fonts;
+            }
+
+            if (const auto value { source->find("ui") }; value != source->end() && value->is_string())
+                fonts.ui_family = as_u8string(value->get_ref<const std::string&>());
+            if (const auto value { source->find("code") }; value != source->end() && value->is_string())
+                fonts.code_family = as_u8string(value->get_ref<const std::string&>());
+            return fonts;
+        }
+
         appearance_settings parse_appearance(const json& root, app_settings_load_result& result, const std::u8string_view path)
         {
             appearance_settings appearance {};
@@ -232,8 +253,8 @@ namespace gitman {
             if (const auto theme { source->find("theme") }; theme != source->end() && theme->is_null() == false)
             {
                 if (theme->is_string() == false || parse_theme_preference(as_u8string(theme->get_ref<const std::string&>()), appearance.theme) == false)
-                    result.diagnostics.push_back(make_diagnostic(
-                        diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 테마는 system·light·dark 중 하나여야 합니다. 기본값을 사용합니다.", path));
+                    result.diagnostics.push_back(
+                        make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 테마는 system·light·dark 중 하나여야 합니다. 기본값을 사용합니다.", path));
             }
 
             if (const auto accent { source->find("accent") }; accent != source->end() && accent->is_null() == false)
@@ -294,6 +315,15 @@ namespace gitman {
             root["appearance"] = std::move(value);
         }
 
+        // 글꼴도 항상 두 키를 기록한다. 빈 값이 내장 글꼴이라는 것을 파일에서 보인다.
+        {
+            const auto existing { root.find("fonts") };
+            json value { existing != root.end() && existing->is_object() ? *existing : json::object() };
+            value["ui"] = as_string(settings.fonts.ui_family);
+            value["code"] = as_string(settings.fonts.code_family);
+            root["fonts"] = std::move(value);
+        }
+
         // 값이 없으면 필드를 만들지 않고, 파일에 이미 있던 `window`는 지우지
         // 않는다 (문서 저장의 window 규칙과 동일).
         if (settings.window.has_value())
@@ -330,6 +360,7 @@ namespace gitman {
         result.settings.window = parse_window(root, result, path);
         result.settings.settings = parse_global_settings(root, result, path);
         result.settings.appearance = parse_appearance(root, result, path);
+        result.settings.fonts = parse_fonts(root, result, path);
 
         const auto recent { root.find("recent_documents") };
         if (recent == root.end())

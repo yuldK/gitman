@@ -120,6 +120,18 @@ namespace gitman::ui {
         // 환경설정 dialog의 file association 등록·제거 버튼이다 (REQ-016, 단계 8).
         settings_associate,
         settings_dissociate,
+        // 글꼴 항목의 `선택…` 버튼이다 (fonts-and-in-app-dialogs-design F2.5).
+        settings_ui_font_pick,
+        settings_code_font_pick,
+        // 글꼴 선택 dialog다. 목록 행은 owner 값에 index를 담아 구분한다.
+        font_dialog,
+        font_dialog_panel,
+        font_dialog_item,
+        font_dialog_scrollbar,
+        font_dialog_query_input,
+        font_dialog_query_clear,
+        font_dialog_confirm,
+        font_dialog_cancel,
         // 로컬 변경 확인 dialog다 (field-feedback-design 2.3). 항목 행은 switch
         // dialog처럼 owner 값에 index를 담아 구분하고, diff pane은 휠 라우팅의
         // 기준 영역이다.
@@ -244,11 +256,31 @@ namespace gitman::ui {
 
     // 그리기 문맥이다. draw 호출 동안만 유효하다. now는 tooltip 지연 판정용이고
     // maximized는 view snapshot에 없는 창 상태라 UI thread가 채운다.
+    // 가족 이름을 typeface로 옮긴다 (fonts-and-in-app-dialogs-design F2.3). 글꼴
+    // 선택 dialog가 각 행을 그 글꼴로 그려 미리 보기를 만든다. 해석은 platform이
+    // 하고 presentation은 이 interface만 안다.
+    struct font_resolver
+    {
+        font_resolver() = default;
+        font_resolver(const font_resolver&) = delete;
+        font_resolver(font_resolver&&) = delete;
+        font_resolver& operator=(const font_resolver&) = delete;
+        font_resolver& operator=(font_resolver&&) = delete;
+        virtual ~font_resolver() = default;
+
+        // 빈 이름은 내장 글꼴이다. 찾지 못하면 nullptr다.
+        [[nodiscard]] virtual SkTypeface* family(std::u8string_view name) const = 0;
+    };
+
     struct draw_context
     {
         SkCanvas& canvas;
         SkTypeface* codicon_typeface { nullptr };
         SkTypeface* ui_typeface { nullptr };
+        // 로그 본문과 diff 본문의 글꼴이다 (F1). 설정이 없으면 UI 글꼴과 같다.
+        SkTypeface* code_typeface { nullptr };
+        // 글꼴 선택 dialog의 미리 보기가 쓴다. 없으면 미리 보기를 UI 글꼴로 그린다.
+        const font_resolver* fonts { nullptr };
         const ui_color_palette& palette;
         float scale { 1.0f };
         std::chrono::steady_clock::time_point now {};

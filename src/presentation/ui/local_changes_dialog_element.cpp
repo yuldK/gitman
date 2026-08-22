@@ -62,9 +62,8 @@ namespace gitman::ui {
                 vscode_id.owner.value = local_changes_item_id(index).owner.value;
                 auto vscode { std::make_unique<button_element>(vscode_id, button_config { .glyph = codicons::icon_file }) };
                 vscode->set_tooltip(u8"VSCode에서 열기");
-                vscode->set_action(ui_trigger::left_click, [path = row.absolute_path](const ui_action_context&) -> std::vector<input_action> {
-                    return { input_action { open_external_request { external_open_target::vscode, path } } };
-                });
+                vscode->set_action(ui_trigger::left_click,
+                    [path = row.absolute_path](const ui_action_context&) -> std::vector<input_action> { return { input_action { open_external_request { external_open_target::vscode, path } } }; });
                 open_vscode_ = vscode.get();
                 add_child(std::move(vscode));
 
@@ -72,9 +71,8 @@ namespace gitman::ui {
                 explorer_id.owner.value = local_changes_item_id(index).owner.value;
                 auto explorer { std::make_unique<button_element>(explorer_id, button_config { .glyph = codicons::icon_folder_opened }) };
                 explorer->set_tooltip(u8"탐색기에서 열기");
-                explorer->set_action(ui_trigger::left_click, [path = row.absolute_path](const ui_action_context&) -> std::vector<input_action> {
-                    return { input_action { open_external_request { external_open_target::explorer, path } } };
-                });
+                explorer->set_action(ui_trigger::left_click,
+                    [path = row.absolute_path](const ui_action_context&) -> std::vector<input_action> { return { input_action { open_external_request { external_open_target::explorer, path } } }; });
                 open_explorer_ = explorer.get();
                 add_child(std::move(explorer));
             }
@@ -123,12 +121,11 @@ namespace gitman::ui {
                 if (context.codicon_typeface != nullptr)
                 {
                     const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 10.0f * scale };
-                    draw_centered_glyph(
-                        context.canvas, row_.directory ? codicons::icon_folder : codicons::icon_file, { badge_text_left, box.y, 12.0f * scale, box.height }, icon_font, badge_paint);
+                    draw_centered_glyph(context.canvas, row_.directory ? codicons::icon_folder : codicons::icon_file, { badge_text_left, box.y, 12.0f * scale, box.height }, icon_font, badge_paint);
                     badge_text_left += 15.0f * scale;
                 }
-                static_cast<void>(draw_text_within(context.canvas, row_.badge, badge_text_left, box.y + centered_text_baseline(badge_font, box.height),
-                    badge_box.right() - 5.0f * scale - badge_text_left, badge_font, badge_paint));
+                static_cast<void>(draw_text_within(
+                    context.canvas, row_.badge, badge_text_left, box.y + centered_text_baseline(badge_font, box.height), badge_box.right() - 5.0f * scale - badge_text_left, badge_font, badge_paint));
 
                 const float path_left { box.x + inset + badge_width + 8.0f * scale };
 
@@ -174,7 +171,8 @@ namespace gitman::ui {
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.05f)));
 
-                const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                // diff는 열이 맞아야 읽히므로 코드 글꼴을 쓴다 (F1).
+                const SkFont font { sk_ref_sp(context.code_typeface != nullptr ? context.code_typeface : context.ui_typeface), 11.0f * scale };
                 const float inset { 7.0f * scale };
                 const float line_height { layout_local_changes_diff_line_height * scale };
                 const float scroll { dialog_->diff_scroll * scale };
@@ -375,9 +373,9 @@ namespace gitman::ui {
         const float effective { scale > 0.0f ? scale : 1.0f };
         const float list_content { static_cast<float>(dialog_.rows.size()) * layout_local_changes_row_height * effective };
         auto list_bar {
-            std::make_unique<scrollbar_element>(ui_element_id { ui_element_kind::local_changes_list_scrollbar },
-                [](const float delta) { return logic_message { local_changes_scroll_intent { delta } }; }, list_content, layout_local_changes_list_height * effective,
-                dialog_.list_scroll * effective, effective),
+            std::make_unique<scrollbar_element>(
+                ui_element_id { ui_element_kind::local_changes_list_scrollbar }, [](const float delta) { return logic_message { local_changes_scroll_intent { delta } }; }, list_content,
+                layout_local_changes_list_height * effective, dialog_.list_scroll * effective, effective),
         };
         list_bar->set_visible(list_content > layout_local_changes_list_height * effective);
         list_scrollbar_ = list_bar.get();
@@ -385,9 +383,9 @@ namespace gitman::ui {
 
         const float diff_content { static_cast<float>(dialog_.diff_rows.size()) * layout_local_changes_diff_line_height * effective };
         auto diff_bar {
-            std::make_unique<scrollbar_element>(ui_element_id { ui_element_kind::local_changes_diff_scrollbar },
-                [](const float delta) { return logic_message { local_changes_diff_scroll_intent { delta } }; }, diff_content, layout_local_changes_diff_height * effective,
-                dialog_.diff_scroll * effective, effective),
+            std::make_unique<scrollbar_element>(
+                ui_element_id { ui_element_kind::local_changes_diff_scrollbar }, [](const float delta) { return logic_message { local_changes_diff_scroll_intent { delta } }; }, diff_content,
+                layout_local_changes_diff_height * effective, dialog_.diff_scroll * effective, effective),
         };
         diff_bar->set_visible(diff_content > layout_local_changes_diff_height * effective);
         diff_scrollbar_ = diff_bar.get();

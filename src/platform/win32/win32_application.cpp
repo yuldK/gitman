@@ -11,10 +11,14 @@
 #include "platform/win32/win32_clipboard.h"
 #include "platform/win32/win32_file_association.h"
 
+#include "platform/win32/win32_fonts.h"
+
 #include "domain/path_syntax.h"
 #include "presentation/log_presentation.h"
 #include "presentation/ui/caption_element.h"
 #include "presentation/ui/ui_events.h"
+
+#include "include/core/SkTypeface.h"
 
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -250,7 +254,14 @@ namespace gitman::win32 {
                 // smoke test는 스레드 없이 한 frame만 그린다. 실제 앱 모드에서만
                 // runtime(스레드 4종과 채널)을 조립한다.
                 if (options_.smoke_test == false)
+                {
                     runtime_ = std::make_unique<app_runtime>(window_, snapshot_wake_message, ui_command_request_message, open_external_request_message, clipboard_request_message);
+                    // 시스템 글꼴 목록은 OS 호출이라 logic이 만들 수 없다. UI thread가
+                    // 한 번 열거해 보낸다 (fonts-and-in-app-dialogs-design F2.4).
+                    font_families_event families {};
+                    families.families = installed_font_families();
+                    runtime_->post_logic(logic_message { std::move(families) });
+                }
                 return true;
             }
 
@@ -1085,6 +1096,14 @@ namespace gitman::win32 {
             }
 
             // 앱 설정의 외양 값이다. 아직 읽지 못했으면 기본값(system·mint)이다.
+            [[nodiscard]] font_settings current_fonts() const
+            {
+                if (runtime_ == nullptr)
+                    return {};
+                const std::shared_ptr<const view_snapshot> view { runtime_->acquire_view() };
+                return view != nullptr ? view->fonts : font_settings {};
+            }
+
             [[nodiscard]] appearance_settings current_appearance() const
             {
                 if (runtime_ == nullptr)
@@ -1127,6 +1146,14 @@ namespace gitman::win32 {
                 const appearance_settings appearance { current_appearance() };
                 state.theme = resolve_color_theme(appearance.theme, high_contrast_enabled, system_prefers_light_);
                 state.accent_id = appearance.accent_id;
+
+                // 글꼴은 설정이 정한다 (fonts-and-in-app-dialogs-design F1). registry가
+                // 이름이 그대로면 아무 일도 하지 않으므로 매 frame 갱신해도 된다.
+                const font_settings fonts { current_fonts() };
+                win32::set_configured_fonts(fonts.ui_family, fonts.code_family);
+                const sk_sp<SkTypeface> code { win32::configured_code_typeface() };
+                state.code_typeface = code.get();
+                state.fonts = &font_resolver_;
 
                 // 앱 모드에서는 logic이 게시한 tree와 input thread의 상호작용 상태로
                 // 그린다. tree는 shared_ptr이 이 호출 동안 수명을 보장한다.
@@ -1336,6 +1363,17 @@ namespace gitman::win32 {
             std::chrono::steady_clock::time_point nc_hover_since_ {};
             bool tracking_non_client_mouse_ { false };
             bool tracking_client_mouse_ { false };
+            // 글꼴 선택 dialog의 미리 보기가 가족 이름을 typeface로 옮길 때 쓴다
+            // (F2.3). registry가 cache를 들고 있어 돌려주는 포인터는 계속 살아 있다.
+            struct registry_font_resolver final : ui::font_resolver
+            {
+                [[nodiscard]] SkTypeface* family(const std::u8string_view name) const override
+                {
+                    return family_typeface(name).get();
+                }
+            };
+
+            registry_font_resolver font_resolver_ {};
             std::unique_ptr<renderer_host> renderer_ {};
             std::unique_ptr<app_runtime> runtime_ {};
         };

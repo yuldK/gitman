@@ -135,6 +135,14 @@ namespace gitman {
         // 대상별 초안을 고른 뒤 순수 편집 모델에 맡기고, 그 대상의 규칙(숫자만,
         // 필터 재적용)을 뒤에 덧붙인다.
         void handle_edit_text_input(const edit_text_input_intent& intent);
+        // 글꼴 선택 dialog다 (fonts-and-in-app-dialogs-design F2). 목록은 UI thread가
+        // 한 번 열거해 보낸 것을 그대로 쓴다.
+        void handle_open_font_dialog(const open_font_dialog_intent& intent);
+        void handle_select_font_family(std::size_t index);
+        void handle_confirm_font_dialog();
+        void handle_font_dialog_scroll(float delta);
+        // 필터를 통과한 글꼴 index다. 첫 항목은 항상 `(기본 글꼴)`을 뜻하는 빈 이름이다.
+        [[nodiscard]] std::vector<std::u8string> filtered_font_families() const;
         void handle_submit_switch_query();
         void handle_clear_switch_query();
         void handle_refresh_switch_dialog();
@@ -243,6 +251,22 @@ namespace gitman {
         };
 
         std::optional<switch_dialog_state> switch_dialog_ {};
+
+        // 글꼴 선택 dialog의 상태다 (F2.5). 값이 있으면 dialog가 열려 있다.
+        struct font_dialog_state
+        {
+            // true이면 코드 글꼴을 고르는 중이다.
+            bool code { false };
+            text_edit_state query {};
+            // 필터를 통과한 목록 기준 index다. 질의가 바뀌면 지운다.
+            std::optional<std::size_t> selected {};
+            float scroll_offset { 0.0f };
+        };
+
+        std::optional<font_dialog_state> font_dialog_ {};
+        // UI thread가 열거해 보낸 시스템 글꼴 가족 이름이다 (F2.4). 앱이 사는 동안
+        // 바뀌지 않는다고 본다.
+        std::vector<std::u8string> font_families_ {};
 
         // 탐색 후보 선택 등록 dialog의 상태다 (REQ-004, stage-8-plan 5.2). 값이
         // 있으면 dialog가 열려 있다.

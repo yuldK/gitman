@@ -202,6 +202,8 @@ add_library(gitman_lib STATIC
     presentation/ui/discovery_dialog_element.cpp
     presentation/ui/discovery_dialog_element.h
     presentation/ui/draw_primitives.cpp
+    presentation/ui/font_dialog_element.cpp
+    presentation/ui/font_dialog_element.h
     presentation/ui/draw_primitives.h
     presentation/ui/label_element.cpp
     presentation/ui/label_element.h
@@ -273,6 +275,8 @@ add_library(gitman_lib STATIC
     platform/win32/win32_directory_enumerator.h
     platform/win32/win32_file_association.cpp
     platform/win32/win32_file_association.h
+    platform/win32/win32_fonts.cpp
+    platform/win32/win32_fonts.h
     platform/win32/win32_log_file_system.cpp
     platform/win32/win32_log_file_system.h
     platform/win32/win32_process_runner.cpp

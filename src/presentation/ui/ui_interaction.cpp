@@ -36,12 +36,16 @@ namespace gitman::ui {
         // 더하면 초점·caret·문자·클립보드 배선이 함께 따라온다.
         [[nodiscard]] bool is_text_input_kind(const ui_element_kind kind) noexcept
         {
-            return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input;
+            return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input || kind == ui_element_kind::font_dialog_query_input;
         }
 
         [[nodiscard]] text_input_target target_for_kind(const ui_element_kind kind) noexcept
         {
-            return kind == ui_element_kind::switch_dialog_query_input ? text_input_target::switch_query : text_input_target::settings_timeout;
+            if (kind == ui_element_kind::switch_dialog_query_input)
+                return text_input_target::switch_query;
+            if (kind == ui_element_kind::font_dialog_query_input)
+                return text_input_target::font_filter;
+            return text_input_target::settings_timeout;
         }
 
         [[nodiscard]] input_action text_edit_action(const ui_element_kind kind, const text_edit_command command, const bool extend = false)
@@ -118,6 +122,10 @@ namespace gitman::ui {
                             return { input_action { logic_message { local_changes_diff_scroll_intent { delta } } } };
                         return { input_action { logic_message { local_changes_scroll_intent { delta } } } };
                     }
+
+                    // 글꼴 선택 dialog는 환경설정 위에 뜨므로 휠을 먼저 가져간다.
+                    if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::font_dialog }) != nullptr)
+                        return { input_action { logic_message { font_dialog_scroll_intent { delta } } } };
 
                     // switch·탐색 dialog가 열려 있으면 휠은 그 후보 목록을 스크롤한다.
                     if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)
@@ -533,6 +541,9 @@ namespace gitman::ui {
                 return { input_action { logic_message { cancel_local_changes_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::discovery_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_discovery_dialog_intent {} } } };
+            // 글꼴 선택 dialog가 환경설정 위에 있으므로 먼저 닫는다.
+            if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::font_dialog }) != nullptr)
+                return { input_action { logic_message { cancel_font_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr)
                 return { input_action { logic_message { cancel_settings_dialog_intent {} } } };
             if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)

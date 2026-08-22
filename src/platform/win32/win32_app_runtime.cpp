@@ -10,6 +10,7 @@
 #include "platform/win32/project_file_system.h"
 #include "platform/win32/win32_app_settings_path.h"
 #include "platform/win32/win32_directory_enumerator.h"
+#include "platform/win32/win32_fonts.h"
 #include "platform/win32/win32_log_file_system.h"
 #include "platform/win32/win32_process_runner.h"
 #include "platform/win32/win32_vcs_file_probe.h"
@@ -47,8 +48,10 @@ namespace gitman::win32 {
             // 텍스트 박스가 포인터 x를 offset으로 옮길 때 쓰는 측정 함수다
             // (switch-dialog-query-bar-design R2.3). SkTypeface는 불변·공유 가능하고
             // SkFont는 호출마다 지역으로 만든다 — 그리기 thread와 공유하지 않는다.
-            config.measure_text = [typeface = win32::load_ui_typeface()](const std::u8string_view text, const float pixel_size) {
-                const SkFont font { typeface, pixel_size };
+            // 설정이 고른 UI 글꼴을 그대로 쓴다 (F2.2). 그리기와 같은 글꼴이라야
+            // caret 자리와 글자 그림이 어긋나지 않는다.
+            config.measure_text = [](const std::u8string_view text, const float pixel_size) {
+                const SkFont font { win32::configured_ui_typeface(), pixel_size };
                 return ui::measure_text(text, font);
             };
             run_ui_input_pump(

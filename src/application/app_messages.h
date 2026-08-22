@@ -161,6 +161,31 @@ namespace gitman {
     struct refresh_switch_dialog_intent
     {};
 
+    // 환경설정의 `선택…` 버튼이 여는 글꼴 선택 dialog다 (F2.5). `code`이면 코드
+    // 글꼴을, 아니면 UI 글꼴을 고른다.
+    struct open_font_dialog_intent
+    {
+        bool code { false };
+    };
+
+    // 목록 행 선택이다. index는 필터를 통과한 목록 기준이다.
+    struct select_font_family_intent
+    {
+        std::size_t index { 0 };
+    };
+
+    // `선택` 버튼이다. 고른 이름을 앱 설정에 넣고 저장을 예약한다.
+    struct confirm_font_dialog_intent
+    {};
+
+    struct cancel_font_dialog_intent
+    {};
+
+    struct font_dialog_scroll_intent
+    {
+        float delta { 0.0f };
+    };
+
     // toolbar 탐색 버튼이 여는 탐색 후보 선택 등록 dialog다 (REQ-004, stage-8-plan
     // 5.2). 스캔 루트는 UI thread의 폴더 선택 dialog가 채운다. 열면서 곧바로 깊이 1
     // 탐색을 worker에 제출한다.
@@ -246,6 +271,8 @@ namespace gitman {
         settings_timeout,
         // switch dialog의 질의 막대다. Git은 필터, SVN은 이동할 경로다.
         switch_query,
+        // 글꼴 선택 dialog의 이름 필터다 (fonts-and-in-app-dialogs-design F2.5).
+        font_filter,
     };
 
     enum class text_edit_command
@@ -271,6 +298,8 @@ namespace gitman {
         select_word,
         // 선택을 지운다. 클립보드 복사는 UI thread가 이미 했다.
         cut,
+        // 글 전체를 비운다 (필터 지우기 버튼).
+        clear,
         // `offset`으로 caret을 옮긴다. `extend`면 드래그 중이라 anchor를 둔다.
         place_caret,
     };
@@ -596,6 +625,14 @@ namespace gitman {
         std::vector<diagnostic> diagnostics {};
     };
 
+    // UI thread가 한 번 열거한 시스템 글꼴 가족 목록이다
+    // (fonts-and-in-app-dialogs-design F2.4). 열거는 OS 호출이라 logic이 할 수 없다.
+    // 실패하면 빈 목록이고 dialog가 안내를 띄운다.
+    struct font_families_event
+    {
+        std::vector<std::u8string> families {};
+    };
+
     // 앱 설정 읽기 결과다. 파일이 없으면 기본값이 실려 온다 (실패가 아니다).
     struct app_settings_loaded_event
     {
@@ -622,14 +659,15 @@ namespace gitman {
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
         reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
-        switch_dialog_scroll_intent, edit_text_input_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, begin_discovery_intent,
-        toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent,
-        set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent,
-        toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent,
-        local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent,
-        set_accent_intent, remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
-        document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
-        local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
+        switch_dialog_scroll_intent, edit_text_input_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent,
+        confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent,
+        cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent, clear_settings_executable_intent,
+        clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent,
+        cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent,
+        open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent, set_accent_intent, remove_recent_document_intent, close_document_intent,
+        show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, document_loaded_event, document_generated_event, query_completed_event,
+        document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event, local_changes_event, file_diff_event, discovery_completed_event,
+        projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

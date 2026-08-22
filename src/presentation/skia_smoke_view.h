@@ -30,6 +30,11 @@ namespace gitman {
         // 값이 있으면 smoke 화면 대신 단계 6의 카드 목록 tree를 그린다. 포인터는
         // 렌더 호출 동안만 유효하면 된다.
         const ui::ui_tree* application_tree { nullptr };
+
+        // 로그·diff 본문의 글꼴이다 (fonts-and-in-app-dialogs-design F1). 없으면
+        // UI 글꼴을 쓴다. 글꼴 선택 dialog의 미리 보기는 `fonts`가 해석한다.
+        SkTypeface* code_typeface { nullptr };
+        const ui::font_resolver* fonts { nullptr };
     };
 
     void draw_skia_smoke_view(SkCanvas& canvas, SkTypeface* codicon_typeface, SkTypeface* ui_typeface, const smoke_view_state& state);

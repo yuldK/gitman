@@ -15,6 +15,11 @@
 
 namespace gitman {
     namespace {
+        // 글꼴 목록 첫 항목의 표시 이름이다. 고르면 빈 이름 = 내장 글꼴이다.
+        constexpr std::u8string_view default_font_display_name { u8"(기본 글꼴)" };
+        // 글꼴 미리 보기 문구다. 한글·영문·숫자·기호를 한 줄에 담아 코드 글꼴 판단에 쓴다.
+        constexpr std::u8string_view font_preview_text { u8"다람쥐 헌 쳇바퀴에 타고파 Illegal1O0 {}();" };
+
         char8_t ascii_lowercase(const char8_t value) noexcept
         {
             if (value >= u8'A' && value <= u8'Z')
@@ -203,6 +208,18 @@ namespace gitman {
                     handle_clear_switch_query();
                 else if constexpr (std::is_same_v<value_type, refresh_switch_dialog_intent>)
                     handle_refresh_switch_dialog();
+                else if constexpr (std::is_same_v<value_type, open_font_dialog_intent>)
+                    handle_open_font_dialog(value);
+                else if constexpr (std::is_same_v<value_type, select_font_family_intent>)
+                    handle_select_font_family(value.index);
+                else if constexpr (std::is_same_v<value_type, confirm_font_dialog_intent>)
+                    handle_confirm_font_dialog();
+                else if constexpr (std::is_same_v<value_type, cancel_font_dialog_intent>)
+                    font_dialog_.reset();
+                else if constexpr (std::is_same_v<value_type, font_dialog_scroll_intent>)
+                    handle_font_dialog_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, font_families_event>)
+                    font_families_ = std::move(value.families);
                 else if constexpr (std::is_same_v<value_type, begin_discovery_intent>)
                     handle_begin_discovery(value);
                 else if constexpr (std::is_same_v<value_type, toggle_discovery_candidate_intent>)
@@ -1242,6 +1259,141 @@ namespace gitman {
         discovery_dialog_->scroll_offset = offset;
     }
 
+    std::vector<std::u8string> logic_controller::filtered_font_families() const
+
+    {
+
+        std::vector<std::u8string> families {};
+
+        if (font_dialog_.has_value() == false)
+
+            return families;
+
+        // 첫 항목은 내장 글꼴로 되돌리는 선택지다. 표시 이름으로 걸러진다.
+
+        const std::u8string_view query { font_dialog_->query.text };
+
+        families.reserve(font_families_.size() + 1u);
+
+        if (contains_ignoring_ascii_case(default_font_display_name, query))
+
+            families.emplace_back();
+
+        for (const std::u8string& family : font_families_)
+
+            if (contains_ignoring_ascii_case(family, query))
+
+                families.push_back(family);
+
+        return families;
+    }
+
+    void logic_controller::handle_open_font_dialog(const open_font_dialog_intent& intent)
+
+    {
+
+        if (shutting_down_)
+
+            return;
+
+        font_dialog_state dialog {};
+
+        dialog.code = intent.code;
+
+        font_dialog_ = { std::move(dialog) };
+
+        // 지금 쓰는 글꼴을 미리 골라 둔다. 목록에 없으면 아무것도 고르지 않는다.
+
+        const std::u8string& current { intent.code ? app_settings_.fonts.code_family : app_settings_.fonts.ui_family };
+
+        const std::vector<std::u8string> families { filtered_font_families() };
+
+        for (std::size_t index = 0; index < families.size(); ++index)
+
+            if (families[index] == current)
+
+            {
+
+                font_dialog_->selected = { index };
+
+                break;
+            }
+
+        handle_font_dialog_scroll(0.0f);
+    }
+
+    void logic_controller::handle_select_font_family(const std::size_t index)
+
+    {
+
+        if (font_dialog_.has_value() == false || index >= filtered_font_families().size())
+
+            return;
+
+        font_dialog_->selected = { index };
+    }
+
+    void logic_controller::handle_confirm_font_dialog()
+
+    {
+
+        if (font_dialog_.has_value() == false || font_dialog_->selected.has_value() == false)
+
+            return;
+
+        const std::vector<std::u8string> families { filtered_font_families() };
+
+        if (*font_dialog_->selected >= families.size())
+
+            return;
+
+        // 글꼴은 문서 override가 없어 초안 계층이 필요 없다. 곧바로 앱 설정을 고치고
+
+        // 저장을 예약한다 (fonts-and-in-app-dialogs-design F2.5).
+
+        std::u8string& target { font_dialog_->code ? app_settings_.fonts.code_family : app_settings_.fonts.ui_family };
+
+        if (target != families[*font_dialog_->selected])
+
+        {
+
+            target = families[*font_dialog_->selected];
+
+            request_app_settings_save();
+        }
+
+        font_dialog_.reset();
+    }
+
+    void logic_controller::handle_font_dialog_scroll(const float delta)
+
+    {
+
+        if (font_dialog_.has_value() == false)
+
+            return;
+
+        const float content { static_cast<float>(filtered_font_families().size()) * layout_font_dialog_row_height };
+
+        float maximum { content - layout_font_dialog_list_height };
+
+        if (maximum < 0.0f)
+
+            maximum = 0.0f;
+
+        float offset { font_dialog_->scroll_offset + delta };
+
+        if (offset < 0.0f)
+
+            offset = 0.0f;
+
+        if (offset > maximum)
+
+            offset = maximum;
+
+        font_dialog_->scroll_offset = offset;
+    }
+
     void logic_controller::handle_open_settings()
     {
         // 문서가 열려 있으면 문서 override를, 없으면 전역 설정을 편집한다 (G3.2).
@@ -1707,6 +1859,10 @@ namespace gitman {
             static_cast<void>(text_edit_redo(*state));
             break;
         case text_edit_command::cut:
+            static_cast<void>(text_edit_erase_selection(*state));
+            break;
+        case text_edit_command::clear:
+            text_edit_select_all(*state);
             static_cast<void>(text_edit_erase_selection(*state));
             break;
         case text_edit_command::move_left:
@@ -2406,6 +2562,40 @@ namespace gitman {
             if (settings_dialog_->accent_id.empty() == false)
                 snapshot->appearance.accent_id = settings_dialog_->accent_id;
         }
+        // 글꼴은 앱 단위라 UI thread가 이 값으로 registry를 갱신한다 (F1).
+        snapshot->fonts = app_settings_.fonts;
+
+        if (font_dialog_.has_value())
+        {
+            font_dialog_view dialog {};
+            dialog.title = font_dialog_->code ? u8"코드 글꼴 선택" : u8"UI 글꼴 선택";
+            dialog.query = { font_dialog_->query.text, font_dialog_->query.caret, font_dialog_->query.anchor };
+            dialog.query_placeholder = u8"글꼴 이름으로 거르기";
+            dialog.query_action_enabled = dialog.query.text.empty() == false;
+            dialog.preview = std::u8string { font_preview_text };
+
+            const std::vector<std::u8string> families { filtered_font_families() };
+            dialog.names.reserve(families.size());
+            for (const std::u8string& family : families)
+                dialog.names.push_back(family.empty() ? std::u8string { default_font_display_name } : family);
+            dialog.families = families;
+            if (font_dialog_->selected.has_value() && *font_dialog_->selected < families.size())
+            {
+                dialog.selected = font_dialog_->selected;
+                dialog.preview_family = families[*font_dialog_->selected];
+                dialog.can_confirm = true;
+            }
+            if (families.empty())
+                dialog.list_note = font_families_.empty() ? u8"시스템 글꼴 목록을 읽지 못했습니다." : u8"이름이 맞는 글꼴이 없습니다.";
+
+            const float content { static_cast<float>(families.size()) * layout_font_dialog_row_height };
+            float maximum { content - layout_font_dialog_list_height };
+            if (maximum < 0.0f)
+                maximum = 0.0f;
+            dialog.scroll_offset = font_dialog_->scroll_offset > maximum ? maximum : font_dialog_->scroll_offset;
+            snapshot->font_dialog = { std::move(dialog) };
+        }
+
         snapshot->window_placement_request = window_placement_;
         snapshot->window_placement_revision = window_placement_revision_;
         snapshot->document_generating = pending_generation_operation_id_ != 0;
@@ -2584,6 +2774,9 @@ namespace gitman {
             dialog.git_path = settings_dialog_->git_path;
             dialog.svn_path = settings_dialog_->svn_path;
             dialog.timeout = { settings_dialog_->timeout.text, settings_dialog_->timeout.caret, settings_dialog_->timeout.anchor };
+            // 글꼴은 초안이 아니라 앱 설정을 곧바로 보여 준다 (F2.5).
+            dialog.ui_font_family = app_settings_.fonts.ui_family;
+            dialog.code_font_family = app_settings_.fonts.code_family;
             dialog.update_submodules = settings_dialog_->update_submodules;
             dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
             dialog.write_log_files = settings_dialog_->write_log_files;

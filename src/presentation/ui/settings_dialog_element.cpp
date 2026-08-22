@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -234,22 +235,37 @@ namespace gitman::ui {
             return dialog.document_mode && follows_app == false;
         }
 
+        // 문자열은 view로 받는다. 빈 인자(`{}`)가 널 포인터가 되지 않게 한다.
+        item_model make_item(const item_kind kind, const std::u8string_view title, std::u8string value, const std::u8string_view placeholder,
+            const std::optional<settings_override_field> field, const std::u8string_view owner, const bool overridden_by_document)
+        {
+            item_model item {};
+            item.kind = kind;
+            item.title = title;
+            item.value = std::move(value);
+            item.placeholder = placeholder;
+            item.override_field = field;
+            item.override_owner = owner;
+            item.overridden = overridden_by_document;
+            return item;
+        }
+
         std::vector<tab_model> build_tabs(const settings_dialog_view& dialog)
         {
             std::vector<tab_model> tabs {};
 
             tab_model tools { settings_tab::tools, std::u8string { u8"도구" }, codicons::icon_tools, {} };
             section_model executables { std::u8string { u8"실행 파일" }, {} };
-            executables.items.push_back({ item_kind::git_executable, u8"Git 실행 파일", dialog.git_path, u8"자동 탐색 (지정되지 않음)", { settings_override_field::git_executable }, u8"git",
-                overridden(dialog, dialog.git_follows_app) });
-            executables.items.push_back({ item_kind::svn_executable, u8"SVN 실행 파일", dialog.svn_path, u8"자동 탐색 (지정되지 않음)", { settings_override_field::svn_executable }, u8"svn",
-                overridden(dialog, dialog.svn_follows_app) });
+            executables.items.push_back(make_item(item_kind::git_executable, u8"Git 실행 파일", dialog.git_path, u8"자동 탐색 (지정되지 않음)", { settings_override_field::git_executable }, u8"git",
+                overridden(dialog, dialog.git_follows_app)));
+            executables.items.push_back(make_item(item_kind::svn_executable, u8"SVN 실행 파일", dialog.svn_path, u8"자동 탐색 (지정되지 않음)", { settings_override_field::svn_executable }, u8"svn",
+                overridden(dialog, dialog.svn_follows_app)));
             tools.sections.push_back(std::move(executables));
             // 대형 저장소는 status만 5~10분 걸릴 수 있어 제한 시간을 조정한다
             // (field-feedback-design 1장). 값 칸은 텍스트 박스 element가 그린다.
             section_model queries { std::u8string { u8"조회" }, {} };
-            queries.items.push_back({ item_kind::query_timeout, u8"상태 확인 제한 시간 (초)", {}, {}, { settings_override_field::query_timeout }, u8"timeout",
-                overridden(dialog, dialog.timeout_follows_app) });
+            queries.items.push_back(
+                make_item(item_kind::query_timeout, u8"상태 확인 제한 시간 (초)", {}, {}, { settings_override_field::query_timeout }, u8"timeout", overridden(dialog, dialog.timeout_follows_app)));
             tools.sections.push_back(std::move(queries));
             tabs.push_back(std::move(tools));
 
@@ -257,41 +273,41 @@ namespace gitman::ui {
             // 업데이트마다 묻지 않고 여기서 정한다 (2026-08-20 검수, ADR-003 기본 off
             // 유지).
             section_model update { std::u8string { u8"업데이트" }, {} };
-            update.items.push_back({ item_kind::update_submodules, u8"업데이트 시 submodule 갱신",
-                dialog.update_submodules ? std::u8string { u8"켬 - git pull --recurse-submodules=on-demand" } : std::u8string { u8"끔 - submodule을 건드리지 않음" }, {},
-                { settings_override_field::update_submodules }, u8"submodules", overridden(dialog, dialog.submodules_follows_app) });
+            std::u8string submodules_value { dialog.update_submodules ? u8"켬 - git pull --recurse-submodules=on-demand" : u8"끔 - submodule을 건드리지 않음" };
+            update.items.push_back(make_item(item_kind::update_submodules, u8"업데이트 시 submodule 갱신", std::move(submodules_value), {}, { settings_override_field::update_submodules },
+                u8"submodules", overridden(dialog, dialog.submodules_follows_app)));
             operations.sections.push_back(std::move(update));
             // 대형 저장소에서 status 순회(로컬 변경 확인)가 분 단위로 걸릴 때 아예
             // 건너뛰는 선택지다. 현재 SVN provider에만 배선되어 있어 문구도 SVN으로
             // 한정한다.
             section_model status { std::u8string { u8"상태 확인" }, {} };
-            status.items.push_back({ item_kind::ignore_local_changes, u8"로컬 변경을 상관하지 않음 (SVN)",
-                dialog.ignore_local_changes ? std::u8string { u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" } : std::u8string { u8"끔 - 로컬 변경을 확인한 뒤 진행" }, {},
-                { settings_override_field::ignore_local_changes }, u8"ignore-local", overridden(dialog, dialog.ignore_local_follows_app) });
+            std::u8string ignore_local_value { dialog.ignore_local_changes ? u8"켬 - status 확인 없이 깨끗하다고 믿고 진행" : u8"끔 - 로컬 변경을 확인한 뒤 진행" };
+            status.items.push_back(make_item(item_kind::ignore_local_changes, u8"로컬 변경을 상관하지 않음 (SVN)", std::move(ignore_local_value), {}, { settings_override_field::ignore_local_changes },
+                u8"ignore-local", overridden(dialog, dialog.ignore_local_follows_app)));
             operations.sections.push_back(std::move(status));
             // 카드 로그를 문서 폴더에 파일로 남긴다 (app-shell-design A4).
             section_model logs { std::u8string { u8"로그" }, {} };
-            logs.items.push_back({ item_kind::write_log_files, u8"로그를 문서 폴더에 파일로 남김",
-                dialog.write_log_files ? std::u8string { u8"켬 - .<문서>.version-list.log 폴더에 저장소별로 남김" } : std::u8string { u8"끔 - 화면 로그만 유지" }, {},
-                { settings_override_field::write_log_files }, u8"log-files", overridden(dialog, dialog.log_files_follows_app) });
+            std::u8string log_files_value { dialog.write_log_files ? u8"켬 - .<문서>.version-list.log 폴더에 저장소별로 남김" : u8"끔 - 화면 로그만 유지" };
+            logs.items.push_back(make_item(item_kind::write_log_files, u8"로그를 문서 폴더에 파일로 남김", std::move(log_files_value), {}, { settings_override_field::write_log_files }, u8"log-files",
+                overridden(dialog, dialog.log_files_follows_app)));
             operations.sections.push_back(std::move(logs));
             tabs.push_back(std::move(operations));
 
             tab_model appearance { settings_tab::appearance, std::u8string { u8"외양" }, codicons::icon_symbol_color, {} };
             section_model theme { std::u8string { u8"테마" }, {} };
             theme.items.push_back(
-                { item_kind::theme, u8"테마", theme_description(dialog.theme), {}, { settings_override_field::theme }, u8"theme", overridden(dialog, dialog.theme_follows_app) });
+                make_item(item_kind::theme, u8"테마", theme_description(dialog.theme), {}, { settings_override_field::theme }, u8"theme", overridden(dialog, dialog.theme_follows_app)));
             appearance.sections.push_back(std::move(theme));
             section_model accent { std::u8string { u8"키 컬러" }, {} };
-            accent.items.push_back({ item_kind::accent, u8"키 컬러", std::u8string { accent_for(dialog.accent_id).label }, {}, { settings_override_field::accent }, u8"accent",
-                overridden(dialog, dialog.accent_follows_app) });
+            accent.items.push_back(make_item(item_kind::accent, u8"키 컬러", std::u8string { accent_for(dialog.accent_id).label }, {}, { settings_override_field::accent }, u8"accent",
+                overridden(dialog, dialog.accent_follows_app)));
             appearance.sections.push_back(std::move(accent));
             tabs.push_back(std::move(appearance));
 
             // 파일 연결은 문서가 아니라 현재 사용자 registry의 상태다 (REQ-016).
             tab_model system { settings_tab::system, std::u8string { u8"시스템" }, codicons::icon_link, {} };
             section_model association { std::u8string { u8"파일 연결" }, {} };
-            association.items.push_back({ item_kind::file_association, u8"`.version-list` 연결", u8"현재 사용자 범위에서만 등록·해제합니다", {}, {}, {}, false });
+            association.items.push_back(make_item(item_kind::file_association, u8".version-list 파일 연결", u8"현재 사용자 범위에서만 등록·해제합니다", {}, {}, u8"", false));
             system.sections.push_back(std::move(association));
             tabs.push_back(std::move(system));
 
@@ -360,8 +376,7 @@ namespace gitman::ui {
                 if (caret_on)
                 {
                     const float caret_top { box.y + 4.0f * scale };
-                    context.canvas.drawRect(
-                        SkRect::MakeXYWH(caret_left, caret_top, 1.0f * scale, box.height - 8.0f * scale), solid_paint(context.palette.primary_foreground));
+                    context.canvas.drawRect(SkRect::MakeXYWH(caret_left, caret_top, 1.0f * scale, box.height - 8.0f * scale), solid_paint(context.palette.primary_foreground));
                 }
             }
 
@@ -420,8 +435,7 @@ namespace gitman::ui {
                 , glyph_ { glyph }
                 , label_ { std::move(label) }
             {
-                set_action(ui_trigger::left_click,
-                    [tab](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_settings_tab_intent { tab } } } }; });
+                set_action(ui_trigger::left_click, [tab](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_settings_tab_intent { tab } } } }; });
             }
 
             void arrange(const arrange_context& context) override
@@ -479,8 +493,8 @@ namespace gitman::ui {
                 , glyph_ { glyph }
             {
                 set_tooltip(std::move(tooltip));
-                set_action(ui_trigger::left_click,
-                    [value](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_theme_preference_intent { value } } } }; });
+                set_action(
+                    ui_trigger::left_click, [value](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_theme_preference_intent { value } } } }; });
             }
 
             void arrange(const arrange_context& context) override
@@ -527,9 +541,8 @@ namespace gitman::ui {
                 , selected_ { selected }
             {
                 set_tooltip(std::u8string { accent.label });
-                set_action(ui_trigger::left_click, [id = std::u8string { accent.id }](const ui_action_context&) -> std::vector<input_action> {
-                    return { input_action { logic_message { set_accent_intent { id } } } };
-                });
+                set_action(ui_trigger::left_click,
+                    [id = std::u8string { accent.id }](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_accent_intent { id } } } }; });
             }
 
             void arrange(const arrange_context& context) override
@@ -570,8 +583,8 @@ namespace gitman::ui {
                 : ui_element { ui_element_id { ui_element_kind::settings_override_badge, project_id { std::move(owner) } } }
             {
                 set_tooltip(u8"문서가 이 옵션을 덮어쓰고 있습니다. 클릭하면 삭제하고 앱 설정을 따릅니다.");
-                set_action(ui_trigger::left_click,
-                    [field](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_override_intent { field } } } }; });
+                set_action(
+                    ui_trigger::left_click, [field](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_override_intent { field } } } }; });
             }
 
             void arrange(const arrange_context& context) override
@@ -700,8 +713,8 @@ namespace gitman::ui {
                     header_paint.setAlphaf(0.55f);
                     static_cast<void>(draw_text_within(context.canvas, active_.sections[section].title, header.x, header.y + 13.0f * scale, header.width, header_font, header_paint));
                     // 섹션 제목 아래 실선이 항목 묶음의 경계를 만든다.
-                    context.canvas.drawRect(SkRect::MakeXYWH(header.x, header.y + header.height - 6.0f * scale, header.width, 1.0f * scale),
-                        solid_paint(with_alpha(context.palette.primary_foreground, 0.12f)));
+                    context.canvas.drawRect(
+                        SkRect::MakeXYWH(header.x, header.y + header.height - 6.0f * scale, header.width, 1.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.12f)));
 
                     for (const item_model& item : active_.sections[section].items)
                     {
@@ -724,8 +737,8 @@ namespace gitman::ui {
                 }
 
                 // 세부 기능 타이틀은 키 컬러 + semi-bold로 강조한다.
-                static_cast<void>(draw_text_within(
-                    context.canvas, item.title, bounds.title_line.x, bounds.title_line.y + 15.0f * scale, bounds.title_line.width, title_font, solid_paint(context.palette.accent_emphasis_foreground)));
+                static_cast<void>(draw_text_within(context.canvas, item.title, bounds.title_line.x, bounds.title_line.y + 15.0f * scale, bounds.title_line.width, title_font,
+                    solid_paint(context.palette.accent_emphasis_foreground)));
 
                 // 타이틀이 아닌 본문은 흐리게 그려 위계를 만든다. 빈 값은 안내 문구다.
                 if (item.value.empty() && item.placeholder.empty())
@@ -742,8 +755,8 @@ namespace gitman::ui {
                     return;
                 const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
                 const float top { box.y + box.height - (panel_padding + action_button_height + message_height) * scale };
-                static_cast<void>(draw_text_within(context.canvas, message_, box.x + panel_padding * scale, top + 12.0f * scale, box.width - panel_padding * 2.0f * scale, body_font,
-                    solid_paint(context.palette.warning_accent)));
+                static_cast<void>(draw_text_within(
+                    context.canvas, message_, box.x + panel_padding * scale, top + 12.0f * scale, box.width - panel_padding * 2.0f * scale, body_font, solid_paint(context.palette.warning_accent)));
             }
 
             std::u8string title_ {};
@@ -784,6 +797,12 @@ namespace gitman::ui {
 
         // 활성 탭의 항목만 컨트롤을 만든다. 다른 탭의 값은 dialog 초안에 그대로 남아
         // 있고, 탭을 옮기면 그 탭의 컨트롤이 만들어진다 (S1.2).
+        const auto add_toggle = [this](const ui_element_kind kind, const bool on, const char8_t* const tooltip, logic_message message, std::vector<ui_element*>& controls) {
+            auto toggle { std::make_unique<toggle_element>(ui_element_id { kind }, on, std::u8string { tooltip }, std::move(message)) };
+            controls.push_back(toggle.get());
+            add_child(std::move(toggle));
+        };
+
         const auto add_text_button = [this](const ui_element_kind kind, const char8_t* const text, std::vector<ui_element*>& controls) -> text_button_element* {
             auto button { std::make_unique<text_button_element>(ui_element_id { kind }, std::u8string { text }, false) };
             text_button_element* const raw { button.get() };
@@ -823,29 +842,20 @@ namespace gitman::ui {
                     add_child(std::move(input));
                     break;
                 }
-                case item_kind::update_submodules: {
+                case item_kind::update_submodules:
                     // 업데이트 실행 overlay 대신 이 토글이 값을 정한다 (2026-08-20 검수).
-                    auto toggle { std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_submodules_toggle }, dialog_.update_submodules,
-                        std::u8string { u8"업데이트 실행 시 submodule을 함께 갱신할지 정합니다" }, logic_message { toggle_settings_submodules_intent {} }) };
-                    controls.push_back(toggle.get());
-                    add_child(std::move(toggle));
+                    add_toggle(ui_element_kind::settings_submodules_toggle, dialog_.update_submodules, u8"업데이트 실행 시 submodule을 함께 갱신할지 정합니다",
+                        logic_message { toggle_settings_submodules_intent {} }, controls);
                     break;
-                }
-                case item_kind::ignore_local_changes: {
-                    auto toggle { std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_ignore_local_toggle }, dialog_.ignore_local_changes,
-                        std::u8string { u8"켜면 SVN 저장소에서 로컬 변경 확인(status)을 건너뛰고 깨끗하다고 믿은 채 조회·업데이트·스위치를 진행합니다 (git에는 적용되지 않음)" },
-                        logic_message { toggle_settings_ignore_local_intent {} }) };
-                    controls.push_back(toggle.get());
-                    add_child(std::move(toggle));
+                case item_kind::ignore_local_changes:
+                    add_toggle(ui_element_kind::settings_ignore_local_toggle, dialog_.ignore_local_changes,
+                        u8"켜면 SVN 저장소에서 로컬 변경 확인(status)을 건너뛰고 깨끗하다고 믿은 채 조회·업데이트·스위치를 진행합니다 (git에는 적용되지 않음)",
+                        logic_message { toggle_settings_ignore_local_intent {} }, controls);
                     break;
-                }
-                case item_kind::write_log_files: {
-                    auto toggle { std::make_unique<toggle_element>(ui_element_id { ui_element_kind::settings_log_files_toggle }, dialog_.write_log_files,
-                        std::u8string { u8"켜면 문서 폴더에 .<문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다" }, logic_message { toggle_settings_log_files_intent {} }) };
-                    controls.push_back(toggle.get());
-                    add_child(std::move(toggle));
+                case item_kind::write_log_files:
+                    add_toggle(ui_element_kind::settings_log_files_toggle, dialog_.write_log_files, u8"켜면 문서 폴더에 .<문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다",
+                        logic_message { toggle_settings_log_files_intent {} }, controls);
                     break;
-                }
                 case item_kind::theme: {
                     const auto add_theme = [this](const theme_preference value, const char32_t glyph, const char8_t* const tooltip) {
                         auto option { std::make_unique<theme_option_element>(value, dialog_.theme == value, glyph, std::u8string { tooltip }) };
@@ -877,8 +887,7 @@ namespace gitman::ui {
 
                     text_button_element* const dissociate { add_text_button(ui_element_kind::settings_dissociate, u8"연결 해제", controls) };
                     dissociate->set_tooltip(u8"이 프로그램이 등록한 .version-list 연결을 제거합니다");
-                    dissociate->set_action(
-                        ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::unregister_file_association } }; });
+                    dissociate->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::unregister_file_association } }; });
                     break;
                 }
                 }

@@ -117,8 +117,8 @@ namespace gitman {
 
             if (source->is_object() == false)
             {
-                add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"appearance는 object여야 합니다. 앱 설정의 외양을 사용합니다.", document_path,
-                    u8"/appearance");
+                add_diagnostic(
+                    result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"appearance는 object여야 합니다. 앱 설정의 외양을 사용합니다.", document_path, u8"/appearance");
                 return appearance;
             }
 
@@ -286,13 +286,13 @@ namespace gitman {
             {
                 if (timeout->is_number_integer() == false)
                 {
-                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"settings의 제한 시간은 정수(초)여야 합니다. 기본값을 사용합니다.",
-                        document_path, settings_field_pointer("query_timeout_seconds"));
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"settings의 제한 시간은 정수(초)여야 합니다. 기본값을 사용합니다.", document_path,
+                        settings_field_pointer("query_timeout_seconds"));
                 }
                 else if (const std::int64_t seconds { timeout->get<std::int64_t>() }; seconds < minimum_query_timeout_seconds || seconds > maximum_query_timeout_seconds)
                 {
-                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"settings의 제한 시간은 10~3600초여야 합니다. 기본값을 사용합니다.",
-                        document_path, settings_field_pointer("query_timeout_seconds"));
+                    add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"settings의 제한 시간은 10~3600초여야 합니다. 기본값을 사용합니다.", document_path,
+                        settings_field_pointer("query_timeout_seconds"));
                 }
                 else
                     settings.query_timeout_seconds = { static_cast<std::int32_t>(seconds) };

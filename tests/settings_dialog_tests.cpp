@@ -1,8 +1,8 @@
 #include "application/logic_controller.h"
 #include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/settings_dialog_element.h"
-#include "presentation/ui_theme.h"
 #include "presentation/ui/ui_interaction.h"
+#include "presentation/ui_theme.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -537,6 +537,72 @@ TEST_CASE("The override badge sits in the column beside the item title", "[ui][s
     const auto* const intent { std::get_if<gitman::clear_settings_override_intent>(message) };
     REQUIRE(intent != nullptr);
     REQUIRE(intent->field == gitman::settings_override_field::accent);
+}
+
+TEST_CASE("Every settings control stays inside the panel on all tabs", "[ui][settings-ui][tabs]")
+{
+    // 항목 높이가 늘어도(색 20개) panel 안에 담겨야 한다 — panel 높이는 가장 높은
+    // 탭에 맞춘다 (settings-tabs-and-appearance-scope-design S1.3).
+    const std::vector<gitman::settings_tab> tabs {
+        gitman::settings_tab::tools,
+        gitman::settings_tab::operations,
+        gitman::settings_tab::appearance,
+        gitman::settings_tab::system,
+    };
+
+    for (const bool document_mode : { true, false })
+        for (const gitman::settings_tab tab : tabs)
+        {
+            recording_submitter submitter {};
+            gitman::logic_controller controller { submitter };
+            controller.handle(gitman::window_metrics_intent { 1280.0f, 800.0f, 1.0f });
+            if (document_mode)
+            {
+                controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
+                gitman::document_loaded_event loaded {};
+                gitman::workspace_document document {};
+                document.document_path = u8"C:\\work\\p.version-list";
+                document.settings.git_executable = u8"C:\\tools\\git.exe";
+                document.appearance.accent_id = { u8"blue" };
+                loaded.document = { std::move(document) };
+                controller.handle(std::move(loaded));
+            }
+            controller.handle(gitman::open_settings_intent {});
+            controller.handle(gitman::select_settings_tab_intent { tab });
+
+            const auto tree { gitman::ui::build_ui_tree(*controller.make_view_snapshot()) };
+            const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+            REQUIRE(panel != nullptr);
+            const gitman::ui::rect_f box { panel->bounds() };
+
+            const std::vector<gitman::ui::ui_element_kind> kinds {
+                gitman::ui::ui_element_kind::settings_tab_item,
+                gitman::ui::ui_element_kind::settings_git_browse,
+                gitman::ui::ui_element_kind::settings_git_clear,
+                gitman::ui::ui_element_kind::settings_svn_browse,
+                gitman::ui::ui_element_kind::settings_svn_clear,
+                gitman::ui::ui_element_kind::settings_timeout_input,
+                gitman::ui::ui_element_kind::settings_submodules_toggle,
+                gitman::ui::ui_element_kind::settings_ignore_local_toggle,
+                gitman::ui::ui_element_kind::settings_log_files_toggle,
+                gitman::ui::ui_element_kind::settings_theme_option,
+                gitman::ui::ui_element_kind::settings_accent_swatch,
+                gitman::ui::ui_element_kind::settings_override_badge,
+                gitman::ui::ui_element_kind::settings_associate,
+                gitman::ui::ui_element_kind::settings_dissociate,
+                gitman::ui::ui_element_kind::settings_dialog_confirm,
+                gitman::ui::ui_element_kind::settings_dialog_cancel,
+            };
+            for (const gitman::ui::ui_element_kind kind : kinds)
+                for (const gitman::ui::ui_element_id& id : tree->ids_of_kind(kind))
+                {
+                    const gitman::ui::rect_f bounds { tree->find(id)->bounds() };
+                    REQUIRE(bounds.x >= box.x);
+                    REQUIRE(bounds.y >= box.y);
+                    REQUIRE(bounds.x + bounds.width <= box.x + box.width);
+                    REQUIRE(bounds.y + bounds.height <= box.y + box.height);
+                }
+        }
 }
 
 TEST_CASE("Timeout characters edit the draft and only digits count", "[logic][settings-ui][timeout]")

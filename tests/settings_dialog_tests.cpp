@@ -341,17 +341,21 @@ TEST_CASE("The override badge deletes a document override and follows the app se
     REQUIRE(fixture.submitter.requests[1].settings.git_executable.empty());
 }
 
-TEST_CASE("Overridden rows show a clickable override badge in document mode", "[ui][settings-ui]")
+TEST_CASE("Every document item shows a scope badge and only overrides are clickable", "[ui][settings-ui]")
 {
-    // 문서가 덮어쓴 행(git)에만 배지가 붙고, 클릭이 그 행의 override 삭제 intent를
-    // 낸다.
+    // 문서 모드에서는 모든 항목이 범위 배지를 갖는다. 문서가 덮어쓴 항목(git)만
+    // 누를 수 있고, 전역을 따르는 항목(svn)은 액션이 없다 (D2).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
 
     const gitman::ui::ui_element_id git_badge { gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } };
     REQUIRE(tree->find(git_badge) != nullptr);
-    REQUIRE(tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"svn" } }) == nullptr);
+    const gitman::ui::ui_element* const svn_badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"svn" } }) };
+    REQUIRE(svn_badge != nullptr);
+    // 전역 배지는 눌러도 아무 일도 하지 않는다. tooltip으로만 뜻을 알린다.
+    REQUIRE(svn_badge->action(gitman::ui::ui_trigger::left_click) == nullptr);
+    REQUIRE_FALSE(svn_badge->tooltip().empty());
 
     const std::vector<gitman::ui::input_action> actions { click(*tree, git_badge) };
     REQUIRE(actions.size() == 1u);
@@ -503,9 +507,9 @@ TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[
     REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height == tools->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height);
 }
 
-TEST_CASE("The override badge sits in the column beside the item title", "[ui][settings-ui]")
+TEST_CASE("The scope badge sits at the right end of the item title line", "[ui][settings-ui]")
 {
-    // 배지는 항목 제목 바로 왼쪽 열이고 제목은 그만큼 들여쓰인다 (S4.2).
+    // 배지는 제목 줄의 오른쪽 끝이고 행 컨트롤이 그만큼 왼쪽으로 밀린다 (D2).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
@@ -513,22 +517,29 @@ TEST_CASE("The override badge sits in the column beside the item title", "[ui][s
     const gitman::ui::ui_element* const badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } }) };
     REQUIRE(badge != nullptr);
     const gitman::ui::rect_f badge_bounds { badge->bounds() };
-    // 이전(48x14)보다 두껍다.
     REQUIRE(badge_bounds.height >= 18.0f);
 
-    // 같은 항목의 찾아보기 버튼과 같은 줄에 있고 그보다 왼쪽이다.
-    const gitman::ui::rect_f browse { tree->find({ gitman::ui::ui_element_kind::settings_git_browse })->bounds() };
-    REQUIRE(badge_bounds.x < browse.x);
-    REQUIRE(badge_bounds.y + badge_bounds.height > browse.y);
-    REQUIRE(badge_bounds.y < browse.y + browse.height);
+    // 같은 항목의 지우기 버튼과 같은 줄에 있고 그보다 오른쪽이며 겹치지 않는다.
+    const gitman::ui::rect_f clear { tree->find({ gitman::ui::ui_element_kind::settings_git_clear })->bounds() };
+    REQUIRE(badge_bounds.x >= clear.x + clear.width);
+    REQUIRE(badge_bounds.y + badge_bounds.height > clear.y);
+    REQUIRE(badge_bounds.y < clear.y + clear.height);
+    // panel 오른쪽 여백 안이다.
+    const gitman::ui::rect_f panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    REQUIRE(badge_bounds.x + badge_bounds.width <= panel.x + panel.width);
 
-    // 외양 항목도 문서가 덮어쓰면 배지를 갖는다 (S2.3).
+    // 외양 항목도 같은 규칙이다. 초안을 고치면 `문서 설정`이 되어 누를 수 있다 (D4).
     fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+    const auto follows { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const gitman::ui::ui_element* const following_badge { follows->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"accent" } }) };
+    REQUIRE(following_badge != nullptr);
+    REQUIRE(following_badge->action(gitman::ui::ui_trigger::left_click) == nullptr);
+
     fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
     const auto appearance { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
     const gitman::ui::ui_element* const accent_badge { appearance->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"accent" } }) };
     REQUIRE(accent_badge != nullptr);
-    REQUIRE(appearance->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"theme" } }) == nullptr);
+    REQUIRE(accent_badge->action(gitman::ui::ui_trigger::left_click) != nullptr);
 
     const std::vector<gitman::ui::input_action> cleared { click(*appearance, accent_badge->id()) };
     REQUIRE(cleared.size() == 1u);

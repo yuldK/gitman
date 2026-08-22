@@ -34,7 +34,6 @@
             "dependsOrder": "sequence",
             "group": {
                 "kind": "build",
-                "isDefault": true
             },
             "problemMatcher": "$msCompile"
         },
@@ -89,6 +88,23 @@
                 "vs2026-debug"
             ],
             "dependsOn": "cmake: configure vs2026",
+            "dependsOrder": "sequence",
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "cmake: build vs2026 release",
+            "type": "process",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "--preset",
+                "vs2026-release"
+            ],
+            "dependsOn": "cmake: configure vs2026",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "dependsOrder": "sequence",
             "problemMatcher": "$msCompile"
         },

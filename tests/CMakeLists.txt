@@ -48,6 +48,7 @@ add_executable(gitman_tests
     operation_log_tests.cpp
     messaging_channel_tests.cpp
     messaging_latest_slot_tests.cpp
+    path_display_tests.cpp
     process_cancellation_tests.cpp
     process_execution_tests.cpp
     process_output_pipeline_tests.cpp

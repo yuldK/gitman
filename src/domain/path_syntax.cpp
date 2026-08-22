@@ -158,4 +158,13 @@ namespace gitman {
             return std::u8string { u8"." };
         return result;
     }
+
+    std::u8string to_display_path(const std::u8string_view path)
+    {
+        std::u8string result { path };
+        for (char8_t& value : result)
+            if (value == u8'\\')
+                value = u8'/';
+        return result;
+    }
 } // namespace gitman

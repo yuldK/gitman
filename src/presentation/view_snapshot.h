@@ -283,7 +283,12 @@ namespace gitman {
     // 함께 담는다.
     struct view_snapshot
     {
+        // 열린 문서의 절대 경로다. Windows 원형(`\` 구분자)이라 셸 실행·파일
+        // dialog의 초기 폴더가 그대로 쓸 수 있다.
         std::u8string document_path {};
+        // 배너에 그리는 문서 주소다. 구분자를 `/`로 통일한 표시 전용 문자열이며
+        // (theme-and-banner-menu-design T2), 카드의 `path`와 같은 규칙이다.
+        std::u8string document_display_path {};
         std::vector<card_view_model> cards {};
         std::optional<project_id> selected {};
         std::u8string filter_text {};

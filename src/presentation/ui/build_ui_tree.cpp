@@ -51,7 +51,9 @@ namespace gitman::ui {
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
 
-                std::u8string document_text { view.document_path.empty() ? std::u8string { u8"문서 없음" } : view.document_path };
+                // 배너의 문서 주소는 unix 스타일 표시 문자열이다 (T2). snapshot의
+                // `document_path`는 셸·파일 dialog가 쓰는 Windows 원형이라 따로 있다.
+                std::u8string document_text { view.document_path.empty() ? std::u8string { u8"문서 없음" } : view.document_display_path };
                 // 환경설정·탐색 등록은 열린 문서가 필요한 기능이다.
                 const bool document_open { view.empty_state != view_empty_state::no_document && view.empty_state != view_empty_state::document_loading };
                 const bool show_open_button { view.empty_state == view_empty_state::no_document };

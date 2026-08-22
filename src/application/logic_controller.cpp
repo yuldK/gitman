@@ -1978,13 +1978,15 @@ namespace gitman {
 
     std::u8string logic_controller::display_path(const project_definition& project) const
     {
+        // 표시 전용이라 구분자를 `/`로 통일한다 (T2). 원형 경로는 project가 그대로
+        // 들고 있어 실행·저장 경로에는 영향이 없다.
         if (relative_paths() == false)
-            return project.path.original;
+            return to_display_path(project.path.original);
         // 문서가 있는 폴더가 기준이다. 문서 경로를 모르면 전체 경로를 그대로 쓴다.
         const std::u8string_view base { windows_parent_directory(document_path_) };
         if (base.empty())
-            return project.path.original;
-        return relative_windows_path(project.path.original, base);
+            return to_display_path(project.path.original);
+        return to_display_path(relative_windows_path(project.path.original, base));
     }
 
     std::size_t logic_controller::visible_card_count() const noexcept
@@ -2046,6 +2048,7 @@ namespace gitman {
     {
         auto snapshot { std::make_shared<view_snapshot>() };
         snapshot->document_path = document_path_;
+        snapshot->document_display_path = to_display_path(document_path_);
         snapshot->selected = selected_;
         snapshot->filter_text = filter_;
         snapshot->notices = notices_;
@@ -2308,7 +2311,7 @@ namespace gitman {
             {
                 recent_document_view row {};
                 row.display_name = value.display_name.empty() ? recent_document_display_name(value.path) : value.display_name;
-                row.folder = std::u8string { windows_parent_directory(value.path) };
+                row.folder = to_display_path(windows_parent_directory(value.path));
                 row.path = value.path;
                 page.recents.push_back(std::move(row));
             }

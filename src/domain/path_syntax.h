@@ -19,4 +19,9 @@ namespace gitman {
     // 대소문자를 구분하지 않는다(Windows 규칙). 뿌리(drive·share)가 다르거나 둘 중
     // 하나가 절대 경로가 아니면 원본을 그대로 돌려준다. 같은 위치면 `.`이다.
     [[nodiscard]] std::u8string relative_windows_path(std::u8string_view path, std::u8string_view base_directory);
+
+    // 화면에 그릴 경로다. 구분자를 `/`로 통일한다 (theme-and-banner-menu-design
+    // T2). 표시 전용이며 저장·프로세스 인자·셸 실행에는 쓰지 않는다 — Win32 파일
+    // dialog의 초기 폴더처럼 `/`를 받지 못하는 소비자가 있다.
+    [[nodiscard]] std::u8string to_display_path(std::u8string_view path);
 } // namespace gitman

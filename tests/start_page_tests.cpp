@@ -88,7 +88,8 @@ TEST_CASE("The start page replaces the empty state while no document is open", "
     REQUIRE(view->start_page->loading == false);
     REQUIRE(view->start_page->recents.size() == 2);
     REQUIRE(view->start_page->recents.front().display_name == u8"team");
-    REQUIRE(view->start_page->recents.front().folder == u8"D:\\workspaces");
+    // 폴더는 표시 전용이라 구분자가 `/`다. 여는 데 쓰는 path는 원형이다 (T2).
+    REQUIRE(view->start_page->recents.front().folder == u8"D:/workspaces");
     REQUIRE(view->start_page->recents.front().path == u8"D:\\workspaces\\team.version-list");
     REQUIRE(view->start_page->recents.back().display_name == u8"client");
 

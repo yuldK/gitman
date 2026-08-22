@@ -1,53 +1,36 @@
 [
     {
-        "id": "mint",
-        "label": "민트",
-        "swatch": "#4ec9b0",
+        "id": "red",
+        "label": "레드",
+        "swatch": "#da6662",
         "dark": {
-            "accent": "#4ec9b0",
-            "accentHover": "#63d9c2",
-            "accentSoft": "#7fdfcc",
-            "accentEmphasisFg": "#a9ece0"
+            "accent": "#cf4e4a",
+            "accentHover": "#d76e6a",
+            "accentSoft": "#e5a19e",
+            "accentEmphasisFg": "#eccbca"
         },
         "light": {
-            "accent": "#0f8a72",
-            "accentHover": "#0b7462",
-            "accentSoft": "#0a5f51",
-            "accentEmphasisFg": "#0a5f51"
+            "accent": "#951c18",
+            "accentHover": "#7b1714",
+            "accentSoft": "#691411",
+            "accentEmphasisFg": "#691411"
         }
     },
     {
-        "id": "blue",
-        "label": "블루",
-        "swatch": "#a2cfff",
+        "id": "orange",
+        "label": "오렌지",
+        "swatch": "#de915e",
         "dark": {
-            "accent": "#3f7ebb",
-            "accentHover": "#5392d1",
-            "accentSoft": "#a2cfff",
-            "accentEmphasisFg": "#c6e1ff"
+            "accent": "#d37e45",
+            "accentHover": "#db9566",
+            "accentSoft": "#e8ba9c",
+            "accentEmphasisFg": "#eed8c9"
         },
         "light": {
-            "accent": "#0062ab",
-            "accentHover": "#005391",
-            "accentSoft": "#00487f",
-            "accentEmphasisFg": "#00487f"
-        }
-    },
-    {
-        "id": "purple",
-        "label": "퍼플",
-        "swatch": "#c8a2ff",
-        "dark": {
-            "accent": "#8a63d2",
-            "accentHover": "#9d7ce0",
-            "accentSoft": "#c8a2ff",
-            "accentEmphasisFg": "#ddc8ff"
-        },
-        "light": {
-            "accent": "#6c3fbb",
-            "accentHover": "#5b34a0",
-            "accentSoft": "#4e2c8a",
-            "accentEmphasisFg": "#4e2c8a"
+            "accent": "#9a4913",
+            "accentHover": "#7f3c10",
+            "accentSoft": "#6d340d",
+            "accentEmphasisFg": "#6d340d"
         }
     },
     {
@@ -68,6 +51,244 @@
         }
     },
     {
+        "id": "yellow",
+        "label": "옐로",
+        "swatch": "#dec95e",
+        "dark": {
+            "accent": "#d3bc45",
+            "accentHover": "#dbc866",
+            "accentSoft": "#e8db9c",
+            "accentEmphasisFg": "#eee8c9"
+        },
+        "light": {
+            "accent": "#9a8413",
+            "accentHover": "#7f6d10",
+            "accentSoft": "#6d5d0d",
+            "accentEmphasisFg": "#6d5d0d"
+        }
+    },
+    {
+        "id": "lime",
+        "label": "라임",
+        "swatch": "#add468",
+        "dark": {
+            "accent": "#9cc851",
+            "accentHover": "#aed270",
+            "accentSoft": "#cae2a2",
+            "accentEmphasisFg": "#dfeacc"
+        },
+        "light": {
+            "accent": "#67931a",
+            "accentHover": "#557915",
+            "accentSoft": "#496812",
+            "accentEmphasisFg": "#496812"
+        }
+    },
+    {
+        "id": "green",
+        "label": "그린",
+        "swatch": "#6ecf81",
+        "dark": {
+            "accent": "#57c16d",
+            "accentHover": "#75cc87",
+            "accentSoft": "#a6deb1",
+            "accentEmphasisFg": "#cee8d4"
+        },
+        "light": {
+            "accent": "#1d9034",
+            "accentHover": "#18772b",
+            "accentSoft": "#156625",
+            "accentEmphasisFg": "#156625"
+        }
+    },
+    {
+        "id": "forest",
+        "label": "포레스트",
+        "swatch": "#70cda1",
+        "dark": {
+            "accent": "#5abf90",
+            "accentHover": "#77caa3",
+            "accentSoft": "#a7ddc4",
+            "accentEmphasisFg": "#cfe7dc"
+        },
+        "light": {
+            "accent": "#1a935b",
+            "accentHover": "#15794b",
+            "accentSoft": "#126840",
+            "accentEmphasisFg": "#126840"
+        }
+    },
+    {
+        "id": "mint",
+        "label": "민트",
+        "swatch": "#4ec9b0",
+        "dark": {
+            "accent": "#4ec9b0",
+            "accentHover": "#63d9c2",
+            "accentSoft": "#7fdfcc",
+            "accentEmphasisFg": "#a9ece0"
+        },
+        "light": {
+            "accent": "#0f8a72",
+            "accentHover": "#0b7462",
+            "accentSoft": "#0a5f51",
+            "accentEmphasisFg": "#0a5f51"
+        }
+    },
+    {
+        "id": "teal",
+        "label": "틸",
+        "swatch": "#6ecfcb",
+        "dark": {
+            "accent": "#57c1be",
+            "accentHover": "#75ccc9",
+            "accentSoft": "#a6dedc",
+            "accentEmphasisFg": "#cee8e7"
+        },
+        "light": {
+            "accent": "#189591",
+            "accentHover": "#147b77",
+            "accentSoft": "#116966",
+            "accentEmphasisFg": "#116966"
+        }
+    },
+    {
+        "id": "cyan",
+        "label": "시안",
+        "swatch": "#68bbd4",
+        "dark": {
+            "accent": "#51acc8",
+            "accentHover": "#70bbd2",
+            "accentSoft": "#a2d3e2",
+            "accentEmphasisFg": "#cce3ea"
+        },
+        "light": {
+            "accent": "#157a99",
+            "accentHover": "#11647e",
+            "accentSoft": "#0f566c",
+            "accentEmphasisFg": "#0f566c"
+        }
+    },
+    {
+        "id": "blue",
+        "label": "블루",
+        "swatch": "#a2cfff",
+        "dark": {
+            "accent": "#3f7ebb",
+            "accentHover": "#5392d1",
+            "accentSoft": "#a2cfff",
+            "accentEmphasisFg": "#c6e1ff"
+        },
+        "light": {
+            "accent": "#0062ab",
+            "accentHover": "#005391",
+            "accentSoft": "#00487f",
+            "accentEmphasisFg": "#00487f"
+        }
+    },
+    {
+        "id": "slate",
+        "label": "슬레이트",
+        "swatch": "#8b9cb1",
+        "dark": {
+            "accent": "#7a8a9f",
+            "accentHover": "#929fb0",
+            "accentSoft": "#b8c0cc",
+            "accentEmphasisFg": "#d9dbdd"
+        },
+        "light": {
+            "accent": "#395374",
+            "accentHover": "#2f4460",
+            "accentSoft": "#283a52",
+            "accentEmphasisFg": "#283a52"
+        }
+    },
+    {
+        "id": "indigo",
+        "label": "인디고",
+        "swatch": "#6c6cd0",
+        "dark": {
+            "accent": "#5555c3",
+            "accentHover": "#7373ce",
+            "accentSoft": "#a4a4df",
+            "accentEmphasisFg": "#cecee9"
+        },
+        "light": {
+            "accent": "#1d1d90",
+            "accentHover": "#181877",
+            "accentSoft": "#151566",
+            "accentEmphasisFg": "#151566"
+        }
+    },
+    {
+        "id": "violet",
+        "label": "바이올렛",
+        "swatch": "#b56ecf",
+        "dark": {
+            "accent": "#a557c1",
+            "accentHover": "#b575cc",
+            "accentSoft": "#cfa6de",
+            "accentEmphasisFg": "#e1cee8"
+        },
+        "light": {
+            "accent": "#70218c",
+            "accentHover": "#5c1b74",
+            "accentSoft": "#4f1763",
+            "accentEmphasisFg": "#4f1763"
+        }
+    },
+    {
+        "id": "purple",
+        "label": "퍼플",
+        "swatch": "#c8a2ff",
+        "dark": {
+            "accent": "#8a63d2",
+            "accentHover": "#9d7ce0",
+            "accentSoft": "#c8a2ff",
+            "accentEmphasisFg": "#ddc8ff"
+        },
+        "light": {
+            "accent": "#6c3fbb",
+            "accentHover": "#5b34a0",
+            "accentSoft": "#4e2c8a",
+            "accentEmphasisFg": "#4e2c8a"
+        }
+    },
+    {
+        "id": "magenta",
+        "label": "마젠타",
+        "swatch": "#d06cc6",
+        "dark": {
+            "accent": "#c355b8",
+            "accentHover": "#ce73c5",
+            "accentSoft": "#dfa4d9",
+            "accentEmphasisFg": "#e9cee6"
+        },
+        "light": {
+            "accent": "#8e1f83",
+            "accentHover": "#751a6c",
+            "accentSoft": "#64165d",
+            "accentEmphasisFg": "#64165d"
+        }
+    },
+    {
+        "id": "pink",
+        "label": "핑크",
+        "swatch": "#d864a2",
+        "dark": {
+            "accent": "#cd4c91",
+            "accentHover": "#d56ca4",
+            "accentSoft": "#e4a0c4",
+            "accentEmphasisFg": "#eccbdc"
+        },
+        "light": {
+            "accent": "#931a5b",
+            "accentHover": "#79154b",
+            "accentSoft": "#681240",
+            "accentEmphasisFg": "#681240"
+        }
+    },
+    {
         "id": "rose",
         "label": "로즈",
         "swatch": "#ff9fb0",
@@ -82,6 +303,40 @@
             "accentHover": "#8d3247",
             "accentSoft": "#7a2b3d",
             "accentEmphasisFg": "#7a2b3d"
+        }
+    },
+    {
+        "id": "brown",
+        "label": "브라운",
+        "swatch": "#bf9a7d",
+        "dark": {
+            "accent": "#af886a",
+            "accentHover": "#bd9d84",
+            "accentSoft": "#d4bfaf",
+            "accentEmphasisFg": "#e2dad4"
+        },
+        "light": {
+            "accent": "#7d5231",
+            "accentHover": "#674328",
+            "accentSoft": "#583a22",
+            "accentEmphasisFg": "#583a22"
+        }
+    },
+    {
+        "id": "graphite",
+        "label": "그라파이트",
+        "swatch": "#949ba8",
+        "dark": {
+            "accent": "#858a93",
+            "accentHover": "#9b9fa6",
+            "accentSoft": "#bec1c5",
+            "accentEmphasisFg": "#dbdbdb"
+        },
+        "light": {
+            "accent": "#455168",
+            "accentHover": "#394356",
+            "accentSoft": "#313949",
+            "accentEmphasisFg": "#313949"
         }
     }
 ]

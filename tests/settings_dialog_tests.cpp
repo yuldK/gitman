@@ -1264,8 +1264,9 @@ TEST_CASE("Each settings tab gets its own scroll extent", "[ui][settings-ui][scr
     // 지시(2026-08-23): 탭마다 스크롤을 새로 계산한다. 가장 높은 탭으로 한계를 세면
     // 짧은 탭에서 빈 공간까지 스크롤된다.
     //
-    // 창 420에서는 `외양` 탭만 넘친다 (내용 448 · viewport 268).
-    constexpr float window_height { 420.0f };
+    // 창 520에서는 `외양` 탭만 넘친다 (내용 480 · viewport 368). 나머지 셋은
+    // 238 · 266 · 116으로 넉넉히 들어온다.
+    constexpr float window_height { 520.0f };
     const std::vector<gitman::settings_tab> short_tabs {
         gitman::settings_tab::tools,
         gitman::settings_tab::operations,
@@ -1312,7 +1313,7 @@ TEST_CASE("Switching tabs recalculates the scroll limit at that moment", "[ui][s
 {
     // 긴 탭에서 끝까지 내린 뒤 짧은 탭으로 옮기면, 그 탭의 한계로 다시 계산되어야
     // 한다. 옛 한계가 남으면 빈 공간이 보인다.
-    constexpr float window_height { 420.0f };
+    constexpr float window_height { 520.0f };
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
     controller.handle(gitman::window_metrics_intent { 1280.0f, window_height, 1.0f });
@@ -1334,4 +1335,39 @@ TEST_CASE("Switching tabs recalculates the scroll limit at that moment", "[ui][s
     const auto metrics { gitman::ui::settings_dialog_metrics(*controller.make_view_snapshot()->settings_dialog, window_height) };
     controller.handle(gitman::settings_scroll_intent { 10000.0f });
     REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == metrics.maximum_scroll);
+}
+
+TEST_CASE("An overridden item keeps its badge and controls off the highlight edges", "[ui][settings-ui]")
+{
+    // 지시(2026-08-23): 문서 모드에서 덮어쓴 항목은 블록에 옅은 키 컬러를 까는데
+    // 배지와 버튼이 그 가장자리에 딱 붙어 빡빡해 보였다. 안쪽 여백을 확인한다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+
+    const gitman::ui::ui_element* const badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } }) };
+    REQUIRE(badge != nullptr);
+    const gitman::ui::rect_f badge_bounds { badge->bounds() };
+
+    // 같은 항목의 두 버튼이 블록 오른쪽 끝이다.
+    const gitman::ui::rect_f browse { tree->find({ gitman::ui::ui_element_kind::settings_git_browse })->bounds() };
+    const gitman::ui::rect_f clear { tree->find({ gitman::ui::ui_element_kind::settings_git_clear })->bounds() };
+    const float controls_right { clear.x + clear.width };
+
+    // 강조 바탕이 깔리는 블록의 좌우 끝이다. 배지 왼쪽 끝이 블록 왼쪽 끝이었다.
+    const gitman::ui::rect_f panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    constexpr float content_left { 14.0f + 132.0f + 14.0f };
+    const float block_left { panel.x + content_left };
+    const float block_right { panel.x + panel.width - 14.0f };
+
+    // 위 · 왼쪽 · 오른쪽 모두 여백이 있다. 전에는 셋 다 정확히 0이었다.
+    REQUIRE(badge_bounds.x - block_left > 0.0f);
+    REQUIRE(block_right - controls_right > 0.0f);
+    REQUIRE(browse.x > block_left);
+
+    // 배지는 블록 위쪽 끝에서 떨어져 있다. 블록 top은 그 위 항목의 끝 = 배지 top -
+    // 여백이므로, 배지가 제목 줄보다 위에 있다는 기존 규칙과 함께 확인한다.
+    REQUIRE(badge_bounds.y + badge_bounds.height <= clear.y);
+    REQUIRE(badge_bounds.height >= 16.0f);
 }

@@ -41,7 +41,15 @@ namespace gitman::ui {
         // 자리다.
         constexpr float item_title_height { 22.0f };
         constexpr float item_value_height { 18.0f };
-        constexpr float item_bottom_margin { 8.0f };
+        // 항목 블록의 안쪽 여백이다 (2026-08-23 지시). 문서 모드에서 덮어쓴 항목은
+        // 블록에 옅은 키 컬러를 까는데, 배지와 버튼이 그 가장자리에 딱 붙으면
+        // 빡빡해 보인다. 모든 항목에 같은 값을 주어 행끼리 어긋나지 않게 한다.
+        constexpr float item_top_margin { 6.0f };
+        constexpr float item_bottom_margin { 10.0f };
+        constexpr float item_inner_padding { 8.0f };
+        // 강조 블록끼리 붙지 않게 남기는 세로 간격이다. 블록 높이에서 이만큼 덜
+        // 칠한다 — 아래쪽 여백은 `item_bottom_margin`에서 이 값을 뺀 만큼이다.
+        constexpr float item_block_gap { 4.0f };
         // 제한 시간 항목만 값 줄에 텍스트 박스가 들어가 조금 높다.
         constexpr float timeout_value_height { 26.0f };
         // 문서 모드에서 항목 제목 **바로 위**에 오는 배지 줄이다 (E3). 제목 줄
@@ -193,10 +201,19 @@ namespace gitman::ui {
             return document_mode && item.override_field.has_value() ? badge_row_height : 0.0f;
         }
 
+        // 항목 블록 안에서 글과 컨트롤이 실제로 쓰는 폭이다. 좌우 안쪽 여백을 뺀
+        // 값이며, 높이 계산과 배치가 **같은 값**을 써야 색 격자가 겹치지 않는다.
+        float item_content_width(const float column_width)
+        {
+            const float width { column_width - item_inner_padding * 2.0f };
+            return width > 0.0f ? width : 0.0f;
+        }
+
         // 항목 높이다. 색 격자와 파일 연결 버튼만 기본 높이보다 크다.
+        // `available_width`는 `item_content_width`를 거친 값이다.
         float item_height_for(const item_model& item, const bool document_mode, const float available_width, const std::size_t accent_count)
         {
-            const float base { badge_row_for(item, document_mode) + item_title_height + value_height_for(item.kind) };
+            const float base { item_top_margin + badge_row_for(item, document_mode) + item_title_height + value_height_for(item.kind) };
             if (item.kind == item_kind::accent)
             {
                 const std::size_t rows { swatch_rows(accent_count, available_width) };
@@ -215,7 +232,7 @@ namespace gitman::ui {
             {
                 total += section_header_height;
                 for (const item_model& item : tab.sections[index].items)
-                    total += item_height_for(item, document_mode, column_width, accent_count);
+                    total += item_height_for(item, document_mode, item_content_width(column_width), accent_count);
                 if (index + 1 < tab.sections.size())
                     total += section_gap;
             }
@@ -275,14 +292,20 @@ namespace gitman::ui {
                 top += section_header_height * scale;
                 for (const item_model& item : tab.sections[section].items)
                 {
-                    const float height { item_height_for(item, document_mode, column_width, accent_count) * scale };
+                    const float inner_width { item_content_width(column_width) };
+                    const float height { item_height_for(item, document_mode, inner_width, accent_count) * scale };
                     const float badge_row { badge_row_for(item, document_mode) * scale };
                     item_bounds bounds {};
                     bounds.block = { panel.x + content_left * scale, top, column_width * scale, height };
+
+                    // 글과 컨트롤은 블록 안쪽 여백만큼 들어와 앉는다. 덮어쓴 항목의
+                    // 강조 바탕이 배지·버튼에 딱 붙지 않는다 (2026-08-23 지시).
+                    const float inner_left { bounds.block.x + item_inner_padding * scale };
+                    const float inner_top { top + item_top_margin * scale };
                     // 배지는 항목 제목 바로 위 왼쪽이다 (E3). 없으면 빈 사각형이다.
                     if (badge_row > 0.0f)
-                        bounds.badge = { bounds.block.x, top, badge_width * scale, badge_height * scale };
-                    bounds.title_line = { bounds.block.x, top + badge_row, column_width * scale, item_title_height * scale };
+                        bounds.badge = { inner_left, inner_top, badge_width * scale, badge_height * scale };
+                    bounds.title_line = { inner_left, inner_top + badge_row, inner_width * scale, item_title_height * scale };
                     bounds.value_line = { bounds.title_line.x, bounds.title_line.y + item_title_height * scale, bounds.title_line.width, value_height_for(item.kind) * scale };
                     bounds.controls_right = bounds.title_line.x + bounds.title_line.width;
                     layout.items.push_back(bounds);
@@ -789,7 +812,7 @@ namespace gitman::ui {
                 // (S4.2).
                 if (item.overridden)
                 {
-                    const SkRect block { SkRect::MakeXYWH(bounds.block.x, bounds.block.y, bounds.block.width, bounds.block.height - 4.0f * scale) };
+                    const SkRect block { SkRect::MakeXYWH(bounds.block.x, bounds.block.y, bounds.block.width, bounds.block.height - item_block_gap * scale) };
                     context.canvas.drawRRect(SkRRect::MakeRectXY(block, 4.0f * scale, 4.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.10f)));
                 }
 

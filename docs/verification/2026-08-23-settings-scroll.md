@@ -195,20 +195,20 @@ panel 높이를 가장 높은 탭에 맞추는 규칙(S1.3)을 한계 계산까�
 `settings_dialog_metrics`가 `dialog.active_tab`을 보므로, 탭을 누르면 다음 snapshot이
 이 함수를 다시 거치며 그 시점에 새로 계산된다. offset은 이미 0으로 되돌아간다.
 
-측정값 (창 420, 논리 픽셀):
+측정값 (창 520, 논리 픽셀. 10장의 여백이 들어간 뒤의 값이다):
 
 | 탭 | 내용 높이 | viewport | 스크롤 한계 (고친 뒤) | 고치기 전 |
 | --- | --- | --- | --- | --- |
-| 도구 | 214 | 268 | **0** | 180 |
-| 동작 | 242 | 268 | **0** | 180 |
-| 외양 | 448 | 268 | 180 | 180 |
-| 시스템 | 108 | 268 | **0** | 180 |
+| 도구 | 238 | 368 | **0** | 112 |
+| 동작 | 266 | 368 | **0** | 112 |
+| 외양 | 480 | 368 | 112 | 112 |
+| 시스템 | 116 | 368 | **0** | 112 |
 
-panel 크기(448)와 viewport(268)는 탭이 바뀌어도 그대로다.
+panel 크기(480)와 viewport(368)는 탭이 바뀌어도 그대로다.
 
 ### 9.3 신규 test 2 case
 
-- `Each settings tab gets its own scroll extent` — 창 420에서 외양 탭만 막대를 갖고
+- `Each settings tab gets its own scroll extent` — 창 520에서 외양 탭만 막대를 갖고
   나머지 셋은 한계 0에 막대도 없으며 휠이 아무 일도 하지 않는다. panel 크기와
   viewport는 네 탭에서 같다.
 - `Switching tabs recalculates the scroll limit at that moment` — 긴 탭에서 끝까지
@@ -224,6 +224,73 @@ test를 쓰면서 `build_ui_tree(...)->find(...)` 결과를 변수에 담아 다
 | 항목 | 결과 |
 | --- | --- |
 | `ctest` Debug / Release | **822/822 통과** (양쪽) |
+| `cmake --build --preset vs2026-analysis` | 분석 경고 없음 |
+| 앱 빌드 Debug / Release | 성공 |
+| `check_source_style.ps1` | 466 files 통과 |
+
+---
+
+## 10. 후속 - 항목 블록 안쪽 여백 (2026-08-23 추가 지시)
+
+### 10.1 지시와 원인
+
+"`문서 설정`을 렌더링할 때 배경에 옅은 키 컬러를 깔잖아. 그 때 옵션들이 여백 없이
+빡빡하게 배치되어있는 게 티가 나. 버튼이나 `문서 설정` 배지 등 바깥쪽과 닿는 UI들에
+여백을 좀 줘."
+
+문서 모드에서 덮어쓴 항목은 블록에 옅은 키 컬러를 깐다(`accent_soft` 0.10). 그런데
+배치가 이랬다.
+
+| UI | 자리 | 결과 |
+| --- | --- | --- |
+| 배지 | `block.x`, `block.y` | 블록 **왼쪽 위 모서리에 정확히** 붙음 |
+| 제목·값 글 | `block.x` | 왼쪽 끝에 붙음 |
+| 행 버튼·토글 | `controls_right = block 오른쪽 끝` | 오른쪽 끝에 붙음 |
+
+즉 위·왼쪽·오른쪽 여백이 **정확히 0**이었다.
+
+### 10.2 고친 내용
+
+항목 블록에 안쪽 여백을 뒀다. 강조 바탕이 깔리는 `block` 사각형은 그대로 두고, 글과
+컨트롤만 안으로 들여 앉힌다.
+
+```cpp
+constexpr float item_top_margin { 6.0f };      // 블록 위쪽 여백
+constexpr float item_bottom_margin { 10.0f };  // 8 → 10 (블록 아래쪽 여백 + 블록 간격)
+constexpr float item_inner_padding { 8.0f };   // 블록 좌우 여백
+constexpr float item_block_gap { 4.0f };       // 강조 블록끼리 붙지 않게 덜 칠하는 높이
+```
+
+여백 = 위 6 · 아래 6(`bottom_margin` − `block_gap`) · 좌우 8, 블록 사이 간격 4다.
+
+**모든 항목에 같은 값을 준다.** 덮어쓴 항목만 들여쓰면 행끼리 좌우가 어긋난다.
+문서 모드가 아니어도 항목 간 간격이 조금 넉넉해진다.
+
+색 격자가 겹치지 않도록 `item_content_width()`를 두어 **높이 계산과 배치가 같은 폭**을
+쓰게 했다 — 폭이 좁아지면 색 동그라미가 한 줄 더 늘 수 있다.
+
+### 10.3 대가
+
+항목 하나가 8 높아진다(위 6 + 아래 2). 창 520 기준 탭 내용 높이는
+214 → 238 · 242 → 266 · 448 → 480 · 108 → 116이 되었다. 그만큼 스크롤이 조금 일찍
+시작된다. 조정은 위 네 상수로 한다.
+
+### 10.4 신규 test 1 case
+
+- `An overridden item keeps its badge and controls off the highlight edges` — 배지
+  왼쪽이 블록 왼쪽보다 안쪽이고, 버튼 오른쪽이 블록 오른쪽보다 안쪽이다. 전에는 둘 다
+  정확히 같았다.
+
+기존 `Each settings tab gets its own scroll extent`·`Switching tabs recalculates…`는
+창 높이를 420 → 520으로 올렸다. 항목이 높아지면서 `동작` 탭(266)이 viewport(268)에
+2 차이로 겨우 들어와 test가 아슬아슬해졌기 때문이다 — 여유 있는 높이로 옮겨 앞으로의
+치수 조정에 흔들리지 않게 했다.
+
+### 10.5 재검증
+
+| 항목 | 결과 |
+| --- | --- |
+| `ctest` Debug / Release | **823/823 통과** (양쪽) |
 | `cmake --build --preset vs2026-analysis` | 분석 경고 없음 |
 | 앱 빌드 Debug / Release | 성공 |
 | `check_source_style.ps1` | 466 files 통과 |

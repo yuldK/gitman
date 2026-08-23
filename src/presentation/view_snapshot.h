@@ -107,6 +107,17 @@ namespace gitman {
         std::size_t caret { 0 };
         std::size_t anchor { 0 };
 
+        // IME 조합 중이다 (text-input-and-font-fallback-design E2). 조합 글은 아직
+        // 사용자의 글이 아니므로 `text`에 넣지 않는다 — 실행 취소 기록이 조합 단계
+        // 마다 더럽혀진다. 대신 그 동안 **화면에 보이는 글 전체**를 따로 싣고
+        // element가 그것을 그린다.
+        bool composing { false };
+        std::u8string composition_text {};
+        std::size_t composition_caret { 0 };
+        // `composition_text` 안에서 밑줄을 긋는 구간이다 (UTF-8 byte offset).
+        std::size_t composing_begin { 0 };
+        std::size_t composing_end { 0 };
+
         [[nodiscard]] bool operator==(const text_input_view&) const = default;
     };
 

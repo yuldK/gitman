@@ -104,6 +104,11 @@ namespace gitman {
     // 포인터가 가리킨 자리로 caret을 옮긴다. `extend`면 드래그 중이라 anchor를 둔다.
     void text_edit_place_caret(text_edit_state& state, std::size_t offset, bool extend);
 
+    // IME 조합이 확정한 글로 통째로 바꾼다 (text-input-and-font-fallback-design
+    // E2.3). 한 번의 조합이 실행 취소 **한 덩어리**가 된다 — 조합 중의 중간 단계는
+    // 애초에 초안에 들어오지 않는다. caret은 `caret`에 놓이고 선택은 접힌다.
+    void text_edit_replace_all(text_edit_state& state, std::u8string_view text, std::size_t caret);
+
     // 글을 밖에서 바꾼다 (SVN 노드 선택 같은 외부 갱신). caret·anchor는 범위 안
     // 문자 경계로 되돌아가고, 사용자의 편집이 아니므로 실행 취소 기록을 비운다.
     void text_edit_set_text(text_edit_state& state, std::u8string_view text, bool caret_to_end);

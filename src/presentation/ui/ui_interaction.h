@@ -13,6 +13,11 @@
 #include <vector>
 
 namespace gitman::ui {
+    // 초점을 받아 문자 입력을 소비하는 element다. 새 텍스트 박스는 이 두 함수에만
+    // 더하면 초점·caret·문자·클립보드·IME 배선이 함께 따라온다.
+    [[nodiscard]] bool is_text_input_kind(ui_element_kind kind) noexcept;
+    [[nodiscard]] text_input_target text_input_target_for(ui_element_kind kind) noexcept;
+
     struct interaction_config
     {
         // Win32에서는 GetDoubleClickTime()을 주입한다. test는 고정값을 쓴다.

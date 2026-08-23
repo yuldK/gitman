@@ -139,6 +139,10 @@ namespace gitman {
         // 대상별 초안을 고른 뒤 순수 편집 모델에 맡기고, 그 대상의 규칙(숫자만,
         // 필터 재적용)을 뒤에 덧붙인다.
         void handle_edit_text_input(const edit_text_input_intent& intent);
+        void handle_set_text_composition(const set_text_composition_intent& intent);
+        // 조합 중인 박스의 표시 상태를 `view`에 실어 준다. 대상이 다르면 아무 일도
+        // 하지 않는다 (E2.6).
+        void apply_composition(text_input_target target, text_input_view& view) const;
         // 글꼴 선택 dialog다 (fonts-and-in-app-dialogs-design F2). 목록은 UI thread가
         // 한 번 열거해 보낸 것을 그대로 쓴다.
         // 새 문서 만들기 dialog다 (fonts-and-in-app-dialogs-design F3). 폴더는 UI
@@ -355,6 +359,21 @@ namespace gitman {
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};
+
+        // IME 조합 상태다 (text-input-and-font-fallback-design E2.3). UI thread의
+        // 그림자 문서가 보내 주며, 조합이 끝나면 비워진다. 확정 전의 글이라 어느
+        // 초안(`text_edit_state`)에도 들어가지 않는다 — 실행 취소 기록을 더럽히지
+        // 않기 위해서다.
+        struct text_composition_state
+        {
+            text_input_target target { text_input_target::settings_timeout };
+            std::u8string text {};
+            std::size_t caret { 0 };
+            std::size_t composing_begin { 0 };
+            std::size_t composing_end { 0 };
+        };
+
+        std::optional<text_composition_state> composition_ {};
 
         // 로컬 변경 확인 dialog의 상태다 (field-feedback-design 2.3). 값이 있으면
         // dialog가 열려 있다. 목록·diff는 각각의 조회 operation id로 늦은 결과를

@@ -91,6 +91,24 @@
   못박았다.
 - 신규 test 5 case (`utf8_tests` 2, `text_edit_tests` 3).
 
+### 반영 내용 (5단계)
+
+- **TSF 인라인 조합**: 조합을 시스템 창에 맡기던 것을 그만두고 TSF(`ITextStoreACP2`)로
+  문서를 OS에 열어 준다. 한글 조합이 **텍스트 박스 안에서** 이루어지고 조합 구간에
+  밑줄이 그어지며, 후보 창이 조합 글자 밑에 붙는다.
+- **그림자 문서**: TSF는 문서를 동기로 읽고 쓰는데 Gitman의 글 상태는 logic thread
+  소유다. 초점을 가진 박스 하나의 사본을 UI thread가 갖는 것으로 풀었다 —
+  `interaction_snapshot`과 같은 "입력 정규화 상태"이고 확정된 글의 진실은 언제나
+  logic에 있다. 조합 중에는 logic의 갱신을 미룬다.
+- **실행 취소**: 조합 글은 초안에 들어가지 않고, 확정될 때 `replace_all` 하나로
+  간다. 그래서 **조합 한 번이 실행 취소 한 덩어리**다.
+- **키**: `ITfKeystrokeMgr`로 TIP에 먼저 주고, 먹은 키의 `WM_CHAR`는 흘리지 않는다.
+  기존 `WM_IME_*` 처리는 지웠다 — TSF와 함께 두면 조합이 두 번 그려진다.
+- 신규 test 7 case (`tsf_input_tests` 5, `switch_dialog_tests` 2). TSF session
+  test는 실제 COM으로 한 벌을 세우고 정리한다.
+- 남은 한계: 조합 밑줄이 한 종류, `GetACPFromPoint` 미구현, `GetTextExt`가 가로
+  스크롤 미반영. 검증 기록에 적었다.
+
 ### 영향 요구사항
 
 - REQ-017 (환경설정), NFR (안정성)

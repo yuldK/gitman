@@ -49,6 +49,10 @@ namespace gitman::ui {
         // 글 왼쪽 시작 x와 글이 보이는 안쪽 폭이다.
         [[nodiscard]] float text_left() const noexcept;
         [[nodiscard]] float inner_width() const noexcept;
+        // 지금 화면에 보이는 글과 caret이다. IME 조합 중에는 조합 글이 섞인 쪽이다
+        // (text-input-and-font-fallback-design E2.6).
+        [[nodiscard]] std::u8string_view displayed_text() const noexcept;
+        [[nodiscard]] std::size_t displayed_caret() const noexcept;
         // caret이 보이도록 최소한만 민 가로 스크롤이다. 글·caret·폭만으로 정해진다.
         [[nodiscard]] float scroll_for(const std::function<float(std::u8string_view)>& measure) const;
 

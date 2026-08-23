@@ -338,6 +338,24 @@ namespace gitman {
         break_group(state);
     }
 
+    void text_edit_replace_all(text_edit_state& state, const std::u8string_view text, const std::size_t caret)
+    {
+        if (state.text == text)
+        {
+            state.caret = text_edit_clamp_offset(state.text, caret);
+            state.anchor = state.caret;
+            return;
+        }
+
+        // 조합 한 번이 실행 취소 한 덩어리다. `replace`라 절대 묶이지 않는다.
+        begin_edit(state, text_edit_group::replace);
+        state.text = text;
+        state.caret = text_edit_clamp_offset(state.text, caret);
+        state.anchor = state.caret;
+        end_edit(state);
+        state.group = text_edit_group::none;
+    }
+
     void text_edit_set_text(text_edit_state& state, const std::u8string_view text, const bool caret_to_end)
     {
         // 사용자의 편집이 아니라 밖에서 온 값이다. 되돌릴 것이 없다.

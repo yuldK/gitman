@@ -335,8 +335,31 @@ namespace gitman {
         cut,
         // 글 전체를 비운다 (필터 지우기 버튼).
         clear,
+        // IME 조합이 확정한 글 전체다 (E2.3). `text`가 새 글, `offset`이 caret이며
+        // 한 번의 조합이 실행 취소 한 덩어리가 된다.
+        replace_all,
         // `offset`으로 caret을 옮긴다. `extend`면 드래그 중이라 anchor를 둔다.
         place_caret,
+    };
+
+    // IME 조합 상태를 UI thread가 알린다 (text-input-and-font-fallback-design E2.3).
+    // TSF는 문서를 동기로 읽고 쓰므로 초점을 가진 박스의 그림자 문서를 UI thread가
+    // 갖는다. 그 그림자가 바뀔 때마다 이 intent가 온다.
+    //
+    // 조합 글은 아직 사용자의 글이 아니라 `text_edit_state`에 넣지 않는다 — 실행
+    // 취소 기록이 조합 단계마다 더럽혀진다. 확정되면 평범한 `edit_text_input_intent`
+    // (insert)가 따로 온다.
+    struct set_text_composition_intent
+    {
+        text_input_target target { text_input_target::settings_timeout };
+        // 조합 중 화면에 보이는 글 전체다 (확정된 글 + 조합 글).
+        std::u8string text {};
+        std::size_t caret { 0 };
+        // `text` 안에서 밑줄을 그을 구간이다.
+        std::size_t composing_begin { 0 };
+        std::size_t composing_end { 0 };
+        // false면 조합이 끝났다는 뜻이라 상태를 버린다.
+        bool composing { false };
     };
 
     struct edit_text_input_intent
@@ -694,7 +717,7 @@ namespace gitman {
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
         reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
-        switch_dialog_scroll_intent, edit_text_input_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent,
+        switch_dialog_scroll_intent, edit_text_input_intent, set_text_composition_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent,
         confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event, open_generate_document_intent, set_generate_scan_root_intent,
         set_generate_location_intent, toggle_generate_same_folder_intent, confirm_generate_document_intent, cancel_generate_document_intent, begin_discovery_intent, toggle_discovery_candidate_intent,
         confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,

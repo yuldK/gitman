@@ -72,6 +72,7 @@ add_executable(gitman_tests
     switch_validation_tests.cpp
     task_scheduler_tests.cpp
     text_edit_tests.cpp
+    tsf_input_tests.cpp
     ui_element_tests.cpp
     ui_interaction_tests.cpp
     ui_theme_tests.cpp

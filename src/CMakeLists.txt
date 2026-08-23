@@ -283,6 +283,8 @@ add_library(gitman_lib STATIC
     platform/win32/win32_log_file_system.h
     platform/win32/win32_process_runner.cpp
     platform/win32/win32_process_runner.h
+    platform/win32/win32_tsf_input.cpp
+    platform/win32/win32_tsf_input.h
     platform/win32/win32_text_transcoder.cpp
     platform/win32/win32_text_transcoder.h
     platform/win32/win32_vcs_file_probe.cpp

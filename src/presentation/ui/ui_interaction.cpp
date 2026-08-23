@@ -32,34 +32,32 @@ namespace gitman::ui {
             return std::sqrt(delta_x * delta_x + delta_y * delta_y);
         }
 
-        // 초점을 받아 문자 입력을 소비하는 element다. 새 텍스트 박스는 이 목록에만
-        // 더하면 초점·caret·문자·클립보드 배선이 함께 따라온다.
-        [[nodiscard]] bool is_text_input_kind(const ui_element_kind kind) noexcept
-        {
-            return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input || kind == ui_element_kind::font_dialog_query_input
-                || kind == ui_element_kind::generate_dialog_name_input;
-        }
-
-        [[nodiscard]] text_input_target target_for_kind(const ui_element_kind kind) noexcept
-        {
-            if (kind == ui_element_kind::switch_dialog_query_input)
-                return text_input_target::switch_query;
-            if (kind == ui_element_kind::font_dialog_query_input)
-                return text_input_target::font_filter;
-            if (kind == ui_element_kind::generate_dialog_name_input)
-                return text_input_target::generate_document_name;
-            return text_input_target::settings_timeout;
-        }
-
         [[nodiscard]] input_action text_edit_action(const ui_element_kind kind, const text_edit_command command, const bool extend = false)
         {
             edit_text_input_intent intent {};
-            intent.target = target_for_kind(kind);
+            intent.target = text_input_target_for(kind);
             intent.command = command;
             intent.extend = extend;
             return input_action { logic_message { std::move(intent) } };
         }
     } // namespace
+
+    bool is_text_input_kind(const ui_element_kind kind) noexcept
+    {
+        return kind == ui_element_kind::settings_timeout_input || kind == ui_element_kind::switch_dialog_query_input || kind == ui_element_kind::font_dialog_query_input
+            || kind == ui_element_kind::generate_dialog_name_input;
+    }
+
+    text_input_target text_input_target_for(const ui_element_kind kind) noexcept
+    {
+        if (kind == ui_element_kind::switch_dialog_query_input)
+            return text_input_target::switch_query;
+        if (kind == ui_element_kind::font_dialog_query_input)
+            return text_input_target::font_filter;
+        if (kind == ui_element_kind::generate_dialog_name_input)
+            return text_input_target::generate_document_name;
+        return text_input_target::settings_timeout;
+    }
 
     interaction_controller::interaction_controller(const interaction_config config) noexcept
         : config_ { config }
@@ -170,7 +168,7 @@ namespace gitman::ui {
                         return {};
 
                     edit_text_input_intent intent {};
-                    intent.target = target_for_kind(kind);
+                    intent.target = text_input_target_for(kind);
                     intent.command = text_edit_command::insert;
                     intent.text = text_edit_encode_utf8(value.character);
                     return { input_action { logic_message { std::move(intent) } } };
@@ -405,7 +403,7 @@ namespace gitman::ui {
             return {};
 
         edit_text_input_intent intent {};
-        intent.target = target_for_kind(element.id().kind);
+        intent.target = text_input_target_for(element.id().kind);
         intent.command = select_word ? text_edit_command::select_word : text_edit_command::place_caret;
         intent.offset = *offset;
         intent.extend = extend;
@@ -455,7 +453,7 @@ namespace gitman::ui {
             if (event.control)
                 return copy_focused_selection(kind, false);
             if (event.shift)
-                return std::vector<input_action> { input_action { clipboard_paste_request { target_for_kind(kind) } } };
+                return std::vector<input_action> { input_action { clipboard_paste_request { text_input_target_for(kind) } } };
             return std::nullopt;
         case key_code::key_z:
             if (event.control)
@@ -476,7 +474,7 @@ namespace gitman::ui {
             return copy_focused_selection(kind, event.key == key_code::key_x);
         case key_code::key_v:
             if (event.control)
-                return std::vector<input_action> { input_action { clipboard_paste_request { target_for_kind(kind) } } };
+                return std::vector<input_action> { input_action { clipboard_paste_request { text_input_target_for(kind) } } };
             return std::nullopt;
         default:
             break;

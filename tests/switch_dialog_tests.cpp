@@ -1116,3 +1116,70 @@ TEST_CASE("The query bar routes undo, word delete and the legacy clipboard keys"
     static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3110) }));
     REQUIRE(command_of(controller.process(gitman::ui::pointer_pressed_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3200) })) == gitman::text_edit_command::select_all);
 }
+
+TEST_CASE("An IME composition shows in the box without touching the draft", "[logic][switch-ui][ime]")
+{
+    // TSF가 조합 중인 글을 보내면 박스에는 보이지만 초안(text_edit_state)에는
+    // 들어가지 않는다 (text-input-and-font-fallback-design E2.3). 조합 단계마다
+    // 실행 취소 기록이 더럽혀지면 쓸 수 없다.
+    dialog_fixture fixture {};
+
+    gitman::set_text_composition_intent composing {};
+    composing.target = gitman::text_input_target::switch_query;
+    composing.text = u8"ㅎ";
+    composing.caret = 3u;
+    composing.composing_begin = 0u;
+    composing.composing_end = 3u;
+    composing.composing = true;
+    fixture.controller.handle(composing);
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog.has_value());
+    const gitman::text_input_view& query { view->switch_dialog->query };
+    REQUIRE(query.composing);
+    REQUIRE(query.composition_text == u8"ㅎ");
+    REQUIRE(query.composing_begin == 0u);
+    REQUIRE(query.composing_end == 3u);
+    // 확정된 글은 아직 비어 있다.
+    REQUIRE(query.text.empty());
+}
+
+TEST_CASE("Ending a composition clears the overlay and commits as one undo step", "[logic][switch-ui][ime]")
+{
+    dialog_fixture fixture {};
+
+    gitman::set_text_composition_intent composing {};
+    composing.target = gitman::text_input_target::switch_query;
+    composing.text = u8"한";
+    composing.caret = 3u;
+    composing.composing_begin = 0u;
+    composing.composing_end = 3u;
+    composing.composing = true;
+    fixture.controller.handle(composing);
+
+    // 확정된다: TSF가 조합을 끝내고 완성된 글을 초안으로 보낸다.
+    gitman::edit_text_input_intent commit {};
+    commit.target = gitman::text_input_target::switch_query;
+    commit.command = gitman::text_edit_command::replace_all;
+    commit.text = u8"한";
+    commit.offset = 3u;
+    fixture.controller.handle(commit);
+
+    gitman::set_text_composition_intent done {};
+    done.target = gitman::text_input_target::switch_query;
+    done.composing = false;
+    fixture.controller.handle(done);
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    const gitman::text_input_view& query { view->switch_dialog->query };
+    REQUIRE(query.composing == false);
+    REQUIRE(query.text == u8"한");
+    REQUIRE(query.caret == 3u);
+
+    // 조합 한 번이 실행 취소 한 덩어리다.
+    gitman::edit_text_input_intent undo {};
+    undo.target = gitman::text_input_target::switch_query;
+    undo.command = gitman::text_edit_command::undo;
+    fixture.controller.handle(undo);
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->query.text.empty());
+}

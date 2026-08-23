@@ -74,9 +74,23 @@ namespace gitman::ui {
         return width > 0.0f ? width : 0.0f;
     }
 
+    std::u8string_view text_input_element::displayed_text() const noexcept
+    {
+        // 조합 중에는 조합 글이 섞인 쪽을 그린다 (E2.6). 확정된 글은 그 동안
+        // logic의 초안에 그대로 남아 있다.
+        return value_.composing ? std::u8string_view { value_.composition_text } : std::u8string_view { value_.text };
+    }
+
+    std::size_t text_input_element::displayed_caret() const noexcept
+    {
+        const std::u8string_view text { displayed_text() };
+        const std::size_t caret { value_.composing ? value_.composition_caret : value_.caret };
+        return caret < text.size() ? caret : text.size();
+    }
+
     float text_input_element::scroll_for(const std::function<float(std::u8string_view)>& measure) const
     {
-        const std::u8string_view text { value_.text };
+        const std::u8string_view text { displayed_text() };
         const float total { measure(text) };
         const float visible { inner_width() };
         float maximum { total - visible };
@@ -85,8 +99,7 @@ namespace gitman::ui {
 
         // caret이 칸 밖으로 나가지 않을 만큼만 민다. 값은 글·caret·폭만으로 정해져
         // 그리기와 hit test가 같은 결과를 낸다.
-        const std::size_t caret { value_.caret < text.size() ? value_.caret : text.size() };
-        const float caret_x { measure(text.substr(0, caret)) };
+        const float caret_x { measure(text.substr(0, displayed_caret())) };
         float scroll { caret_x - visible };
         if (scroll < 0.0f)
             scroll = 0.0f;
@@ -110,6 +123,7 @@ namespace gitman::ui {
 
     std::optional<std::size_t> text_input_element::offset_at(const float x, const text_measurer& measurer) const
     {
+        // 조합 중에는 포인터로 caret을 옮기지 않는다 — 조합은 IME가 소유한다.
         const std::u8string_view text { value_.text };
         if (measurer == nullptr)
             return text.size();
@@ -157,7 +171,8 @@ namespace gitman::ui {
         const float baseline { box.y + centered_text_baseline(font, box.height) };
         const float visible { inner_width() };
 
-        if (value_.text.empty())
+        const std::u8string_view text { displayed_text() };
+        if (text.empty())
         {
             // 빈 값의 뜻은 안내가 설명한다. 초점이 없을 때만 흐리게 그린다.
             if (focused == false && placeholder_.empty() == false)
@@ -172,10 +187,10 @@ namespace gitman::ui {
         // 편집 중에는 잘린 표시보다 caret 주변이 보이는 것이 중요하다.
         const auto measure { [&font](const std::u8string_view value) { return measure_text(value, font); } };
         const float scroll { scroll_for(measure) };
-        const std::u8string_view text { value_.text };
-        const std::size_t selection_begin { value_.caret < value_.anchor ? value_.caret : value_.anchor };
-        const std::size_t selection_end { value_.caret < value_.anchor ? value_.anchor : value_.caret };
-        const float caret_x { left - scroll + measure(text.substr(0, value_.caret < text.size() ? value_.caret : text.size())) };
+        // 조합 중에는 선택 대신 조합 구간에 밑줄을 긋는다 — 그 동안 선택은 IME의 것이다.
+        const std::size_t selection_begin { value_.composing ? 0u : (value_.caret < value_.anchor ? value_.caret : value_.anchor) };
+        const std::size_t selection_end { value_.composing ? 0u : (value_.caret < value_.anchor ? value_.anchor : value_.caret) };
+        const float caret_x { left - scroll + measure(text.substr(0, displayed_caret())) };
 
         context.canvas.save();
         context.canvas.clipRect(SkRect::MakeXYWH(left, box.y, visible, box.height));
@@ -191,6 +206,17 @@ namespace gitman::ui {
             if (enabled() == false)
                 foreground.setAlphaf(0.45f);
             draw_text(context.canvas, text, left - scroll, baseline, font, foreground);
+        }
+
+        // 조합 구간은 밑줄로 표시한다 (E2.6). 아직 확정되지 않은 글이라는 뜻이다.
+        if (value_.composing && value_.composing_end > value_.composing_begin)
+        {
+            const std::size_t underline_begin { value_.composing_begin < text.size() ? value_.composing_begin : text.size() };
+            const std::size_t underline_end { value_.composing_end < text.size() ? value_.composing_end : text.size() };
+            const float from { left - scroll + measure(text.substr(0, underline_begin)) };
+            const float to { left - scroll + measure(text.substr(0, underline_end)) };
+            const float underline_top { baseline + 2.0f * scale };
+            context.canvas.drawRect(SkRect::MakeXYWH(from, underline_top, to - from, 1.0f * scale), solid_paint(context.palette.accent));
         }
 
         // caret은 초점을 받은 동안 caret 자리에서 깜빡인다. 초점을 받은 시각이 위상

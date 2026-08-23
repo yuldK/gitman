@@ -11,13 +11,16 @@
 #include "platform/win32/win32_file_association.h"
 
 #include "platform/win32/win32_fonts.h"
+#include "platform/win32/win32_tsf_input.h"
 
 #include "domain/path_syntax.h"
 #include "presentation/log_presentation.h"
 #include "presentation/ui/caption_element.h"
 #include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/ui_events.h"
+#include "presentation/ui/ui_interaction.h"
 
+#include "include/core/SkFont.h"
 #include "include/core/SkTypeface.h"
 
 #include <dwmapi.h>
@@ -205,7 +208,7 @@ namespace gitman::win32 {
         static_assert((custom_window_style & WS_CAPTION) == 0);
         static_assert((custom_window_style & retained_window_styles) == retained_window_styles);
 
-        class application_window
+        class application_window final : public tsf_host
         {
         public:
             application_window(const HINSTANCE instance, application_options options) noexcept
@@ -223,9 +226,82 @@ namespace gitman::win32 {
             application_window& operator=(const application_window&) = delete;
             application_window& operator=(application_window&&) = delete;
 
-            ~application_window()
+            ~application_window() override
             {
+                // TSF는 창보다 먼저 정리한다. 조합 중이었다면 확정된 글이 logic으로
+                // 간다.
+                tsf_.reset();
                 ui::set_font_fallback(nullptr);
+            }
+
+            // --- tsf_host (E2.3) ---
+
+            [[nodiscard]] std::optional<text_input_target> focused_text_target() const override
+            {
+                if (runtime_ == nullptr)
+                    return std::nullopt;
+                const ui::ui_element_kind kind { runtime_->acquire_interaction().focused_input.kind };
+                if (ui::is_text_input_kind(kind) == false)
+                    return std::nullopt;
+                return ui::text_input_target_for(kind);
+            }
+
+            [[nodiscard]] shadow_document committed_document() const override
+            {
+                const ui::ui_element* const element { focused_text_element() };
+                if (element == nullptr)
+                    return {};
+                const std::optional<ui::text_input_snapshot> value { element->text_input() };
+                if (value.has_value() == false)
+                    return {};
+                return { std::u8string { value->text }, value->caret, value->anchor };
+            }
+
+            [[nodiscard]] std::optional<RECT> text_screen_rect(const std::size_t begin, const std::size_t end) const override
+            {
+                const ui::ui_element* const element { focused_text_element() };
+                if (element == nullptr)
+                    return std::nullopt;
+                const std::optional<ui::text_input_snapshot> value { element->text_input() };
+                if (value.has_value() == false)
+                    return std::nullopt;
+
+                // 박스 안쪽 여백과 글자 크기는 text_input_element와 같은 값을 쓴다.
+                const float scale { static_cast<float>(dpi_) / 96.0f };
+                const SkFont font { win32::configured_ui_typeface(), 11.0f * scale };
+                const ui::rect_f box { element->bounds() };
+                const float left { box.x + 7.0f * scale };
+                const std::u8string_view text { value->text };
+                const std::size_t from { begin < text.size() ? begin : text.size() };
+                const std::size_t to { end < text.size() ? end : text.size() };
+
+                // 가로 스크롤은 반영하지 않는다. 한 줄 박스라 글이 칸을 넘기 전에는
+                // 정확하고, 넘긴 뒤에는 후보 창이 조금 왼쪽에 뜬다.
+                RECT rect {};
+                rect.left = static_cast<LONG>(left + ui::measure_text(text.substr(0, from), font));
+                rect.right = static_cast<LONG>(left + ui::measure_text(text.substr(0, to > from ? to : from), font));
+                rect.top = static_cast<LONG>(box.y);
+                rect.bottom = static_cast<LONG>(box.y + box.height);
+                if (rect.right < rect.left)
+                    rect.right = rect.left;
+
+                POINT top_left { rect.left, rect.top };
+                POINT bottom_right { rect.right, rect.bottom };
+                if (ClientToScreen(window_, &top_left) == FALSE || ClientToScreen(window_, &bottom_right) == FALSE)
+                    return std::nullopt;
+                return RECT { top_left.x, top_left.y, bottom_right.x, bottom_right.y };
+            }
+
+            void post_composition(set_text_composition_intent intent) override
+            {
+                if (runtime_ != nullptr)
+                    runtime_->post_logic(logic_message { std::move(intent) });
+            }
+
+            void post_edit(edit_text_input_intent intent) override
+            {
+                if (runtime_ != nullptr)
+                    runtime_->post_logic(logic_message { std::move(intent) });
             }
 
             [[nodiscard]] bool create(std::u8string& error)
@@ -276,6 +352,11 @@ namespace gitman::win32 {
                     font_families_event families {};
                     families.families = installed_font_families();
                     runtime_->post_logic(logic_message { std::move(families) });
+
+                    // IME 조합을 박스 안에서 하려면 문서를 OS에 열어 줘야 한다
+                    // (E2). 만들지 못하면 조용히 없이 간다 — 조합은 시스템 창이
+                    // 그리고 확정 글만 WM_CHAR로 온다.
+                    tsf_ = tsf_input_session::create(window_, *this);
                 }
                 return true;
             }
@@ -414,7 +495,15 @@ namespace gitman::win32 {
                         return 0;
                     }
                     break;
+                case WM_KEYUP:
+                    // TIP이 먼저 볼 기회를 준다 (E2.5). 먹었으면 앱은 손대지 않는다.
+                    if (tsf_ != nullptr && tsf_->handle_key(message, word_parameter, long_parameter))
+                        return 0;
+                    break;
                 case WM_KEYDOWN:
+                    // 조합 키는 TIP의 것이다. 먹지 않은 키만 앱의 단축키로 간다.
+                    if (tsf_ != nullptr && tsf_->handle_key(message, word_parameter, long_parameter))
+                        return 0;
                     if (runtime_ != nullptr)
                     {
                         const bool control { (GetKeyState(VK_CONTROL) & 0x8000) != 0 };
@@ -429,17 +518,20 @@ namespace gitman::win32 {
                         }
                     }
                     break;
-                case WM_IME_STARTCOMPOSITION:
-                case WM_IME_COMPOSITION:
-                    // 한글 같은 조합 입력의 조합 창을 caret 자리로 옮긴다. 조합 자체는
-                    // 시스템 IME가 그리고 완성된 글자만 WM_CHAR로 온다.
-                    place_composition_window();
-                    break;
+                case WM_IME_SETCONTEXT:
+                    // TSF가 조합을 그리므로 시스템 조합 창 UI를 끈다 (E2.5). 켜 두면
+                    // 같은 글자가 두 번 그려진다.
+                    return DefWindowProcW(window_, message, word_parameter, long_parameter & ~static_cast<LPARAM>(ISC_SHOWUICOMPOSITIONWINDOW));
                 case WM_CHAR:
                     // 텍스트 박스 입력이다 (field-feedback-design 1.3). BMP 밖 문자는
                     // surrogate **쌍**으로 두 번에 나눠 오므로 앞쪽을 잠시 들고 있다가
                     // 뒤쪽이 오면 합쳐 codepoint 하나로 보낸다 (E2.7). 이모지 패널
                     // (Win+.)이 이 경로다.
+                    //
+                    // 조합 중에는 흘리지 않는다 — 확정 글은 TSF가 이미 보냈고, 여기서
+                    // 또 넣으면 같은 글자가 두 번 들어간다.
+                    if (tsf_ != nullptr && tsf_->composing())
+                        return 0;
                     if (runtime_ != nullptr)
                     {
                         if (const std::optional<char32_t> codepoint { merge_utf16_code_unit(pending_high_surrogate_, static_cast<char16_t>(word_parameter)) }; codepoint.has_value())
@@ -1199,37 +1291,26 @@ namespace gitman::win32 {
                     state.interaction.hover_started_at = nc_hover_since_;
                 }
 
+                // 초점과 확정된 글이 바뀌었을 수 있다. 조합 중이면 session이 미룬다.
+                if (tsf_ != nullptr)
+                    tsf_->synchronize();
+
                 schedule_tooltip_repaint(tree.get(), state.interaction);
                 schedule_caret_repaint(state.interaction);
                 schedule_elapsed_repaint();
                 return renderer_->render(state, error);
             }
 
-            // 조합 창(IME)을 초점을 가진 텍스트 박스 아래로 옮긴다. 자리를 잡아 주지
-            // 않으면 조합 중인 글자가 창 구석에 떨어져 보인다. 초점이 없으면 아무
-            // 일도 하지 않아 시스템 기본 위치가 그대로 쓰인다.
-            void place_composition_window() const noexcept
+            // 초점을 가진 텍스트 박스 element다. tree가 없거나 초점이 없으면 nullptr다.
+            [[nodiscard]] const ui::ui_element* focused_text_element() const
             {
                 if (runtime_ == nullptr)
-                    return;
+                    return nullptr;
                 const ui::interaction_snapshot interaction { runtime_->acquire_interaction() };
-                if (interaction.focused_input.kind == ui::ui_element_kind::none)
-                    return;
+                if (ui::is_text_input_kind(interaction.focused_input.kind) == false)
+                    return nullptr;
                 const std::shared_ptr<const ui::ui_tree> tree { runtime_->acquire_ui_tree() };
-                const ui::ui_element* const element { tree != nullptr ? tree->find(interaction.focused_input) : nullptr };
-                if (element == nullptr)
-                    return;
-
-                const HIMC context { ImmGetContext(window_) };
-                if (context == nullptr)
-                    return;
-                const ui::rect_f box { element->bounds() };
-                COMPOSITIONFORM form {};
-                form.dwStyle = CFS_POINT;
-                form.ptCurrentPos.x = static_cast<LONG>(box.x);
-                form.ptCurrentPos.y = static_cast<LONG>(box.y + box.height);
-                static_cast<void>(ImmSetCompositionWindow(context, &form));
-                static_cast<void>(ImmReleaseContext(window_, context));
+                return tree != nullptr ? tree->find(interaction.focused_input) : nullptr;
             }
 
             // 클립보드 요청을 실행한다 (switch-dialog-query-bar-design R2.5).
@@ -1410,6 +1491,9 @@ namespace gitman::win32 {
 
             // `WM_CHAR`로 앞쪽만 도착한 surrogate다 (E2.7). UI thread 전용이다.
             std::optional<char16_t> pending_high_surrogate_ {};
+            // TSF 연결이다 (E2.2). 만들지 못하면 nullptr이고 앱은 `WM_CHAR` 경로만으로
+            // 동작한다 — 조합은 시스템 창이 그린다.
+            std::unique_ptr<tsf_input_session> tsf_ {};
             registry_font_resolver font_resolver_ {};
             std::unique_ptr<renderer_host> renderer_ {};
             std::unique_ptr<app_runtime> runtime_ {};

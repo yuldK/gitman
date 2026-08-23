@@ -215,6 +215,8 @@ namespace gitman {
                     switch_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, switch_dialog_scroll_intent>)
                     handle_switch_dialog_scroll(value.delta);
+                else if constexpr (std::is_same_v<value_type, set_text_composition_intent>)
+                    handle_set_text_composition(value);
                 else if constexpr (std::is_same_v<value_type, edit_text_input_intent>)
                     handle_edit_text_input(value);
                 else if constexpr (std::is_same_v<value_type, submit_switch_query_intent>)
@@ -1601,6 +1603,7 @@ namespace gitman {
         dialog.svn_path = settings_dialog_->svn_path;
 
         dialog.timeout = { settings_dialog_->timeout.text, settings_dialog_->timeout.caret, settings_dialog_->timeout.anchor };
+        apply_composition(text_input_target::settings_timeout, dialog.timeout);
 
         // 글꼴은 초안이 아니라 앱 설정을 곧바로 보여 준다 (F2.5).
 
@@ -2030,6 +2033,40 @@ namespace gitman {
             submit_svn_directory_query(*progress.query_url);
     }
 
+    void logic_controller::handle_set_text_composition(const set_text_composition_intent& intent)
+    {
+        // 조합이 끝났으면 상태를 버린다. 확정된 글은 별도의 insert intent로 온다.
+        if (intent.composing == false)
+        {
+            if (composition_.has_value() && composition_->target == intent.target)
+                composition_.reset();
+            return;
+        }
+
+        // 조합 글은 초안에 넣지 않는다 (E2.3). 화면에 보일 글만 따로 들고 있다가
+        // 조합이 끝나면 버린다.
+        text_composition_state state {};
+        state.target = intent.target;
+        state.text = intent.text;
+        state.caret = text_edit_clamp_offset(state.text, intent.caret);
+        state.composing_begin = text_edit_clamp_offset(state.text, intent.composing_begin);
+        state.composing_end = text_edit_clamp_offset(state.text, intent.composing_end);
+        if (state.composing_end < state.composing_begin)
+            state.composing_end = state.composing_begin;
+        composition_ = std::move(state);
+    }
+
+    void logic_controller::apply_composition(const text_input_target target, text_input_view& view) const
+    {
+        if (composition_.has_value() == false || composition_->target != target)
+            return;
+        view.composing = true;
+        view.composition_text = composition_->text;
+        view.composition_caret = composition_->caret;
+        view.composing_begin = composition_->composing_begin;
+        view.composing_end = composition_->composing_end;
+    }
+
     void logic_controller::handle_edit_text_input(const edit_text_input_intent& intent)
     {
         // 닫힌 뒤 도착한 키 입력은 버린다. 초안을 가진 dialog가 대상이다.
@@ -2075,6 +2112,11 @@ namespace gitman {
         case text_edit_command::clear:
             text_edit_select_all(*state);
             static_cast<void>(text_edit_erase_selection(*state));
+            break;
+        case text_edit_command::replace_all:
+            // IME 조합이 확정한 글이다 (E2.3). 조합 중의 중간 단계는 초안에 들어오지
+            // 않았으므로 조합 한 번이 실행 취소 한 덩어리가 된다.
+            text_edit_replace_all(*state, intent.text, intent.offset);
             break;
         case text_edit_command::move_left:
             text_edit_move(*state, text_edit_motion::left, intent.extend);
@@ -2793,6 +2835,7 @@ namespace gitman {
         {
             generate_document_dialog_view dialog {};
             dialog.name = { generate_dialog_->name.text, generate_dialog_->name.caret, generate_dialog_->name.anchor };
+            apply_composition(text_input_target::generate_document_name, dialog.name);
             dialog.name_placeholder = u8"확장자 없이 문서 이름";
             dialog.scan_root = generate_dialog_->scan_root;
             dialog.location = generate_dialog_->location;
@@ -2825,6 +2868,7 @@ namespace gitman {
             font_dialog_view dialog {};
             dialog.title = font_dialog_->code ? u8"코드 글꼴 선택" : u8"UI 글꼴 선택";
             dialog.query = { font_dialog_->query.text, font_dialog_->query.caret, font_dialog_->query.anchor };
+            apply_composition(text_input_target::font_filter, dialog.query);
             dialog.query_placeholder = u8"글꼴 이름으로 거르기";
             dialog.query_action_enabled = dialog.query.text.empty() == false;
             dialog.preview = std::u8string { font_preview_text };
@@ -2923,6 +2967,7 @@ namespace gitman {
                 // 질의 막대다 (switch-dialog-query-bar-design Q1). Git은 필터,
                 // SVN은 실제 경로 주소 막대라 문구와 우측 버튼의 몫이 다르다.
                 dialog.query = { switch_dialog_->query.text, switch_dialog_->query.caret, switch_dialog_->query.anchor };
+                apply_composition(text_input_target::switch_query, dialog.query);
                 dialog.query_enabled = switch_dialog_->loading == false && switch_dialog_->executing == false;
                 if (dialog.svn_browser)
                 {

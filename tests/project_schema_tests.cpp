@@ -422,3 +422,35 @@ TEST_CASE("Schema parser warns about unknown fields and preserves source bytes",
     REQUIRE(project_field->source.project_id.has_value());
     REQUIRE(u8_equal(*project_field->source.project_id, u8"alpha"));
 }
+
+TEST_CASE("Schema parser reads the document font override", "[workspace][schema][settings][font]")
+{
+    // 정의한 키만 override다 (2026-08-23 지시).
+    constexpr std::u8string_view source { u8"{\"schema_version\":1,\"fonts\":{\"code\":\"Cascadia Code\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+    REQUIRE(result.document.has_value());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE(result.document->fonts.code_family == std::optional<std::u8string> { u8"Cascadia Code" });
+    REQUIRE_FALSE(result.document->fonts.ui_family.has_value());
+
+    // 빈 이름도 정의다 — "이 문서는 내장 글꼴을 쓴다"는 뜻이라 앱 설정을 따르는
+    // 것과 구별되어야 한다.
+    constexpr std::u8string_view embedded { u8"{\"schema_version\":1,\"fonts\":{\"ui\":\"\"},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result embedded_result { gitman::parse_workspace_document_json(embedded, test_document_path) };
+    REQUIRE(embedded_result.document.has_value());
+    REQUIRE(embedded_result.document->fonts.ui_family == std::optional<std::u8string> { u8"" });
+
+    // 값이 문자열이 아니면 경고 하나를 남기고 앱 설정을 따른다. 문서 열기는 막지 않는다.
+    constexpr std::u8string_view broken { u8"{\"schema_version\":1,\"fonts\":{\"ui\":7},\"projects\":[]}" };
+    const gitman::workspace_document_parse_result broken_result { gitman::parse_workspace_document_json(broken, test_document_path) };
+    REQUIRE(broken_result.document.has_value());
+    REQUIRE_FALSE(broken_result.has_errors());
+    REQUIRE(broken_result.has_warnings());
+    REQUIRE_FALSE(broken_result.document->fonts.ui_family.has_value());
+
+    // fonts가 없는 문서는 그대로 앱 설정을 따른다.
+    constexpr std::u8string_view without { u8"{\"schema_version\":1,\"projects\":[]}" };
+    const gitman::workspace_document_parse_result without_result { gitman::parse_workspace_document_json(without, test_document_path) };
+    REQUIRE(without_result.document.has_value());
+    REQUIRE(without_result.document->fonts.empty());
+}

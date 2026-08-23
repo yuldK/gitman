@@ -150,6 +150,35 @@ namespace gitman {
                 root["appearance"] = std::move(value);
         }
 
+        // 글꼴도 `appearance`와 같은 규칙이다 (2026-08-23 지시). **빈 문자열도
+        // 정의다** — "이 문서는 내장 글꼴을 쓴다"는 뜻이라 키를 남긴다.
+        void write_fonts(json& root, const font_overrides& fonts)
+        {
+            const auto existing { root.find("fonts") };
+            const bool had_fonts { existing != root.end() && existing->is_object() };
+            if (had_fonts == false && fonts.empty())
+            {
+                if (existing != root.end())
+                    root.erase("fonts");
+                return;
+            }
+
+            json value { had_fonts ? *existing : json::object() };
+            if (fonts.ui_family.has_value())
+                value["ui"] = as_string(*fonts.ui_family);
+            else
+                value.erase("ui");
+            if (fonts.code_family.has_value())
+                value["code"] = as_string(*fonts.code_family);
+            else
+                value.erase("code");
+
+            if (value.empty())
+                root.erase("fonts");
+            else
+                root["fonts"] = std::move(value);
+        }
+
         // 창 배치는 표시 상태라 문서에 없던 값을 새로 만들지 않고, 문서에 있던 값을
         // 지우지도 않는다. 배치를 아는 경우에만 기존 object를 template으로 갱신한다.
         void write_window(json& root, const std::optional<window_placement>& placement)
@@ -242,6 +271,7 @@ namespace gitman {
             root["schema_version"] = document.schema_version;
             write_settings(root, document.settings);
             write_appearance(root, document.appearance);
+            write_fonts(root, document.fonts);
             write_window(root, document.window);
             root["projects"] = std::move(projects);
 

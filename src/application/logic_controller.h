@@ -196,6 +196,8 @@ namespace gitman {
         [[nodiscard]] workspace_settings effective_settings() const;
         // 앱 외양 위에 문서 override를 얹은 유효 값이다 (S2.2).
         [[nodiscard]] appearance_settings effective_appearance() const;
+        // 앱 글꼴 위에 문서 override를 얹은 유효 값이다 (2026-08-23 지시).
+        [[nodiscard]] font_settings effective_fonts() const;
         // 선택 카드가 있어 하단 로그 pane이 보이는 상태다. layout 계산과 view 구성이
         // 같은 판정을 써야 스크롤 한계가 어긋나지 않는다.
         [[nodiscard]] bool has_log_pane() const noexcept;
@@ -342,6 +344,10 @@ namespace gitman {
             // 화면 색은 그때까지 그대로다.
             theme_preference theme { theme_preference::system };
             std::u8string accent_id {};
+            // 글꼴 초안이다 (2026-08-23 지시). 글꼴 선택 dialog가 여기에 쓰고
+            // `저장`이 앱 설정 또는 문서 override로 옮긴다.
+            std::u8string ui_font_family {};
+            std::u8string code_font_family {};
             // 문서 모드에서 "문서에 정의됨" 표시다 (G3.2 암묵 덮어쓰기: 값을
             // 건드리면 켜지고, 저장 시 켜진 행만 override로 남는다). 전역 모드에서는
             // 쓰지 않는다.
@@ -353,6 +359,8 @@ namespace gitman {
             bool log_files_defined { false };
             bool theme_defined { false };
             bool accent_defined { false };
+            bool ui_font_defined { false };
+            bool code_font_defined { false };
             // 항목 열의 스크롤 위치다 (논리 픽셀). 창이 낮아 항목이 다 들어가지
             // 않을 때만 0이 아니다 (text-input-and-font-fallback-design E1).
             float scroll_offset { 0.0f };

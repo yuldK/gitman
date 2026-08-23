@@ -272,6 +272,10 @@ namespace gitman {
         // 아니라 문서를 곧바로 고친다.
         theme,
         accent,
+        // 글꼴도 같은 계층이다 (2026-08-23 지시). 문서가 덮어쓰지 않으면 앱 설정을
+        // 따른다.
+        ui_font,
+        code_font,
     };
 
     // 환경설정 dialog의 탭을 바꾼다 (settings-tabs-and-appearance-scope-design

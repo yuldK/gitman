@@ -1394,36 +1394,25 @@ namespace gitman {
     }
 
     void logic_controller::handle_open_font_dialog(const open_font_dialog_intent& intent)
-
     {
-
         if (shutting_down_)
-
             return;
-
         font_dialog_state dialog {};
-
         dialog.code = intent.code;
-
         font_dialog_ = { std::move(dialog) };
 
         // 지금 쓰는 글꼴을 미리 골라 둔다. 목록에 없으면 아무것도 고르지 않는다.
-
-        const std::u8string& current { intent.code ? app_settings_.fonts.code_family : app_settings_.fonts.ui_family };
-
+        // 환경설정 dialog의 **초안**을 기준으로 한다 — 문서 override를 편집 중일 수
+        // 있다 (2026-08-23 지시).
+        const font_settings current_fonts { settings_dialog_.has_value() ? font_settings { settings_dialog_->ui_font_family, settings_dialog_->code_font_family } : effective_fonts() };
+        const std::u8string& current { intent.code ? current_fonts.code_family : current_fonts.ui_family };
         const std::vector<std::u8string> families { filtered_font_families() };
-
         for (std::size_t index = 0; index < families.size(); ++index)
-
             if (families[index] == current)
-
             {
-
-                font_dialog_->selected = { index };
-
+                font_dialog_->selected = index;
                 break;
             }
-
         handle_font_dialog_scroll(0.0f);
     }
 
@@ -1439,63 +1428,46 @@ namespace gitman {
     }
 
     void logic_controller::handle_confirm_font_dialog()
-
     {
-
         if (font_dialog_.has_value() == false || font_dialog_->selected.has_value() == false)
-
             return;
-
         const std::vector<std::u8string> families { filtered_font_families() };
-
         if (*font_dialog_->selected >= families.size())
-
             return;
 
-        // 글꼴은 문서 override가 없어 초안 계층이 필요 없다. 곧바로 앱 설정을 고치고
-
-        // 저장을 예약한다 (fonts-and-in-app-dialogs-design F2.5).
-
-        std::u8string& target { font_dialog_->code ? app_settings_.fonts.code_family : app_settings_.fonts.ui_family };
-
-        if (target != families[*font_dialog_->selected])
-
+        // 글꼴도 테마·키 컬러와 같은 초안이다 (2026-08-23 지시). 고른 값은 환경설정
+        // dialog의 초안으로 가고 `저장`에서 앱 설정 또는 문서 override가 된다.
+        // 건드린 행은 문서 모드에서 "문서에 정의됨"이 된다 (G3.2 암묵 덮어쓰기).
+        if (settings_dialog_.has_value())
         {
-
-            target = families[*font_dialog_->selected];
-
-            request_app_settings_save();
+            if (font_dialog_->code)
+            {
+                settings_dialog_->code_font_family = families[*font_dialog_->selected];
+                settings_dialog_->code_font_defined = true;
+            }
+            else
+            {
+                settings_dialog_->ui_font_family = families[*font_dialog_->selected];
+                settings_dialog_->ui_font_defined = true;
+            }
         }
-
         font_dialog_.reset();
     }
 
     void logic_controller::handle_font_dialog_scroll(const float delta)
-
     {
-
         if (font_dialog_.has_value() == false)
-
             return;
 
         const float content { static_cast<float>(filtered_font_families().size()) * layout_font_dialog_row_height };
-
         float maximum { content - layout_font_dialog_list_height };
-
         if (maximum < 0.0f)
-
             maximum = 0.0f;
-
         float offset { font_dialog_->scroll_offset + delta };
-
         if (offset < 0.0f)
-
             offset = 0.0f;
-
         if (offset > maximum)
-
             offset = maximum;
-
         font_dialog_->scroll_offset = offset;
     }
 
@@ -1524,6 +1496,9 @@ namespace gitman {
         const appearance_settings appearance { effective_appearance() };
         dialog.theme = appearance.theme;
         dialog.accent_id = appearance.accent_id;
+        const font_settings fonts { effective_fonts() };
+        dialog.ui_font_family = fonts.ui_family;
+        dialog.code_font_family = fonts.code_family;
         if (dialog.document_mode)
         {
             dialog.git_defined = document_->settings.git_executable.has_value();
@@ -1534,6 +1509,8 @@ namespace gitman {
             dialog.log_files_defined = document_->settings.write_log_files.has_value();
             dialog.theme_defined = document_->appearance.theme.has_value();
             dialog.accent_defined = document_->appearance.accent_id.has_value();
+            dialog.ui_font_defined = document_->fonts.ui_family.has_value();
+            dialog.code_font_defined = document_->fonts.code_family.has_value();
         }
         settings_dialog_ = { std::move(dialog) };
     }
@@ -1595,86 +1572,49 @@ namespace gitman {
     settings_dialog_view logic_controller::build_settings_dialog_view() const
     {
         settings_dialog_view dialog {};
-
         dialog.active_tab = settings_dialog_->active_tab;
-
         dialog.document_mode = settings_dialog_->document_mode;
-
         dialog.git_path = settings_dialog_->git_path;
-
         dialog.svn_path = settings_dialog_->svn_path;
-
         dialog.timeout = { settings_dialog_->timeout.text, settings_dialog_->timeout.caret, settings_dialog_->timeout.anchor };
         apply_composition(text_input_target::settings_timeout, dialog.timeout);
-
-        // 글꼴은 초안이 아니라 앱 설정을 곧바로 보여 준다 (F2.5).
-
-        dialog.ui_font_family = app_settings_.fonts.ui_family;
-
-        dialog.code_font_family = app_settings_.fonts.code_family;
-
+        // 글꼴도 테마·키 컬러와 같은 초안이다 (2026-08-23 지시).
+        dialog.ui_font_family = settings_dialog_->ui_font_family;
+        dialog.code_font_family = settings_dialog_->code_font_family;
         dialog.update_submodules = settings_dialog_->update_submodules;
-
         dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
-
         dialog.write_log_files = settings_dialog_->write_log_files;
-
         // 외양도 초안이다 (D4). 화면 색은 `저장` 전까지 바뀌지 않는다.
-
         dialog.theme = settings_dialog_->theme;
-
         dialog.accent_id = settings_dialog_->accent_id;
-
         // 문서 모드에서 정의되지 않은 행은 "앱 설정 따름"으로 표시된다 (G3.2).
-
         if (settings_dialog_->document_mode)
-
         {
-
             dialog.git_follows_app = settings_dialog_->git_defined == false;
-
             dialog.svn_follows_app = settings_dialog_->svn_defined == false;
-
             dialog.timeout_follows_app = settings_dialog_->timeout_defined == false;
-
             dialog.submodules_follows_app = settings_dialog_->submodules_defined == false;
-
             dialog.ignore_local_follows_app = settings_dialog_->ignore_local_defined == false;
-
             dialog.log_files_follows_app = settings_dialog_->log_files_defined == false;
-
             dialog.theme_follows_app = settings_dialog_->theme_defined == false;
-
             dialog.accent_follows_app = settings_dialog_->accent_defined == false;
-
+            dialog.ui_font_follows_app = settings_dialog_->ui_font_defined == false;
+            dialog.code_font_follows_app = settings_dialog_->code_font_defined == false;
         }
-
         // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
-
         // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
-
         const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
-
         const std::u8string_view svn_error { settings_executable_error(settings_dialog_->svn_path) };
-
         const std::u8string_view timeout_error { settings_timeout_error(settings_dialog_->timeout.text) };
-
         if (git_error.empty() == false)
-
             dialog.message = std::u8string { u8"Git: " } + std::u8string { git_error };
-
         else if (svn_error.empty() == false)
-
             dialog.message = std::u8string { u8"SVN: " } + std::u8string { svn_error };
-
         else if (timeout_error.empty() == false)
-
             dialog.message = std::u8string { timeout_error };
-
         dialog.can_confirm = git_error.empty() && svn_error.empty() && timeout_error.empty();
         return dialog;
     }
-
     void logic_controller::handle_settings_scroll(const float delta)
     {
         if (settings_dialog_.has_value() == false)
@@ -1738,6 +1678,14 @@ namespace gitman {
             settings_dialog_->accent_id = app_settings_.appearance.accent_id;
             settings_dialog_->accent_defined = false;
             break;
+        case settings_override_field::ui_font:
+            settings_dialog_->ui_font_family = app_settings_.fonts.ui_family;
+            settings_dialog_->ui_font_defined = false;
+            break;
+        case settings_override_field::code_font:
+            settings_dialog_->code_font_family = app_settings_.fonts.code_family;
+            settings_dialog_->code_font_defined = false;
+            break;
         }
     }
 
@@ -1775,13 +1723,22 @@ namespace gitman {
             appearance.theme = settings_dialog_->theme_defined ? std::optional<theme_preference> { settings_dialog_->theme } : std::nullopt;
             appearance.accent_id = settings_dialog_->accent_defined ? std::optional<std::u8string> { settings_dialog_->accent_id } : std::nullopt;
 
+            // 글꼴도 같은 규칙이다 (2026-08-23 지시). 빈 이름도 정의다 — "이 문서는
+            // 내장 글꼴을 쓴다"는 뜻이라 앱 설정을 따르는 것과 구별된다.
+            font_overrides fonts { document_->fonts };
+            fonts.ui_family = settings_dialog_->ui_font_defined ? std::optional<std::u8string> { settings_dialog_->ui_font_family } : std::nullopt;
+            fonts.code_family = settings_dialog_->code_font_defined ? std::optional<std::u8string> { settings_dialog_->code_font_family } : std::nullopt;
+
             const bool settings_changed { (overrides == document_->settings) == false };
             const bool appearance_changed { (appearance == document_->appearance) == false };
+            const bool fonts_changed { (fonts == document_->fonts) == false };
             if (settings_changed)
                 document_->settings = std::move(overrides);
             if (appearance_changed)
                 document_->appearance = std::move(appearance);
-            if (settings_changed || appearance_changed)
+            if (fonts_changed)
+                document_->fonts = std::move(fonts);
+            if (settings_changed || appearance_changed || fonts_changed)
                 request_save();
         }
         else
@@ -1801,13 +1758,21 @@ namespace gitman {
             if (settings_dialog_->accent_id.empty() == false)
                 appearance.accent_id = settings_dialog_->accent_id;
 
+            // 전역 모드는 글꼴도 구체 값이다.
+            font_settings fonts { app_settings_.fonts };
+            fonts.ui_family = settings_dialog_->ui_font_family;
+            fonts.code_family = settings_dialog_->code_font_family;
+
             const bool settings_changed { (global == app_settings_.settings) == false };
             const bool appearance_changed { (appearance == app_settings_.appearance) == false };
+            const bool fonts_changed { (fonts == app_settings_.fonts) == false };
             if (settings_changed)
                 app_settings_.settings = std::move(global);
             if (appearance_changed)
                 app_settings_.appearance = std::move(appearance);
-            if (settings_changed || appearance_changed)
+            if (fonts_changed)
+                app_settings_.fonts = std::move(fonts);
+            if (settings_changed || appearance_changed || fonts_changed)
                 request_app_settings_save();
         }
 
@@ -2741,6 +2706,15 @@ namespace gitman {
         return app_settings_.appearance;
     }
 
+    font_settings logic_controller::effective_fonts() const
+    {
+        // 글꼴도 테마·키 컬러와 같은 계층이다 (2026-08-23 지시). 문서가 덮어쓴
+        // 항목만 앱 값 위에 얹힌다.
+        if (document_.has_value())
+            return apply_overrides(app_settings_.fonts, document_->fonts);
+        return app_settings_.fonts;
+    }
+
     std::u8string logic_controller::display_path(const project_definition& project) const
     {
         // 표시 전용이라 구분자를 `/`로 통일한다 (T2). 원형 경로는 project가 그대로
@@ -2825,6 +2799,9 @@ namespace gitman {
         snapshot->scroll_offset = scroll_offset_;
         snapshot->relative_paths = relative_paths();
         snapshot->appearance = effective_appearance();
+        // 글꼴은 UI thread가 이 값으로 registry를 갱신한다 (F1). 문서가 덮어쓴 값이
+        // 있으면 그것이 유효 값이다 (2026-08-23 지시).
+        snapshot->fonts = effective_fonts();
         // 환경설정이 열려 있는 동안에는 초안을 그대로 미리 보여 준다 (E2). `저장`이
         // 초안을 문서·앱 설정에 남기고, `취소`는 초안을 버려 원래 값으로 돌아간다.
         if (settings_dialog_.has_value())
@@ -2832,6 +2809,10 @@ namespace gitman {
             snapshot->appearance.theme = settings_dialog_->theme;
             if (settings_dialog_->accent_id.empty() == false)
                 snapshot->appearance.accent_id = settings_dialog_->accent_id;
+            // 글꼴도 같은 규칙이다 (2026-08-23 지시). 고른 글꼴이 곧바로 화면에
+            // 보이고 `취소`면 되돌아간다.
+            snapshot->fonts.ui_family = settings_dialog_->ui_font_family;
+            snapshot->fonts.code_family = settings_dialog_->code_font_family;
         }
         if (generate_dialog_.has_value())
         {
@@ -2861,9 +2842,6 @@ namespace gitman {
             }
             snapshot->generate_dialog = { std::move(dialog) };
         }
-
-        // 글꼴은 앱 단위라 UI thread가 이 값으로 registry를 갱신한다 (F1).
-        snapshot->fonts = app_settings_.fonts;
 
         if (font_dialog_.has_value())
         {

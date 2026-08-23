@@ -19,6 +19,11 @@
 override를 갖는 것과 달리 override 계층을 두지 않으므로 `appearance_settings`가
 아니라 `app_settings` 바로 아래에 둔다.
 
+> **2026-08-23 후속 지시로 이 결정은 뒤집혔다.** 글꼴도 테마·키 컬러와 같은 문서
+> override 계층을 갖는다. `font_settings`는 `appearance.h`로 옮겨졌고
+> `font_overrides`가 문서 JSON의 `fonts` object로 저장된다. 검증 기록은
+> `docs/verification/2026-08-23-document-font-overrides.md`다.
+
 ```cpp
 struct font_settings
 {

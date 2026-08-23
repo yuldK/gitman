@@ -749,3 +749,50 @@ TEST_CASE("Win32 workspace storage cleans temporary files after replace failure"
     REQUIRE_FALSE(std::filesystem::exists(backup_path));
     REQUIRE_FALSE(has_temporary_artifact(fixture.root()));
 }
+
+TEST_CASE("Project store round-trips the document fonts", "[workspace][store][save][settings][font]")
+{
+    // 글꼴도 문서가 덮어쓸 수 있다 (2026-08-23 지시). `appearance`와 같은 규칙이다.
+    constexpr std::u8string_view source {
+        u8R"({
+    "schema_version": 1,
+    "fonts": {
+        "code": "Cascadia Code",
+        "future_font": 1
+    },
+    "projects": []
+})",
+    };
+
+    fake_workspace_document_file_system file_system {};
+    file_system.set_file(fake_document_path, source);
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE(loaded.document.has_value());
+    REQUIRE(loaded.document->fonts.code_family == std::optional<std::u8string> { u8"Cascadia Code" });
+    REQUIRE_FALSE(loaded.document->fonts.ui_family.has_value());
+
+    // UI 글꼴은 **빈 이름**으로 정의한다 — "이 문서는 내장 글꼴을 쓴다"는 뜻이라
+    // 앱 설정을 따르는 것과 구별되어야 한다. 코드 글꼴은 정의를 거둔다.
+    loaded.document->fonts.ui_family = { std::u8string {} };
+    loaded.document->fonts.code_family.reset();
+
+    const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+
+    const std::u8string* output { file_system.file_bytes(fake_document_path) };
+    REQUIRE(output != nullptr);
+    REQUIRE(output->find(u8"\"ui\": \"\"") != std::u8string::npos);
+    // 정의를 거둔 키는 남지 않는다 — 남기면 다음 열기에서 override로 되살아난다.
+    REQUIRE(output->find(u8"\"code\"") == std::u8string::npos);
+    // 알 수 없는 키는 보존한다.
+    REQUIRE(output->find(u8"\"future_font\"") != std::u8string::npos);
+
+    const gitman::project_store_load_result reloaded { store.load(fake_document_path) };
+    REQUIRE(reloaded.document.has_value());
+    // 빈 이름이 정의로 살아남는다.
+    REQUIRE(reloaded.document->fonts.ui_family == std::optional<std::u8string> { u8"" });
+    REQUIRE_FALSE(reloaded.document->fonts.code_family.has_value());
+}

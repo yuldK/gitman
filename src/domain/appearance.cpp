@@ -16,6 +16,21 @@ namespace gitman {
         return effective;
     }
 
+    bool font_overrides::empty() const noexcept
+    {
+        return ui_family.has_value() == false && code_family.has_value() == false;
+    }
+
+    font_settings apply_overrides(const font_settings& base, const font_overrides& overrides)
+    {
+        font_settings effective { base };
+        if (overrides.ui_family.has_value())
+            effective.ui_family = *overrides.ui_family;
+        if (overrides.code_family.has_value())
+            effective.code_family = *overrides.code_family;
+        return effective;
+    }
+
     std::u8string_view theme_preference_name(const theme_preference preference) noexcept
     {
         switch (preference)

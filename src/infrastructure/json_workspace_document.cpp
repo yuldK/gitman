@@ -102,12 +102,50 @@ namespace gitman {
 
         bool is_known_top_level_field(const std::string_view field) noexcept
         {
-            return field == "schema_version" || field == "settings" || field == "window" || field == "appearance" || field == "projects";
+            return field == "schema_version" || field == "settings" || field == "window" || field == "appearance" || field == "fonts" || field == "projects";
         }
 
         // 외양은 표시 설정이라 어떤 오류도 문서 열기를 막지 않는다. 읽을 수 없는
         // 항목은 경고 하나를 남기고 앱 설정을 따른다
         // (settings-tabs-and-appearance-scope-design S2.2).
+        // 글꼴 이름 하나를 읽는다. 값이 없으면 "앱 설정 따름"이라 대상을 건드리지
+        // 않고, 빈 문자열은 "내장 글꼴을 쓴다"는 정의라 그대로 받는다.
+        void read_font_family(const json& source, const char* const key, const std::u8string_view pointer, workspace_document_parse_result& result, const std::u8string_view document_path,
+            std::optional<std::u8string>& target)
+        {
+            const auto field { source.find(key) };
+            if (field == source.end() || field->is_null())
+                return;
+            if (field->is_string() == false)
+            {
+                add_diagnostic(
+                    result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"fonts의 값은 문자열이어야 합니다. 앱 설정을 따릅니다.", document_path, std::u8string { pointer });
+                return;
+            }
+            target = { as_utf8(field->get_ref<const std::string&>()) };
+        }
+
+        // 글꼴도 표시 설정이라 어떤 오류도 문서 열기를 막지 않는다 (2026-08-23
+        // 지시). 빈 문자열은 "이 문서는 내장 글꼴을 쓴다"는 **정의**다 — 앱 설정을
+        // 따르는 것과 구별해야 하므로 값이 비었다고 버리지 않는다.
+        font_overrides parse_fonts(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
+        {
+            font_overrides fonts {};
+            const auto source { root.find("fonts") };
+            if (source == root.end() || source->is_null())
+                return fonts;
+
+            if (source->is_object() == false)
+            {
+                add_diagnostic(result, diagnostic_code::invalid_project_field, diagnostic_severity::warning, u8"fonts는 object여야 합니다. 앱 설정의 글꼴을 사용합니다.", document_path, u8"/fonts");
+                return fonts;
+            }
+
+            read_font_family(*source, "ui", u8"/fonts/ui", result, document_path, fonts.ui_family);
+            read_font_family(*source, "code", u8"/fonts/code", result, document_path, fonts.code_family);
+            return fonts;
+        }
+
         appearance_overrides parse_appearance(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
         {
             appearance_overrides appearance {};
@@ -658,6 +696,7 @@ namespace gitman {
         document.settings = parse_settings(root, result, document_path);
         document.window = parse_window(root, result, document_path);
         document.appearance = parse_appearance(root, result, document_path);
+        document.fonts = parse_fonts(root, result, document_path);
         std::unordered_set<std::u8string> project_ids {};
         for (std::size_t project_index = 0; project_index < projects->size(); ++project_index)
         {

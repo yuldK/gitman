@@ -9,6 +9,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <optional>
@@ -1370,4 +1371,123 @@ TEST_CASE("An overridden item keeps its badge and controls off the highlight edg
     // 여백이므로, 배지가 제목 줄보다 위에 있다는 기존 규칙과 함께 확인한다.
     REQUIRE(badge_bounds.y + badge_bounds.height <= clear.y);
     REQUIRE(badge_bounds.height >= 16.0f);
+}
+
+TEST_CASE("The font draft lands in the document on save", "[logic][settings-ui][font]")
+{
+    // 지시(2026-08-23): 글꼴에 문서 설정이 따로 먹지 않았다. 테마·키 컬러와 같은
+    // 계층으로 올린다 — 문서가 열려 있으면 문서 override를 편집한다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code", u8"맑은 고딕" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+
+    // 문서에 정의가 없으면 앱 설정을 따른다.
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->ui_font_follows_app);
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->code_font_follows_app);
+
+    // 글꼴 dialog가 초안에 쓴다.
+    fixture.controller.handle(gitman::open_font_dialog_intent { true });
+    const auto listed { fixture.controller.make_view_snapshot() };
+    REQUIRE(listed->font_dialog.has_value());
+    const auto index { std::find(listed->font_dialog->families.begin(), listed->font_dialog->families.end(), std::u8string { u8"Cascadia Code" }) };
+    REQUIRE(index != listed->font_dialog->families.end());
+    fixture.controller.handle(gitman::select_font_family_intent { static_cast<std::size_t>(index - listed->font_dialog->families.begin()) });
+    fixture.controller.handle(gitman::confirm_font_dialog_intent {});
+
+    // dialog가 열려 있는 동안에는 초안을 미리 보여 준다. 문서는 아직 그대로다.
+    const auto drafted { fixture.controller.make_view_snapshot() };
+    REQUIRE(drafted->fonts.code_family == u8"Cascadia Code");
+    REQUIRE(drafted->settings_dialog->code_font_family == u8"Cascadia Code");
+    REQUIRE_FALSE(drafted->settings_dialog->code_font_follows_app);
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) == nullptr);
+
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    const gitman::operation_request* const saved { last_of(fixture.submitter, gitman::operation_kind::save_document) };
+    REQUIRE(saved != nullptr);
+    REQUIRE(saved->document.has_value());
+    REQUIRE(saved->document->fonts.code_family == std::optional<std::u8string> { u8"Cascadia Code" });
+    // 건드리지 않은 UI 글꼴은 정의되지 않은 채 남는다.
+    REQUIRE_FALSE(saved->document->fonts.ui_family.has_value());
+    // 앱 설정은 그대로다 — 문서가 열려 있으면 문서 override다.
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_app_settings) == nullptr);
+
+    // 저장 뒤의 유효 값은 문서 override다.
+    REQUIRE(fixture.controller.make_view_snapshot()->fonts.code_family == u8"Cascadia Code");
+}
+
+TEST_CASE("The font override badge hands the row back to the app settings", "[logic][settings-ui][font]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { false });
+    fixture.controller.handle(gitman::select_font_family_intent { 1 });
+    fixture.controller.handle(gitman::confirm_font_dialog_intent {});
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->fonts.ui_family == u8"Cascadia Code");
+
+    // 저장은 하나씩 나간다. 앞 저장이 끝나야 다음 저장이 제출된다.
+    {
+        const gitman::operation_request* const first { last_of(fixture.submitter, gitman::operation_kind::save_document) };
+        REQUIRE(first != nullptr);
+        gitman::document_saved_event done {};
+        done.operation_id = first->operation_id;
+        fixture.controller.handle(gitman::logic_message { std::move(done) });
+        fixture.submitter.requests.clear();
+    }
+
+    // 배지가 문서 정의를 거두면 초안이 앱 값으로 돌아가고, 저장이 문서에서 지운다.
+    fixture.controller.handle(gitman::open_settings_intent {});
+    REQUIRE_FALSE(fixture.controller.make_view_snapshot()->settings_dialog->ui_font_follows_app);
+    fixture.controller.handle(gitman::clear_settings_override_intent { gitman::settings_override_field::ui_font });
+
+    const auto cleared { fixture.controller.make_view_snapshot() };
+    REQUIRE(cleared->settings_dialog->ui_font_follows_app);
+    REQUIRE(cleared->settings_dialog->ui_font_family.empty());
+
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    const gitman::operation_request* const saved { last_of(fixture.submitter, gitman::operation_kind::save_document) };
+    REQUIRE(saved != nullptr);
+    REQUIRE_FALSE(saved->document->fonts.ui_family.has_value());
+    REQUIRE(fixture.controller.make_view_snapshot()->fonts.ui_family.empty());
+}
+
+TEST_CASE("Cancelling the settings dialog rolls the font preview back", "[logic][settings-ui][font]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { true });
+    fixture.controller.handle(gitman::select_font_family_intent { 1 });
+    fixture.controller.handle(gitman::confirm_font_dialog_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->fonts.code_family == u8"Cascadia Code");
+
+    fixture.controller.handle(gitman::cancel_settings_dialog_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->fonts.code_family.empty());
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) == nullptr);
+}
+
+TEST_CASE("Without a document the font draft still edits the app settings", "[logic][settings-ui][font]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    // 앱 설정 읽기가 끝나야 저장이 나간다 (읽기 전 저장은 파일 항목을 지운다).
+    controller.start();
+    gitman::app_settings_loaded_event loaded {};
+    loaded.operation_id = submitter.requests.front().operation_id;
+    controller.handle(gitman::logic_message { std::move(loaded) });
+    submitter.requests.clear();
+
+    controller.handle(gitman::window_metrics_intent { 1280.0f, 900.0f, 1.0f });
+    controller.handle(gitman::font_families_event { { u8"Cascadia Code" } });
+    controller.handle(gitman::open_settings_intent {});
+    REQUIRE_FALSE(controller.make_view_snapshot()->settings_dialog->document_mode);
+
+    controller.handle(gitman::open_font_dialog_intent { false });
+    controller.handle(gitman::select_font_family_intent { 1 });
+    controller.handle(gitman::confirm_font_dialog_intent {});
+    controller.handle(gitman::confirm_settings_intent {});
+
+    REQUIRE(last_of(submitter, gitman::operation_kind::save_app_settings) != nullptr);
+    REQUIRE(controller.make_view_snapshot()->fonts.ui_family == u8"Cascadia Code");
 }

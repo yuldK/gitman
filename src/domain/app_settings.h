@@ -33,20 +33,6 @@ namespace gitman {
         [[nodiscard]] bool operator==(const recent_document&) const noexcept = default;
     };
 
-    // UI와 코드 본문에 쓸 글꼴 가족 이름이다 (fonts-and-in-app-dialogs-design F1).
-    // 비어 있으면 내장 글꼴이고, 설치되지 않은 이름도 표시만 내장 글꼴로 되돌아간다
-    // (설정 파일은 그대로 둔다 — 다른 PC로 옮겼다 돌아올 수 있다). 테마와 달리
-    // 문서 override가 없어 `appearance_settings`가 아니라 앱 설정 바로 아래에 둔다.
-    struct font_settings
-    {
-        // 창의 모든 글자다.
-        std::u8string ui_family {};
-        // 로그 본문과 diff 본문이다. 열이 맞아야 읽히는 곳이라 따로 고른다.
-        std::u8string code_family {};
-
-        [[nodiscard]] bool operator==(const font_settings&) const noexcept = default;
-    };
-
     // 문서 밖에 남는 앱 단위 설정이다 (app-shell-design A1). 실행 파일과 같은 폴더의
     // JSON 파일 하나에 저장하며, 문서 `settings`와 달리 열린 문서와 무관하다.
     struct app_settings
@@ -64,7 +50,7 @@ namespace gitman {
         // 테마와 키 컬러다 (theme-and-banner-menu-design T3). 문서가 덮어쓰지
         // 않는 앱 단위 값이라 `settings` 밖에 둔다.
         appearance_settings appearance {};
-        // UI·코드 글꼴이다 (F1). 앱에만 남는다.
+        // UI·코드 글꼴이다 (F1). `appearance`와 같이 문서가 덮어쓸 수 있다.
         font_settings fonts {};
 
         [[nodiscard]] bool operator==(const app_settings&) const noexcept = default;

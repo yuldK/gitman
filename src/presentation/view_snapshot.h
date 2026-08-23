@@ -406,14 +406,18 @@ namespace gitman {
         // S2.3). 초안이 없어 문서의 정의 여부를 그대로 싣는다.
         bool theme_follows_app { false };
         bool accent_follows_app { false };
+        // 글꼴도 문서가 덮어쓸 수 있다 (2026-08-23 지시).
+        bool ui_font_follows_app { false };
+        bool code_font_follows_app { false };
         std::u8string git_path {};
         std::u8string svn_path {};
         // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design 1.3).
         // 숫자만 담기며, 비어 있으면 기본값(600초)을 뜻해 element가 안내 문구를
         // 대신 그린다.
         text_input_view timeout {};
-        // 앱 단위 글꼴이다 (fonts-and-in-app-dialogs-design F1). 비어 있으면 내장
-        // 글꼴이라 항목이 `(기본 글꼴)`을 대신 그린다.
+        // 글꼴 초안이다 (fonts-and-in-app-dialogs-design F1, 2026-08-23 지시).
+        // 비어 있으면 내장 글꼴이라 항목이 `(기본 글꼴)`을 대신 그린다. 테마·키
+        // 컬러와 같이 `저장`에서 반영된다.
         std::u8string ui_font_family {};
         std::u8string code_font_family {};
         // 업데이트 시 submodule 갱신 여부의 초안이다 (확인 overlay 대체).

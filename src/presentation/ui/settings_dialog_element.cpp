@@ -392,11 +392,13 @@ namespace gitman::ui {
             accent.items.push_back(make_item(item_kind::accent, u8"키 컬러", std::u8string { accent_for(dialog.accent_id).label }, {}, { settings_override_field::accent }, u8"accent",
                 overridden(dialog, dialog.accent_follows_app)));
             appearance.sections.push_back(std::move(accent));
-            // 글꼴은 앱에만 남는다 (fonts-and-in-app-dialogs-design F1). 문서 override가
-            // 없어 배지도 없다.
+            // 글꼴도 문서가 덮어쓸 수 있다 (2026-08-23 지시). 테마·키 컬러와 같은
+            // 배지 규칙을 쓴다.
             section_model fonts { std::u8string { u8"글꼴" }, {} };
-            fonts.items.push_back(make_item(item_kind::ui_font, u8"UI 글꼴", font_value(dialog.ui_font_family), {}, {}, u8"", false));
-            fonts.items.push_back(make_item(item_kind::code_font, u8"코드 글꼴", font_value(dialog.code_font_family), {}, {}, u8"", false));
+            fonts.items.push_back(make_item(item_kind::ui_font, u8"UI 글꼴", font_value(dialog.ui_font_family), {}, settings_override_field::ui_font, u8"ui-font",
+                overridden(dialog, dialog.ui_font_follows_app)));
+            fonts.items.push_back(make_item(item_kind::code_font, u8"코드 글꼴", font_value(dialog.code_font_family), {}, settings_override_field::code_font, u8"code-font",
+                overridden(dialog, dialog.code_font_follows_app)));
             appearance.sections.push_back(std::move(fonts));
             tabs.push_back(std::move(appearance));
 

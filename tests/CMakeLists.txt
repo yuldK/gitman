@@ -119,10 +119,11 @@ target_link_libraries(gitman_messaging_asan_tests
         gitman_project_options
         Catch2::Catch2WithMain)
 # ASAN 보고에 기호가 필요해 이 target만 Release에서도 debug 정보를 켠다 (C5072).
-# vcpkg의 Catch2는 ASan 없이 빌드되어 STL 컨테이너 주석이 꺼져 있으므로(LNK2038)
-# 이 target도 컨테이너 주석을 끄고 heap 검사만 사용한다.
+# Catch2는 ASan 없이 빌드되어 STL 주석이 꺼져 있으므로(LNK2038) 이 target도 주석을
+# 끄고 heap 검사만 사용한다. `optional`은 나중에 MSVC STL이 더한 세 번째 주석이라
+# 최신 toolset에서 새로 어긋난다.
 target_compile_options(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/fsanitize=address;/Zi>")
-target_compile_definitions(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:_DISABLE_STRING_ANNOTATION;_DISABLE_VECTOR_ANNOTATION>")
+target_compile_definitions(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:_DISABLE_STRING_ANNOTATION;_DISABLE_VECTOR_ANNOTATION;_DISABLE_OPTIONAL_ANNOTATION>")
 target_link_options(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/INCREMENTAL:NO;/DEBUG>")
 gitman_disable_automatic_windows_manifest(gitman_messaging_asan_tests)
 # 최신 MSVC의 ASan runtime은 항상 동적 DLL이라 실행 파일 옆에 있어야 한다. 경로는

@@ -109,6 +109,13 @@
 - 남은 한계: 조합 밑줄이 한 종류, `GetACPFromPoint` 미구현, `GetTextExt`가 가로
   스크롤 미반영. 검증 기록에 적었다.
 
+### 곁들여 고친 것
+
+- Release 구성의 ASan test target이 `annotate_optional` 불일치로 링크되지 않았다
+  (LNK2038). 이미 꺼 두던 `string`·`vector` 주석과 같은 부류로, 최신 MSVC STL이
+  더한 세 번째 주석이다. `_DISABLE_OPTIONAL_ANNOTATION`을 함께 껐다. 이번 작업과는
+  무관한 기존 문제이며 그 target은 messaging component만 링크한다.
+
 ### 영향 요구사항
 
 - REQ-017 (환경설정), NFR (안정성)

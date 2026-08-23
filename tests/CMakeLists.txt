@@ -23,6 +23,7 @@ add_executable(gitman_tests
     domain_model_tests.cpp
     embedded_assets_tests.cpp
     file_association_tests.cpp
+    font_fallback_tests.cpp
     git_command_builder_tests.cpp
     git_integration_tests.cpp
     git_network_tests.cpp

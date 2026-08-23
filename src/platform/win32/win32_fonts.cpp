@@ -23,6 +23,9 @@ namespace gitman::win32 {
             sk_sp<SkFontMgr> manager {};
             bool manager_ready { false };
             std::map<std::u8string, sk_sp<SkTypeface>, std::less<>> cache {};
+            // 글자 하나를 그릴 대체 typeface다. 찾지 못한 codepoint도 nullptr로 남겨
+            // 같은 글자를 매 frame 다시 뒤지지 않는다.
+            std::map<char32_t, sk_sp<SkTypeface>> fallback_cache {};
             std::u8string ui_family {};
             std::u8string code_family {};
             sk_sp<SkTypeface> ui_typeface {};
@@ -156,5 +159,24 @@ namespace gitman::win32 {
         font_registry& state { registry() };
         const std::lock_guard<std::mutex> lock { state.mutex };
         return resolve_locked(state, family);
+    }
+
+    sk_sp<SkTypeface> fallback_typeface(const char32_t codepoint)
+    {
+        font_registry& state { registry() };
+        const std::lock_guard<std::mutex> lock { state.mutex };
+        if (const auto found { state.fallback_cache.find(codepoint) }; found != state.fallback_cache.end())
+            return found->second;
+
+        sk_sp<SkTypeface> typeface {};
+        if (SkFontMgr* const manager { manager_locked(state) }; manager != nullptr)
+        {
+            // 가족도 언어도 지정하지 않는다. 시스템이 그 글자를 담은 글꼴을 고르게
+            // 두는 것이 브라우저·편집기와 같은 동작이다. GDI font manager는 이
+            // 진입점이 언제나 nullptr이라 대체 자체가 불가능했다 (E0.1).
+            typeface = manager->matchFamilyStyleCharacter(nullptr, SkFontStyle::Normal(), nullptr, 0, static_cast<SkUnichar>(codepoint));
+        }
+        state.fallback_cache.emplace(codepoint, typeface);
+        return typeface;
     }
 } // namespace gitman::win32

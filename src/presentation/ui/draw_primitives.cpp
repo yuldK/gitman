@@ -9,9 +9,12 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkTypeface.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -30,6 +33,10 @@ namespace gitman::ui {
             boundaries.push_back(text.size());
             return boundaries;
         }
+
+        // platform이 등록한 대체 해석기다 (E3.4). 시작할 때 한 번 정해지고 그 뒤로
+        // 바뀌지 않지만, 그리기 thread와 입력 thread가 함께 읽으므로 atomic이다.
+        std::atomic<const font_fallback*> installed_fallback { nullptr };
     } // namespace
 
     SkPaint solid_paint(const ui_color color)
@@ -48,13 +55,97 @@ namespace gitman::ui {
         return storage;
     }
 
+    std::vector<text_run> split_text_runs(const std::u8string_view text, const SkFont& font)
+    {
+        std::vector<text_run> runs {};
+        if (text.empty())
+            return runs;
+
+        const font_fallback* const fallback { installed_fallback.load(std::memory_order_relaxed) };
+        if (fallback == nullptr)
+        {
+            runs.push_back({ text, nullptr });
+            return runs;
+        }
+
+        std::vector<SkUnichar> codepoints {};
+        std::vector<std::size_t> offsets {};
+        codepoints.reserve(text.size());
+        offsets.reserve(text.size() + 1u);
+        for (std::size_t offset = 0; offset < text.size();)
+        {
+            const utf8_decoded decoded { utf8_decode(text, offset) };
+            codepoints.push_back(static_cast<SkUnichar>(decoded.codepoint));
+            offsets.push_back(offset);
+            offset += decoded.length;
+        }
+        offsets.push_back(text.size());
+
+        // 글자마다 묻지 않고 한 번에 묻는다. DirectWrite 조회는 호출당 비용이 있다.
+        std::vector<SkGlyphID> glyphs(codepoints.size(), 0);
+        font.unicharsToGlyphs(codepoints, glyphs);
+
+        const bool complete { std::ranges::none_of(glyphs, [](const SkGlyphID glyph) { return glyph == 0; }) };
+        if (complete)
+        {
+            // 대부분의 글이 이 경로다. 나누지 않고 그대로 그린다.
+            runs.push_back({ text, nullptr });
+            return runs;
+        }
+
+        std::size_t run_begin { 0 };
+        SkTypeface* run_typeface { nullptr };
+        for (std::size_t index = 0; index < codepoints.size(); ++index)
+        {
+            SkTypeface* const wanted {
+                glyphs[index] != 0 ? nullptr : fallback->for_codepoint(static_cast<char32_t>(codepoints[index])),
+            };
+            if (index == 0)
+            {
+                run_typeface = wanted;
+                continue;
+            }
+            if (wanted == run_typeface)
+                continue;
+
+            runs.push_back({ text.substr(run_begin, offsets[index] - run_begin), run_typeface });
+            run_begin = offsets[index];
+            run_typeface = wanted;
+        }
+        runs.push_back({ text.substr(run_begin), run_typeface });
+        return runs;
+    }
+
+    void set_font_fallback(const font_fallback* const fallback) noexcept
+    {
+        installed_fallback.store(fallback, std::memory_order_relaxed);
+    }
+
     void draw_text(SkCanvas& canvas, const std::u8string_view text, const float x, const float y, const SkFont& font, const SkPaint& paint)
     {
         if (text.empty())
             return;
         std::u8string storage {};
         const std::u8string_view drawable { drawable_text(text, storage) };
-        canvas.drawSimpleText(drawable.data(), drawable.size(), SkTextEncoding::kUTF8, x, y, font, paint);
+
+        float pen { x };
+        for (const text_run& run : split_text_runs(drawable, font))
+        {
+            if (run.text.empty())
+                continue;
+            if (run.typeface == nullptr)
+            {
+                canvas.drawSimpleText(run.text.data(), run.text.size(), SkTextEncoding::kUTF8, pen, y, font, paint);
+                pen += font.measureText(run.text.data(), run.text.size(), SkTextEncoding::kUTF8);
+                continue;
+            }
+
+            // 크기·anti-alias 같은 나머지 설정은 그대로 두고 typeface만 바꾼다.
+            SkFont run_font { font };
+            run_font.setTypeface(sk_ref_sp(run.typeface));
+            canvas.drawSimpleText(run.text.data(), run.text.size(), SkTextEncoding::kUTF8, pen, y, run_font, paint);
+            pen += run_font.measureText(run.text.data(), run.text.size(), SkTextEncoding::kUTF8);
+        }
     }
 
     ui_color with_alpha(const ui_color color, const float alpha) noexcept
@@ -70,7 +161,22 @@ namespace gitman::ui {
             return 0.0f;
         std::u8string storage {};
         const std::u8string_view drawable { drawable_text(text, storage) };
-        return font.measureText(drawable.data(), drawable.size(), SkTextEncoding::kUTF8);
+
+        float width { 0.0f };
+        for (const text_run& run : split_text_runs(drawable, font))
+        {
+            if (run.text.empty())
+                continue;
+            if (run.typeface == nullptr)
+            {
+                width += font.measureText(run.text.data(), run.text.size(), SkTextEncoding::kUTF8);
+                continue;
+            }
+            SkFont run_font { font };
+            run_font.setTypeface(sk_ref_sp(run.typeface));
+            width += run_font.measureText(run.text.data(), run.text.size(), SkTextEncoding::kUTF8);
+        }
+        return width;
     }
 
     std::u8string elide_text(const std::u8string_view text, const float max_width, const SkFont& font)

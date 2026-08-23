@@ -15,6 +15,7 @@
 #include "domain/path_syntax.h"
 #include "presentation/log_presentation.h"
 #include "presentation/ui/caption_element.h"
+#include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/ui_events.h"
 
 #include "include/core/SkTypeface.h"
@@ -210,7 +211,22 @@ namespace gitman::win32 {
             application_window(const HINSTANCE instance, application_options options) noexcept
                 : instance_(instance)
                 , options_(options)
-            {}
+            {
+                // 고른 글꼴에 없는 글자를 대신 그릴 해석기를 그리기 계층에 알린다
+                // (text-input-and-font-fallback-design E3.4). 한 번 등록하고 이 창이
+                // 사라질 때 되돌린다.
+                ui::set_font_fallback(&font_resolver_);
+            }
+
+            application_window(const application_window&) = delete;
+            application_window(application_window&&) = delete;
+            application_window& operator=(const application_window&) = delete;
+            application_window& operator=(application_window&&) = delete;
+
+            ~application_window()
+            {
+                ui::set_font_fallback(nullptr);
+            }
 
             [[nodiscard]] bool create(std::u8string& error)
             {
@@ -1372,11 +1388,20 @@ namespace gitman::win32 {
             bool tracking_client_mouse_ { false };
             // 글꼴 선택 dialog의 미리 보기가 가족 이름을 typeface로 옮길 때 쓴다
             // (F2.3). registry가 cache를 들고 있어 돌려주는 포인터는 계속 살아 있다.
-            struct registry_font_resolver final : ui::font_resolver
+            // registry가 두 해석을 함께 맡는다 — 가족 이름 → typeface(미리 보기)와
+            // 글자 → 대체 typeface다. 둘 다 같은 cache를 보므로 나눌 이유가 없다.
+            struct registry_font_resolver final
+                : ui::font_resolver
+                , ui::font_fallback
             {
                 [[nodiscard]] SkTypeface* family(const std::u8string_view name) const override
                 {
                     return family_typeface(name).get();
+                }
+
+                [[nodiscard]] SkTypeface* for_codepoint(const char32_t codepoint) const override
+                {
+                    return fallback_typeface(codepoint).get();
                 }
             };
 

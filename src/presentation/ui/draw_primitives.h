@@ -4,9 +4,11 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 class SkFont;
 class SkPaint;
+class SkTypeface;
 
 namespace gitman::ui {
     // element 구현들이 공유하는 Skia 그리기 조각이다. canvas 상태를 저장·복원하지
@@ -23,6 +25,47 @@ namespace gitman::ui {
     // 온전한 글이면 `text`를 그대로 돌려주고 `storage`를 건드리지 않는다 — 위반이
     // 없으면 할당도 복사도 없다.
     [[nodiscard]] std::u8string_view drawable_text(std::u8string_view text, std::u8string& storage);
+
+    // 고른 글꼴에 없는 글자를 대신 그릴 typeface를 찾는다
+    // (text-input-and-font-fallback-design E3.3·E3.4). `Cascadia Code`에는 한글이
+    // 없고 어느 코드 글꼴에도 이모지가 없다. 대체가 없으면 그 자리는 빈 네모가 된다.
+    //
+    // 해석은 platform이 하고 presentation은 이 interface만 안다. 업무 상태가 아니라
+    // OS 자원 cache라 ADR-004의 단일 소유 규칙 밖이다 (`win32_fonts`의 registry와
+    // 같은 성격이다).
+    struct font_fallback
+    {
+        font_fallback() = default;
+        font_fallback(const font_fallback&) = delete;
+        font_fallback(font_fallback&&) = delete;
+        font_fallback& operator=(const font_fallback&) = delete;
+        font_fallback& operator=(font_fallback&&) = delete;
+        virtual ~font_fallback() = default;
+
+        // 찾지 못하면 nullptr다. 그리기와 입력 thread가 함께 부르므로 구현은
+        // thread-safe해야 한다.
+        [[nodiscard]] virtual SkTypeface* for_codepoint(char32_t codepoint) const = 0;
+    };
+
+    // platform이 시작할 때 한 번 등록하고 끝날 때 nullptr로 되돌린다. 등록하지 않으면
+    // 대체 없이 기본 typeface로만 그린다 — test가 이 경로다.
+    void set_font_fallback(const font_fallback* fallback) noexcept;
+
+    // 이어 그릴 한 조각이다. `typeface`가 nullptr이면 기본 글꼴 그대로다.
+    struct text_run
+    {
+        std::u8string_view text {};
+        SkTypeface* typeface { nullptr };
+    };
+
+    // 기본 typeface에 **없는 글자만** 대체 typeface로 갈라낸다 (E3.3).
+    //
+    // 규칙은 하나다: 기본 글꼴이 그릴 수 있으면 기본 글꼴이다. 그래서 한글 뒤의
+    // 영문이 다시 원래 글꼴로 돌아오고, 코드 글꼴에서 공백이 고정폭을 유지한다.
+    //
+    // 측정과 그리기가 **이 함수 하나를** 함께 써야 caret 자리와 글자가 어긋나지
+    // 않는다. 경계를 test가 직접 확인할 수 있도록 노출한다.
+    [[nodiscard]] std::vector<text_run> split_text_runs(std::u8string_view text, const SkFont& font);
 
     void draw_text(SkCanvas& canvas, std::u8string_view text, float x, float y, const SkFont& font, const SkPaint& paint);
 

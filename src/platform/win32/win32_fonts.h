@@ -27,4 +27,11 @@ namespace gitman::win32 {
 
     // 미리 보기용이다. 빈 이름이면 내장 글꼴이고, 찾지 못하면 nullptr다.
     [[nodiscard]] sk_sp<SkTypeface> family_typeface(std::u8string_view family);
+
+    // 고른 글꼴에 없는 글자를 대신 그릴 typeface다
+    // (text-input-and-font-fallback-design E3.3). `Cascadia Code`에 한글이 없고
+    // 어느 코드 글꼴에도 이모지가 없으므로, 대체가 없으면 그 자리는 빈 네모가 된다.
+    // 시스템이 고른 결과를 codepoint별로 cache한다 — 매 frame DirectWrite에 물으면
+    // 비싸다. 찾지 못하면 nullptr다.
+    [[nodiscard]] sk_sp<SkTypeface> fallback_typeface(char32_t codepoint);
 } // namespace gitman::win32

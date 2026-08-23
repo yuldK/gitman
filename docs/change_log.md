@@ -55,6 +55,20 @@
 - 신규 test 5 case (`utf8_tests` 4, `win32_fonts_tests` 1). 마지막 것은 설치된
   글꼴 이름 전부를 실제로 `measure_text`로 재 보는 회귀 test다.
 
+### 반영 내용 (2단계)
+
+- **글꼴 대체**: `draw_primitives`가 글을 run으로 나눠 기본 글꼴에 없는 글자만 다른
+  typeface로 그린다. 규칙은 하나다 — 기본 글꼴이 그릴 수 있으면 기본 글꼴이다.
+  그래서 한글 뒤의 영문이 원래 글꼴로 돌아오고 코드 글꼴의 공백이 고정폭을
+  유지한다. 측정과 그리기가 같은 함수로 나눠 caret 자리와 글자가 어긋나지 않는다.
+- **대체 해석기**: platform이 시작할 때 `set_font_fallback`으로 한 번 등록한다.
+  `win32`의 registry가 `matchFamilyStyleCharacter`로 시스템이 고른 글꼴을 받아
+  codepoint별로 cache한다. 등록하지 않으면 예전과 똑같이 동작한다 (test 경로).
+- **성능**: 글자마다 묻지 않고 `unicharsToGlyphs`로 문자열당 한 번 묻고, 빠진
+  글리프가 없으면(대부분의 글) 나누지 않고 그대로 그린다.
+- 글꼴 선택 dialog 예문 끝에 이모지를 한 자 넣어 대체가 눈에 보이게 했다.
+- 신규 test 6 case (`font_fallback_tests` 4, `win32_fonts_tests` 2).
+
 ### 영향 요구사항
 
 - REQ-017 (환경설정), NFR (안정성)

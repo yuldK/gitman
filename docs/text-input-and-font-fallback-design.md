@@ -399,8 +399,10 @@ TSF 자체는 COM·OS 의존이라 단위 test로 덮이지 않는다. **순수�
 - 기본 typeface에서 `unicharToGlyph(cp) != 0`인 동안 한 run이다.
 - 0이면 대체를 찾는다: `SkFontMgr::matchFamilyStyleCharacter(nullptr, style, nullptr, 0, cp)`.
 - 못 찾으면 기본 typeface로 그린다 (`.notdef`가 보이는 편이 침묵보다 낫다).
-- 공백·문장부호는 **직전 run을 따라간다**. 그러지 않으면 한 줄에서 글꼴이 잘게
-  갈려 자간이 어지러워진다.
+- 규칙은 하나뿐이다: **기본 글꼴이 그릴 수 있으면 기본 글꼴이다.** 그래서 한글 뒤의
+  영문이 원래 글꼴로 돌아오고, 코드 글꼴에서 공백이 고정폭을 유지한다 (초안의
+  "공백은 직전 run을 따라간다"는 규칙은 버렸다 — 공백을 이모지 글꼴로 그리면 열이
+  어긋난다).
 - **측정과 그리기가 같은 함수로 run을 나눈다.** 다르면 caret 자리와 글자가 어긋난다.
 
 대체 결과는 `codepoint → typeface` cache로 남긴다. 매 frame `matchFamilyStyleCharacter`를

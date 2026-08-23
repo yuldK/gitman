@@ -32,7 +32,7 @@ namespace gitman {
         // 글꼴 목록 첫 항목의 표시 이름이다. 고르면 빈 이름 = 내장 글꼴이다.
         constexpr std::u8string_view default_font_display_name { u8"(기본 글꼴)" };
         // 글꼴 미리 보기 문구다. 한글·영문·숫자·기호를 한 줄에 담아 코드 글꼴 판단에 쓴다.
-        constexpr std::u8string_view font_preview_text { u8"다람쥐 헌 쳇바퀴에 타고파 Illegal1O0 {}();" };
+        constexpr std::u8string_view font_preview_text { u8"다람쥐 헌 쳇바퀴에 타고파 Illegal1O0 {}(); 😀" };
 
         char8_t ascii_lowercase(const char8_t value) noexcept
         {

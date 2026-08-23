@@ -1258,3 +1258,80 @@ TEST_CASE("A very short window shrinks the margin instead of the panel to nothin
     for (const float height : { 20.0f, 100.0f, 320.0f, 1000.0f })
         REQUIRE(gitman::dialog_edge_margin(height) * 2.0f < height);
 }
+
+TEST_CASE("Each settings tab gets its own scroll extent", "[ui][settings-ui][scroll][tabs]")
+{
+    // 지시(2026-08-23): 탭마다 스크롤을 새로 계산한다. 가장 높은 탭으로 한계를 세면
+    // 짧은 탭에서 빈 공간까지 스크롤된다.
+    //
+    // 창 420에서는 `외양` 탭만 넘친다 (내용 448 · viewport 268).
+    constexpr float window_height { 420.0f };
+    const std::vector<gitman::settings_tab> short_tabs {
+        gitman::settings_tab::tools,
+        gitman::settings_tab::operations,
+        gitman::settings_tab::system,
+    };
+
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, window_height, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+    const auto tall { controller.make_view_snapshot() };
+    const auto tall_metrics { gitman::ui::settings_dialog_metrics(*tall->settings_dialog, window_height) };
+    REQUIRE(tall_metrics.maximum_scroll > 0.0f);
+    const auto tall_tree { gitman::ui::build_ui_tree(*tall) };
+    REQUIRE(tall_tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar })->visible());
+
+    for (const gitman::settings_tab tab : short_tabs)
+    {
+        controller.handle(gitman::select_settings_tab_intent { tab });
+        const auto snapshot { controller.make_view_snapshot() };
+        const auto metrics { gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, window_height) };
+
+        // 그 탭의 내용은 다 보이므로 스크롤할 것이 없다.
+        REQUIRE(metrics.content_height <= metrics.viewport_height);
+        REQUIRE(metrics.maximum_scroll == 0.0f);
+
+        // 막대도 없고 휠도 아무 일을 하지 않는다.
+        const auto tab_tree { gitman::ui::build_ui_tree(*snapshot) };
+        const gitman::ui::ui_element* const bar { tab_tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar }) };
+        INFO("tab " << static_cast<int>(tab) << " content " << metrics.content_height << " viewport " << metrics.viewport_height << " max " << metrics.maximum_scroll);
+        REQUIRE((bar == nullptr || bar->visible() == false));
+        controller.handle(gitman::settings_scroll_intent { 500.0f });
+        REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
+
+        // panel 크기는 탭이 바뀌어도 그대로다 — dialog가 커졌다 작아졌다 하지 않는다 (S1.3).
+        REQUIRE(metrics.panel_content_height == tall_metrics.panel_content_height);
+        REQUIRE(metrics.viewport_height == tall_metrics.viewport_height);
+    }
+}
+
+TEST_CASE("Switching tabs recalculates the scroll limit at that moment", "[ui][settings-ui][scroll][tabs]")
+{
+    // 긴 탭에서 끝까지 내린 뒤 짧은 탭으로 옮기면, 그 탭의 한계로 다시 계산되어야
+    // 한다. 옛 한계가 남으면 빈 공간이 보인다.
+    constexpr float window_height { 420.0f };
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, window_height, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+    controller.handle(gitman::settings_scroll_intent { 10000.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset > 0.0f);
+
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::tools });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
+
+    // 짧은 탭에서는 아무리 굴려도 0이다.
+    controller.handle(gitman::settings_scroll_intent { 500.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
+
+    // 다시 긴 탭으로 돌아오면 그 탭의 한계까지 내려간다.
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+    const auto metrics { gitman::ui::settings_dialog_metrics(*controller.make_view_snapshot()->settings_dialog, window_height) };
+    controller.handle(gitman::settings_scroll_intent { 10000.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == metrics.maximum_scroll);
+}

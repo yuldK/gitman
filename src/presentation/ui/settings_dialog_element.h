@@ -13,7 +13,11 @@ namespace gitman::ui {
     // 하나를 함께 써야 휠이 헛돌거나 마지막 항목이 잘리지 않는다.
     struct settings_dialog_scroll_metrics
     {
-        // 가장 높은 탭의 내용 높이다. 탭을 옮길 때 창이 튀지 않게 고정한다 (S1.3).
+        // panel 높이를 정하는 값이다 — **가장 높은 탭**의 내용 높이다. 탭을 옮길 때
+        // dialog 크기가 튀지 않게 고정한다 (S1.3).
+        float panel_content_height { 0.0f };
+        // **지금 보고 있는 탭**의 내용 높이다. 스크롤 한계는 이 값으로 센다 —
+        // 가장 높은 탭으로 세면 짧은 탭에서 빈 공간까지 스크롤된다 (2026-08-23 지시).
         float content_height { 0.0f };
         // 항목 열이 실제로 보이는 높이다. 창이 낮으면 chrome을 뺀 나머지다.
         float viewport_height { 0.0f };

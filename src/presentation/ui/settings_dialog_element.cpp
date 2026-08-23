@@ -236,9 +236,13 @@ namespace gitman::ui {
             return content;
         }
 
-        float panel_height_for(const std::vector<tab_model>& tabs, const bool document_mode, const std::size_t accent_count, const float column_width)
+        // 지금 보고 있는 탭이다. 없는 값이면 첫 탭이다 (탭 목록은 항상 비지 않는다).
+        const tab_model& active_tab(const std::vector<tab_model>& tabs, const settings_tab wanted)
         {
-            return chrome_height + tallest_content_height(tabs, document_mode, accent_count, column_width);
+            for (const tab_model& tab : tabs)
+                if (tab.tab == wanted)
+                    return tab;
+            return tabs.front();
         }
 
         // 스크롤 막대가 차지하는 논리 폭이다. 막대가 보이면 항목 열이 그만큼 좁아진다.
@@ -828,15 +832,23 @@ namespace gitman::ui {
         const std::vector<tab_model> tabs { build_tabs(dialog) };
         const std::size_t accent_count { accent_catalog().size() };
 
+        // panel 크기는 가장 높은 탭에 맞춰 고정한다 (S1.3). 탭을 옮길 때 dialog가
+        // 커졌다 작아졌다 하면 읽기 어렵다.
+        settings_dialog_scroll_metrics metrics {};
+        metrics.panel_content_height = tallest_content_height(tabs, dialog.document_mode, accent_count, content_width);
+        metrics.viewport_height = viewport_height_for(metrics.panel_content_height, window_height);
+
+        // 스크롤 한계는 **지금 보고 있는 탭**의 내용으로 센다 (2026-08-23 지시).
+        // 가장 높은 탭으로 세면 짧은 탭에서 빈 공간까지 스크롤된다. 탭을 누르면
+        // 다음 snapshot이 이 함수를 다시 거치므로 그 시점에 새로 계산된다.
+        const tab_model& active { active_tab(tabs, dialog.active_tab) };
+
         // 두 번 센다. 막대가 보이면 항목 열이 좁아지고, 좁아지면 색 격자가 한 줄 더
         // 늘 수 있다. 막대가 필요한지 먼저 판정한 뒤 그 폭으로 다시 센다.
-        settings_dialog_scroll_metrics metrics {};
-        metrics.content_height = tallest_content_height(tabs, dialog.document_mode, accent_count, content_width);
-        metrics.viewport_height = viewport_height_for(metrics.content_height, window_height);
+        metrics.content_height = tab_content_height(active, dialog.document_mode, accent_count, content_width);
         if (metrics.content_height > metrics.viewport_height)
         {
-            metrics.content_height = tallest_content_height(tabs, dialog.document_mode, accent_count, content_width - scrollbar_inset);
-            metrics.viewport_height = viewport_height_for(metrics.content_height, window_height);
+            metrics.content_height = tab_content_height(active, dialog.document_mode, accent_count, content_width - scrollbar_inset);
             metrics.maximum_scroll = metrics.content_height - metrics.viewport_height;
             if (metrics.maximum_scroll < 0.0f)
                 metrics.maximum_scroll = 0.0f;
@@ -855,14 +867,11 @@ namespace gitman::ui {
         const std::size_t accent_count { accent_catalog().size() };
         const float effective { scale > 0.0f ? scale : 1.0f };
         metrics_ = settings_dialog_metrics(dialog_, window_height / effective);
-        panel_height_ = chrome_height + metrics_.content_height;
+        panel_height_ = chrome_height + metrics_.panel_content_height;
 
-        const tab_model* active { &tabs.front() };
-        for (const tab_model& tab : tabs)
-            if (tab.tab == dialog_.active_tab)
-                active = &tab;
+        const tab_model& active { active_tab(tabs, dialog_.active_tab) };
 
-        auto panel { std::make_unique<settings_panel_element>(dialog_, *active, accent_count, metrics_.maximum_scroll > 0.0f ? scrollbar_inset : 0.0f) };
+        auto panel { std::make_unique<settings_panel_element>(dialog_, active, accent_count, metrics_.maximum_scroll > 0.0f ? scrollbar_inset : 0.0f) };
         settings_panel_element* const panel_raw { panel.get() };
         panel_ = panel_raw;
         add_child(std::move(panel));
@@ -871,7 +880,7 @@ namespace gitman::ui {
         // 그리므로 창이 낮아도 버튼 줄을 침범하지 않는다 (E1.2).
         for (const tab_model& tab : tabs)
         {
-            auto item { std::make_unique<tab_item_element>(tab.tab, tab.tab == active->tab, tab.glyph, tab.label) };
+            auto item { std::make_unique<tab_item_element>(tab.tab, tab.tab == active.tab, tab.glyph, tab.label) };
             tab_items_.push_back(item.get());
             panel_raw->adopt(std::move(item));
         }
@@ -892,7 +901,7 @@ namespace gitman::ui {
             return raw;
         };
 
-        for (const section_model& section : active->sections)
+        for (const section_model& section : active.sections)
             for (const item_model& item : section.items)
             {
                 const std::size_t index { item_controls_.size() };

@@ -1583,7 +1583,9 @@ namespace gitman {
             return;
         settings_dialog_->active_tab = intent.tab;
         // 탭을 옮기면 항목 열의 맨 위부터 본다. 앞 탭의 스크롤을 물려받으면 짧은
-        // 탭에서 빈 화면이 보인다 (E1.4).
+        // 탭에서 빈 화면이 보인다 (E1.4). 스크롤 **한계**도 이 시점부터 새 탭의
+        // 내용으로 다시 계산된다 — `settings_dialog_metrics`가 활성 탭을 본다
+        // (2026-08-23 지시).
         settings_dialog_->scroll_offset = 0.0f;
     }
 

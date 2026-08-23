@@ -169,3 +169,61 @@ inline constexpr float layout_dialog_edge_margin_ratio { 0.12f };  // 아주 낮
 | `cmake --build --preset vs2026-analysis` | 분석 경고 없음 |
 | 앱 빌드 Debug / Release | 성공 |
 | `check_source_style.ps1` | 466 files 통과 |
+
+---
+
+## 9. 후속 - 탭별 스크롤 재계산 (2026-08-23 추가 지시)
+
+### 9.1 지시와 원인
+
+"각 세션별로 스크롤 계산을 새로 하기. 세션을 눌러서 표시하는 이벤트가 있기 때문에
+해당 시점에 재계산 처리."
+
+`settings_dialog_metrics`가 스크롤 한계를 **가장 높은 탭**의 내용으로 세고 있었다.
+panel 높이를 가장 높은 탭에 맞추는 규칙(S1.3)을 한계 계산까지 그대로 쓴 것이 원인이다.
+그래서 짧은 탭에서도 가장 높은 탭만큼 스크롤되어 **빈 공간이 보였다.**
+
+### 9.2 고친 내용
+
+두 값을 갈랐다.
+
+| 값 | 기준 | 이유 |
+| --- | --- | --- |
+| `panel_content_height` | **가장 높은 탭** | 탭을 옮길 때 dialog가 커졌다 작아졌다 하지 않는다 (S1.3) |
+| `content_height` | **지금 보고 있는 탭** | 스크롤 한계와 막대 표시가 이 값으로 정해진다 |
+
+`settings_dialog_metrics`가 `dialog.active_tab`을 보므로, 탭을 누르면 다음 snapshot이
+이 함수를 다시 거치며 그 시점에 새로 계산된다. offset은 이미 0으로 되돌아간다.
+
+측정값 (창 420, 논리 픽셀):
+
+| 탭 | 내용 높이 | viewport | 스크롤 한계 (고친 뒤) | 고치기 전 |
+| --- | --- | --- | --- | --- |
+| 도구 | 214 | 268 | **0** | 180 |
+| 동작 | 242 | 268 | **0** | 180 |
+| 외양 | 448 | 268 | 180 | 180 |
+| 시스템 | 108 | 268 | **0** | 180 |
+
+panel 크기(448)와 viewport(268)는 탭이 바뀌어도 그대로다.
+
+### 9.3 신규 test 2 case
+
+- `Each settings tab gets its own scroll extent` — 창 420에서 외양 탭만 막대를 갖고
+  나머지 셋은 한계 0에 막대도 없으며 휠이 아무 일도 하지 않는다. panel 크기와
+  viewport는 네 탭에서 같다.
+- `Switching tabs recalculates the scroll limit at that moment` — 긴 탭에서 끝까지
+  내린 뒤 짧은 탭으로 옮기면 0이 되고 더 굴러가지 않으며, 돌아오면 그 탭의 한계까지
+  다시 내려간다.
+
+test를 쓰면서 `build_ui_tree(...)->find(...)` 결과를 변수에 담아 다음 문장에서 쓰는
+**dangling pointer**를 하나 만들었다가 잡았다 — tree가 그 문장 끝에서 사라진다.
+기존 test에는 같은 형태가 없다.
+
+### 9.4 재검증
+
+| 항목 | 결과 |
+| --- | --- |
+| `ctest` Debug / Release | **822/822 통과** (양쪽) |
+| `cmake --build --preset vs2026-analysis` | 분석 경고 없음 |
+| 앱 빌드 Debug / Release | 성공 |
+| `check_source_style.ps1` | 466 files 통과 |

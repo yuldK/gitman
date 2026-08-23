@@ -203,8 +203,10 @@ namespace gitman::ui {
             SkPaint icon_paint { solid_paint(undetermined ? context.palette.primary_foreground : state_accent(context.palette, card_.state)) };
             if (undetermined)
                 icon_paint.setAlphaf(0.45f);
-            const char32_t glyph { card_.busy ? codicons::icon_sync : codicon_for_name(card_.status.codicon) };
-            draw_centered_glyph(context.canvas, glyph, icon_slot, icon_font, icon_paint);
+            if (card_.busy)
+                draw_spinning_glyph(context.canvas, codicons::icon_sync, icon_slot, icon_font, icon_paint, context.now);
+            else
+                draw_centered_glyph(context.canvas, codicon_for_name(card_.status.codicon), icon_slot, icon_font, icon_paint);
         }
 
         // 글자가 버튼을 침범하지 않도록 arrange가 정한 한계 안에서만 그린다.
@@ -217,6 +219,11 @@ namespace gitman::ui {
         draw_status_row(context, { text_x, line_3_top, text_width, layout_card_status_height * scale });
 
         draw_children(context, interaction);
+    }
+
+    bool card_element::animating() const noexcept
+    {
+        return card_.busy;
     }
 
     void card_element::draw_status_row(draw_context& context, const rect_f& row) const

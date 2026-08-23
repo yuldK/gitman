@@ -1,5 +1,6 @@
 #include "application/logic_controller.h"
 #include "domain/app_settings.h"
+#include "presentation/list_metrics.h"
 #include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/start_page_element.h"
 
@@ -156,6 +157,69 @@ TEST_CASE("A recent row opens its document and the remove icon only drops the en
     REQUIRE(view->start_page->recents.front().display_name == u8"client");
     REQUIRE(fixture.submitter.requests.size() == 1);
     REQUIRE(fixture.submitter.requests.front().kind == gitman::operation_kind::save_app_settings);
+}
+
+TEST_CASE("A recent row pins and unpins through its left icon", "[ui][start-page][pin]")
+{
+    start_page_fixture fixture { { u8"D:\\workspaces\\team.version-list", u8"E:\\tools\\client.version-list" } };
+    const std::shared_ptr<const gitman::ui::ui_tree> tree { gitman::ui::build_ui_tree(*fixture.view()) };
+
+    const std::vector<gitman::ui::input_action> pinned { click(*tree, gitman::ui::start_page_recent_pin_id(1)) };
+    REQUIRE(pinned.size() == 1);
+    const auto& pin_message { std::get<gitman::logic_message>(pinned.front()) };
+    REQUIRE(std::get<gitman::toggle_recent_document_pin_intent>(pin_message).path == u8"E:\\tools\\client.version-list");
+
+    // pin 아이콘도 행 위에 있어 hit test에서 먼저 걸린다 — 누르면 문서가 열리지 않는다.
+    const gitman::ui::ui_element* const pin { tree->find(gitman::ui::start_page_recent_pin_id(1)) };
+    const gitman::ui::rect_f box { pin->bounds() };
+    REQUIRE(tree->hit_test(box.x + box.width / 2.0f, box.y + box.height / 2.0f) == pin);
+
+    // 고정하면 목록 맨 앞으로 올라가고 저장이 예약된다.
+    fixture.controller.handle(gitman::logic_message { gitman::toggle_recent_document_pin_intent { u8"E:\\tools\\client.version-list" } });
+    {
+        const std::shared_ptr<const gitman::view_snapshot> view { fixture.view() };
+        REQUIRE(view->start_page->recents.front().display_name == u8"client");
+        REQUIRE(view->start_page->recents.front().pinned);
+        REQUIRE(view->start_page->recents.back().pinned == false);
+    }
+    REQUIRE(fixture.submitter.requests.size() == 1);
+    REQUIRE(fixture.submitter.requests.front().kind == gitman::operation_kind::save_app_settings);
+
+    // 다시 누르면 풀리고, 가장 최근에 연 문서로 쳐서 여전히 맨 앞이다 (2026-08-23 지시).
+    fixture.controller.handle(gitman::logic_message { gitman::toggle_recent_document_pin_intent { u8"E:\\tools\\client.version-list" } });
+    const std::shared_ptr<const gitman::view_snapshot> view { fixture.view() };
+    REQUIRE(view->start_page->recents.front().display_name == u8"client");
+    REQUIRE(view->start_page->recents.front().pinned == false);
+
+    // 목록에 없는 경로는 아무 일도 하지 않는다.
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::logic_message { gitman::toggle_recent_document_pin_intent { u8"Z:\\none.version-list" } });
+    REQUIRE(fixture.submitter.requests.empty());
+}
+
+TEST_CASE("Pinned rows sit under their own section header", "[ui][start-page][pin]")
+{
+    start_page_fixture fixture { { u8"D:\\ws\\one.version-list", u8"D:\\ws\\two.version-list" } };
+
+    // 고정이 없으면 머리글도 하나뿐이라 두 행이 맞붙는다.
+    {
+        const std::shared_ptr<const gitman::ui::ui_tree> tree { gitman::ui::build_ui_tree(*fixture.view()) };
+        const float first { tree->find(gitman::ui::start_page_recent_item_id(0))->bounds().y };
+        const float second { tree->find(gitman::ui::start_page_recent_item_id(1))->bounds().y };
+        REQUIRE(second - first == gitman::layout_start_page_row_height);
+    }
+
+    // 하나를 고정하면 그 행이 맨 위 `고정됨` 무리로 가고, 나머지 앞에 `최근 항목`
+    // 머리글이 한 줄 더 들어간다 (2026-08-23 지시).
+    fixture.controller.handle(gitman::logic_message { gitman::toggle_recent_document_pin_intent { u8"D:\\ws\\two.version-list" } });
+    const std::shared_ptr<const gitman::view_snapshot> view { fixture.view() };
+    REQUIRE(view->start_page->recents.front().display_name == u8"two");
+    REQUIRE(view->start_page->recents.front().pinned);
+
+    const std::shared_ptr<const gitman::ui::ui_tree> tree { gitman::ui::build_ui_tree(*view) };
+    const float pinned { tree->find(gitman::ui::start_page_recent_item_id(0))->bounds().y };
+    const float loose { tree->find(gitman::ui::start_page_recent_item_id(1))->bounds().y };
+    REQUIRE(loose - pinned == gitman::layout_start_page_row_height + gitman::layout_start_page_section_height);
 }
 
 TEST_CASE("A short window draws only the rows that fit and reports the rest", "[ui][start-page]")

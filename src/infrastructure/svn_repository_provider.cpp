@@ -607,10 +607,15 @@ namespace gitman {
             return update_block_reason::repository_unavailable;
         if (snapshot.working_tree.state == working_tree_state::conflicted)
             return update_block_reason::working_tree_conflicted;
-        if (snapshot.working_tree.has_tracked_changes())
-            // 수정·충돌과 `unknown`을 막는다. 미추적 파일만 있는 상태는 막지
-            // 않는다 — `svn update`는 미버전 파일을 건드리지 않고 충돌 시 tree
-            // conflict로 남긴다 (field-feedback-design 2.2).
+        // 수정이 있어도 **갱신한다** (2026-08-23 지시). `svn update`는 로컬 변경을
+        // 받아 온 개정판에 병합하고, 병합할 수 없으면 충돌로 남긴다 — 그 해결은
+        // 어차피 사용자의 몫이다. 미추적 파일을 막지 않던 것과 같은 이유를 수정까지
+        // 넓힌 것이다 (field-feedback-design 2.2의 SVN 쪽 정책 변경).
+        //
+        // 상태를 읽지 못한 경우(`unknown`)는 그대로 막는다 — 무엇을 덮는지 알 수
+        // 없다. SVN은 `operation_in_progress`·`has_index_lock`을 채우지 않아 그
+        // 두 판정은 여기서 쓰지 않는다.
+        if (snapshot.working_tree.state == working_tree_state::unknown)
             return update_block_reason::working_tree_dirty;
         if (snapshot.has_switched_subtree.value_or(false))
             return update_block_reason::switched_subtree;

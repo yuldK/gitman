@@ -142,7 +142,14 @@ namespace gitman {
             return reject(switch_rejection::repository_unavailable);
         if (current_url.empty() == false && current_url == target.target)
             return reject(switch_rejection::already_on_target);
-        if (snapshot.working_tree.is_safe_for_change() == false)
+        // SVN은 **로컬 변경이 있어도 전환한다** (2026-08-23 지시). `svn switch`는
+        // 변경을 새 위치에 병합하고, 병합할 수 없으면 tree conflict로 남긴다 —
+        // 그 해결은 어차피 사용자의 몫이다. Git과 달리 변경을 잃지 않으므로
+        // `is_safe_for_change`(수정만 있어도 거부)를 쓰지 않는다.
+        //
+        // 이미 충돌이 남아 있거나 상태를 읽지 못한 작업 복사본만 막는다. 전자는
+        // 전환이 충돌을 겹치게 하고, 후자는 무엇을 덮는지 알 수 없다.
+        if (snapshot.working_tree.state == working_tree_state::conflicted || snapshot.working_tree.state == working_tree_state::unknown)
             return reject(switch_rejection::working_tree_unsafe);
         return approve();
     }

@@ -4,6 +4,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -281,6 +282,10 @@ namespace gitman {
             entry["path"] = as_string(value.path);
             entry["display_name"] = as_string(value.display_name);
             entry["opened_at"] = as_string(value.opened_at);
+            // 참일 때만 쓴다. 고정을 쓰지 않는 사용자의 파일은 이전과 같은 모양으로
+            // 남고, 옛 버전이 읽어도 키 하나를 모른 척할 뿐이다 (2026-08-23 지시).
+            if (value.pinned)
+                entry["pinned"] = true;
             recent.push_back(std::move(entry));
         }
 
@@ -371,6 +376,7 @@ namespace gitman {
             return result;
         }
 
+        std::size_t unpinned { 0 };
         for (const json& value : *recent)
         {
             if (value.is_object() == false)
@@ -384,10 +390,19 @@ namespace gitman {
             if (entry.display_name.empty())
                 entry.display_name = recent_document_display_name(entry.path);
             entry.opened_at = read_string(value, "opened_at");
+            const auto pinned { value.find("pinned") };
+            entry.pinned = pinned != value.end() && pinned->is_boolean() && pinned->get<bool>();
+            const bool pinned_entry { entry.pinned };
             result.settings.recent_documents.push_back(std::move(entry));
-            if (result.settings.recent_documents.size() >= recent_document_capacity)
+            // 상한은 비고정 항목만 센다. 고정은 버리지 않는다 (2026-08-23 지시).
+            if (pinned_entry == false)
+                ++unpinned;
+            if (unpinned >= recent_document_capacity)
                 break;
         }
+        // 손으로 고친 파일이 두 무리를 섞어 두었어도 목록의 불변(고정이 앞)은
+        // 지킨다. 무리 안의 순서는 파일 그대로다.
+        static_cast<void>(std::stable_partition(result.settings.recent_documents.begin(), result.settings.recent_documents.end(), [](const recent_document& value) { return value.pinned; }));
         return result;
     }
 

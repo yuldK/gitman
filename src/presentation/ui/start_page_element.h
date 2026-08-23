@@ -9,6 +9,7 @@ namespace gitman::ui {
     // 최근 항목 행과 그 제거 아이콘의 정체성이다. 컨텍스트 메뉴 항목처럼 owner 값에
     // index를 담아 구분한다 (app-shell-design A1.3).
     [[nodiscard]] ui_element_id start_page_recent_item_id(std::size_t index);
+    [[nodiscard]] ui_element_id start_page_recent_pin_id(std::size_t index);
     [[nodiscard]] ui_element_id start_page_recent_remove_id(std::size_t index);
 
     // 열린 문서가 없을 때 카드 목록 자리를 채우는 시작 페이지다. 왼쪽은 문서 열기·
@@ -30,6 +31,13 @@ namespace gitman::ui {
         rect_f subtitle_ {};
         rect_f action_section_ {};
         rect_f recent_section_ {};
+        // `고정됨` 머리글이다 (2026-08-23 지시). 고정한 항목이 없으면 폭이 0이라
+        // 그리지 않는다.
+        rect_f pinned_header_ {};
+        // `최근 항목` 머리글이다. 고정 무리 아래에 오므로 위치가 고정이 아니다.
+        rect_f recent_header_ {};
+        // 고정한 항목의 수다. `recents`의 앞쪽이 고정 무리라는 불변에 기댄다.
+        std::size_t pinned_count_ { 0 };
         rect_f recent_empty_ {};
     };
 } // namespace gitman::ui

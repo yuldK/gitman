@@ -483,6 +483,14 @@ namespace gitman {
         std::u8string path {};
     };
 
+    // 시작 페이지 최근 항목의 고정 토글이다 (2026-08-23 지시). 고정한 항목은 목록
+    // 앞에 모이고 상한에 걸려도 버려지지 않는다. 고정을 풀면 가장 최근에 연 문서로
+    // 쳐서 비고정 무리의 맨 앞에 선다.
+    struct toggle_recent_document_pin_intent
+    {
+        std::u8string path {};
+    };
+
     // UI thread가 전달하는 창 크기와 DPI 배율이다. layout snapshot 계산의 입력이다.
     struct window_metrics_intent
     {
@@ -728,7 +736,7 @@ namespace gitman {
         clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
         local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent, set_accent_intent,
-        remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
+        remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
         local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 

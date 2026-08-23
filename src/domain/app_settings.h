@@ -14,7 +14,8 @@
 namespace gitman {
     inline constexpr std::int32_t current_app_settings_schema_version { 1 };
     // 시작 페이지가 보여 주는 최근 항목의 상한이다 (app-shell-design A1.1). 넘으면
-    // 오래된 항목부터 버린다.
+    // 오래된 항목부터 버린다. **고정한 항목은 이 수에 들지 않는다** — 사용자가
+    // 명시적으로 고른 것이라 버리지 않는다 (2026-08-23 지시).
     inline constexpr std::size_t recent_document_capacity { 10 };
     // 앱 설정 파일의 이름이다. 실행 파일과 같은 폴더에 둔다.
     inline constexpr std::u8string_view app_settings_file_name { u8"gitman.app-settings.json" };
@@ -29,6 +30,9 @@ namespace gitman {
         std::u8string display_name {};
         // `2026-08-21T18:40:12Z` 형식이다. 읽을 수 없는 값은 파서가 버린다.
         std::u8string opened_at {};
+        // 사용자가 고정한 항목이다 (2026-08-23 지시). 목록 앞에 모이고 상한에
+        // 걸려도 버려지지 않는다.
+        bool pinned { false };
 
         [[nodiscard]] bool operator==(const recent_document&) const noexcept = default;
     };
@@ -38,7 +42,8 @@ namespace gitman {
     struct app_settings
     {
         std::int32_t schema_version { current_app_settings_schema_version };
-        // 최근 순으로 정렬된 목록이다. 맨 앞이 가장 최근에 연 문서다.
+        // 최근 순으로 정렬된 목록이다. 맨 앞이 가장 최근에 연 문서다. 고정한
+        // 항목이 앞에 모이고, 두 무리 안에서 각각 최근 순이다.
         std::vector<recent_document> recent_documents {};
         // 마지막으로 앱을 닫을 때의 창 배치다 (global-settings-and-ui-fixes-design
         // G1). 문서의 `window`와 같은 좌표 규칙이며, 문서 없이 시작할 때의 복원
@@ -61,11 +66,16 @@ namespace gitman {
     [[nodiscard]] std::u8string recent_document_key(std::u8string_view path);
     // 표시 이름이다. 경로의 마지막 구성 요소에서 `.version-list` 확장자를 뗀다.
     [[nodiscard]] std::u8string recent_document_display_name(std::u8string_view path);
-    // 문서를 목록 맨 앞으로 올린다. 같은 문서가 있으면 경로 표기와 시각을 갱신하고,
-    // 상한을 넘으면 뒤에서 버린다.
+    // 문서를 자기 무리(고정·비고정)의 맨 앞으로 올린다. 같은 문서가 있으면 경로
+    // 표기와 시각을 갱신하고 **고정 여부는 보존한다** — 고정한 문서를 다시 열었다고
+    // 고정이 풀리면 놀랍다. 비고정이 상한을 넘으면 뒤에서 버린다.
     void touch_recent_document(app_settings& settings, std::u8string path, std::u8string opened_at);
     // 목록에서 문서를 지운다. 지운 항목이 있으면 true다.
     bool remove_recent_document(app_settings& settings, std::u8string_view path);
+    // 고정을 켜거나 끈다. 바뀐 것이 있으면 true다. 어느 쪽으로 바꾸든 그 항목은
+    // 새 무리의 맨 앞에 선다 — 고정을 풀면 가장 최근에 연 문서로 친다 (2026-08-23
+    // 지시). 비고정이 상한을 넘으면 뒤에서 버린다.
+    bool set_recent_document_pinned(app_settings& settings, std::u8string_view path, bool pinned);
     // `2026-08-21T18:40:12Z` 형식의 UTC 문자열이다. 변환에 실패하면 빈 값이다.
     [[nodiscard]] std::u8string format_utc_timestamp(std::chrono::system_clock::time_point time);
 } // namespace gitman

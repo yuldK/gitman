@@ -32,6 +32,9 @@ namespace gitman::ui {
             return value;
         }
 
+        // 최근 항목 행 양끝의 아이콘 버튼 폭이다 (논리 픽셀).
+        constexpr float recent_icon_width { 20.0f };
+
         std::u8string count_text(const std::size_t count)
         {
             std::u8string digits {};
@@ -89,17 +92,19 @@ namespace gitman::ui {
             std::u8string label_ {};
         };
 
-        // 최근 항목 행 오른쪽의 제거 아이콘이다. 행보다 먼저 hit되어 목록에서만
-        // 지우고 문서는 열지 않는다.
-        class recent_remove_element final : public ui_element
+        // 최근 항목 행 양끝의 아이콘 버튼이다. 행보다 먼저 hit되어 문서를 열지
+        // 않는다. 색은 **글과 같다** — 흐리게 그렸더니 아이콘이 없는 것으로 보였다
+        // (2026-08-23 지시).
+        class recent_icon_element final : public ui_element
         {
         public:
-            recent_remove_element(const std::size_t index, std::u8string path)
-                : ui_element { start_page_recent_remove_id(index) }
+            recent_icon_element(ui_element_id id, const char32_t glyph, std::u8string tooltip, logic_message message)
+                : ui_element { std::move(id) }
+                , glyph_ { glyph }
             {
-                set_tooltip(u8"최근 목록에서 제거");
+                set_tooltip(std::move(tooltip));
                 set_action(ui_trigger::left_click,
-                    [path = std::move(path)](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { remove_recent_document_intent { path } } } }; });
+                    [message = std::move(message)](const ui_action_context&) -> std::vector<input_action> { return { input_action { message } }; });
             }
 
             void arrange(const arrange_context& context) override
@@ -107,18 +112,19 @@ namespace gitman::ui {
                 set_bounds(context.slot);
             }
 
-            void draw(draw_context& context, const interaction_snapshot& interaction) const override
+            void draw(draw_context& context, const interaction_snapshot&) const override
             {
-                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
-                const rect_f box { bounds() };
-                SkPaint foreground { solid_paint(context.palette.primary_foreground) };
-                foreground.setAlphaf(interaction.hovered == id() ? 1.0f : 0.45f);
                 if (context.codicon_typeface == nullptr)
                     return;
 
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
                 const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 12.0f * scale };
-                draw_centered_glyph(context.canvas, codicons::icon_close, box, icon_font, foreground);
+                draw_centered_glyph(context.canvas, glyph_, bounds(), icon_font, foreground);
             }
+
+        private:
+            char32_t glyph_ { 0 };
         };
 
         // 최근 항목 한 행이다. 이름 뒤에 폴더를 흐리게 붙이고, 클릭하면 그 문서를
@@ -133,7 +139,21 @@ namespace gitman::ui {
                 set_tooltip(recent.path);
                 set_action(ui_trigger::left_click,
                     [path = recent.path](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_document_intent { path } } } }; });
-                auto remove { std::make_unique<recent_remove_element>(index, recent.path) };
+
+                // 고정한 항목은 채워진 글리프로 구별한다 (2026-08-23 지시).
+                const char32_t pin_glyph { recent.pinned ? codicons::icon_pinned : codicons::icon_pin };
+                std::u8string pin_tooltip { recent.pinned ? u8"고정 해제" : u8"목록에 고정" };
+                auto pin {
+                    std::make_unique<recent_icon_element>(
+                        start_page_recent_pin_id(index), pin_glyph, std::move(pin_tooltip), logic_message { toggle_recent_document_pin_intent { recent.path } }),
+                };
+                pin_ = pin.get();
+                add_child(std::move(pin));
+
+                auto remove {
+                    std::make_unique<recent_icon_element>(
+                        start_page_recent_remove_id(index), codicons::icon_close, std::u8string { u8"최근 목록에서 제거" }, logic_message { remove_recent_document_intent { recent.path } }),
+                };
                 remove_ = remove.get();
                 add_child(std::move(remove));
             }
@@ -142,7 +162,8 @@ namespace gitman::ui {
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
                 set_bounds(context.slot);
-                const float icon { 20.0f * scale };
+                const float icon { recent_icon_width * scale };
+                pin_->arrange({ { context.slot.x, context.slot.y, icon, context.slot.height }, scale });
                 remove_->arrange({ { context.slot.x + context.slot.width - icon, context.slot.y, icon, context.slot.height }, scale });
             }
 
@@ -150,34 +171,39 @@ namespace gitman::ui {
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
                 const rect_f box { bounds() };
-                const bool hovered { interaction.hovered == id() || interaction.hovered == remove_->id() };
+                const bool hovered { interaction.hovered == id() || interaction.hovered == pin_->id() || interaction.hovered == remove_->id() };
                 if (hovered)
                 {
                     const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.08f)));
                 }
 
-                const float remove_width { 24.0f * scale };
-                const float right { box.x + box.width - remove_width };
+                // 글은 양끝의 아이콘 버튼 사이에만 그린다.
+                const float right { box.x + box.width - (recent_icon_width + 4.0f) * scale };
                 const SkFont name_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
                 const float baseline { box.y + centered_text_baseline(name_font, box.height) };
-                const float text_left { box.x + 4.0f * scale };
+                const float text_left { box.x + (recent_icon_width + 4.0f) * scale };
                 const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
                 const float name_width { draw_text_within(context.canvas, recent_.display_name, text_left, baseline, right - text_left, name_font, foreground) };
 
                 // 폴더는 이름 뒤에 흐리게 붙는다. 남은 폭이 없으면 그리지 않는다.
                 const float folder_left { text_left + name_width + 8.0f * scale };
-                if (folder_left >= right)
-                    return;
+                if (folder_left < right)
+                {
+                    SkPaint dim { solid_paint(context.palette.primary_foreground) };
+                    dim.setAlphaf(0.55f);
+                    const SkFont folder_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                    static_cast<void>(draw_text_within(context.canvas, recent_.folder, folder_left, baseline, right - folder_left, folder_font, dim));
+                }
 
-                SkPaint dim { solid_paint(context.palette.primary_foreground) };
-                dim.setAlphaf(0.55f);
-                const SkFont folder_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
-                static_cast<void>(draw_text_within(context.canvas, recent_.folder, folder_left, baseline, right - folder_left, folder_font, dim));
+                // 아이콘 버튼은 자식이다. 이 호출을 빠뜨려 삭제 버튼이 한 번도 그려지지
+                // 않았다 (2026-08-23 지시).
+                draw_children(context, interaction);
             }
 
         private:
             recent_document_view recent_ {};
+            ui_element* pin_ { nullptr };
             ui_element* remove_ { nullptr };
         };
     } // namespace
@@ -186,6 +212,13 @@ namespace gitman::ui {
     {
         ui_element_id id { ui_element_kind::start_page_recent_item };
         id.owner.value = index_owner_value(u8"start-page-recent-", index);
+        return id;
+    }
+
+    ui_element_id start_page_recent_pin_id(const std::size_t index)
+    {
+        ui_element_id id { ui_element_kind::start_page_recent_pin };
+        id.owner.value = index_owner_value(u8"start-page-pin-", index);
         return id;
     }
 
@@ -250,26 +283,62 @@ namespace gitman::ui {
         rows[0]->arrange({ { left, content_top + section_height, action_width, row_height }, scale });
         rows[1]->arrange({ { left, content_top + section_height + row_height, action_width, row_height }, scale });
 
+        // 고정한 항목은 `고정됨` 무리로 따로 모은다 (2026-08-23 지시). `recents`가
+        // 이미 고정을 앞에 모아 두므로 앞에서부터 세기만 하면 된다.
+        const std::size_t recent_count { page_.recents.size() };
+        pinned_count_ = 0;
+        while (pinned_count_ < recent_count && page_.recents[pinned_count_].pinned)
+            ++pinned_count_;
+
         // 남은 높이에 들어가는 행만 그린다. 스크롤을 두지 않고 넘치는 개수를 마지막
-        // 줄로 알린다 (app-shell-design A1.3의 스크롤 대신 채택한 단순화).
-        const float rows_top { recent_top + section_height };
-        float available { bottom - rows_top };
+        // 줄로 알린다 (app-shell-design A1.3의 스크롤 대신 채택한 단순화). 머리글도
+        // 높이를 먹으므로 고정 무리가 있으면 한 줄이 더 든다.
+        const float headers { (pinned_count_ > 0 ? 2.0f : 1.0f) * section_height };
+        float available { bottom - recent_top - headers };
         if (available < 0.0f)
             available = 0.0f;
 
-        const std::size_t recent_count { page_.recents.size() };
         std::size_t capacity { row_height > 0.0f ? static_cast<std::size_t>(available / row_height) : 0 };
         if (capacity < recent_count && capacity > 0)
             --capacity;
         visible_recents_ = capacity < recent_count ? capacity : recent_count;
-        recent_empty_ = { recent_left, rows_top + static_cast<float>(visible_recents_) * row_height, recent_width, row_height };
 
-        for (std::size_t index = 0; index < recent_count; ++index)
+        // 머리글과 행을 위에서부터 차례로 쌓는다. 보이지 않는 행은 자리를 먹지
+        // 않으므로 안내 줄이 목록 밖으로 밀려나지 않는다.
+        float row_y { recent_top };
+        if (pinned_count_ > 0)
+        {
+            pinned_header_ = { recent_left, row_y, recent_width, section_height };
+            row_y += section_height;
+        }
+        else
+            pinned_header_ = {};
+
+        const std::size_t visible_pinned { visible_recents_ < pinned_count_ ? visible_recents_ : pinned_count_ };
+        for (std::size_t index = 0; index < visible_pinned; ++index)
+        {
+            rows[index + 2]->set_visible(true);
+            rows[index + 2]->arrange({ { recent_left, row_y, recent_width, row_height }, scale });
+            row_y += row_height;
+        }
+
+        // `최근 항목` 머리글은 고정 무리가 없어도 언제나 있다 — 목록이 비었다는
+        // 안내가 붙을 자리이기도 하다.
+        recent_header_ = { recent_left, row_y, recent_width, section_height };
+        row_y += section_height;
+
+        for (std::size_t index = pinned_count_; index < recent_count; ++index)
         {
             ui_element& row { *rows[index + 2] };
             row.set_visible(index < visible_recents_);
-            row.arrange({ { recent_left, rows_top + static_cast<float>(index) * row_height, recent_width, row_height }, scale });
+            row.arrange({ { recent_left, row_y, recent_width, row_height }, scale });
+            if (index < visible_recents_)
+                row_y += row_height;
         }
+        for (std::size_t index = visible_pinned; index < pinned_count_; ++index)
+            rows[index + 2]->set_visible(false);
+
+        recent_empty_ = { recent_left, row_y, recent_width, row_height };
     }
 
     void start_page_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -289,8 +358,11 @@ namespace gitman::ui {
         const SkFont section_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
         static_cast<void>(draw_text_within(context.canvas, u8"시작", action_section_.x + 4.0f * scale,
             action_section_.y + centered_text_baseline(section_font, layout_start_page_section_height * scale), action_section_.width, section_font, dim));
-        static_cast<void>(draw_text_within(context.canvas, u8"최근 항목", recent_section_.x + 4.0f * scale,
-            recent_section_.y + centered_text_baseline(section_font, layout_start_page_section_height * scale), recent_section_.width, section_font, dim));
+        if (pinned_header_.width > 0.0f)
+            static_cast<void>(draw_text_within(context.canvas, u8"고정됨", pinned_header_.x + 4.0f * scale,
+                pinned_header_.y + centered_text_baseline(section_font, pinned_header_.height), pinned_header_.width, section_font, dim));
+        static_cast<void>(draw_text_within(context.canvas, u8"최근 항목", recent_header_.x + 4.0f * scale,
+            recent_header_.y + centered_text_baseline(section_font, recent_header_.height), recent_header_.width, section_font, dim));
 
         draw_children(context, interaction);
 
@@ -298,10 +370,11 @@ namespace gitman::ui {
         std::u8string notice {};
         if (page_.loading)
             notice = u8"최근 항목을 읽는 중입니다…";
-        else if (page_.recents.empty())
-            notice = u8"최근에 연 문서가 없습니다.";
         else if (visible_recents_ < page_.recents.size())
             notice = count_text(page_.recents.size() - visible_recents_);
+        else if (pinned_count_ == page_.recents.size())
+            // 다 고정했거나 아예 비었다. 어느 쪽이든 `최근 항목` 무리는 비어 있다.
+            notice = u8"최근에 연 문서가 없습니다.";
         if (notice.empty())
             return;
 

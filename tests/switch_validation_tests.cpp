@@ -293,13 +293,22 @@ TEST_CASE("Subversion switch checks the working copy before the network", "[appl
     // 이미 그 URL에 있으면 전환할 이유가 없다.
     REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), svn_snapshot(), branch_url).rejection == gitman::switch_rejection::already_on_target);
 
+    // 로컬 변경이 있어도 전환한다 (2026-08-23 지시). `svn switch`가 병합하고,
+    // 병합할 수 없으면 충돌로 남긴다 — 그 해결은 사용자의 몫이다.
     gitman::repository_snapshot dirty { svn_snapshot() };
     dirty.working_tree.state = gitman::working_tree_state::modified;
-    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), dirty, trunk_url).rejection == gitman::switch_rejection::working_tree_unsafe);
+    dirty.working_tree.modified_count = 3;
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), dirty, trunk_url).approved);
 
+    // 이미 충돌이 남아 있으면 막는다. 전환이 충돌을 겹치게 한다.
     gitman::repository_snapshot conflicted { svn_snapshot() };
     conflicted.working_tree.state = gitman::working_tree_state::conflicted;
     REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), conflicted, trunk_url).rejection == gitman::switch_rejection::working_tree_unsafe);
+
+    // 상태를 읽지 못한 작업 복사본도 막는다 — 무엇을 덮는지 알 수 없다.
+    gitman::repository_snapshot unknown { svn_snapshot() };
+    unknown.working_tree.state = gitman::working_tree_state::unknown;
+    REQUIRE(gitman::validate_svn_switch_target(url_candidate(branch_url), unknown, trunk_url).rejection == gitman::switch_rejection::working_tree_unsafe);
 
     gitman::repository_snapshot unavailable { svn_snapshot() };
     unavailable.availability = gitman::repository_availability::not_a_repository;

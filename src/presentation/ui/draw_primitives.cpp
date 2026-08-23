@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -258,6 +259,21 @@ namespace gitman::ui {
             },
         };
         canvas.drawGlyphs(glyphs, positions, SkPoint {}, font, paint);
+    }
+
+    float spinner_angle(const std::chrono::steady_clock::time_point now) noexcept
+    {
+        // 위상은 steady clock의 절대 시각에서만 나온다. 시작 시각을 들고 다니지
+        // 않아도 되고, 같은 frame의 여러 표시가 함께 돈다.
+        const auto elapsed { std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % spinner_period };
+        return static_cast<float>(elapsed.count()) / static_cast<float>(spinner_period.count()) * 360.0f;
+    }
+
+    void draw_spinning_glyph(SkCanvas& canvas, const char32_t codepoint, const rect_f& target, const SkFont& font, const SkPaint& paint, const std::chrono::steady_clock::time_point now)
+    {
+        const SkAutoCanvasRestore restore { &canvas, true };
+        canvas.rotate(spinner_angle(now), target.x + target.width / 2.0f, target.y + target.height / 2.0f);
+        draw_centered_glyph(canvas, codepoint, target, font, paint);
     }
 
     float centered_text_baseline(const SkFont& font, const float target_height)

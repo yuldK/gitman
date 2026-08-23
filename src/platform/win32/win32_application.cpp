@@ -60,6 +60,12 @@ namespace gitman::win32 {
         // 로그 헤더의 경과 시간(MM:SS)이 다음 초로 넘어가는 시점에 다시 그리기 위한
         // timer다. 변경 작업이 실행 중일 때만 걸린다.
         constexpr UINT_PTR elapsed_timer_id { 3 };
+        // 회전하는 진행 표시를 다음 칸으로 옮기기 위한 timer다 (2026-08-23 지시).
+        // tree에 회전 element가 있는 동안에만 걸리고, 조회가 끝나면 그 element가
+        // 사라져 timer도 죽는다 — 평소에는 이벤트가 있을 때만 그린다.
+        constexpr UINT_PTR spinner_timer_id { 4 };
+        // 회전 표시의 다시 그리기 간격이다. 30fps면 눈에 매끄럽다.
+        constexpr std::chrono::milliseconds spinner_repaint_interval { 33 };
 
         // OS의 앱 모드가 밝은지다 (theme-and-banner-menu-design T3.2). 값을 읽지
         // 못하면 어두운 쪽으로 본다 — 지금까지의 모습과 같다.
@@ -431,7 +437,7 @@ namespace gitman::win32 {
                     open_dropped_workspace_document(reinterpret_cast<HDROP>(word_parameter));
                     return 0;
                 case WM_TIMER:
-                    if (word_parameter == tooltip_timer_id || word_parameter == caret_timer_id || word_parameter == elapsed_timer_id)
+                    if (word_parameter == tooltip_timer_id || word_parameter == caret_timer_id || word_parameter == elapsed_timer_id || word_parameter == spinner_timer_id)
                     {
                         KillTimer(window_, word_parameter);
                         InvalidateRect(window_, nullptr, FALSE);
@@ -1298,6 +1304,7 @@ namespace gitman::win32 {
                 schedule_tooltip_repaint(tree.get(), state.interaction);
                 schedule_caret_repaint(state.interaction);
                 schedule_elapsed_repaint();
+                schedule_spinner_repaint(tree.get());
                 return renderer_->render(state, error);
             }
 
@@ -1436,6 +1443,19 @@ namespace gitman::win32 {
                 const auto phase { elapsed % std::chrono::seconds { 1 } };
                 const auto remaining { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::seconds { 1 } - phase) };
                 SetTimer(window_, elapsed_timer_id, static_cast<UINT>(remaining.count() + 15), nullptr);
+            }
+
+            // 회전하는 진행 표시가 화면에 있으면 다음 칸으로 옮기도록 timer를 건다.
+            // 각도는 시각만의 함수라(`ui::spinner_angle`) frame이 몇 번 겹쳐도 위상이
+            // 흔들리지 않는다.
+            void schedule_spinner_repaint(const ui::ui_tree* const tree) noexcept
+            {
+                if (tree == nullptr || tree->animating() == false)
+                {
+                    KillTimer(window_, spinner_timer_id);
+                    return;
+                }
+                SetTimer(window_, spinner_timer_id, static_cast<UINT>(spinner_repaint_interval.count()), nullptr);
             }
 
             int scale_for_dpi(const int value) const noexcept

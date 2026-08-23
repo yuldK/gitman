@@ -189,6 +189,50 @@ TEST_CASE("Touching a recent document moves it to the front and keeps the capaci
     REQUIRE(gitman::remove_recent_document(settings, u8"D:\\ws\\missing.version-list") == false);
 }
 
+TEST_CASE("Pinned recent documents lead the list and survive the capacity", "[app-settings][domain][pin]")
+{
+    gitman::app_settings settings {};
+    for (std::size_t index = 0; index < gitman::recent_document_capacity; ++index)
+    {
+        const std::u8string path { std::u8string { u8"D:\\ws\\doc" } + static_cast<char8_t>(u8'a' + index) + std::u8string { u8".version-list" } };
+        gitman::touch_recent_document(settings, path, u8"2026-08-21T00:00:00Z");
+    }
+
+    // 목록 한가운데 항목을 고정하면 맨 앞으로 올라간다.
+    REQUIRE(gitman::set_recent_document_pinned(settings, u8"D:\\ws\\docc.version-list", true));
+    REQUIRE(settings.recent_documents.front().pinned);
+    REQUIRE(u8_equal(settings.recent_documents.front().display_name, u8"docc"));
+    // 같은 값으로 다시 부르면 아무 일도 없다.
+    REQUIRE(gitman::set_recent_document_pinned(settings, u8"D:\\ws\\docc.version-list", true) == false);
+    REQUIRE(gitman::set_recent_document_pinned(settings, u8"D:\\ws\\missing.version-list", true) == false);
+
+    // 상한은 비고정 항목만 센다. 고정한 것은 새 문서에 밀려나지 않는다.
+    for (std::size_t index = 0; index < 5; ++index)
+    {
+        const std::u8string path { std::u8string { u8"E:\\new\\doc" } + static_cast<char8_t>(u8'a' + index) + std::u8string { u8".version-list" } };
+        gitman::touch_recent_document(settings, path, u8"2026-08-22T00:00:00Z");
+    }
+    REQUIRE(settings.recent_documents.size() == gitman::recent_document_capacity + 1);
+    REQUIRE(settings.recent_documents.front().pinned);
+    REQUIRE(u8_equal(settings.recent_documents.front().display_name, u8"docc"));
+    // 고정 항목 바로 뒤가 비고정 무리의 맨 앞이다.
+    REQUIRE(settings.recent_documents[1].pinned == false);
+    REQUIRE(u8_equal(settings.recent_documents[1].display_name, u8"doce"));
+
+    // 고정한 문서를 다시 열어도 고정은 풀리지 않는다.
+    gitman::touch_recent_document(settings, u8"D:\\ws\\docc.version-list", u8"2026-08-23T00:00:00Z");
+    REQUIRE(settings.recent_documents.front().pinned);
+    REQUIRE(u8_equal(settings.recent_documents.front().display_name, u8"docc"));
+
+    // 고정을 풀면 가장 최근에 연 문서로 쳐서 비고정 무리의 맨 앞에 선다
+    // (2026-08-23 지시).
+    REQUIRE(gitman::set_recent_document_pinned(settings, u8"D:\\ws\\docc.version-list", false));
+    REQUIRE(settings.recent_documents.front().pinned == false);
+    REQUIRE(u8_equal(settings.recent_documents.front().display_name, u8"docc"));
+    // 고정이 사라져 상한이 다시 전체에 걸린다.
+    REQUIRE(settings.recent_documents.size() == gitman::recent_document_capacity);
+}
+
 TEST_CASE("UTC timestamps are formatted as ISO 8601 seconds", "[app-settings][domain]")
 {
     const std::chrono::system_clock::time_point epoch {};
@@ -214,6 +258,36 @@ TEST_CASE("App settings JSON round trips and preserves unknown keys", "[app-sett
 
     const std::u8string serialized { gitman::serialize_app_settings_json(parsed.settings, parsed.shadow_source_json) };
     REQUIRE(serialized.find(u8"future_option") != std::u8string::npos);
+
+    const gitman::app_settings_load_result reparsed { gitman::parse_app_settings_json(serialized, settings_path) };
+    REQUIRE(reparsed.settings.recent_documents == parsed.settings.recent_documents);
+}
+
+TEST_CASE("The pinned flag round trips and is written only when true", "[app-settings][json][pin]")
+{
+    // 고정 항목을 뒤에 둔 파일이다. 읽으면 목록의 불변(고정이 앞)으로 정리된다.
+    const std::u8string source {
+        u8R"({
+    "schema_version": 1,
+    "recent_documents": [
+        { "path": "D:\\ws\\loose.version-list", "display_name": "loose", "opened_at": "2026-08-21T10:00:00Z" },
+        { "path": "D:\\ws\\kept.version-list", "display_name": "kept", "opened_at": "2026-08-20T10:00:00Z", "pinned": true }
+    ]
+})",
+    };
+
+    const gitman::app_settings_load_result parsed { gitman::parse_app_settings_json(source, settings_path) };
+    REQUIRE(parsed.diagnostics.empty());
+    REQUIRE(parsed.settings.recent_documents.size() == 2);
+    REQUIRE(u8_equal(parsed.settings.recent_documents.front().display_name, u8"kept"));
+    REQUIRE(parsed.settings.recent_documents.front().pinned);
+    REQUIRE(parsed.settings.recent_documents.back().pinned == false);
+
+    const std::u8string serialized { gitman::serialize_app_settings_json(parsed.settings, parsed.shadow_source_json) };
+    // 참일 때만 키를 쓴다 — 고정을 쓰지 않는 파일은 이전과 같은 모양으로 남는다.
+    const std::size_t first { serialized.find(u8"\"pinned\"") };
+    REQUIRE(first != std::u8string::npos);
+    REQUIRE(serialized.find(u8"\"pinned\"", first + 1) == std::u8string::npos);
 
     const gitman::app_settings_load_result reparsed { gitman::parse_app_settings_json(serialized, settings_path) };
     REQUIRE(reparsed.settings.recent_documents == parsed.settings.recent_documents);

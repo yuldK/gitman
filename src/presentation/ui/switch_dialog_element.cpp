@@ -284,6 +284,12 @@ namespace gitman::ui {
                 set_bounds(context.slot);
             }
 
+            // 조회 중 행만 돈다. 오류 행은 정지 글리프다.
+            [[nodiscard]] bool animating() const noexcept override
+            {
+                return row_.kind == svn_browser_row_kind::loading;
+            }
+
             void draw(draw_context& context, const interaction_snapshot&) const override
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
@@ -298,7 +304,11 @@ namespace gitman::ui {
                     SkPaint icon_paint { solid_paint(color) };
                     if (failed == false)
                         icon_paint.setAlphaf(0.6f);
-                    draw_centered_glyph(context.canvas, failed ? codicons::icon_warning : codicons::icon_loading, { text_left, box.y, 14.0f * scale, box.height }, icon_font, icon_paint);
+                    const rect_f icon_box { text_left, box.y, 14.0f * scale, box.height };
+                    if (failed)
+                        draw_centered_glyph(context.canvas, codicons::icon_warning, icon_box, icon_font, icon_paint);
+                    else
+                        draw_spinning_glyph(context.canvas, codicons::icon_loading, icon_box, icon_font, icon_paint, context.now);
                     text_left += 18.0f * scale;
                 }
                 const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };

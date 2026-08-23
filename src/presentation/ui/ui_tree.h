@@ -26,6 +26,9 @@ namespace gitman::ui {
         [[nodiscard]] const ui_element* find(const ui_element_id& id) const noexcept;
         // 그리기 순서(pre-order)대로 해당 종류의 id를 모은다. 키보드 탐색이 쓴다.
         [[nodiscard]] std::vector<ui_element_id> ids_of_kind(ui_element_kind kind) const;
+        // 시간에 따라 그림이 달라지는 element가 하나라도 있다 (2026-08-23 지시).
+        // platform이 이 값으로 주기적 다시 그리기를 켜고 끈다.
+        [[nodiscard]] bool animating() const noexcept;
 
         // root와 자식을 그린 뒤 tooltip과 drag 표시를 최상위에 얹는다.
         void draw(draw_context& context, const interaction_snapshot& interaction) const;

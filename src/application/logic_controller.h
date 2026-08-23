@@ -102,6 +102,7 @@ namespace gitman {
         void handle_app_settings_loaded(app_settings_loaded_event event);
         void handle_app_settings_saved(app_settings_saved_event event);
         void handle_remove_recent_document(const remove_recent_document_intent& intent);
+        void handle_toggle_recent_document_pin(const toggle_recent_document_pin_intent& intent);
         // 문서를 성공적으로 연 뒤 최근 목록 맨 앞으로 올리고 저장을 예약한다.
         void record_recent_document();
         void request_app_settings_save();

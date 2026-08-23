@@ -465,18 +465,21 @@ TEST_CASE("SVN update preflight refuses unsafe working copies", "[infrastructure
     conflicted.working_tree.state = gitman::working_tree_state::conflicted;
     REQUIRE(gitman::evaluate_svn_update_preflight(conflicted) == gitman::update_block_reason::working_tree_conflicted);
 
+    // 수정이 있어도 갱신한다 (2026-08-23 지시). `svn update`가 로컬 변경을 병합하고
+    // 병합할 수 없으면 충돌로 남긴다 — 그 해결은 사용자의 몫이다.
     gitman::repository_snapshot dirty { clean };
     dirty.working_tree.state = gitman::working_tree_state::modified;
     dirty.working_tree.modified_count = 1;
-    REQUIRE(gitman::evaluate_svn_update_preflight(dirty) == gitman::update_block_reason::working_tree_dirty);
+    REQUIRE(gitman::evaluate_svn_update_preflight(dirty) == gitman::update_block_reason::none);
 
-    // 미추적(미버전) 파일만 있는 작업 복사본은 막지 않는다 (field-feedback-design
-    // 2.2). `svn update`는 미버전 파일을 건드리지 않는다.
+    // 미추적(미버전) 파일만 있는 작업 복사본도 물론 막지 않는다
+    // (field-feedback-design 2.2).
     gitman::repository_snapshot untracked_only { clean };
     untracked_only.working_tree.state = gitman::working_tree_state::modified;
     untracked_only.working_tree.untracked_count = 2;
     REQUIRE(gitman::evaluate_svn_update_preflight(untracked_only) == gitman::update_block_reason::none);
 
+    // 상태를 읽지 못한 작업 복사본은 그대로 막는다 — 무엇을 덮는지 알 수 없다.
     gitman::repository_snapshot unknown { clean };
     unknown.working_tree.state = gitman::working_tree_state::unknown;
     REQUIRE(gitman::evaluate_svn_update_preflight(unknown) == gitman::update_block_reason::working_tree_dirty);
@@ -509,7 +512,8 @@ TEST_CASE("SVN judgements that could not be made do not block updates", "[infras
 TEST_CASE("A blocked SVN update builds no change command", "[infrastructure][svn][provider]")
 {
     gitman::testing::fake_process_runner runner {};
-    push_local_responses(runner, u8"M       trunk/a.txt\n", u8"4168\n");
+    // 수정만으로는 더 이상 막히지 않으므로 충돌로 막는다 (2026-08-23 지시).
+    push_local_responses(runner, u8"C       trunk/a.txt\n", u8"4168\n");
     gitman::testing::fake_vcs_file_probe probe {};
     register_working_directory(probe);
     gitman::svn_repository_provider provider { available_tool(), runner, probe };
@@ -517,7 +521,7 @@ TEST_CASE("A blocked SVN update builds no change command", "[infrastructure][svn
     const gitman::repository_change_result result { provider.update(make_project(), {}, {}) };
 
     REQUIRE_FALSE(result.executed);
-    REQUIRE(result.blocked_by == gitman::update_block_reason::working_tree_dirty);
+    REQUIRE(result.blocked_by == gitman::update_block_reason::working_tree_conflicted);
     REQUIRE(has_diagnostic(result, gitman::diagnostic_code::update_blocked));
     // 조회 3개뿐이며 update 명령이 없다. `svnversion` 요청에는 인자가 아예 없으므로
     // 마지막 인자만 보지 않고 목록 전체를 확인한다.
@@ -654,7 +658,8 @@ TEST_CASE("Rejected SVN switches never reach the network", "[infrastructure][svn
     const expectation expectations[] {
         { u8"지원하지 않는 URL", {}, url_target(u8"잘못된 값"), gitman::switch_rejection::target_not_allowed },
         { u8"이미 대상", {}, url_target(repository_url), gitman::switch_rejection::already_on_target },
-        { u8"dirty 작업 복사본", u8"M       trunk/a.txt\n", url_target(), gitman::switch_rejection::working_tree_unsafe },
+        // 수정은 더 이상 거부 사유가 아니다 (2026-08-23 지시). 이미 충돌 중인 것만 막는다.
+        { u8"충돌이 남은 작업 복사본", u8"C       trunk/a.txt\n", url_target(), gitman::switch_rejection::working_tree_unsafe },
     };
 
     for (const expectation& value : expectations)

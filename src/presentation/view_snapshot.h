@@ -319,6 +319,9 @@ namespace gitman {
         std::u8string folder {};
         // 클릭했을 때 여는 문서의 절대 경로다.
         std::u8string path {};
+        // 고정한 항목이다 (2026-08-23 지시). 목록 앞에 모이고 pin 버튼이 채워진
+        // 글리프로 바뀐다.
+        bool pinned { false };
     };
 
     // 열린 문서가 없을 때 카드 목록 자리를 채우는 시작 페이지다 (VSCode 시작

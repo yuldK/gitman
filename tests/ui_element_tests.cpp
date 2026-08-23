@@ -1,10 +1,12 @@
 #include "presentation/ui/ui_element.h"
 
 #include "presentation/ui/button_element.h"
+#include "presentation/ui/draw_primitives.h"
 #include "presentation/ui/ui_tree.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <memory>
 #include <utility>
 
@@ -27,6 +29,26 @@ namespace {
 
         void draw(gitman::ui::draw_context&, const gitman::ui::interaction_snapshot&) const override
         {}
+    };
+
+    // 회전하는 진행 표시를 흉내 내는 element다.
+    class spinning_panel final : public gitman::ui::ui_element
+    {
+    public:
+        using ui_element::ui_element;
+
+        void arrange(const gitman::ui::arrange_context& context) override
+        {
+            set_bounds(context.slot);
+        }
+
+        void draw(gitman::ui::draw_context&, const gitman::ui::interaction_snapshot&) const override
+        {}
+
+        [[nodiscard]] bool animating() const noexcept override
+        {
+            return true;
+        }
     };
 
     gitman::ui::ui_action noop_action()
@@ -130,6 +152,34 @@ TEST_CASE("The tree finds elements by identity and enumerates kinds in draw orde
     REQUIRE(cards.size() == 2u);
     REQUIRE(cards[0].owner.value == u8"one");
     REQUIRE(cards[1].owner.value == u8"two");
+}
+
+TEST_CASE("The tree reports whether any element animates", "[ui][element][spinner]")
+{
+    auto root { std::make_unique<test_panel>(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::root }) };
+    root->add(std::make_unique<test_panel>(card_id(gitman::ui::ui_element_kind::card_body, u8"still")));
+    const gitman::ui::ui_tree quiet { std::move(root) };
+    // 평소에는 거짓이다 — platform이 주기적 다시 그리기를 걸지 않는다.
+    REQUIRE(quiet.animating() == false);
+
+    auto busy_root { std::make_unique<test_panel>(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::root }) };
+    auto branch { std::make_unique<test_panel>(card_id(gitman::ui::ui_element_kind::card_body, u8"branch")) };
+    branch->add(std::make_unique<spinning_panel>(card_id(gitman::ui::ui_element_kind::card_refresh, u8"busy")));
+    busy_root->add(std::move(branch));
+    const gitman::ui::ui_tree busy { std::move(busy_root) };
+    // 깊이 묻힌 element 하나만 돌아도 참이다.
+    REQUIRE(busy.animating());
+}
+
+TEST_CASE("The spinner angle is a function of the clock alone", "[ui][element][spinner]")
+{
+    const std::chrono::steady_clock::time_point base {};
+    REQUIRE(gitman::ui::spinner_angle(base) == 0.0f);
+    // 반주기면 반 바퀴다.
+    REQUIRE(gitman::ui::spinner_angle(base + gitman::ui::spinner_period / 2) == 180.0f);
+    // 한 바퀴를 돌면 처음으로 돌아온다 — 시작 시각을 들고 다니지 않아도 위상이 맞는다.
+    REQUIRE(gitman::ui::spinner_angle(base + gitman::ui::spinner_period) == 0.0f);
+    REQUIRE(gitman::ui::spinner_angle(base + gitman::ui::spinner_period * 3 + gitman::ui::spinner_period / 4) == 90.0f);
 }
 
 TEST_CASE("A disabled button keeps its tooltip target but blocks nothing else at the element level", "[ui][element]")

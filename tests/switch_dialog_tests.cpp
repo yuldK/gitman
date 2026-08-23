@@ -710,6 +710,51 @@ TEST_CASE("The SVN switch dialog opens revealed down to the current location", "
     REQUIRE_FALSE(view->switch_dialog->svn_rows.back().expanded);
 }
 
+TEST_CASE("The SVN browser follows each depth as its query lands", "[logic][switch-ui][svn][query]")
+{
+    // 조회 하나가 초 단위로 걸린다. 목표에 닿을 때까지 아무 데도 붙지 않으면 한참
+    // 동안 어디까지 갔는지 알 수 없다 (2026-08-23 지시).
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser(u8"https://svn.example.com/repo", u8"https://svn.example.com/repo") };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"a", u8"z" });
+
+    fixture.controller.handle(query_command(gitman::text_edit_command::select_all));
+    type_query(fixture.controller, u8"/a/b/c");
+    fixture.controller.handle(gitman::submit_switch_query_intent {});
+
+    // 첫 걸음에서 이미 a에 붙는다 — root는 cache에 있고 a가 다음 조회다.
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_rows[1].text == u8"a");
+        REQUIRE(view->switch_dialog->svn_rows[1].selected);
+        // 걸어 내려가는 동안의 선택은 지나가는 자리라 `전환`을 받지 않는다.
+        REQUIRE_FALSE(view->switch_dialog->can_confirm);
+        // 주소 막대는 사용자가 친 목표를 그대로 들고 있는다.
+        REQUIRE(view->switch_dialog->query.text == u8"/a/b/c");
+    }
+
+    REQUIRE(fixture.submitter.requests.back().svn_directory_url == u8"https://svn.example.com/repo/a");
+    fixture.deliver_svn_directory(fixture.submitter.requests.back().operation_id, u8"https://svn.example.com/repo/a", { u8"b" });
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_rows[2].text == u8"b");
+        REQUIRE(view->switch_dialog->svn_rows[2].selected);
+        REQUIRE_FALSE(view->switch_dialog->can_confirm);
+        REQUIRE(view->switch_dialog->query.text == u8"/a/b/c");
+    }
+
+    REQUIRE(fixture.submitter.requests.back().svn_directory_url == u8"https://svn.example.com/repo/a/b");
+    fixture.deliver_svn_directory(fixture.submitter.requests.back().operation_id, u8"https://svn.example.com/repo/a/b", { u8"c" });
+    {
+        // 목표에 닿으면 거기서 멈추고 `전환`이 열린다.
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_rows[3].text == u8"c");
+        REQUIRE(view->switch_dialog->svn_rows[3].selected);
+        REQUIRE(view->switch_dialog->query.text == u8"/a/b/c");
+        REQUIRE(view->switch_dialog->can_confirm);
+    }
+}
+
 TEST_CASE("The SVN browser scrolls the revealed location into view", "[logic][switch-ui][svn][query]")
 {
     dialog_fixture fixture { gitman::repository_kind::subversion };
@@ -724,24 +769,34 @@ TEST_CASE("The SVN browser scrolls the revealed location into view", "[logic][sw
     fixture.deliver_svn_directory(fixture.submitter.requests.back().operation_id, u8"https://svn.example.com/repo/trunk", { u8"docs", u8"source" });
 
     {
-        // repo·branches·trunk·docs·source 다섯 행 중 마지막이 현재 위치다. 창을
-        // 열자마자 그 행이 보여야 한다 (2026-08-23 지시).
+        // repo·branches·trunk·docs·source 다섯 행 중 마지막이 현재 위치다. 가운데에
+        // 놓으려 해도 목록 끝이라 한계에 걸려 아래 끝에 선다 (2026-08-23 지시).
         const auto view { fixture.controller.make_view_snapshot() };
         REQUIRE(view->switch_dialog->svn_rows.size() == 5u);
         REQUIRE(view->switch_dialog->svn_rows.back().selected);
         REQUIRE(view->switch_dialog->scroll_offset == 5.0f * gitman::layout_switch_dialog_row_height - viewport);
     }
 
-    // 위쪽 가지로 이동하면 다시 위로 따라 올라간다.
+    // 가운데 가지로 이동하면 그 행이 목록 한가운데에 온다.
     fixture.controller.handle(query_command(gitman::text_edit_command::select_all));
-    type_query(fixture.controller, u8"/branches");
+    type_query(fixture.controller, u8"/trunk/docs");
     fixture.controller.handle(gitman::submit_switch_query_intent {});
     {
         const auto view { fixture.controller.make_view_snapshot() };
-        REQUIRE(view->switch_dialog->svn_rows[1].text == u8"branches");
-        REQUIRE(view->switch_dialog->svn_rows[1].selected);
-        // 행 하나(index 1)의 위쪽 끝에 맞춰 붙는다.
-        REQUIRE(view->switch_dialog->scroll_offset == gitman::layout_switch_dialog_row_height);
+        REQUIRE(view->switch_dialog->svn_rows[3].text == u8"docs");
+        REQUIRE(view->switch_dialog->svn_rows[3].selected);
+        const float centered { 3.0f * gitman::layout_switch_dialog_row_height - (viewport - gitman::layout_switch_dialog_row_height) / 2.0f };
+        REQUIRE(view->switch_dialog->scroll_offset == centered);
+    }
+
+    // 맨 위 행은 가운데로 갈 수 없다. 한계가 0으로 붙인다.
+    fixture.controller.handle(query_command(gitman::text_edit_command::select_all));
+    type_query(fixture.controller, u8"/");
+    fixture.controller.handle(gitman::submit_switch_query_intent {});
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_rows.front().selected);
+        REQUIRE(view->switch_dialog->scroll_offset == 0.0f);
     }
 }
 

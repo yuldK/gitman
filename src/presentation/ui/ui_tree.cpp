@@ -62,6 +62,15 @@ namespace gitman::ui {
         return collected;
     }
 
+    bool ui_tree::animating() const noexcept
+    {
+        // 색인은 화면에 걸친 element만 담아 작다. 매 frame 훑어도 싸다.
+        for (const ui_element* const element : index_)
+            if (element->animating())
+                return true;
+        return false;
+    }
+
     void ui_tree::draw(draw_context& context, const interaction_snapshot& interaction) const
     {
         if (root_ == nullptr)

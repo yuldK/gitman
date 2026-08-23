@@ -2,6 +2,7 @@
 
 #include "presentation/ui/ui_element.h"
 
+#include <chrono>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -88,6 +89,17 @@ namespace gitman::ui {
 
     // target 중앙에 글리프 하나를 그린다. 글리프가 없으면 아무것도 그리지 않는다.
     void draw_centered_glyph(SkCanvas& canvas, char32_t codepoint, const rect_f& target, const SkFont& font, const SkPaint& paint);
+
+    // 진행 표시 글리프가 한 바퀴 도는 데 걸리는 시간이다. 정지 글리프는 "멈췄다"로
+    // 읽혀 조회가 살아 있다는 것을 전하지 못한다 (2026-08-23 지시).
+    inline constexpr std::chrono::milliseconds spinner_period { 1000 };
+
+    // `target` 중앙을 축으로 글리프를 돌려 그린다. 각도는 `now`만의 함수라 어느
+    // frame에 그려도 위상이 같다 — caret 깜빡임과 같은 규칙이다.
+    void draw_spinning_glyph(SkCanvas& canvas, char32_t codepoint, const rect_f& target, const SkFont& font, const SkPaint& paint, std::chrono::steady_clock::time_point now);
+
+    // 지금 시각의 회전 각도(도)다. [0, 360)이며 test가 위상을 확인한다.
+    [[nodiscard]] float spinner_angle(std::chrono::steady_clock::time_point now) noexcept;
 
     // target_height 안에서 세로 중앙 정렬된 텍스트 baseline을 돌려준다.
     [[nodiscard]] float centered_text_baseline(const SkFont& font, float target_height);

@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include <optional>
+#include <utility>
 
 namespace gitman {
     namespace {
@@ -65,21 +67,70 @@ namespace gitman {
         return std::u8string { name };
     }
 
+    namespace {
+        // 항목 하나를 자기 무리의 맨 앞에 끼워 넣는다. 고정 항목은 목록 앞쪽에
+        // 모여 있으므로 비고정은 고정 무리 **뒤**가 자기 자리의 맨 앞이다.
+        void insert_at_group_front(app_settings& settings, recent_document entry)
+        {
+            std::size_t position { 0 };
+            if (entry.pinned == false)
+                while (position < settings.recent_documents.size() && settings.recent_documents[position].pinned)
+                    ++position;
+            settings.recent_documents.insert(settings.recent_documents.begin() + static_cast<std::ptrdiff_t>(position), std::move(entry));
+        }
+
+        // 비고정 항목만 상한에 걸린다. 고정은 사용자가 고른 것이라 버리지 않는다
+        // (2026-08-23 지시).
+        void trim_unpinned_recent_documents(app_settings& settings)
+        {
+            std::size_t unpinned { 0 };
+            for (std::size_t index = 0; index < settings.recent_documents.size();)
+            {
+                if (settings.recent_documents[index].pinned)
+                {
+                    ++index;
+                    continue;
+                }
+                ++unpinned;
+                if (unpinned <= recent_document_capacity)
+                {
+                    ++index;
+                    continue;
+                }
+                settings.recent_documents.erase(settings.recent_documents.begin() + static_cast<std::ptrdiff_t>(index));
+            }
+        }
+
+        // 목록에서 문서를 떼어 낸다. 있었으면 그 항목을, 없었으면 값이 없다.
+        std::optional<recent_document> detach_recent_document(app_settings& settings, const std::u8string_view path)
+        {
+            const std::u8string key { recent_document_key(path) };
+            for (std::size_t index = 0; index < settings.recent_documents.size(); ++index)
+                if (recent_document_key(settings.recent_documents[index].path) == key)
+                {
+                    recent_document entry { std::move(settings.recent_documents[index]) };
+                    settings.recent_documents.erase(settings.recent_documents.begin() + static_cast<std::ptrdiff_t>(index));
+                    return entry;
+                }
+            return std::nullopt;
+        }
+    } // namespace
+
     void touch_recent_document(app_settings& settings, std::u8string path, std::u8string opened_at)
     {
         if (path.empty())
             return;
 
-        const std::u8string key { recent_document_key(path) };
-        std::erase_if(settings.recent_documents, [&key](const recent_document& value) { return recent_document_key(value.path) == key; });
+        // 고정 여부는 이전 항목에서 물려받는다. 다시 열었다고 고정이 풀리면 놀랍다.
+        const std::optional<recent_document> previous { detach_recent_document(settings, path) };
 
         recent_document entry {};
         entry.display_name = recent_document_display_name(path);
         entry.path = std::move(path);
         entry.opened_at = std::move(opened_at);
-        settings.recent_documents.insert(settings.recent_documents.begin(), std::move(entry));
-        if (settings.recent_documents.size() > recent_document_capacity)
-            settings.recent_documents.resize(recent_document_capacity);
+        entry.pinned = previous.has_value() && previous->pinned;
+        insert_at_group_front(settings, std::move(entry));
+        trim_unpinned_recent_documents(settings);
     }
 
     bool remove_recent_document(app_settings& settings, const std::u8string_view path)
@@ -87,6 +138,22 @@ namespace gitman {
         const std::u8string key { recent_document_key(path) };
         const std::size_t removed { std::erase_if(settings.recent_documents, [&key](const recent_document& value) { return recent_document_key(value.path) == key; }) };
         return removed > 0;
+    }
+
+    bool set_recent_document_pinned(app_settings& settings, const std::u8string_view path, const bool pinned)
+    {
+        // 이미 그 상태면 자리도 건드리지 않는다 — 저장을 부르지 않게 하는 것이 이
+        // 반환값의 몫이다.
+        const std::u8string key { recent_document_key(path) };
+        const auto found { std::ranges::find_if(settings.recent_documents, [&key](const recent_document& value) { return recent_document_key(value.path) == key; }) };
+        if (found == settings.recent_documents.end() || found->pinned == pinned)
+            return false;
+
+        std::optional<recent_document> entry { detach_recent_document(settings, path) };
+        entry->pinned = pinned;
+        insert_at_group_front(settings, std::move(*entry));
+        trim_unpinned_recent_documents(settings);
+        return true;
     }
 
     std::u8string format_utc_timestamp(const std::chrono::system_clock::time_point time)

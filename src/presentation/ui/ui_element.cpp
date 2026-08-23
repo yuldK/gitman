@@ -137,6 +137,11 @@ namespace gitman::ui {
         return nullptr;
     }
 
+    bool ui_element::animating() const noexcept
+    {
+        return false;
+    }
+
     std::optional<std::size_t> ui_element::offset_at(float, const text_measurer&) const
     {
         return std::nullopt;

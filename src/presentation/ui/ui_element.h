@@ -63,6 +63,7 @@ namespace gitman::ui {
         start_page_open_document,
         start_page_generate_document,
         start_page_recent_item,
+        start_page_recent_pin,
         start_page_recent_remove,
         // 선택 카드 전용 하단 로그 pane과 헤더 버튼들이다 (단계 7).
         log_pane,
@@ -384,6 +385,11 @@ namespace gitman::ui {
         // 좌표를 포함하는 가장 안쪽의 상호작용 대상을 돌려준다. 기본 구현은 자식을
         // 역순(위에 그려진 것 먼저)으로 탐색한 뒤 자기 bounds를 검사한다.
         [[nodiscard]] virtual const ui_element* hit_test(float x, float y) const;
+
+        // 시간에 따라 그림이 달라지는 element다 (2026-08-23 지시). 회전하는 진행
+        // 표시만 재정의한다. platform은 tree에 이런 element가 있는 동안에만 주기
+        // 적으로 다시 그리므로 평소 비용은 0이다.
+        [[nodiscard]] virtual bool animating() const noexcept;
 
         // 텍스트 박스만 구현한다 (R2.3). 창 좌표 x를 글 안의 byte offset으로 옮긴다.
         // 글꼴 크기와 가로 스크롤은 element가 알고 있어 그리기와 같은 값을 쓴다.

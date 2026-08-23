@@ -290,6 +290,8 @@ namespace gitman {
                     context_menu_.reset();
                 else if constexpr (std::is_same_v<value_type, remove_recent_document_intent>)
                     handle_remove_recent_document(value);
+                else if constexpr (std::is_same_v<value_type, toggle_recent_document_pin_intent>)
+                    handle_toggle_recent_document_pin(value);
                 else if constexpr (std::is_same_v<value_type, close_document_intent>)
                     handle_close_document();
                 else if constexpr (std::is_same_v<value_type, show_notice_intent>)
@@ -1256,6 +1258,18 @@ namespace gitman {
         request_app_settings_save();
     }
 
+    void logic_controller::handle_toggle_recent_document_pin(const toggle_recent_document_pin_intent& intent)
+    {
+        // 지금 상태의 반대로 바꾼다. 목록에 없는 경로는 아무 일도 하지 않는다.
+        const std::u8string key { recent_document_key(intent.path) };
+        const auto found { std::ranges::find_if(app_settings_.recent_documents, [&key](const recent_document& value) { return recent_document_key(value.path) == key; }) };
+        if (found == app_settings_.recent_documents.end())
+            return;
+        if (set_recent_document_pinned(app_settings_, intent.path, found->pinned == false) == false)
+            return;
+        request_app_settings_save();
+    }
+
     void logic_controller::record_recent_document()
     {
         if (document_path_.empty())
@@ -1999,7 +2013,15 @@ namespace gitman {
             return;
         }
         if (progress.query_url.has_value())
+        {
+            // 한 걸음 내려갈 때마다 그 깊이를 따라간다 (2026-08-23 지시). 조회 하나가
+            // 초 단위로 걸려서, 목표에 닿을 때까지 아무 데도 붙지 않으면 한참 동안
+            // 어디까지 갔는지 알 수 없다. 주소 막대는 건드리지 않는다 — 사용자가 친
+            // 목표가 도착할 때까지 보여야 한다.
+            static_cast<void>(select_svn_browser_node(*switch_dialog_->svn_browser, *progress.query_url));
+            scroll_svn_browser_selection_into_view();
             submit_svn_directory_query(*progress.query_url);
+        }
     }
 
     void logic_controller::scroll_svn_browser_selection_into_view()
@@ -2018,17 +2040,14 @@ namespace gitman {
                     break;
                 }
 
-        // 이미 보이면 건드리지 않는다. 벗어났으면 최소한만 움직여 위나 아래 끝에
-        // 붙인다 — 목록이 통째로 튀면 어디로 갔는지 알기 어렵다.
+        // 도달한 행을 목록 **가운데**에 놓는다 (2026-08-23 지시). 끝에 붙이면 그
+        // 위나 아래가 보이지 않아 어디에 있는 가지인지 읽히지 않는다. 목록의 처음·
+        // 끝 근처는 아래의 한계 고정이 자연스럽게 위아래로 붙인다.
         if (index.has_value())
         {
             const float viewport { switch_dialog_list_height(switch_dialog_->subversion, window_height_ / scale_) };
             const float top { static_cast<float>(*index) * layout_switch_dialog_row_height };
-            const float bottom { top + layout_switch_dialog_row_height };
-            if (top < switch_dialog_->scroll_offset)
-                switch_dialog_->scroll_offset = top;
-            else if (bottom > switch_dialog_->scroll_offset + viewport)
-                switch_dialog_->scroll_offset = bottom - viewport;
+            switch_dialog_->scroll_offset = top - (viewport - layout_switch_dialog_row_height) / 2.0f;
         }
         // 찾지 못했어도 한계 고정은 한다 — 목록이 줄어든 뒤일 수 있다. 계산은 휠과
         // 같은 handler를 그대로 쓴다.
@@ -3014,7 +3033,10 @@ namespace gitman {
                 {
                     const svn_repository_browser_state& browser { *switch_dialog_->svn_browser };
                     dialog.confirm_label = u8"전환";
-                    if (switch_dialog_->loading == false && switch_dialog_->executing == false && browser.selected_url.empty() == false && browser.selected_url != browser.current_url)
+                    // 이동이 걸어 내려가는 동안의 선택은 지나가는 자리다 (2026-08-23
+                    // 지시). 그 사이 `전환`을 받으면 목표가 아니라 중간 폴더로 간다.
+                    if (switch_dialog_->loading == false && switch_dialog_->executing == false && browser.reveal_url.empty() && browser.selected_url.empty() == false
+                        && browser.selected_url != browser.current_url)
                         dialog.can_confirm = true;
                     else if (browser.selected_url == browser.current_url && dialog.message.empty())
                         dialog.message = u8"현재 위치입니다.";
@@ -3189,6 +3211,7 @@ namespace gitman {
                 row.display_name = value.display_name.empty() ? recent_document_display_name(value.path) : value.display_name;
                 row.folder = to_display_path(windows_parent_directory(value.path));
                 row.path = value.path;
+                row.pinned = value.pinned;
                 page.recents.push_back(std::move(row));
             }
             snapshot->start_page = { std::move(page) };

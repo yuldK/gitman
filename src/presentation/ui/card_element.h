@@ -14,6 +14,8 @@ namespace gitman::ui {
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
+        // 진행 중인 카드의 sync 아이콘이 돈다 (2026-08-23 지시).
+        [[nodiscard]] bool animating() const noexcept override;
 
     private:
         // 세 번째 줄(브랜치·리비전·상태·작업 트리)을 색이 있는 조각으로 그린다.

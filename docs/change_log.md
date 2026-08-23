@@ -109,6 +109,18 @@
 - 남은 한계: 조합 밑줄이 한 종류, `GetACPFromPoint` 미구현, `GetTextExt`가 가로
   스크롤 미반영. 검증 기록에 적었다.
 
+### 반영 내용 (6단계 · 후속 지시)
+
+- **dialog 가장자리 여백**: 창이 낮아 panel이 잘리면 클라이언트에 딱 붙었다.
+  `layout_dialog_edge_margin`(24) 하나로 조정하는 여백을 두고, 배치와 스크롤 한계가
+  **같은 함수**(`dialog_available_height`)를 거치게 했다. 창이 아주 낮으면 여백부터
+  줄여 panel이 사라지지 않는다.
+- 적용은 창 높이에 맞춰 내용이 줄어드는 dialog(환경설정 · switch)에만 했다. 나머지는
+  내용이 창을 따라 줄지 않아 panel만 짧게 하면 더 일찍 깨진다 — 남은 과제로 적었다.
+- 대가: 여백만큼 스크롤이 일찍 시작된다. 문서 모드 환경설정이 600px 창에서 막대를
+  갖게 되었다. 값을 줄이면 그만큼 되돌아간다.
+- 신규 test 3 case, 전제를 고쳐 쓴 test 1 case.
+
 ### 곁들여 고친 것
 
 - Release 구성의 ASan test target이 `annotate_optional` 불일치로 링크되지 않았다

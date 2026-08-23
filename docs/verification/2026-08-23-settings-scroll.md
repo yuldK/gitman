@@ -92,3 +92,80 @@ logic이 표시 모델을 두 곳(스냅샷 게시, 스크롤 한계 계산)에�
 ## 7. 다음 단계
 
 4단계는 BMP 밖 문자(`WM_CHAR` surrogate 병합 + 4바이트 인코딩)다. 그다음이 TSF다.
+
+---
+
+## 8. 후속 - 창 가장자리 여백 (2026-08-23 추가 지시)
+
+### 8.1 지시와 원인
+
+"높이가 짧을 때 스크롤 나오는 것까지는 잘 되는데 위아래에 여백 공간이 적어도 어느
+정도 있어야 하지 않겠어? 클라이언트랑 너무 딱 붙어 있는 것 같아. 내가 미세 조정할 수
+있게 잘 고려해서 만들어줘."
+
+panel 높이를 창 높이로 그대로 잘랐기 때문에 잘리는 순간 위아래 여백이 0이 되었다.
+모든 dialog가 같은 방식이었다.
+
+### 8.2 미세 조정 지점
+
+`presentation/list_metrics.h`에 knob 하나와 함수 둘을 뒀다.
+
+```cpp
+inline constexpr float layout_dialog_edge_margin { 24.0f };        // ← 이 값만 고치면 된다
+inline constexpr float layout_dialog_edge_margin_ratio { 0.12f };  // 아주 낮은 창에서 여백을 줄이는 한도
+
+[[nodiscard]] float dialog_edge_margin(float window_height) noexcept;
+[[nodiscard]] float dialog_available_height(float window_height) noexcept;
+```
+
+배치(`arrange`)와 스크롤 한계(`settings_dialog_metrics`·`switch_dialog_list_height`)가
+**모두 `dialog_available_height`를 거친다.** 한쪽만 고치면 휠이 헛돌거나 마지막
+항목이 잘리므로 이 지점을 하나로 묶어 두었다.
+
+### 8.3 적용 범위
+
+창 높이에 맞춰 내용이 줄어드는 dialog에만 넣었다.
+
+| dialog | 적용 | 이유 |
+| --- | --- | --- |
+| 환경설정 | ○ | 항목 열이 스크롤한다 |
+| switch (SVN 브라우저 포함) | ○ | 목록 높이가 창 높이의 함수라 자동으로 따른다 |
+| 글꼴 · 탐색 · 로컬 변경 · 새 문서 · 알림 | ✕ | 내용이 창을 따라 줄지 않아, panel만 짧게 하면 **더 일찍 깨진다** |
+
+예를 들어 글꼴 dialog(설계 428)는 지금 창 400에서도 버튼과 미리 보기가 겹치지 않지만
+여백을 넣으면 352로 줄어 겹친다. 그 dialog들의 짧은 창 대응은 환경설정과 같은 작업이
+각각 필요하며 남은 과제다.
+
+### 8.4 대가
+
+여백만큼 스크롤이 일찍 시작된다. 환경설정은 이제 `설계 높이 + 48`보다 낮은 창에서
+막대가 생긴다. 실제로 **문서 모드가 600px 창에서 막대를 갖게 되었다** — 전에는 딱
+맞았다. 의도한 맞바꿈이고, `layout_dialog_edge_margin`을 줄이면 그만큼 되돌아간다.
+
+### 8.5 test
+
+신규 3 case (`settings_dialog_tests`).
+
+- `A clamped dialog keeps a margin from the client edges` — 창 320에서 panel이
+  위아래 여백만큼 떨어져 있고, 그래도 잘린 상태이며 사라지지 않는다.
+- `The scroll limit accounts for the dialog margin` — panel 높이 = chrome + viewport다.
+  배치와 한계가 같은 여백을 보지 않으면 이 등식이 깨진다. 끝까지 스크롤한 값도 확인한다.
+- `A very short window shrinks the margin instead of the panel to nothing` — 창이
+  낮으면 여백부터 줄고, 어떤 높이에서도 여백 둘이 창을 넘지 않는다.
+
+고쳐 쓴 test 1 case.
+
+- `The scope badge sits above the item title without moving the controls` — 문서 모드와
+  전역 모드를 600px 창에서 나란히 비교하고 있었는데, 여백이 들어가면서 문서 모드에만
+  막대가 생겨 항목 열 폭이 16 달라졌다. **동작이 아니라 test의 전제가 틀렸다** —
+  두 모드 모두 스크롤이 필요 없는 높이(1000)로 올려 원래 의도(배지가 컨트롤을 밀지
+  않는다)만 검사하게 했다.
+
+### 8.6 재검증
+
+| 항목 | 결과 |
+| --- | --- |
+| `ctest` Debug / Release | **820/820 통과** (양쪽) |
+| `cmake --build --preset vs2026-analysis` | 분석 경고 없음 |
+| 앱 빌드 Debug / Release | 성공 |
+| `check_source_style.ps1` | 466 files 통과 |

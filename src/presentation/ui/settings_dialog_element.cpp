@@ -248,10 +248,13 @@ namespace gitman::ui {
         // 못 보일 만큼 낮으면 그 한 줄만큼은 남긴다.
         float viewport_height_for(const float content_height, const float window_height)
         {
+            // 창 위아래 여백을 뺀 나머지가 panel이 쓸 수 있는 높이다 (2026-08-23
+            // 지시). 배치도 같은 함수를 쓴다.
+            const float usable { dialog_available_height(window_height) };
             const float wanted { chrome_height + content_height };
-            const float panel { wanted < window_height ? wanted : window_height };
-            const float available { panel - chrome_height };
-            return available > item_title_height ? available : item_title_height;
+            const float panel { wanted < usable ? wanted : usable };
+            const float viewport { panel - chrome_height };
+            return viewport > item_title_height ? viewport : item_title_height;
         }
 
         // `right_inset`은 스크롤 막대가 차지하는 논리 폭이다. 막대가 없으면 0이다.
@@ -1026,8 +1029,11 @@ namespace gitman::ui {
         float height { panel_height_ * scale };
         if (width > context.slot.width)
             width = context.slot.width;
-        if (height > context.slot.height)
-            height = context.slot.height;
+        // 창이 낮아도 클라이언트 위아래에 딱 붙지 않게 여백을 남긴다. 스크롤 한계를
+        // 세는 `viewport_height_for`와 **같은 함수**를 쓴다.
+        const float available_height { dialog_available_height(context.slot.height / scale) * scale };
+        if (height > available_height)
+            height = available_height;
         const float left { context.slot.x + (context.slot.width - width) / 2.0f };
         const float top { context.slot.y + (context.slot.height - height) / 2.0f };
         const float padding { panel_padding * scale };

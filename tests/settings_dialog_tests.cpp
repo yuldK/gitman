@@ -1,10 +1,12 @@
 #include "application/logic_controller.h"
 #include "domain/text_edit.h"
+#include "presentation/list_metrics.h"
 #include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/settings_dialog_element.h"
 #include "presentation/ui/ui_interaction.h"
 #include "presentation/ui_theme.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
@@ -387,7 +389,7 @@ TEST_CASE("Every document item shows a scope badge and only overrides are clicka
     // 전역 모드에는 배지가 없다.
     recording_submitter global_submitter {};
     gitman::logic_controller global_controller { global_submitter };
-    global_controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
+    global_controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
     global_controller.handle(gitman::open_settings_intent {});
     const auto global_tree { gitman::ui::build_ui_tree(*global_controller.make_view_snapshot()) };
     REQUIRE(global_tree->find(git_badge) == nullptr);
@@ -531,6 +533,9 @@ TEST_CASE("The scope badge sits above the item title without moving the controls
     // 배지는 항목 제목 바로 위 왼쪽이고, 행 컨트롤은 제목 줄 오른쪽 끝을 그대로
     // 쓴다 (E3).
     settings_fixture fixture {};
+    // 두 모드를 나란히 비교하므로 **둘 다 스크롤이 필요 없는** 창 높이를 쓴다.
+    // 한쪽에만 스크롤 막대가 생기면 항목 열이 그만큼 좁아져 x가 달라진다 (E1).
+    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
 
@@ -1190,4 +1195,66 @@ TEST_CASE("The wheel scrolls the settings dialog and the font dialog wins on top
     const auto* const font_message { std::get_if<gitman::logic_message>(&font_actions.front()) };
     REQUIRE(font_message != nullptr);
     REQUIRE(std::get_if<gitman::font_dialog_scroll_intent>(font_message) != nullptr);
+}
+
+TEST_CASE("A clamped dialog keeps a margin from the client edges", "[ui][settings-ui][scroll]")
+{
+    // 지시(2026-08-23): 창이 낮아 panel이 잘려도 클라이언트에 딱 붙으면 안 된다.
+    // 여백은 `layout_dialog_edge_margin` 하나로 조정한다.
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    constexpr float window_height { 320.0f };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, window_height, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+
+    const auto tree { gitman::ui::build_ui_tree(*controller.make_view_snapshot()) };
+    const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+    REQUIRE(panel != nullptr);
+    const gitman::ui::rect_f box { panel->bounds() };
+
+    const float margin { gitman::dialog_edge_margin(window_height) };
+    REQUIRE(margin > 0.0f);
+    // 위아래 모두 여백만큼 떨어져 있다.
+    REQUIRE(box.y >= margin);
+    REQUIRE(box.y + box.height <= window_height - margin);
+    // 그래도 잘린 상태다 — 여백이 panel을 없애 버리지는 않는다.
+    REQUIRE(box.height > 0.0f);
+}
+
+TEST_CASE("The scroll limit accounts for the dialog margin", "[ui][settings-ui][scroll]")
+{
+    // 배치와 스크롤 한계가 같은 여백을 봐야 휠이 헛돌거나 마지막 항목이 잘리지 않는다.
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    constexpr float window_height { 320.0f };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, window_height, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+
+    const auto snapshot { controller.make_view_snapshot() };
+    const gitman::ui::settings_dialog_scroll_metrics metrics {
+        gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, window_height),
+    };
+
+    const auto tree { gitman::ui::build_ui_tree(*snapshot) };
+    const gitman::ui::rect_f box { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    // panel 높이 = chrome + viewport다. 배치가 여백을 반영했으면 이 둘이 맞는다.
+    REQUIRE(box.height == Catch::Approx(104.0f + metrics.viewport_height));
+
+    // 끝까지 스크롤하면 마지막 항목이 viewport 안에 들어온다.
+    controller.handle(gitman::settings_scroll_intent { 10000.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == metrics.maximum_scroll);
+}
+
+TEST_CASE("A very short window shrinks the margin instead of the panel to nothing", "[ui][settings-ui][scroll]")
+{
+    // 창이 아주 낮으면 여백부터 줄인다 — panel이 사라지는 것보다 낫다.
+    REQUIRE(gitman::dialog_edge_margin(1000.0f) == gitman::layout_dialog_edge_margin);
+    REQUIRE(gitman::dialog_edge_margin(100.0f) < gitman::layout_dialog_edge_margin);
+    REQUIRE(gitman::dialog_available_height(100.0f) > 0.0f);
+    REQUIRE(gitman::dialog_available_height(20.0f) > 0.0f);
+    // 여백은 언제나 창 안에 들어간다.
+    for (const float height : { 20.0f, 100.0f, 320.0f, 1000.0f })
+        REQUIRE(gitman::dialog_edge_margin(height) * 2.0f < height);
 }

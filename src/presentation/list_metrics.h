@@ -51,6 +51,32 @@ namespace gitman {
     inline constexpr float layout_start_page_action_column_width { 240.0f };
     inline constexpr float layout_start_page_stack_width { 720.0f };
 
+    // ─── dialog 여백 (미세 조정 지점) ────────────────────────────────────────
+    //
+    // 창이 낮아 dialog panel이 잘릴 때, panel이 클라이언트 위아래에 딱 붙지 않게
+    // 남기는 최소 여백이다 (2026-08-23 지시). **여백을 바꾸려면 이 값 하나만
+    // 고치면 된다** — 스크롤 한계와 배치가 모두 아래 두 함수를 거친다.
+    inline constexpr float layout_dialog_edge_margin { 24.0f };
+    // 창이 아주 낮으면 여백부터 줄인다 — panel이 사라지는 것보다 낫다. 창 높이의
+    // 이 비율까지만 여백에 내준다.
+    inline constexpr float layout_dialog_edge_margin_ratio { 0.12f };
+
+    // 실제로 남길 한쪽 여백이다. 창이 넉넉하면 `layout_dialog_edge_margin`이다.
+    [[nodiscard]] inline float dialog_edge_margin(const float window_height) noexcept
+    {
+        const float allowed { window_height * layout_dialog_edge_margin_ratio };
+        return allowed < layout_dialog_edge_margin ? allowed : layout_dialog_edge_margin;
+    }
+
+    // dialog panel이 쓸 수 있는 세로 공간이다. 창 높이에서 위아래 여백을 뺀 값이며,
+    // panel 높이를 자를 때와 스크롤 한계를 셀 때 **같은 함수를** 써야 휠이 헛돌거나
+    // 마지막 항목이 잘리지 않는다.
+    [[nodiscard]] inline float dialog_available_height(const float window_height) noexcept
+    {
+        const float available { window_height - dialog_edge_margin(window_height) * 2.0f };
+        return available > 0.0f ? available : window_height;
+    }
+
     // switch dialog의 치수다. 후보 목록의 스크롤 한계 계산을 logic과 element가
     // 같은 값으로 하도록 여기에 둔다 (stage-7-plan 4.5).
     inline constexpr float layout_switch_dialog_width { 400.0f };
@@ -75,7 +101,9 @@ namespace gitman {
     {
         const float dialog_height { svn_browser ? layout_svn_browser_dialog_height : layout_switch_dialog_height };
         const float preferred { svn_browser ? layout_svn_browser_list_height : layout_switch_dialog_list_height };
-        const float panel_height { window_height < dialog_height ? window_height : dialog_height };
+        // 창 위아래 여백을 뺀 나머지가 panel이 쓸 수 있는 높이다.
+        const float available_height { dialog_available_height(window_height) };
+        const float panel_height { available_height < dialog_height ? available_height : dialog_height };
         float available { panel_height - layout_switch_dialog_chrome_height };
         if (available < layout_switch_dialog_row_height)
             available = layout_switch_dialog_row_height;

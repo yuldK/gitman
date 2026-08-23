@@ -529,8 +529,11 @@ namespace gitman::ui {
         float height { (dialog_.svn_browser ? layout_svn_browser_dialog_height : layout_switch_dialog_height) * scale };
         if (width > context.slot.width)
             width = context.slot.width;
-        if (height > context.slot.height)
-            height = context.slot.height;
+        // 창이 낮아도 클라이언트 위아래에 딱 붙지 않게 여백을 남긴다 (2026-08-23
+        // 지시). 목록 높이를 정하는 `switch_dialog_list_height`가 같은 여백을 쓴다.
+        const float available_height { dialog_available_height(context.slot.height / scale) * scale };
+        if (height > available_height)
+            height = available_height;
         const float left { context.slot.x + (context.slot.width - width) / 2.0f };
         const float top { context.slot.y + (context.slot.height - height) / 2.0f };
         panel_->arrange({ { left, top, width, height }, scale });

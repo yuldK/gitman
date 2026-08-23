@@ -141,6 +141,39 @@ if (height > context.slot.height)
 └────────────────────────────────────────────────────┘
 ```
 
+### E1.2b 창 가장자리 여백 (2026-08-23 후속 지시)
+
+검수 후 지시: 창이 낮아 panel이 잘릴 때 **클라이언트에 딱 붙는다**. 위아래에 최소
+여백이 있어야 하고, 값을 미세 조정할 수 있어야 한다.
+
+`presentation/list_metrics.h`에 knob 하나와 함수 둘을 둔다. **여백을 바꾸려면
+`layout_dialog_edge_margin` 하나만 고치면 된다** — 배치와 스크롤 한계가 모두 같은
+함수를 거친다.
+
+```cpp
+inline constexpr float layout_dialog_edge_margin { 24.0f };
+// 창이 아주 낮으면 여백부터 줄인다. panel이 사라지는 것보다 낫다.
+inline constexpr float layout_dialog_edge_margin_ratio { 0.12f };
+
+[[nodiscard]] float dialog_edge_margin(float window_height) noexcept;   // min(상수, 창 × 비율)
+[[nodiscard]] float dialog_available_height(float window_height) noexcept;  // 창 − 여백 × 2
+```
+
+적용 범위는 **창 높이에 맞춰 내용이 줄어드는 dialog만**이다.
+
+| dialog | 적용 | 이유 |
+|---|---|---|
+| 환경설정 | ○ | 항목 열이 스크롤하므로 panel이 짧아져도 온전하다 |
+| switch (SVN 브라우저 포함) | ○ | 목록 높이가 `switch_dialog_list_height(창 높이)`라 같은 여백을 자동으로 따른다 |
+| 글꼴·탐색·로컬 변경·새 문서·알림 | ✕ | 내용이 창 높이를 따라 줄지 않는다. panel만 짧게 만들면 **더 일찍 깨진다** |
+
+마지막 줄은 남은 과제다 — 그 dialog들의 짧은 창 대응은 환경설정과 같은 작업이 각각
+필요하다 (E1.1과 같은 부류의 문제다).
+
+**대가**: 여백만큼 스크롤이 일찍 시작된다. 환경설정 dialog는 이제 `설계 높이 + 48`
+보다 낮은 창에서 막대가 생긴다 (문서 모드는 600px 창에서 막대가 생긴다 — 전에는
+딱 맞았다). 의도한 맞바꿈이며, 값을 줄이면 그만큼 되돌아간다.
+
 ### E1.3 치수와 한계
 
 `panel_height_for`가 이미 쓰는 값들을 그대로 쓴다.

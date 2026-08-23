@@ -1,6 +1,7 @@
 #include "application/logic_controller.h"
 #include "helpers/git_repository_fixture.h"
 #include "infrastructure/vcs_operation_executor.h"
+#include "presentation/list_metrics.h"
 #include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/switch_dialog_element.h"
 #include "presentation/ui/ui_interaction.h"
@@ -707,6 +708,41 @@ TEST_CASE("The SVN switch dialog opens revealed down to the current location", "
     REQUIRE(view->switch_dialog->svn_rows.back().current);
     REQUIRE(view->switch_dialog->svn_rows.back().selected);
     REQUIRE_FALSE(view->switch_dialog->svn_rows.back().expanded);
+}
+
+TEST_CASE("The SVN browser scrolls the revealed location into view", "[logic][switch-ui][svn][query]")
+{
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    // 목록이 두 행 남짓만 보이는 낮은 창이다. 도달한 행이 화면 아래에 숨는다.
+    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 260.0f, 1.0f });
+    const float viewport { gitman::switch_dialog_list_height(true, 260.0f) };
+    REQUIRE(viewport < 5.0f * gitman::layout_switch_dialog_row_height);
+
+    const std::uint64_t root_operation { fixture.deliver_svn_browser(u8"https://svn.example.com/repo", u8"https://svn.example.com/repo/trunk/source") };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
+    REQUIRE(fixture.submitter.requests.back().svn_directory_url == u8"https://svn.example.com/repo/trunk");
+    fixture.deliver_svn_directory(fixture.submitter.requests.back().operation_id, u8"https://svn.example.com/repo/trunk", { u8"docs", u8"source" });
+
+    {
+        // repo·branches·trunk·docs·source 다섯 행 중 마지막이 현재 위치다. 창을
+        // 열자마자 그 행이 보여야 한다 (2026-08-23 지시).
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_rows.size() == 5u);
+        REQUIRE(view->switch_dialog->svn_rows.back().selected);
+        REQUIRE(view->switch_dialog->scroll_offset == 5.0f * gitman::layout_switch_dialog_row_height - viewport);
+    }
+
+    // 위쪽 가지로 이동하면 다시 위로 따라 올라간다.
+    fixture.controller.handle(query_command(gitman::text_edit_command::select_all));
+    type_query(fixture.controller, u8"/branches");
+    fixture.controller.handle(gitman::submit_switch_query_intent {});
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->svn_rows[1].text == u8"branches");
+        REQUIRE(view->switch_dialog->svn_rows[1].selected);
+        // 행 하나(index 1)의 위쪽 끝에 맞춰 붙는다.
+        REQUIRE(view->switch_dialog->scroll_offset == gitman::layout_switch_dialog_row_height);
+    }
 }
 
 TEST_CASE("The SVN address bar walks down to the typed path one query at a time", "[logic][switch-ui][svn][query]")

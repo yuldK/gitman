@@ -1988,7 +1988,9 @@ namespace gitman {
         {
             text_edit_set_text(switch_dialog_->query, svn_browser_relative_path(switch_dialog_->svn_browser->root_url, switch_dialog_->svn_browser->selected_url), true);
             switch_dialog_->message.clear();
-            handle_switch_dialog_scroll(0.0f);
+            // 도달한 곳을 눈으로 확인할 수 있어야 한다 — 창을 열 때와 주소 막대
+            // 이동은 사용자가 그 행을 보려고 한 것이다 (2026-08-23 지시).
+            scroll_svn_browser_selection_into_view();
             return;
         }
         if (progress.not_found)
@@ -1998,6 +2000,39 @@ namespace gitman {
         }
         if (progress.query_url.has_value())
             submit_svn_directory_query(*progress.query_url);
+    }
+
+    void logic_controller::scroll_svn_browser_selection_into_view()
+    {
+        if (switch_dialog_.has_value() == false || switch_dialog_->svn_browser.has_value() == false)
+            return;
+        // 행 index는 화면에 그려질 목록 그대로여야 한다 — 접힌 가지는 행이 없다.
+        const std::u8string& selected { switch_dialog_->svn_browser->selected_url };
+        const std::vector<svn_repository_browser_row> rows { build_svn_repository_browser_rows(*switch_dialog_->svn_browser) };
+        std::optional<std::size_t> index {};
+        if (selected.empty() == false)
+            for (std::size_t row = 0; row < rows.size(); ++row)
+                if (rows[row].kind == svn_browser_row_kind::directory && rows[row].url == selected)
+                {
+                    index = row;
+                    break;
+                }
+
+        // 이미 보이면 건드리지 않는다. 벗어났으면 최소한만 움직여 위나 아래 끝에
+        // 붙인다 — 목록이 통째로 튀면 어디로 갔는지 알기 어렵다.
+        if (index.has_value())
+        {
+            const float viewport { switch_dialog_list_height(switch_dialog_->subversion, window_height_ / scale_) };
+            const float top { static_cast<float>(*index) * layout_switch_dialog_row_height };
+            const float bottom { top + layout_switch_dialog_row_height };
+            if (top < switch_dialog_->scroll_offset)
+                switch_dialog_->scroll_offset = top;
+            else if (bottom > switch_dialog_->scroll_offset + viewport)
+                switch_dialog_->scroll_offset = bottom - viewport;
+        }
+        // 찾지 못했어도 한계 고정은 한다 — 목록이 줄어든 뒤일 수 있다. 계산은 휠과
+        // 같은 handler를 그대로 쓴다.
+        handle_switch_dialog_scroll(0.0f);
     }
 
     void logic_controller::handle_set_text_composition(const set_text_composition_intent& intent)

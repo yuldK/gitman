@@ -163,6 +163,9 @@ namespace gitman {
         // reveal 한 걸음의 결과를 dialog 상태에 반영한다. 조회가 필요하면 제출하고,
         // 없는 경로면 안내를 남긴다.
         void apply_svn_browser_reveal(const svn_browser_reveal_progress& progress);
+        // 이동 목표에 도달한 뒤 그 행이 목록 밖에 있으면 보이도록 스크롤한다.
+        // 선택 표시만으로는 깊은 경로가 화면 아래에 숨는다 (2026-08-23 지시).
+        void scroll_svn_browser_selection_into_view();
         void submit_svn_directory_query(std::u8string url);
         [[nodiscard]] std::size_t switch_dialog_row_count() const;
         // Git 질의로 거른 후보의 원본 index다. 질의가 비면 전체 순서 그대로다.

@@ -1050,3 +1050,144 @@ TEST_CASE("Appearance clicks preview at once and need the save button to persist
     REQUIRE(fixture.controller.make_view_snapshot()->appearance.theme == gitman::theme_preference::dark);
     REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) != nullptr);
 }
+
+TEST_CASE("A short window scrolls the settings items instead of overflowing", "[ui][settings-ui][scroll]")
+{
+    // 지시(2026-08-23): 클라이언트 높이가 설정 팝업보다 낮으면 스타일이 깨진다.
+    // 항목이 저장·취소 버튼 줄을 뚫고 나가는 대신 스크롤이 생겨야 한다.
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, 320.0f, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+
+    const auto snapshot { controller.make_view_snapshot() };
+    REQUIRE(snapshot->settings_dialog.has_value());
+
+    const gitman::ui::settings_dialog_scroll_metrics metrics {
+        gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, 320.0f),
+    };
+    REQUIRE(metrics.maximum_scroll > 0.0f);
+    REQUIRE(metrics.viewport_height < metrics.content_height);
+
+    const auto tree { gitman::ui::build_ui_tree(*snapshot) };
+    REQUIRE(tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar }) != nullptr);
+
+    // 저장·취소 버튼은 제자리에 남고, 항목 컨트롤은 그 위에서 끝난다.
+    const gitman::ui::ui_element* const confirm { tree->find({ gitman::ui::ui_element_kind::settings_dialog_confirm }) };
+    REQUIRE(confirm != nullptr);
+    const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+    REQUIRE(panel != nullptr);
+    REQUIRE(confirm->bounds().y + confirm->bounds().height <= panel->bounds().y + panel->bounds().height);
+}
+
+TEST_CASE("Settings scrolling stops at both ends and resets when the tab changes", "[ui][settings-ui][scroll]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, 320.0f, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+
+    const float maximum {
+        gitman::ui::settings_dialog_metrics(*controller.make_view_snapshot()->settings_dialog, 320.0f).maximum_scroll,
+    };
+    REQUIRE(maximum > 0.0f);
+
+    // 위로 굴려도 0 아래로 내려가지 않는다.
+    controller.handle(gitman::settings_scroll_intent { -400.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
+
+    // 아래로 아무리 굴려도 한계에서 멈춘다.
+    controller.handle(gitman::settings_scroll_intent { 10'000.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == maximum);
+
+    // 탭을 옮기면 맨 위부터 본다.
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::tools });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
+}
+
+TEST_CASE("A tall window keeps the settings dialog unscrolled", "[ui][settings-ui][scroll]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, 1000.0f, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+
+    const auto snapshot { controller.make_view_snapshot() };
+    REQUIRE(gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, 1000.0f).maximum_scroll == 0.0f);
+
+    // 스크롤할 것이 없으면 막대도 없고 휠도 아무 일을 하지 않는다.
+    const auto tree { gitman::ui::build_ui_tree(*snapshot) };
+    const gitman::ui::ui_element* const bar { tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar }) };
+    REQUIRE((bar == nullptr || bar->visible() == false));
+
+    controller.handle(gitman::settings_scroll_intent { 500.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
+}
+
+TEST_CASE("Scrolled settings controls leave the viewport and stop responding", "[ui][settings-ui][scroll]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, 320.0f, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+
+    const auto before { controller.make_view_snapshot() };
+    const auto tree_before { gitman::ui::build_ui_tree(*before) };
+    const gitman::ui::ui_element* const browse_before { tree_before->find({ gitman::ui::ui_element_kind::settings_git_browse }) };
+    REQUIRE(browse_before != nullptr);
+    const float y_before { browse_before->bounds().y };
+
+    controller.handle(gitman::settings_scroll_intent { 60.0f });
+    const auto after { controller.make_view_snapshot() };
+    REQUIRE(after->settings_dialog->scroll_offset > 0.0f);
+
+    const auto tree_after { gitman::ui::build_ui_tree(*after) };
+    const gitman::ui::ui_element* const browse_after { tree_after->find({ gitman::ui::ui_element_kind::settings_git_browse }) };
+    REQUIRE(browse_after != nullptr);
+    // 항목은 위로 흐르고 탭 rail은 제자리다.
+    REQUIRE(browse_after->bounds().y < y_before);
+
+    const gitman::ui::ui_element_id rail_id { gitman::ui::ui_element_kind::settings_tab_item, gitman::project_id { std::u8string { u8"tools" } } };
+    const gitman::ui::ui_element* const rail_before { tree_before->find(rail_id) };
+    const gitman::ui::ui_element* const rail_after { tree_after->find(rail_id) };
+    REQUIRE(rail_before != nullptr);
+    REQUIRE(rail_after != nullptr);
+    REQUIRE(rail_after->bounds().y == rail_before->bounds().y);
+
+    // viewport 밖으로 밀려난 자리는 눌리지 않는다.
+    const gitman::ui::ui_element* const panel { tree_after->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+    REQUIRE(panel != nullptr);
+    const gitman::ui::rect_f bounds { browse_after->bounds() };
+    if (bounds.y + bounds.height < panel->bounds().y + 44.0f)
+        REQUIRE(tree_after->root().hit_test(bounds.x + 1.0f, bounds.y + 1.0f) != browse_after);
+}
+
+TEST_CASE("The wheel scrolls the settings dialog and the font dialog wins on top", "[ui][settings-ui][scroll]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, 320.0f, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+
+    gitman::ui::interaction_controller interaction {};
+    interaction.set_tree(gitman::ui::build_ui_tree(*controller.make_view_snapshot()));
+
+    const auto settings_actions { interaction.process(gitman::ui::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
+    REQUIRE(settings_actions.size() == 1u);
+    const auto* const settings_message { std::get_if<gitman::logic_message>(&settings_actions.front()) };
+    REQUIRE(settings_message != nullptr);
+    REQUIRE(std::get_if<gitman::settings_scroll_intent>(settings_message) != nullptr);
+
+    // 글꼴 dialog는 환경설정 위에 뜨므로 휠을 먼저 가져간다.
+    controller.handle(gitman::open_font_dialog_intent { false });
+    interaction.set_tree(gitman::ui::build_ui_tree(*controller.make_view_snapshot()));
+
+    const auto font_actions { interaction.process(gitman::ui::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
+    REQUIRE(font_actions.size() == 1u);
+    const auto* const font_message { std::get_if<gitman::logic_message>(&font_actions.front()) };
+    REQUIRE(font_message != nullptr);
+    REQUIRE(std::get_if<gitman::font_dialog_scroll_intent>(font_message) != nullptr);
+}

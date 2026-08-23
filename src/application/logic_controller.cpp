@@ -7,6 +7,7 @@
 #include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
 #include "presentation/log_presentation.h"
+#include "presentation/ui/settings_dialog_element.h"
 
 #include <chrono>
 #include <cstddef>
@@ -317,6 +318,8 @@ namespace gitman {
                     handle_clear_settings_override(value);
                 else if constexpr (std::is_same_v<value_type, select_settings_tab_intent>)
                     handle_select_settings_tab(value);
+                else if constexpr (std::is_same_v<value_type, settings_scroll_intent>)
+                    handle_settings_scroll(value.delta);
                 else if constexpr (std::is_same_v<value_type, toggle_settings_submodules_intent>)
                 {
                     // 값을 건드리면 문서 모드에서는 그 행이 "문서에 정의됨"이 된다
@@ -1577,6 +1580,110 @@ namespace gitman {
         if (settings_dialog_.has_value() == false)
             return;
         settings_dialog_->active_tab = intent.tab;
+        // 탭을 옮기면 항목 열의 맨 위부터 본다. 앞 탭의 스크롤을 물려받으면 짧은
+        // 탭에서 빈 화면이 보인다 (E1.4).
+        settings_dialog_->scroll_offset = 0.0f;
+    }
+
+    // 환경설정 dialog의 표시 모델이다. snapshot 게시와 스크롤 한계 계산이 같은
+    // 값을 봐야 하므로 한곳에서 만든다 (E1.3). `scroll_offset`은 호출자가 채운다 —
+    // 한계를 구하는 쪽이 아직 그 값을 모른다.
+    settings_dialog_view logic_controller::build_settings_dialog_view() const
+    {
+        settings_dialog_view dialog {};
+
+        dialog.active_tab = settings_dialog_->active_tab;
+
+        dialog.document_mode = settings_dialog_->document_mode;
+
+        dialog.git_path = settings_dialog_->git_path;
+
+        dialog.svn_path = settings_dialog_->svn_path;
+
+        dialog.timeout = { settings_dialog_->timeout.text, settings_dialog_->timeout.caret, settings_dialog_->timeout.anchor };
+
+        // 글꼴은 초안이 아니라 앱 설정을 곧바로 보여 준다 (F2.5).
+
+        dialog.ui_font_family = app_settings_.fonts.ui_family;
+
+        dialog.code_font_family = app_settings_.fonts.code_family;
+
+        dialog.update_submodules = settings_dialog_->update_submodules;
+
+        dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
+
+        dialog.write_log_files = settings_dialog_->write_log_files;
+
+        // 외양도 초안이다 (D4). 화면 색은 `저장` 전까지 바뀌지 않는다.
+
+        dialog.theme = settings_dialog_->theme;
+
+        dialog.accent_id = settings_dialog_->accent_id;
+
+        // 문서 모드에서 정의되지 않은 행은 "앱 설정 따름"으로 표시된다 (G3.2).
+
+        if (settings_dialog_->document_mode)
+
+        {
+
+            dialog.git_follows_app = settings_dialog_->git_defined == false;
+
+            dialog.svn_follows_app = settings_dialog_->svn_defined == false;
+
+            dialog.timeout_follows_app = settings_dialog_->timeout_defined == false;
+
+            dialog.submodules_follows_app = settings_dialog_->submodules_defined == false;
+
+            dialog.ignore_local_follows_app = settings_dialog_->ignore_local_defined == false;
+
+            dialog.log_files_follows_app = settings_dialog_->log_files_defined == false;
+
+            dialog.theme_follows_app = settings_dialog_->theme_defined == false;
+
+            dialog.accent_follows_app = settings_dialog_->accent_defined == false;
+
+        }
+
+        // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
+
+        // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
+
+        const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
+
+        const std::u8string_view svn_error { settings_executable_error(settings_dialog_->svn_path) };
+
+        const std::u8string_view timeout_error { settings_timeout_error(settings_dialog_->timeout.text) };
+
+        if (git_error.empty() == false)
+
+            dialog.message = std::u8string { u8"Git: " } + std::u8string { git_error };
+
+        else if (svn_error.empty() == false)
+
+            dialog.message = std::u8string { u8"SVN: " } + std::u8string { svn_error };
+
+        else if (timeout_error.empty() == false)
+
+            dialog.message = std::u8string { timeout_error };
+
+        dialog.can_confirm = git_error.empty() && svn_error.empty() && timeout_error.empty();
+        return dialog;
+    }
+
+    void logic_controller::handle_settings_scroll(const float delta)
+    {
+        if (settings_dialog_.has_value() == false)
+            return;
+
+        // element와 같은 함수로 한계를 구한다. 다르면 휠이 헛돌거나 마지막 항목이
+        // 잘린다 (E1.3).
+        const float maximum { ui::settings_dialog_metrics(build_settings_dialog_view(), window_height_ / scale_).maximum_scroll };
+        float offset { settings_dialog_->scroll_offset + delta };
+        if (offset < 0.0f)
+            offset = 0.0f;
+        if (offset > maximum)
+            offset = maximum;
+        settings_dialog_->scroll_offset = offset;
     }
 
     void logic_controller::handle_clear_settings_override(const clear_settings_override_intent& intent)
@@ -2916,45 +3023,9 @@ namespace gitman {
 
         if (settings_dialog_.has_value())
         {
-            settings_dialog_view dialog {};
-            dialog.active_tab = settings_dialog_->active_tab;
-            dialog.document_mode = settings_dialog_->document_mode;
-            dialog.git_path = settings_dialog_->git_path;
-            dialog.svn_path = settings_dialog_->svn_path;
-            dialog.timeout = { settings_dialog_->timeout.text, settings_dialog_->timeout.caret, settings_dialog_->timeout.anchor };
-            // 글꼴은 초안이 아니라 앱 설정을 곧바로 보여 준다 (F2.5).
-            dialog.ui_font_family = app_settings_.fonts.ui_family;
-            dialog.code_font_family = app_settings_.fonts.code_family;
-            dialog.update_submodules = settings_dialog_->update_submodules;
-            dialog.ignore_local_changes = settings_dialog_->ignore_local_changes;
-            dialog.write_log_files = settings_dialog_->write_log_files;
-            // 외양도 초안이다 (D4). 화면 색은 `저장` 전까지 바뀌지 않는다.
-            dialog.theme = settings_dialog_->theme;
-            dialog.accent_id = settings_dialog_->accent_id;
-            // 문서 모드에서 정의되지 않은 행은 "앱 설정 따름"으로 표시된다 (G3.2).
-            if (settings_dialog_->document_mode)
-            {
-                dialog.git_follows_app = settings_dialog_->git_defined == false;
-                dialog.svn_follows_app = settings_dialog_->svn_defined == false;
-                dialog.timeout_follows_app = settings_dialog_->timeout_defined == false;
-                dialog.submodules_follows_app = settings_dialog_->submodules_defined == false;
-                dialog.ignore_local_follows_app = settings_dialog_->ignore_local_defined == false;
-                dialog.log_files_follows_app = settings_dialog_->log_files_defined == false;
-                dialog.theme_follows_app = settings_dialog_->theme_defined == false;
-                dialog.accent_follows_app = settings_dialog_->accent_defined == false;
-            }
-            // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
-            // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
-            const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
-            const std::u8string_view svn_error { settings_executable_error(settings_dialog_->svn_path) };
-            const std::u8string_view timeout_error { settings_timeout_error(settings_dialog_->timeout.text) };
-            if (git_error.empty() == false)
-                dialog.message = std::u8string { u8"Git: " } + std::u8string { git_error };
-            else if (svn_error.empty() == false)
-                dialog.message = std::u8string { u8"SVN: " } + std::u8string { svn_error };
-            else if (timeout_error.empty() == false)
-                dialog.message = std::u8string { timeout_error };
-            dialog.can_confirm = git_error.empty() && svn_error.empty() && timeout_error.empty();
+            settings_dialog_view dialog { build_settings_dialog_view() };
+            const float maximum { ui::settings_dialog_metrics(dialog, window_height_ / scale_).maximum_scroll };
+            dialog.scroll_offset = settings_dialog_->scroll_offset > maximum ? maximum : settings_dialog_->scroll_offset;
             snapshot->settings_dialog = { std::move(dialog) };
         }
 

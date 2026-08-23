@@ -1,8 +1,10 @@
 #include "presentation/ui/settings_dialog_element.h"
 
 #include "gitman/generated/codicons.h"
+#include "presentation/list_metrics.h"
 #include "presentation/ui/dialog_elements.h"
 #include "presentation/ui/draw_primitives.h"
+#include "presentation/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -14,6 +16,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -58,6 +61,9 @@ namespace gitman::ui {
         // 검증 메시지 자리다. 메시지가 없어도 높이를 비워 두어 버튼 줄이 움직이지
         // 않는다.
         constexpr float message_height { 18.0f };
+        // panel 높이에서 항목 열이 아닌 부분이다 — 제목 줄, 메시지 줄, 버튼 줄과
+        // 아래 여백이다. logic의 스크롤 한계와 element의 배치가 같은 값을 쓴다 (E1).
+        constexpr float chrome_height { content_top + message_height + action_button_height + panel_padding };
         constexpr float theme_option_width { 34.0f };
         constexpr float theme_option_height { 22.0f };
         constexpr float swatch_diameter { 24.0f };
@@ -202,51 +208,74 @@ namespace gitman::ui {
             return base + item_bottom_margin;
         }
 
-        float tab_content_height(const tab_model& tab, const bool document_mode, const std::size_t accent_count)
+        float tab_content_height(const tab_model& tab, const bool document_mode, const std::size_t accent_count, const float column_width)
         {
             float total { 0.0f };
             for (std::size_t index = 0; index < tab.sections.size(); ++index)
             {
                 total += section_header_height;
                 for (const item_model& item : tab.sections[index].items)
-                    total += item_height_for(item, document_mode, content_width, accent_count);
+                    total += item_height_for(item, document_mode, column_width, accent_count);
                 if (index + 1 < tab.sections.size())
                     total += section_gap;
             }
             return total;
         }
 
-        // 탭을 옮길 때 창이 튀지 않도록 가장 높은 탭에 맞춘다 (S1.3).
-        float panel_height_for(const std::vector<tab_model>& tabs, const bool document_mode, const std::size_t accent_count)
+        // 탭을 옮길 때 창이 튀지 않도록 가장 높은 탭에 맞춘다 (S1.3). 탭 rail도
+        // 같은 열 높이를 차지하므로 함께 센다.
+        float tallest_content_height(const std::vector<tab_model>& tabs, const bool document_mode, const std::size_t accent_count, const float column_width)
         {
             float content { static_cast<float>(tabs.size()) * rail_row_height };
             for (const tab_model& tab : tabs)
             {
-                const float height { tab_content_height(tab, document_mode, accent_count) };
+                const float height { tab_content_height(tab, document_mode, accent_count, column_width) };
                 if (height > content)
                     content = height;
             }
-            return content_top + content + message_height + action_button_height + panel_padding;
+            return content;
         }
 
-        tab_layout layout_for(const rect_f& panel, const float scale, const tab_model& tab, const bool document_mode, const std::size_t accent_count)
+        float panel_height_for(const std::vector<tab_model>& tabs, const bool document_mode, const std::size_t accent_count, const float column_width)
+        {
+            return chrome_height + tallest_content_height(tabs, document_mode, accent_count, column_width);
+        }
+
+        // 스크롤 막대가 차지하는 논리 폭이다. 막대가 보이면 항목 열이 그만큼 좁아진다.
+        constexpr float scrollbar_inset { layout_scrollbar_hit_width };
+
+        // 항목 열이 실제로 보이는 높이다. 창이 낮으면 chrome을 뺀 나머지이고, 한 줄도
+        // 못 보일 만큼 낮으면 그 한 줄만큼은 남긴다.
+        float viewport_height_for(const float content_height, const float window_height)
+        {
+            const float wanted { chrome_height + content_height };
+            const float panel { wanted < window_height ? wanted : window_height };
+            const float available { panel - chrome_height };
+            return available > item_title_height ? available : item_title_height;
+        }
+
+        // `right_inset`은 스크롤 막대가 차지하는 논리 폭이다. 막대가 없으면 0이다.
+        tab_layout layout_for(
+            const rect_f& panel, const float scale, const tab_model& tab, const bool document_mode, const std::size_t accent_count, const float scroll_offset, const float right_inset)
         {
             tab_layout layout {};
-            float top { panel.y + content_top * scale };
+            const float column_width { content_width - right_inset };
+            // 스크롤은 항목 열만 움직인다. 제목·탭 rail·버튼 줄은 제자리다 (E1.2).
+            float top { panel.y + (content_top - scroll_offset) * scale };
             for (std::size_t section = 0; section < tab.sections.size(); ++section)
             {
-                layout.section_headers.push_back({ panel.x + content_left * scale, top, content_width * scale, section_header_height * scale });
+                layout.section_headers.push_back({ panel.x + content_left * scale, top, column_width * scale, section_header_height * scale });
                 top += section_header_height * scale;
                 for (const item_model& item : tab.sections[section].items)
                 {
-                    const float height { item_height_for(item, document_mode, content_width, accent_count) * scale };
+                    const float height { item_height_for(item, document_mode, column_width, accent_count) * scale };
                     const float badge_row { badge_row_for(item, document_mode) * scale };
                     item_bounds bounds {};
-                    bounds.block = { panel.x + content_left * scale, top, content_width * scale, height };
+                    bounds.block = { panel.x + content_left * scale, top, column_width * scale, height };
                     // 배지는 항목 제목 바로 위 왼쪽이다 (E3). 없으면 빈 사각형이다.
                     if (badge_row > 0.0f)
                         bounds.badge = { bounds.block.x, top, badge_width * scale, badge_height * scale };
-                    bounds.title_line = { bounds.block.x, top + badge_row, content_width * scale, item_title_height * scale };
+                    bounds.title_line = { bounds.block.x, top + badge_row, column_width * scale, item_title_height * scale };
                     bounds.value_line = { bounds.title_line.x, bounds.title_line.y + item_title_height * scale, bounds.title_line.width, value_height_for(item.kind) * scale };
                     bounds.controls_right = bounds.title_line.x + bounds.title_line.width;
                     layout.items.push_back(bounds);
@@ -604,22 +633,35 @@ namespace gitman::ui {
         class settings_panel_element final : public ui_element
         {
         public:
-            settings_panel_element(const settings_dialog_view& dialog, tab_model active, const std::size_t accent_count)
+            settings_panel_element(const settings_dialog_view& dialog, tab_model active, const std::size_t accent_count, const float right_inset)
                 : ui_element { ui_element_id { ui_element_kind::settings_dialog_panel } }
                 , title_ { dialog.document_mode ? std::u8string { u8"환경설정 (문서)" } : std::u8string { u8"환경설정 (전역)" } }
                 , document_mode_ { dialog.document_mode }
                 , active_ { std::move(active) }
                 , accent_count_ { accent_count }
                 , message_ { dialog.message }
+                , scroll_offset_ { dialog.scroll_offset }
+                , right_inset_ { right_inset }
             {
                 set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
             }
+
+            // 탭 rail과 항목 컨트롤은 panel의 자식이다. 그래야 viewport 하나로
+            // 잘라 그리고 hit test도 같은 경계를 쓴다 (E1.2).
+            void adopt(std::unique_ptr<ui_element> child)
+            {
+                add_child(std::move(child));
+            }
+
+            // 탭 rail과 항목 열이 함께 보이는 영역이다. 창이 낮으면 여기부터 줄어들고
+            // 제목·메시지·버튼 줄은 제자리에 남는다. dialog가 배치하며 정한다.
+            rect_f content_viewport {};
 
             void arrange(const arrange_context& context) override
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
                 set_bounds(context.slot);
-                layout_ = layout_for(context.slot, scale, active_, document_mode_, accent_count_);
+                layout_ = layout_for(context.slot, scale, active_, document_mode_, accent_count_, scroll_offset_, right_inset_);
             }
 
             [[nodiscard]] const tab_layout& layout() const noexcept
@@ -646,9 +688,32 @@ namespace gitman::ui {
 
                 draw_title(context, box, scale);
                 draw_rail_separator(context, box, scale);
-                draw_sections(context, scale);
                 draw_message(context, box, scale);
+
+                // 항목과 그 컨트롤은 viewport 안에서만 보인다. 창이 낮아 내용이
+                // 넘치더라도 버튼 줄을 뚫고 나가지 않는다 (E1.1이 지적한 깨짐).
+                context.canvas.save();
+                context.canvas.clipRect(SkRect::MakeXYWH(content_viewport.x, content_viewport.y, content_viewport.width, content_viewport.height));
+                draw_sections(context, scale);
                 draw_children(context, interaction);
+                context.canvas.restore();
+            }
+
+            const ui_element* hit_test(const float x, const float y) const override
+            {
+                if (visible() == false)
+                    return nullptr;
+                // 잘려서 보이지 않는 컨트롤은 눌리지도 않아야 한다.
+                if (content_viewport.contains(x, y))
+                {
+                    const std::span<const std::unique_ptr<ui_element>> items { children() };
+                    for (std::size_t index = items.size(); index > 0; --index)
+                        if (const ui_element* const hit { items[index - 1]->hit_test(x, y) }; hit != nullptr)
+                            return hit;
+                }
+                if (interactive() && bounds().contains(x, y))
+                    return this;
+                return nullptr;
             }
 
         private:
@@ -749,11 +814,34 @@ namespace gitman::ui {
             tab_model active_ {};
             std::size_t accent_count_ { 0 };
             std::u8string message_ {};
+            float scroll_offset_ { 0.0f };
+            float right_inset_ { 0.0f };
             tab_layout layout_ {};
         };
     } // namespace
 
-    settings_dialog_element::settings_dialog_element(settings_dialog_view dialog)
+    settings_dialog_scroll_metrics settings_dialog_metrics(const settings_dialog_view& dialog, const float window_height)
+    {
+        const std::vector<tab_model> tabs { build_tabs(dialog) };
+        const std::size_t accent_count { accent_catalog().size() };
+
+        // 두 번 센다. 막대가 보이면 항목 열이 좁아지고, 좁아지면 색 격자가 한 줄 더
+        // 늘 수 있다. 막대가 필요한지 먼저 판정한 뒤 그 폭으로 다시 센다.
+        settings_dialog_scroll_metrics metrics {};
+        metrics.content_height = tallest_content_height(tabs, dialog.document_mode, accent_count, content_width);
+        metrics.viewport_height = viewport_height_for(metrics.content_height, window_height);
+        if (metrics.content_height > metrics.viewport_height)
+        {
+            metrics.content_height = tallest_content_height(tabs, dialog.document_mode, accent_count, content_width - scrollbar_inset);
+            metrics.viewport_height = viewport_height_for(metrics.content_height, window_height);
+            metrics.maximum_scroll = metrics.content_height - metrics.viewport_height;
+            if (metrics.maximum_scroll < 0.0f)
+                metrics.maximum_scroll = 0.0f;
+        }
+        return metrics;
+    }
+
+    settings_dialog_element::settings_dialog_element(settings_dialog_view dialog, const float scale, const float window_height)
         : ui_element { ui_element_id { ui_element_kind::settings_dialog } }
         , dialog_ { std::move(dialog) }
     {
@@ -762,37 +850,42 @@ namespace gitman::ui {
 
         const std::vector<tab_model> tabs { build_tabs(dialog_) };
         const std::size_t accent_count { accent_catalog().size() };
-        panel_height_ = panel_height_for(tabs, dialog_.document_mode, accent_count);
+        const float effective { scale > 0.0f ? scale : 1.0f };
+        metrics_ = settings_dialog_metrics(dialog_, window_height / effective);
+        panel_height_ = chrome_height + metrics_.content_height;
 
         const tab_model* active { &tabs.front() };
         for (const tab_model& tab : tabs)
             if (tab.tab == dialog_.active_tab)
                 active = &tab;
 
-        auto panel { std::make_unique<settings_panel_element>(dialog_, *active, accent_count) };
-        panel_ = panel.get();
+        auto panel { std::make_unique<settings_panel_element>(dialog_, *active, accent_count, metrics_.maximum_scroll > 0.0f ? scrollbar_inset : 0.0f) };
+        settings_panel_element* const panel_raw { panel.get() };
+        panel_ = panel_raw;
         add_child(std::move(panel));
 
+        // 탭 rail과 항목 컨트롤은 panel의 자식이다. panel이 viewport 하나로 잘라
+        // 그리므로 창이 낮아도 버튼 줄을 침범하지 않는다 (E1.2).
         for (const tab_model& tab : tabs)
         {
             auto item { std::make_unique<tab_item_element>(tab.tab, tab.tab == active->tab, tab.glyph, tab.label) };
             tab_items_.push_back(item.get());
-            add_child(std::move(item));
+            panel_raw->adopt(std::move(item));
         }
 
         // 활성 탭의 항목만 컨트롤을 만든다. 다른 탭의 값은 dialog 초안에 그대로 남아
         // 있고, 탭을 옮기면 그 탭의 컨트롤이 만들어진다 (S1.2).
-        const auto add_toggle = [this](const ui_element_kind kind, const bool on, const char8_t* const tooltip, logic_message message, std::vector<ui_element*>& controls) {
+        const auto add_toggle = [panel_raw](const ui_element_kind kind, const bool on, const char8_t* const tooltip, logic_message message, std::vector<ui_element*>& controls) {
             auto toggle { std::make_unique<toggle_element>(ui_element_id { kind }, on, std::u8string { tooltip }, std::move(message)) };
             controls.push_back(toggle.get());
-            add_child(std::move(toggle));
+            panel_raw->adopt(std::move(toggle));
         };
 
-        const auto add_text_button = [this](const ui_element_kind kind, const char8_t* const text, std::vector<ui_element*>& controls) -> text_button_element* {
+        const auto add_text_button = [panel_raw](const ui_element_kind kind, const char8_t* const text, std::vector<ui_element*>& controls) -> text_button_element* {
             auto button { std::make_unique<text_button_element>(ui_element_id { kind }, std::u8string { text }, false) };
             text_button_element* const raw { button.get() };
             controls.push_back(raw);
-            add_child(std::move(button));
+            panel_raw->adopt(std::move(button));
             return raw;
         };
 
@@ -826,7 +919,7 @@ namespace gitman::ui {
                     auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::settings_timeout_input }, dialog_.timeout, std::u8string { u8"600 (기본값)" }) };
                     input->set_tooltip(u8"숫자만 입력합니다 (10~3600초). 비우면 기본값 600초입니다.");
                     controls.push_back(input.get());
-                    add_child(std::move(input));
+                    panel_raw->adopt(std::move(input));
                     break;
                 }
                 case item_kind::update_submodules:
@@ -844,10 +937,10 @@ namespace gitman::ui {
                         logic_message { toggle_settings_log_files_intent {} }, controls);
                     break;
                 case item_kind::theme: {
-                    const auto add_theme = [this](const theme_preference value, const char32_t glyph, const char8_t* const tooltip) {
+                    const auto add_theme = [this, panel_raw](const theme_preference value, const char32_t glyph, const char8_t* const tooltip) {
                         auto option { std::make_unique<theme_option_element>(value, dialog_.theme == value, glyph, std::u8string { tooltip }) };
                         theme_options_.push_back(option.get());
-                        add_child(std::move(option));
+                        panel_raw->adopt(std::move(option));
                     };
                     // codicon에는 sun/moon이 없어 의미가 가장 가까운 3종을 골랐다
                     // (theme-and-banner-menu-design 검수 결정).
@@ -861,7 +954,7 @@ namespace gitman::ui {
                     {
                         auto swatch { std::make_unique<accent_swatch_element>(accent, accent.id == dialog_.accent_id) };
                         swatches_.push_back(swatch.get());
-                        add_child(std::move(swatch));
+                        panel_raw->adopt(std::move(swatch));
                     }
                     break;
                 }
@@ -897,7 +990,7 @@ namespace gitman::ui {
                 {
                     auto badge { std::make_unique<override_badge_element>(item.override_owner, *item.override_field, item.overridden) };
                     badges_.push_back({ index, badge.get() });
-                    add_child(std::move(badge));
+                    panel_raw->adopt(std::move(badge));
                 }
             }
 
@@ -911,6 +1004,17 @@ namespace gitman::ui {
         cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_settings_dialog_intent {} } } }; });
         cancel_ = cancel.get();
         add_child(std::move(cancel));
+
+        // 항목이 창에 다 들어가지 않을 때만 막대를 만든다. 다른 dialog와 같은
+        // element를 쓰고 폭도 같다 (E1.4). 실제 치수는 arrange가 정한다.
+        auto bar {
+            std::make_unique<scrollbar_element>(
+                ui_element_id { ui_element_kind::settings_dialog_scrollbar }, [](const float delta) { return logic_message { settings_scroll_intent { delta } }; },
+                metrics_.content_height * effective, metrics_.viewport_height * effective, dialog_.scroll_offset * effective, effective),
+        };
+        bar->set_visible(metrics_.maximum_scroll > 0.0f);
+        scrollbar_ = bar.get();
+        add_child(std::move(bar));
     }
 
     void settings_dialog_element::arrange(const arrange_context& context)
@@ -927,16 +1031,25 @@ namespace gitman::ui {
         const float left { context.slot.x + (context.slot.width - width) / 2.0f };
         const float top { context.slot.y + (context.slot.height - height) / 2.0f };
         const float padding { panel_padding * scale };
-        panel_->arrange({ { left, top, width, height }, scale });
 
-        float rail_top { top + content_top * scale };
+        auto* const panel { static_cast<settings_panel_element*>(panel_) };
+        // 항목 열과 탭 rail이 함께 보이는 영역이다. 창이 낮으면 여기부터 줄어들고
+        // 제목·메시지·버튼 줄은 제자리에 남는다 (E1.2).
+        const float viewport_top { top + content_top * scale };
+        float viewport_height { height - chrome_height * scale };
+        if (viewport_height < item_title_height * scale)
+            viewport_height = item_title_height * scale;
+        panel->content_viewport = { left + padding, viewport_top, width - padding * 2.0f, viewport_height };
+        panel->arrange({ { left, top, width, height }, scale });
+
+        // 탭 rail은 스크롤하지 않는다. 항목만 흐른다.
+        float rail_top { viewport_top };
         for (ui_element* const item : tab_items_)
         {
             item->arrange({ { left + padding, rail_top, rail_width * scale, rail_row_height * scale }, scale });
             rail_top += rail_row_height * scale;
         }
 
-        const auto* const panel { static_cast<const settings_panel_element*>(panel_) };
         const tab_layout& layout { panel->layout() };
 
         // 항목 컨트롤은 제목 줄 오른쪽이거나 값 줄 자리다. 좌표는 panel이 계산한 항목
@@ -1040,6 +1153,10 @@ namespace gitman::ui {
                 continue;
             badge->arrange({ bounds.badge, scale });
         }
+
+        // 막대는 항목 열의 오른쪽 끝, viewport 세로 범위에 붙는다.
+        const float bar_width { layout_scrollbar_hit_width * scale };
+        scrollbar_->arrange({ { left + width - padding - bar_width, viewport_top, bar_width, viewport_height }, scale });
 
         const float button_width { action_button_width * scale };
         const float button_height { action_button_height * scale };

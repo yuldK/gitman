@@ -121,6 +121,10 @@ namespace gitman {
         void handle_set_settings_executable(set_settings_executable_intent intent);
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
         void handle_select_settings_tab(const select_settings_tab_intent& intent);
+        void handle_settings_scroll(float delta);
+        // 환경설정 dialog의 표시 모델이다. snapshot 게시와 스크롤 한계 계산이 같은
+        // 값을 봐야 하므로 한곳에서 만든다 (E1.3).
+        [[nodiscard]] settings_dialog_view build_settings_dialog_view() const;
         void handle_clear_settings_override(const clear_settings_override_intent& intent);
         void handle_confirm_settings();
         void handle_begin_switch(const begin_switch_intent& intent);
@@ -345,6 +349,9 @@ namespace gitman {
             bool log_files_defined { false };
             bool theme_defined { false };
             bool accent_defined { false };
+            // 항목 열의 스크롤 위치다 (논리 픽셀). 창이 낮아 항목이 다 들어가지
+            // 않을 때만 0이 아니다 (text-input-and-font-fallback-design E1).
+            float scroll_offset { 0.0f };
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};

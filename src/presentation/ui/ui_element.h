@@ -93,6 +93,9 @@ namespace gitman::ui {
         // 흡수한다.
         settings_dialog,
         settings_dialog_panel,
+        // 항목 열의 스크롤 막대다. 창이 낮아 항목이 다 들어가지 않을 때만 만든다
+        // (text-input-and-font-fallback-design E1).
+        settings_dialog_scrollbar,
         // 왼쪽 탭 rail의 한 칸이다 (settings-tabs-and-appearance-scope-design
         // S1.2). owner 값에 탭 이름(`tools`·`operations`·…)을 담는다.
         settings_tab_item,

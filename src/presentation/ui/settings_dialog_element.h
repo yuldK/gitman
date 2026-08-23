@@ -8,6 +8,22 @@
 #include <vector>
 
 namespace gitman::ui {
+    // 환경설정 항목 열의 스크롤 치수다 (text-input-and-font-fallback-design E1.3).
+    // 값은 모두 **논리 픽셀**이다. logic의 스크롤 한계와 element의 배치가 이 함수
+    // 하나를 함께 써야 휠이 헛돌거나 마지막 항목이 잘리지 않는다.
+    struct settings_dialog_scroll_metrics
+    {
+        // 가장 높은 탭의 내용 높이다. 탭을 옮길 때 창이 튀지 않게 고정한다 (S1.3).
+        float content_height { 0.0f };
+        // 항목 열이 실제로 보이는 높이다. 창이 낮으면 chrome을 뺀 나머지다.
+        float viewport_height { 0.0f };
+        // 스크롤할 수 있는 최대치다. 0이면 다 보이므로 막대도 만들지 않는다.
+        float maximum_scroll { 0.0f };
+    };
+
+    // `window_height`는 논리 픽셀이다.
+    [[nodiscard]] settings_dialog_scroll_metrics settings_dialog_metrics(const settings_dialog_view& dialog, float window_height);
+
     // 환경설정 dialog다 (REQ-017, stage-8-plan 5.1,
     // docs/settings-tabs-and-appearance-scope-design.md S1). 화면 전체를 덮는 dim
     // 배경 위에 panel을 띄우고, 왼쪽 탭 rail이 고른 탭의 섹션과 항목만 담는다.
@@ -16,7 +32,7 @@ namespace gitman::ui {
     class settings_dialog_element final : public ui_element
     {
     public:
-        explicit settings_dialog_element(settings_dialog_view dialog);
+        settings_dialog_element(settings_dialog_view dialog, float scale, float window_height);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
@@ -27,8 +43,11 @@ namespace gitman::ui {
         // 항목 사각형 위에 컨트롤을 얹으므로 그리기와 배치가 어긋나지 않는다.
         ui_element* panel_ { nullptr };
         // 네 탭 중 가장 높은 내용에 맞춘 panel 높이다. 탭을 옮길 때 창이 튀지 않게
-        // 고정한다 (S1.3).
+        // 고정한다 (S1.3). 창이 더 낮으면 잘리고 항목 열이 스크롤된다 (E1).
         float panel_height_ { 0.0f };
+        settings_dialog_scroll_metrics metrics_ {};
+        // 내용이 넘칠 때만 보인다.
+        ui_element* scrollbar_ { nullptr };
         std::vector<ui_element*> tab_items_ {};
         // 활성 탭의 항목과 같은 순서다. 항목 하나가 컨트롤을 0~2개 갖는다.
         std::vector<std::vector<ui_element*>> item_controls_ {};

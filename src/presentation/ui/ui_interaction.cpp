@@ -130,6 +130,11 @@ namespace gitman::ui {
                     if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::font_dialog }) != nullptr)
                         return { input_action { logic_message { font_dialog_scroll_intent { delta } } } };
 
+                    // 환경설정은 창이 낮을 때만 스크롤할 것이 있다. 막대가 없으면
+                    // logic이 한계 0으로 걸러 아무 일도 일어나지 않는다 (E1.4).
+                    if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::settings_dialog }) != nullptr)
+                        return { input_action { logic_message { settings_scroll_intent { delta } } } };
+
                     // switch·탐색 dialog가 열려 있으면 휠은 그 후보 목록을 스크롤한다.
                     if (tree_ != nullptr && tree_->find(ui_element_id { ui_element_kind::switch_dialog }) != nullptr)
                         return { input_action { logic_message { switch_dialog_scroll_intent { delta } } } };

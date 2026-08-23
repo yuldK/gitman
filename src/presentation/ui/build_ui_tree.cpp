@@ -123,7 +123,7 @@ namespace gitman::ui {
                 }
                 if (view.settings_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<settings_dialog_element>(*view.settings_dialog) };
+                    auto dialog { std::make_unique<settings_dialog_element>(*view.settings_dialog, view.scale, view.window_height) };
                     settings_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }

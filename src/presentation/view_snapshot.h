@@ -420,6 +420,9 @@ namespace gitman {
         // 검증 오류다. 비어 있으면 표시하지 않는다.
         std::u8string message {};
         bool can_confirm { true };
+        // 항목 열의 스크롤 위치다 (논리 픽셀, 이미 고정됨). 창이 낮아 항목이 다
+        // 들어가지 않을 때만 0이 아니다 (E1).
+        float scroll_offset { 0.0f };
     };
 
     // logic thread가 게시하고 UI thread가 그대로 그리는 불변 snapshot이다 (ADR-004).

@@ -288,6 +288,13 @@ namespace gitman {
         settings_override_field field { settings_override_field::git_executable };
     };
 
+    // 환경설정 항목 열의 세로 스크롤이다 (text-input-and-font-fallback-design E1).
+    // 창이 낮아 항목이 다 들어가지 않을 때만 움직인다.
+    struct settings_scroll_intent
+    {
+        float delta { 0.0f };
+    };
+
     // 초점을 받을 수 있는 텍스트 박스다 (switch-dialog-query-bar-design R2.2).
     // 편집 intent 하나가 대상을 담고 다니므로 박스가 늘어도 intent는 늘지 않는다.
     enum class text_input_target
@@ -692,7 +699,7 @@ namespace gitman {
         set_generate_location_intent, toggle_generate_same_folder_intent, confirm_generate_document_intent, cancel_generate_document_intent, begin_discovery_intent, toggle_discovery_candidate_intent,
         confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
         clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
-        confirm_settings_intent, cancel_settings_dialog_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
+        confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
         local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent, set_accent_intent,
         remove_recent_document_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,

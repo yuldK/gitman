@@ -249,3 +249,45 @@ TEST_CASE("Text edit history is dropped when the text comes from outside", "[dom
     REQUIRE_FALSE(gitman::text_edit_undo(state));
     REQUIRE(state.text == u8"/trunk");
 }
+
+TEST_CASE("Text edit accepts characters above the BMP", "[domain][text-edit]")
+{
+    // 이모지는 UTF-8 4바이트다. 3바이트까지만 만들던 시절에는 여기서 깨졌다
+    // (text-input-and-font-fallback-design E2.7).
+    const std::u8string emoji { gitman::text_edit_encode_utf8(U'\U0001F600') };
+    REQUIRE(emoji.size() == 4u);
+    REQUIRE(emoji == u8"😀");
+
+    // 잘못된 UTF-8을 만들지 않는 것이 계약이다.
+    REQUIRE(gitman::text_edit_encode_utf8(static_cast<char32_t>(0xD83Du)).empty());
+    REQUIRE(gitman::text_edit_encode_utf8(static_cast<char32_t>(0x110000u)).empty());
+}
+
+TEST_CASE("Caret motion treats an emoji as one character", "[domain][text-edit]")
+{
+    gitman::text_edit_state state { at_end(u8"a😀b") };
+    REQUIRE(state.text.size() == 6u);
+    REQUIRE(state.caret == 6u);
+
+    // ←는 이모지를 통째로 넘는다. 4바이트 가운데로 들어가면 글이 깨진다.
+    gitman::text_edit_move(state, gitman::text_edit_motion::left, false);
+    REQUIRE(state.caret == 5u);
+    gitman::text_edit_move(state, gitman::text_edit_motion::left, false);
+    REQUIRE(state.caret == 1u);
+
+    // backspace도 통째로 지운다.
+    gitman::text_edit_move(state, gitman::text_edit_motion::line_end, false);
+    gitman::text_edit_backspace(state);
+    gitman::text_edit_backspace(state);
+    REQUIRE(state.text == u8"a");
+}
+
+TEST_CASE("Typing an emoji inserts all four bytes at the caret", "[domain][text-edit]")
+{
+    gitman::text_edit_state state { at_end(u8"ab") };
+    gitman::text_edit_move(state, gitman::text_edit_motion::left, false);
+    gitman::text_edit_insert(state, gitman::text_edit_encode_utf8(U'\U0001F600'));
+
+    REQUIRE(state.text == u8"a😀b");
+    REQUIRE(state.caret == 5u);
+}

@@ -81,6 +81,16 @@
 - 신규 test 5 case (`settings_dialog_tests`).
 - 가로는 다루지 않았다 — 창 폭이 panel보다 좁으면 여전히 가로로 넘친다.
 
+### 반영 내용 (4단계)
+
+- **BMP 밖 문자 입력**: `WM_CHAR`가 surrogate를 버려서 이모지가 사라졌고,
+  `text_edit_encode_utf8`이 3바이트까지만 만들었다. 이제 surrogate 쌍을 합쳐
+  codepoint 하나로 만들고(`merge_utf16_code_unit`) 인코더는 1단계의 `utf8_encode`로
+  위임한다. 짝이 맞지 않는 조각은 버린다 — 잘못된 UTF-8을 만들지 않는 것이 계약이다.
+- caret 이동·지우기는 이미 UTF-8 경계 기준이라 4바이트에서도 맞는다. test로
+  못박았다.
+- 신규 test 5 case (`utf8_tests` 2, `text_edit_tests` 3).
+
 ### 영향 요구사항
 
 - REQ-017 (환경설정), NFR (안정성)

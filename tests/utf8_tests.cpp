@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <initializer_list>
+#include <optional>
 #include <string>
 
 TEST_CASE("UTF-8 paths round-trip through UTF-16 without loss", "[utf8]")
@@ -105,4 +106,37 @@ TEST_CASE("UTF-8 decoding always advances", "[utf8][domain]")
     const gitman::utf8_decoded broken { gitman::utf8_decode(bytes({ 0xB8 }), 0) };
     REQUIRE(broken.codepoint == gitman::utf8_replacement_character);
     REQUIRE(broken.length == 1u);
+}
+
+TEST_CASE("Surrogate pairs from WM_CHAR merge into one codepoint", "[utf8][win32]")
+{
+    std::optional<char16_t> pending {};
+
+    // BMP 안의 글자는 그대로 지나간다.
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, u'한') == U'한');
+    REQUIRE(pending.has_value() == false);
+
+    // U+1F600은 D83D DE00 두 번에 나눠 온다. 앞쪽만으로는 글자가 아니다.
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, static_cast<char16_t>(0xD83Du)).has_value() == false);
+    REQUIRE(pending.has_value());
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, static_cast<char16_t>(0xDE00u)) == U'\U0001F600');
+    REQUIRE(pending.has_value() == false);
+}
+
+TEST_CASE("Unpaired surrogates are dropped instead of becoming broken text", "[utf8][win32]")
+{
+    std::optional<char16_t> pending {};
+
+    // 앞쪽 없이 온 뒤쪽은 버린다.
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, static_cast<char16_t>(0xDE00u)).has_value() == false);
+
+    // 앞쪽을 기다리다가 평범한 글자가 오면 기다리던 조각을 버리고 그 글자를 낸다.
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, static_cast<char16_t>(0xD83Du)).has_value() == false);
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, u'A') == U'A');
+    REQUIRE(pending.has_value() == false);
+
+    // 앞쪽이 연달아 와도 마지막 것만 기다린다.
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, static_cast<char16_t>(0xD800u)).has_value() == false);
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, static_cast<char16_t>(0xD83Du)).has_value() == false);
+    REQUIRE(gitman::win32::merge_utf16_code_unit(pending, static_cast<char16_t>(0xDE00u)) == U'\U0001F600');
 }

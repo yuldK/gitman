@@ -1,5 +1,7 @@
 #include "domain/text_edit.h"
 
+#include "domain/utf8_text.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -98,22 +100,7 @@ namespace gitman {
 
     std::u8string text_edit_encode_utf8(const char32_t character)
     {
-        std::u8string result {};
-        if (character < 0x80u)
-        {
-            result.push_back(static_cast<char8_t>(character));
-            return result;
-        }
-        if (character < 0x800u)
-        {
-            result.push_back(static_cast<char8_t>(0xC0u | (character >> 6)));
-            result.push_back(static_cast<char8_t>(0x80u | (character & 0x3Fu)));
-            return result;
-        }
-        result.push_back(static_cast<char8_t>(0xE0u | (character >> 12)));
-        result.push_back(static_cast<char8_t>(0x80u | ((character >> 6) & 0x3Fu)));
-        result.push_back(static_cast<char8_t>(0x80u | (character & 0x3Fu)));
-        return result;
+        return utf8_encode(character);
     }
 
     std::size_t text_edit_selection_begin(const text_edit_state& state) noexcept

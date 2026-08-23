@@ -436,11 +436,14 @@ namespace gitman::win32 {
                     place_composition_window();
                     break;
                 case WM_CHAR:
-                    // 텍스트 박스 입력이다 (field-feedback-design 1.3). surrogate 쌍은
-                    // 현재 입력 대상(숫자)에 없으므로 BMP 문자만 넘긴다.
-                    if (runtime_ != nullptr && (word_parameter < 0xD800u || word_parameter > 0xDFFFu))
+                    // 텍스트 박스 입력이다 (field-feedback-design 1.3). BMP 밖 문자는
+                    // surrogate **쌍**으로 두 번에 나눠 오므로 앞쪽을 잠시 들고 있다가
+                    // 뒤쪽이 오면 합쳐 codepoint 하나로 보낸다 (E2.7). 이모지 패널
+                    // (Win+.)이 이 경로다.
+                    if (runtime_ != nullptr)
                     {
-                        runtime_->post_raw_input(ui::character_typed_event { static_cast<char32_t>(word_parameter) });
+                        if (const std::optional<char32_t> codepoint { merge_utf16_code_unit(pending_high_surrogate_, static_cast<char16_t>(word_parameter)) }; codepoint.has_value())
+                            runtime_->post_raw_input(ui::character_typed_event { *codepoint });
                         return 0;
                     }
                     break;
@@ -1405,6 +1408,8 @@ namespace gitman::win32 {
                 }
             };
 
+            // `WM_CHAR`로 앞쪽만 도착한 surrogate다 (E2.7). UI thread 전용이다.
+            std::optional<char16_t> pending_high_surrogate_ {};
             registry_font_resolver font_resolver_ {};
             std::unique_ptr<renderer_host> renderer_ {};
             std::unique_ptr<app_runtime> runtime_ {};

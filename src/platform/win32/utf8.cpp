@@ -73,4 +73,31 @@ namespace gitman::win32 {
             return system_error_result<std::wstring>();
         return { std::move(output), std::nullopt };
     }
+
+    std::optional<char32_t> merge_utf16_code_unit(std::optional<char16_t>& pending, const char16_t code_unit) noexcept
+    {
+        constexpr char16_t high_first { 0xD800u };
+        constexpr char16_t high_last { 0xDBFFu };
+        constexpr char16_t low_first { 0xDC00u };
+        constexpr char16_t low_last { 0xDFFFu };
+
+        if (code_unit >= high_first && code_unit <= high_last)
+        {
+            // 앞쪽만으로는 글자가 아니다. 뒤쪽을 기다린다.
+            pending = code_unit;
+            return std::nullopt;
+        }
+        if (code_unit >= low_first && code_unit <= low_last)
+        {
+            if (pending.has_value() == false)
+                return std::nullopt;
+            const char32_t high { *pending };
+            pending.reset();
+            return 0x10000u + ((high - high_first) << 10u) + (code_unit - low_first);
+        }
+
+        // 짝을 기다리던 조각은 여기서 버려진다.
+        pending.reset();
+        return code_unit;
+    }
 } // namespace gitman::win32

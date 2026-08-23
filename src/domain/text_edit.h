@@ -60,8 +60,9 @@ namespace gitman {
         line_end,
     };
 
-    // BMP 문자 하나를 UTF-8 조각으로 만든다. win32의 WM_CHAR가 surrogate를 걸러
-    // 주므로 3바이트까지면 충분하다.
+    // 문자 하나를 UTF-8 조각으로 만든다. BMP 밖(이모지 등)도 담기므로 4바이트까지
+    // 나온다 (text-input-and-font-fallback-design E2.7). surrogate 코드포인트와
+    // `U+10FFFF` 초과는 빈 값이다 — 잘못된 UTF-8을 만들지 않는 것이 계약이다.
     [[nodiscard]] std::u8string text_edit_encode_utf8(char32_t character);
 
     [[nodiscard]] std::size_t text_edit_selection_begin(const text_edit_state& state) noexcept;

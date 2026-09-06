@@ -1,6 +1,6 @@
 #pragma once
 
-#include "presentation/ui/ui_element.h"
+#include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
 
 #include <cstddef>
@@ -13,7 +13,7 @@ namespace gitman::ui {
     class context_menu_element final : public ui_element
     {
     public:
-        explicit context_menu_element(context_menu_view menu);
+        explicit context_menu_element(const context_menu_view& menu);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;

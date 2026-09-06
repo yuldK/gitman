@@ -1,10 +1,11 @@
 #include "presentation/ui/discovery_dialog_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/dialog_elements.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/scrollbar_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/dialog_elements.h"
+#include "luil/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -14,8 +15,10 @@
 #include "include/core/SkTypeface.h"
 
 #include <memory>
+#include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace gitman::ui {
     namespace {
@@ -90,8 +93,7 @@ namespace gitman::ui {
             {
                 if (row_.candidate.selectable())
                 {
-                    set_action(ui_trigger::left_click,
-                        [index](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_discovery_candidate_intent { index } } } }; });
+                    set_action(ui_trigger::left_click, make_logic_click(toggle_discovery_candidate_intent { index }));
                     set_tooltip(row_.candidate.absolute_path);
                 }
                 else
@@ -165,14 +167,15 @@ namespace gitman::ui {
         {
         public:
             explicit discovery_panel_element(const discovery_dialog_view& dialog)
-                : ui_element { ui_element_id { ui_element_kind::discovery_dialog_panel } }
+                : ui_element { ui_element_id { kind_discovery_dialog_panel } }
                 , scan_root_ { dialog.scan_root }
                 , loading_ { dialog.loading }
                 , executing_ { dialog.executing }
                 , empty_ { dialog.rows.empty() }
                 , message_ { dialog.message }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                // 배경 클릭이 뒤의 scrim(취소)으로 새지 않게 흡수만 한다.
+                set_hit_opaque(true);
             }
 
             void adopt(std::unique_ptr<ui_element> child)
@@ -253,17 +256,15 @@ namespace gitman::ui {
 
     ui_element_id discovery_dialog_item_id(const std::size_t index)
     {
-        ui_element_id id { ui_element_kind::discovery_dialog_item };
-        id.owner.value = item_owner_value(index);
-        return id;
+        return { kind_discovery_dialog_item, item_owner_value(index) };
     }
 
-    discovery_dialog_element::discovery_dialog_element(discovery_dialog_view dialog, const float scale)
-        : ui_element { ui_element_id { ui_element_kind::discovery_dialog } }
-        , dialog_ { std::move(dialog) }
+    discovery_dialog_element::discovery_dialog_element(const discovery_dialog_view& dialog, const float)
+        : ui_element { ui_element_id { kind_discovery_dialog } }
+        , dialog_ { dialog }
     {
         // 배경 클릭은 취소다 (등록 실행 중에는 logic이 무시한다).
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_discovery_dialog_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(cancel_discovery_dialog_intent {}));
 
         auto panel { std::make_unique<discovery_panel_element>(dialog_) };
         for (std::size_t index = 0; index < dialog_.rows.size(); ++index)
@@ -272,24 +273,34 @@ namespace gitman::ui {
         panel_ = panel.get();
         add_child(std::move(panel));
 
-        auto confirm { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::discovery_dialog_confirm }, std::u8string { u8"선택 등록" }, true) };
+        auto confirm {
+            std::make_unique<luil::text_button_element>(
+                ui_element_id { kind_discovery_dialog_confirm }, luil::text_button_config { .text = std::u8string { u8"선택 등록" }, .visual = luil::text_button_visual::accent }),
+        };
         confirm->set_enabled(dialog_.can_confirm);
-        confirm->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { confirm_discovery_intent {} } } }; });
+        confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_discovery_intent {}));
         add_child(std::move(confirm));
 
-        auto cancel { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::discovery_dialog_cancel }, std::u8string { u8"닫기" }, false) };
+        auto cancel {
+            std::make_unique<luil::text_button_element>(
+                ui_element_id { kind_discovery_dialog_cancel }, luil::text_button_config { .text = std::u8string { u8"닫기" }, .visual = luil::text_button_visual::normal }),
+        };
         cancel->set_enabled(dialog_.executing == false);
-        cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_discovery_dialog_intent {} } } }; });
+        cancel->set_action(ui_trigger::left_click, make_logic_click(cancel_discovery_dialog_intent {}));
         add_child(std::move(cancel));
 
         // 목록의 스크롤 막대다 (switch dialog와 같은 정책). logic의 clamp 계산과
-        // 같은 content·viewport를 쓴다.
-        const float effective { scale > 0.0f ? scale : 1.0f };
-        const float bar_content { static_cast<float>(dialog_.rows.size()) * layout_discovery_dialog_row_height * effective };
-        const float bar_viewport { layout_discovery_dialog_list_height * effective };
+        // 같은 content·viewport를 쓴다. 치수와 스크롤 값은 전부 논리 픽셀이다.
+        const float bar_content { static_cast<float>(dialog_.rows.size()) * layout_discovery_dialog_row_height };
+        const float bar_viewport { layout_discovery_dialog_list_height };
         auto bar {
-            std::make_unique<scrollbar_element>(ui_element_id { ui_element_kind::discovery_dialog_scrollbar },
-                [](const float delta) { return logic_message { discovery_dialog_scroll_intent { delta } }; }, bar_content, bar_viewport, dialog_.scroll_offset * effective, effective),
+            std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_discovery_dialog } },
+                luil::scrollbar_config {
+                    .scroll = [](const float delta) -> input_action { return make_logic_action(discovery_dialog_scroll_intent { delta }); },
+                    .content_height = bar_content,
+                    .viewport_height = bar_viewport,
+                    .scroll_offset = dialog_.scroll_offset,
+                }),
         };
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();

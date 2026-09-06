@@ -2,8 +2,8 @@
 
 #include "presentation/list_metrics.h"
 #include "presentation/ui/card_element.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/scrollbar_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -15,10 +15,11 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace gitman::ui {
     card_list_element::card_list_element(const view_snapshot& view)
-        : ui_element { ui_element_id { ui_element_kind::card_list } }
+        : ui_element { ui_element_id { kind_card_list } }
         , total_card_count_ { view.cards.size() }
     {
         card_ids_.reserve(view.cards.size());
@@ -26,17 +27,21 @@ namespace gitman::ui {
             card_ids_.push_back(card.id);
 
         // 목록이 hit 대상이 되므로 빈 영역 클릭의 선택 해제를 root처럼 등록한다.
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(select_card_intent {}));
+
+        // 목록 밖 좌표는 자식까지 함께 걸러낸다. 스크롤로 걸친 카드가 toolbar 자리의
+        // 클릭을 가져가지 않게 한다 (예전 hit_test 재정의를 대신한다).
+        set_clip_children(true);
 
         // 카드 순서 변경의 drop 대상이다. 놓는 위치는 카드가 아니라 목록 좌표가
         // 정하므로 카드 사이 여백에 놓아도 동작한다. 삽입 위치 계산은 여백을 벌려
         // 그리는 쪽과 같은 함수를 쓴다 (field-feedback-design 4.1).
         drop_target target {};
-        target.accepts = [](const drag_payload& payload) { return payload.source.kind == ui_element_kind::card_body; };
+        target.accepts = [](const drag_payload& payload) { return payload.source.kind == kind_card_body; };
         target.on_drop = [this](const drag_payload& payload, const ui_action_context& context) -> std::vector<input_action> {
             std::size_t dragged { card_ids_.size() };
             for (std::size_t index = 0; index < card_ids_.size(); ++index)
-                if (card_ids_[index] == payload.dragged_project)
+                if (card_ids_[index].value == payload.dragged_owner)
                     dragged = index;
             if (dragged == card_ids_.size() || card_ids_.size() < 2)
                 return {};
@@ -49,7 +54,7 @@ namespace gitman::ui {
             // slot은 dragged를 뺀 목록 기준이다. 그 목록의 index를 원래 목록으로
             // 되돌려 앞/뒤 카드를 찾는다.
             reorder_card_intent intent {};
-            intent.id = payload.dragged_project;
+            intent.id = project_id { payload.dragged_owner };
             if (slot == 0)
             {
                 intent.target = card_ids_[dragged == 0 ? 1 : 0];
@@ -61,7 +66,7 @@ namespace gitman::ui {
                 intent.target = card_ids_[remaining_before + (remaining_before >= dragged ? 1u : 0u)];
                 intent.place_after = true;
             }
-            return { input_action { logic_message { intent } } };
+            return { make_logic_action(intent) };
         };
         set_drop_target(std::move(target));
 
@@ -71,8 +76,13 @@ namespace gitman::ui {
         // 그리기·hit test·drop 대상에서는 빠진다.
         const float scale { view.scale > 0.0f ? view.scale : 1.0f };
         const list_layout layout { compute_list_layout(view.window_height, scale, view.notices.empty() == false, view.log.has_value()) };
-        const float content { card_list_content_height(view.cards.size(), scale) };
-        const float scroll { clamp_scroll_offset(view.scroll_offset * scale, content, layout.viewport_height) };
+        // 막대에 넘기는 값은 전부 논리 픽셀이다 (설계 L4). 카드 배치에 쓰는 값만
+        // 여기서 배율을 곱한다.
+        const float logical_content { card_list_content_height(view.cards.size(), 1.0f) };
+        const float logical_viewport { layout.viewport_height / scale };
+        const float logical_scroll { clamp_scroll_offset(view.scroll_offset, logical_content, logical_viewport) };
+        const float content { logical_content * scale };
+        const float scroll { logical_scroll * scale };
         const float card_height { layout_card_height * scale };
         const float card_gap { layout_card_gap * scale };
         const float list_bottom { layout.content_top + layout.viewport_height };
@@ -94,7 +104,12 @@ namespace gitman::ui {
         }
 
         // 막대는 카드보다 뒤에 둔다. 위에 그려지고 hit test에서도 먼저 걸린다.
-        auto scrollbar { std::make_unique<scrollbar_element>(content, layout.viewport_height, scroll, scale) };
+        luil::scrollbar_config config {};
+        config.scroll = [](const float delta) -> input_action { return make_logic_action(scroll_intent { delta }); };
+        config.content_height = logical_content;
+        config.viewport_height = logical_viewport;
+        config.scroll_offset = logical_scroll;
+        auto scrollbar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_cards } }, std::move(config)) };
         scrollbar->set_visible(content > layout.viewport_height);
         scrollbar_ = scrollbar.get();
         add_child(std::move(scrollbar));
@@ -106,8 +121,16 @@ namespace gitman::ui {
         set_bounds(context.slot);
         scale_ = scale;
 
-        content_height_ = card_list_content_height(total_card_count_, scale);
-        scroll_ = clamp_scroll_offset(context.scroll_offset * scale, content_height_, context.slot.height);
+        // `context.scroll_offset`은 논리 픽셀이다. 막대는 논리 값 그대로 받고
+        // 카드 배치만 배율을 곱한 물리 값을 쓴다 (설계 L4).
+        const float logical_content { card_list_content_height(total_card_count_, 1.0f) };
+        const float logical_viewport { context.slot.height / scale };
+        const float logical_scroll { clamp_scroll_offset(context.scroll_offset, logical_content, logical_viewport) };
+        content_height_ = logical_content * scale;
+        scroll_ = logical_scroll * scale;
+        // 창 높이는 slot이 정해져야 알 수 있어 담는 쪽이 배치 직전에 채운다 (luil 계약).
+        scrollbar_->set_metrics(logical_content, logical_viewport, logical_scroll);
+
         const float margin { layout_margin * scale };
         const float card_height { layout_card_height * scale };
         const float hit_width { layout_scrollbar_hit_width * scale };
@@ -120,7 +143,7 @@ namespace gitman::ui {
         for (std::size_t child = 0; child < visible_indices_.size() && child < cards.size(); ++child)
         {
             const float top { context.slot.y + card_content_top(visible_indices_[child], scale) - scroll_ };
-            cards[child]->arrange({ { context.slot.x + margin, top, card_width, card_height }, scale });
+            cards[child]->arrange(context.for_child({ context.slot.x + margin, top, card_width, card_height }));
         }
 
         // 막대는 목록 오른쪽 안쪽에 세로로 가득 찬다. 창 가장자리의 크기 조절
@@ -128,7 +151,7 @@ namespace gitman::ui {
         const float track_left { context.slot.x + context.slot.width - inset - hit_width };
         const float vertical_inset { layout_scrollbar_vertical_inset * scale };
         const float track_height { std::max(0.0f, context.slot.height - vertical_inset * 2.0f) };
-        scrollbar_->arrange({ { track_left, context.slot.y + vertical_inset, hit_width, track_height }, scale });
+        scrollbar_->arrange(context.for_child({ track_left, context.slot.y + vertical_inset, hit_width, track_height }));
     }
 
     void card_list_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -189,12 +212,12 @@ namespace gitman::ui {
 
     std::optional<card_list_element::drag_view> card_list_element::derive_drag_view(const interaction_snapshot& interaction) const
     {
-        if (interaction.drag.has_value() == false || interaction.drag->payload.source.kind != ui_element_kind::card_body)
+        if (interaction.drag.has_value() == false || interaction.drag->payload.source.kind != kind_card_body)
             return std::nullopt;
 
         std::size_t dragged { card_ids_.size() };
         for (std::size_t index = 0; index < card_ids_.size(); ++index)
-            if (card_ids_[index] == interaction.drag->payload.dragged_project)
+            if (card_ids_[index].value == interaction.drag->payload.dragged_owner)
                 dragged = index;
         if (dragged == card_ids_.size())
             return std::nullopt;
@@ -232,7 +255,7 @@ namespace gitman::ui {
             outline.setStrokeWidth(1.0f * scale);
             context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), outline);
             const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
-            const std::u8string& text { visual.payload.label.empty() ? visual.payload.dragged_project.value : visual.payload.label };
+            const std::u8string& text { visual.payload.label.empty() ? visual.payload.dragged_owner : visual.payload.label };
             draw_text(context.canvas, text, ghost.left() + 7.0f * scale, ghost.top() + centered_text_baseline(font, ghost.height()), font, solid_paint(context.palette.primary_foreground));
             return;
         }
@@ -248,14 +271,6 @@ namespace gitman::ui {
         border.setStrokeWidth(1.0f * scale);
         context.canvas.drawRRect(SkRRect::MakeRectXY(SkRect::MakeXYWH(card.x, card.y, card.width, card.height), 3.0f * scale, 3.0f * scale), border);
         context.canvas.restore();
-    }
-
-    const ui_element* card_list_element::hit_test(const float x, const float y) const
-    {
-        // 목록 밖으로 걸친 카드는 그려지지 않으므로 hit도 되지 않아야 한다.
-        if (visible() == false || bounds().contains(x, y) == false)
-            return nullptr;
-        return ui_element::hit_test(x, y);
     }
 
     float card_list_element::content_height() const noexcept

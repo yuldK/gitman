@@ -1,6 +1,6 @@
 #pragma once
 
-#include "presentation/ui/ui_element.h"
+#include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
 
 #include <cstddef>
@@ -16,8 +16,9 @@ namespace gitman::ui {
     class discovery_dialog_element final : public ui_element
     {
     public:
-        // scale은 스크롤 막대의 content·viewport 계산(물리 픽셀)에 필요하다.
-        discovery_dialog_element(discovery_dialog_view dialog, float scale);
+        // scale 인자는 tree를 짓는 쪽의 호출 모양을 지키려고 남긴다. 스크롤 막대에
+        // 넘기는 치수가 논리 픽셀이 되어(설계 L4) 조립 시점에는 배율이 필요 없다.
+        discovery_dialog_element(const discovery_dialog_view& dialog, float scale);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;

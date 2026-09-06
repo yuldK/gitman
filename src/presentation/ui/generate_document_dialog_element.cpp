@@ -1,8 +1,10 @@
 #include "presentation/ui/generate_document_dialog_element.h"
 
 #include "presentation/list_metrics.h"
-#include "presentation/ui/dialog_elements.h"
-#include "presentation/ui/draw_primitives.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/dialog_elements.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -58,10 +60,11 @@ namespace gitman::ui {
         {
         public:
             explicit generate_panel_element(generate_document_dialog_view dialog)
-                : ui_element { ui_element_id { ui_element_kind::generate_dialog_panel } }
+                : ui_element { ui_element_id { kind_generate_dialog_panel } }
                 , dialog_ { std::move(dialog) }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                // panel 위의 클릭은 배경 닫기로 흐르지 않는다.
+                set_hit_opaque(true);
             }
 
             void arrange(const arrange_context& context) override
@@ -139,47 +142,44 @@ namespace gitman::ui {
     } // namespace
 
     generate_document_dialog_element::generate_document_dialog_element(generate_document_dialog_view dialog)
-        : ui_element { ui_element_id { ui_element_kind::generate_dialog } }
+        : ui_element { ui_element_id { kind_generate_dialog } }
         , dialog_ { std::move(dialog) }
     {
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_generate_document_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(cancel_generate_document_intent {}));
 
         auto panel { std::make_unique<generate_panel_element>(dialog_) };
         panel_ = panel.get();
         add_child(std::move(panel));
 
-        auto name { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::generate_dialog_name_input }, dialog_.name, dialog_.name_placeholder) };
+        auto name {
+            std::make_unique<luil::text_input_element>(ui_element_id { kind_generate_dialog_name_input }, dialog_.name, luil::text_input_config { .placeholder = dialog_.name_placeholder }),
+        };
         name->set_enabled(dialog_.executing == false);
         name->set_tooltip(u8"확장자(.version-list)는 앱이 붙입니다");
         name_input_ = name.get();
         add_child(std::move(name));
 
-        const auto add_button = [this](const ui_element_kind kind, const std::u8string_view text, const bool accent, const bool enabled, logic_message message) {
-            auto button { std::make_unique<text_button_element>(ui_element_id { kind }, std::u8string { text }, accent) };
+        const auto add_button = [this](const ui_element_kind kind, const std::u8string_view text, const bool accent, const bool enabled, ui_action click) {
+            auto button {
+                std::make_unique<luil::text_button_element>(ui_element_id { kind },
+                    luil::text_button_config { .text = std::u8string { text }, .visual = accent ? luil::text_button_visual::accent : luil::text_button_visual::normal }),
+            };
             button->set_enabled(enabled);
-            button->set_action(ui_trigger::left_click, [message = std::move(message)](const ui_action_context&) -> std::vector<input_action> { return { input_action { message } }; });
+            button->set_action(ui_trigger::left_click, std::move(click));
             ui_element* const raw { button.get() };
             add_child(std::move(button));
             return raw;
         };
 
-        auto scan { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::generate_dialog_scan_browse }, std::u8string { u8"찾아보기…" }, false) };
-        scan->set_enabled(dialog_.executing == false);
-        scan->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_generate_scan_folder_picker } }; });
-        scan_browse_ = scan.get();
-        add_child(std::move(scan));
-
-        auto location { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::generate_dialog_location_browse }, std::u8string { u8"찾아보기…" }, false) };
-        location->set_enabled(dialog_.executing == false);
-        location->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_generate_location_picker } }; });
-        location_browse_ = location.get();
-        add_child(std::move(location));
+        // 폴더 선택은 Win32 dialog라 UI thread 명령으로 나간다 (설계 L7).
+        scan_browse_ = add_button(kind_generate_dialog_scan_browse, u8"찾아보기…", false, dialog_.executing == false, make_app_command_click(app_command::show_generate_scan_folder_picker));
+        location_browse_ = add_button(kind_generate_dialog_location_browse, u8"찾아보기…", false, dialog_.executing == false, make_app_command_click(app_command::show_generate_location_picker));
 
         // 켬·끔이 강조색 바탕으로 보이는 토글 버튼이다.
         same_folder_ = add_button(
-            ui_element_kind::generate_dialog_same_folder, u8"저장소 폴더에 만들기", dialog_.same_folder, dialog_.executing == false, logic_message { toggle_generate_same_folder_intent {} });
-        confirm_ = add_button(ui_element_kind::generate_dialog_confirm, u8"만들기", true, dialog_.can_confirm, logic_message { confirm_generate_document_intent {} });
-        cancel_ = add_button(ui_element_kind::generate_dialog_cancel, u8"취소", false, true, logic_message { cancel_generate_document_intent {} });
+            kind_generate_dialog_same_folder, u8"저장소 폴더에 만들기", dialog_.same_folder, dialog_.executing == false, make_logic_click(toggle_generate_same_folder_intent {}));
+        confirm_ = add_button(kind_generate_dialog_confirm, u8"만들기", true, dialog_.can_confirm, make_logic_click(confirm_generate_document_intent {}));
+        cancel_ = add_button(kind_generate_dialog_cancel, u8"취소", false, true, make_logic_click(cancel_generate_document_intent {}));
     }
 
     void generate_document_dialog_element::arrange(const arrange_context& context)

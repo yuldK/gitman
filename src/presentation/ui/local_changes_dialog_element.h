@@ -1,6 +1,6 @@
 #pragma once
 
-#include "presentation/ui/ui_element.h"
+#include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
 
 #include <cstddef>
@@ -12,7 +12,8 @@ namespace gitman::ui {
     class local_changes_dialog_element final : public ui_element
     {
     public:
-        // `scale`은 스크롤 막대의 content·viewport 계산(물리 픽셀)에 필요하다.
+        // `scale`은 조립 쪽 호출을 그대로 두려고 남긴 인자다. 스크롤 값이 논리
+        // 픽셀이 된 뒤로는 막대가 배율을 스스로 곱해 여기서 쓸 곳이 없다 (설계 L5).
         local_changes_dialog_element(local_changes_dialog_view dialog, float scale);
 
         void arrange(const arrange_context& context) override;

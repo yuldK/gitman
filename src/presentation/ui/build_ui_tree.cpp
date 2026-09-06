@@ -1,14 +1,14 @@
 #include "presentation/ui/build_ui_tree.h"
 
+#include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/caption_element.h"
 #include "presentation/ui/card_list_element.h"
 #include "presentation/ui/context_menu_element.h"
 #include "presentation/ui/discovery_dialog_element.h"
-#include "presentation/ui/draw_primitives.h"
+#include "presentation/ui/element_kinds.h"
 #include "presentation/ui/font_dialog_element.h"
 #include "presentation/ui/generate_document_dialog_element.h"
-#include "presentation/ui/label_element.h"
+#include "presentation/ui/gitman_caption.h"
 #include "presentation/ui/local_changes_dialog_element.h"
 #include "presentation/ui/log_view_element.h"
 #include "presentation/ui/notice_dialog_element.h"
@@ -16,9 +16,12 @@
 #include "presentation/ui/start_page_element.h"
 #include "presentation/ui/switch_dialog_element.h"
 #include "presentation/ui/toolbar_element.h"
+#include "presentation/ui/ui_actions.h"
 
-#include "include/core/SkCanvas.h"
+#include "luil/ui/caption_element.h"
+#include "luil/ui/label_element.h"
 
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -45,13 +48,16 @@ namespace gitman::ui {
         // 화면 전체를 덮는 root다. 자식의 slot 분배가 이곳의 책임이며, 빈 곳 클릭은
         // 선택 해제다. 자식 순서가 곧 그리기 순서라 caption을 마지막에 두어 카드가
         // caption을 덮지 않는다.
+        //
+        // luil `root_element`는 final이고 자식을 배치하지 않으므로 앱이 같은 예약
+        // kind로 자기 root를 둔다 (설계 L5). 창 배경은 렌더러가 이미 칠했다.
         class root_element final : public ui_element
         {
         public:
             explicit root_element(const view_snapshot& view)
                 : ui_element { ui_element_id { ui_element_kind::root } }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(select_card_intent {}));
 
                 // 배너의 문서 주소는 unix 스타일 표시 문자열이다 (T2). snapshot의
                 // `document_path`는 셸·파일 dialog가 쓰는 Windows 원형이라 따로 있다.
@@ -59,16 +65,19 @@ namespace gitman::ui {
                 // 환경설정·탐색 등록은 열린 문서가 필요한 기능이다.
                 const bool document_open { view.empty_state != view_empty_state::no_document && view.empty_state != view_empty_state::document_loading };
                 const bool show_open_button { view.empty_state == view_empty_state::no_document };
-                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), show_open_button, view.relative_paths, document_open) };
+                // 탐색 등록의 폴더 dialog가 열리는 자리다. UI thread는 view를 읽지
+                // 않으므로 명령 인자로 실어 보낸다 (설계 L7).
+                std::u8string discovery_start_folder { windows_parent_directory(view.document_path) };
+                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), show_open_button, view.relative_paths, document_open, std::move(discovery_start_folder)) };
                 toolbar_ = toolbar.get();
                 add_child(std::move(toolbar));
 
-                label_config notice_config {};
+                luil::label_config notice_config {};
                 notice_config.text = view.notices.empty() ? std::u8string {} : view.notices.front();
-                notice_config.color = label_color_role::error;
-                notice_config.background = label_background_role::notice;
+                notice_config.color = luil::label_color_role::error;
+                notice_config.background = luil::label_background_role::notice;
                 notice_config.padding = layout_margin;
-                auto notice { std::make_unique<label_element>(ui_element_id { ui_element_kind::notice }, std::move(notice_config)) };
+                auto notice { std::make_unique<luil::label_element>(ui_element_id { kind_notice }, std::move(notice_config)) };
                 notice->set_visible(view.notices.empty() == false);
                 notice_ = notice.get();
                 add_child(std::move(notice));
@@ -77,10 +86,10 @@ namespace gitman::ui {
                 card_list_ = card_list.get();
                 add_child(std::move(card_list));
 
-                label_config empty_config {};
+                luil::label_config empty_config {};
                 empty_config.text = std::u8string { empty_state_text(view.empty_state) };
                 empty_config.font_size = 13.0f;
-                auto empty_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::empty_state }, std::move(empty_config)) };
+                auto empty_label { std::make_unique<luil::label_element>(ui_element_id { kind_empty_state }, std::move(empty_config)) };
                 // 열린 문서가 없으면 안내 문구 대신 시작 페이지가 그 자리를 채운다
                 // (app-shell-design A1.3).
                 empty_label->set_visible(view.empty_state != view_empty_state::none && view.start_page.has_value() == false);
@@ -109,7 +118,7 @@ namespace gitman::ui {
                     add_child(std::move(log_pane));
                 }
 
-                auto caption { std::make_unique<caption_element>(u8"Gitman") };
+                auto caption { std::make_unique<luil::caption_element>(gitman_caption()) };
                 caption_ = caption.get();
                 add_child(std::move(caption));
 
@@ -215,7 +224,8 @@ namespace gitman::ui {
 
             void draw(draw_context& context, const interaction_snapshot& interaction) const override
             {
-                context.canvas.clear(context.palette.window_background);
+                // 창 배경은 렌더러가 팔레트의 창 배경색으로 이미 칠했다 (luil
+                // `root_element`와 같은 계약). 여기서는 자식만 그린다.
                 draw_children(context, interaction);
             }
 
@@ -241,6 +251,7 @@ namespace gitman::ui {
     std::shared_ptr<const ui_tree> build_ui_tree(const view_snapshot& view)
     {
         auto root { std::make_unique<root_element>(view) };
+        // 스크롤 값은 논리 픽셀이다 (설계 L4). 배율은 흘리는 컨테이너가 곱한다.
         root->arrange({ { 0.0f, 0.0f, view.window_width, view.window_height }, view.scale, view.scroll_offset });
         return std::make_shared<const ui_tree>(std::move(root));
     }

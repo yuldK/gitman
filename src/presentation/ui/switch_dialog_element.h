@@ -1,6 +1,6 @@
 #pragma once
 
-#include "presentation/ui/ui_element.h"
+#include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
 
 #include <cstddef>
@@ -22,7 +22,7 @@ namespace gitman::ui {
         // scale과 창 높이(물리 픽셀)는 스크롤 막대의 content·viewport 계산에
         // 필요하다. 목록 높이가 창 높이를 따라 줄어드는 dialog라 view의 창 크기를
         // 함께 받는다.
-        switch_dialog_element(switch_dialog_view dialog, float scale, float window_height);
+        switch_dialog_element(const switch_dialog_view& dialog, float scale, float window_height);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;

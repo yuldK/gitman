@@ -1,10 +1,11 @@
 #include "presentation/ui/toolbar_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/button_element.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/label_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/button_element.h"
+#include "luil/ui/label_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkPaint.h"
@@ -15,8 +16,9 @@
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool relative_paths, const bool document_open)
-        : ui_element { ui_element_id { ui_element_kind::toolbar } }
+    toolbar_element::toolbar_element(
+        std::u8string document_text, const bool show_open_button, const bool relative_paths, const bool document_open, std::u8string discovery_start_folder)
+        : ui_element { ui_element_id { kind_toolbar } }
         , show_open_button_ { show_open_button }
         , document_open_ { document_open }
     {
@@ -26,61 +28,60 @@ namespace gitman::ui {
         if (document_open)
         {
             set_action(ui_trigger::right_click, [](const ui_action_context& context) -> std::vector<input_action> {
-                return { input_action { logic_message { open_document_context_menu_intent { context.x, context.y } } } };
+                return { make_logic_action(open_document_context_menu_intent { context.x, context.y }) };
             });
             // 우클릭 액션이 생기면 배너가 hit test에 걸린다. 지금까지 root로
             // 흘러가 선택을 해제하던 좌클릭을 그대로 유지한다.
-            set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent {} } } }; });
+            set_action(ui_trigger::left_click, make_logic_click(select_card_intent {}));
         }
 
-        auto document_label { std::make_unique<label_element>(ui_element_id { ui_element_kind::toolbar_document_path }, label_config { .text = std::move(document_text) }) };
+        auto document_label { std::make_unique<luil::label_element>(ui_element_id { kind_toolbar_document_path }, luil::label_config { .text = std::move(document_text) }) };
         document_label_ = document_label.get();
         add_child(std::move(document_label));
 
-        auto refresh_all { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_refresh_all }, button_config { .glyph = codicons::icon_refresh }) };
+        auto refresh_all { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_refresh_all }, luil::button_config { .glyph = codicons::icon_refresh }) };
         refresh_all->set_tooltip(u8"모든 카드 새로 고침");
-        refresh_all->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { refresh_all_intent {} } } }; });
+        refresh_all->set_action(ui_trigger::left_click, make_logic_click(refresh_all_intent {}));
         refresh_all_ = refresh_all.get();
         add_child(std::move(refresh_all));
 
-        auto open_document { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_open_document }, button_config { .glyph = codicons::icon_folder_opened }) };
+        auto open_document { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_open_document }, luil::button_config { .glyph = codicons::icon_folder_opened }) };
         open_document->set_tooltip(u8".version-list 문서 열기");
-        open_document->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_open_document_dialog } }; });
+        open_document->set_action(ui_trigger::left_click, make_app_command_click(app_command::show_open_document_dialog));
         open_document->set_visible(show_open_button);
         open_document_ = open_document.get();
         add_child(std::move(open_document));
 
         // 경로 표시 토글이다. 켜져 있으면 강조 배경으로 상태를 계속 보여 준다.
         auto toggle_path_display {
-            std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_toggle_path_display }, button_config { .glyph = codicons::icon_root_folder, .active = relative_paths }),
+            std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_toggle_path_display }, luil::button_config { .glyph = codicons::icon_root_folder, .active = relative_paths }),
         };
         toggle_path_display->set_tooltip(relative_paths ? std::u8string { u8"카드 경로를 전체 경로로 표시" } : std::u8string { u8"카드 경로를 문서 기준 상대 경로로 표시" });
-        toggle_path_display->set_action(
-            ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_path_display_intent {} } } }; });
+        toggle_path_display->set_action(ui_trigger::left_click, make_logic_click(toggle_path_display_intent {}));
         toggle_path_display_ = toggle_path_display.get();
         add_child(std::move(toggle_path_display));
 
         // 환경설정은 문서가 없으면 전역 설정을, 열려 있으면 문서 override를
         // 편집하므로 항상 활성이다 (global-settings-and-ui-fixes-design G3.2).
-        auto settings { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_settings }, button_config { .glyph = codicons::icon_settings_gear }) };
+        auto settings { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_settings }, luil::button_config { .glyph = codicons::icon_settings_gear }) };
         settings->set_tooltip(document_open ? std::u8string { u8"환경설정 (문서)" } : std::u8string { u8"환경설정 (전역)" });
-        settings->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_settings_intent {} } } }; });
+        settings->set_action(ui_trigger::left_click, make_logic_click(open_settings_intent {}));
         settings_ = settings.get();
         add_child(std::move(settings));
 
         // 탐색 등록은 열린 문서에 추가하는 경로다 (REQ-004, 단계 8). 스캔 폴더는
-        // UI thread의 폴더 선택이 고른다.
-        auto discover { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_discover }, button_config { .glyph = codicons::icon_search }) };
+        // UI thread의 폴더 선택이 고르며, 시작 자리는 문서가 있는 폴더다.
+        auto discover { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_discover }, luil::button_config { .glyph = codicons::icon_search }) };
         discover->set_tooltip(document_open ? std::u8string { u8"하위 폴더 저장소 탐색·등록" } : std::u8string { u8"하위 폴더 저장소 탐색·등록 (문서를 먼저 여세요)" });
         discover->set_enabled(document_open);
-        discover->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::show_discovery_folder_picker } }; });
+        discover->set_action(ui_trigger::left_click, make_app_command_click(app_command::show_discovery_folder_picker, std::move(discovery_start_folder)));
         discover_ = discover.get();
         add_child(std::move(discover));
 
         // 문서 닫기다 (2026-08-21 사용자 지시). 닫으면 시작 페이지로 돌아간다.
-        auto close_document { std::make_unique<button_element>(ui_element_id { ui_element_kind::toolbar_close_document }, button_config { .glyph = codicons::icon_close }) };
+        auto close_document { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_close_document }, luil::button_config { .glyph = codicons::icon_close }) };
         close_document->set_tooltip(u8"문서 닫기");
-        close_document->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { close_document_intent {} } } }; });
+        close_document->set_action(ui_trigger::left_click, make_logic_click(close_document_intent {}));
         close_document_ = close_document.get();
         add_child(std::move(close_document));
     }

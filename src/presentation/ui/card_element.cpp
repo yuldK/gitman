@@ -1,9 +1,11 @@
 #include "presentation/ui/card_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/button_element.h"
-#include "presentation/ui/draw_primitives.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/status_glyphs.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/button_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -48,23 +50,21 @@ namespace gitman::ui {
     } // namespace
 
     card_element::card_element(card_view_model card)
-        : ui_element { ui_element_id { ui_element_kind::card_body, card.id } }
+        : ui_element { ui_element_id { kind_card_body, card.id.value } }
         , card_ { std::move(card) }
     {
         // 제외된 카드도 선택은 가능해야 상태를 확인할 수 있으므로 body는 항상
         // 활성이다. 흐림 표시는 draw가 card_.enabled로 판정한다.
-        set_action(ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_card_intent { { id } } } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(select_card_intent { { card_.id } }));
 
         // 더블 클릭은 로컬 변경 확인 dialog다 (field-feedback-design 2.3). 카드 3번째
         // 줄 chip은 element가 아니라 hit 대상이 될 수 없어 카드 수준 진입점을 쓴다.
-        set_action(
-            ui_trigger::double_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_local_changes_intent { id } } } }; });
+        set_action(ui_trigger::double_click, make_logic_click(open_local_changes_intent { card_.id }));
 
         // 우클릭은 컨텍스트 메뉴다 (field-feedback-design 3장). 클릭 지점이 메뉴의
         // 앵커가 되고 logic이 카드를 선택한 뒤 연다.
-        set_action(ui_trigger::right_click, [id = card_.id](const ui_action_context& context) -> std::vector<input_action> {
-            return { input_action { logic_message { open_context_menu_intent { id, context.x, context.y } } } };
-        });
+        set_action(ui_trigger::right_click,
+            [id = card_.id](const ui_action_context& context) -> std::vector<input_action> { return { make_logic_action(open_context_menu_intent { id, context.x, context.y }) }; });
 
         // 카드 body는 순서 변경의 drag 출발지다. drop 대상은 카드가 아니라 목록
         // 전체다 (card_list_element, field-feedback-design 4.1). 제외된 카드도 문서
@@ -72,40 +72,41 @@ namespace gitman::ui {
         // this 캡처가 안전하다.
         drag_source source {};
         source.make_payload = [this](const ui_action_context& context) {
-            drag_payload payload {};
-            payload.source = context.element;
-            payload.dragged_project = card_.id;
-            payload.label = card_.display_name;
-            payload.grab_offset_x = context.x - bounds().x;
-            payload.grab_offset_y = context.y - bounds().y;
-            return payload;
+            // 들린 카드는 목록이 직접 따라 그리고(custom_visual) 놓일 자리는 삽입
+            // 틈이 보이므로 luil의 기본 ghost도 drop 대상 강조도 끈다 (설계 L3).
+            return drag_payload {
+                .source = id(),
+                .dragged_owner = card_.id.value,
+                .label = card_.display_name,
+                .custom_visual = true,
+                .grab_offset_x = context.x - bounds().x,
+                .grab_offset_y = context.y - bounds().y,
+                .suppress_drop_highlight = true
+            };
         };
         set_drag_source(std::move(source));
 
-        auto refresh { std::make_unique<button_element>(ui_element_id { ui_element_kind::card_refresh, card_.id }, button_config { .glyph = codicons::icon_refresh }) };
+        auto refresh { std::make_unique<luil::button_element>(ui_element_id { kind_card_refresh, card_.id.value }, luil::button_config { .glyph = codicons::icon_refresh }) };
         refresh->set_tooltip(u8"이 카드 새로 고침");
-        refresh->set_action(
-            ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { refresh_card_intent { id } } } }; });
+        refresh->set_action(ui_trigger::left_click, make_logic_click(refresh_card_intent { card_.id }));
         refresh_ = refresh.get();
         add_child(std::move(refresh));
 
         // update 버튼: 실행 중에는 그 작업의 중지 버튼이 된다 (stage-7-plan 4.4).
-        button_config update_config {};
+        luil::button_config update_config {};
         update_config.glyph = card_.change_running ? codicons::icon_stop_circle : codicons::icon_repo_pull;
-        auto update { std::make_unique<button_element>(ui_element_id { ui_element_kind::card_update, card_.id }, update_config) };
+        auto update { std::make_unique<luil::button_element>(ui_element_id { kind_card_update, card_.id.value }, update_config) };
         if (card_.change_running)
         {
             update->set_tooltip(u8"실행 중인 작업 취소");
-            update->set_action(
-                ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_operation_intent { id } } } }; });
+            update->set_action(ui_trigger::left_click, make_logic_click(cancel_operation_intent { card_.id }));
         }
         else if (card_.can_change)
         {
             // 확인 overlay 없이 곧바로 실행한다 (2026-08-20 검수). submodule 갱신
             // 여부는 문서 settings가 정하고 logic이 채운다.
             update->set_tooltip(card_.kind == repository_kind::subversion ? std::u8string { u8"업데이트 (svn update)" } : std::u8string { u8"업데이트 (git pull --ff-only)" });
-            update->set_action(
-                ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { request_update_intent { id, {} } } } }; });
+            update->set_action(ui_trigger::left_click, make_logic_click(request_update_intent { card_.id, {} }));
         }
         else
         {
@@ -115,12 +116,11 @@ namespace gitman::ui {
         update_ = update.get();
         add_child(std::move(update));
 
-        auto switch_button { std::make_unique<button_element>(ui_element_id { ui_element_kind::card_switch, card_.id }, button_config { .glyph = codicons::icon_source_control }) };
+        auto switch_button { std::make_unique<luil::button_element>(ui_element_id { kind_card_switch, card_.id.value }, luil::button_config { .glyph = codicons::icon_source_control }) };
         if (card_.can_change)
         {
             switch_button->set_tooltip(card_.kind == repository_kind::subversion ? std::u8string { u8"URL 전환 (svn switch)" } : std::u8string { u8"브랜치 전환 (git switch)" });
-            switch_button->set_action(
-                ui_trigger::left_click, [id = card_.id](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { begin_switch_intent { id } } } }; });
+            switch_button->set_action(ui_trigger::left_click, make_logic_click(begin_switch_intent { card_.id }));
         }
         else
         {
@@ -152,7 +152,7 @@ namespace gitman::ui {
                 return;
             }
             element->set_visible(true);
-            element->arrange({ { next_x, buttons_y, button, button }, scale });
+            element->arrange(context.for_child({ next_x, buttons_y, button, button }));
             next_x -= button + gap;
         };
 
@@ -221,9 +221,13 @@ namespace gitman::ui {
         draw_children(context, interaction);
     }
 
-    bool card_element::animating() const noexcept
+    std::optional<std::chrono::steady_clock::time_point> card_element::next_update(const update_context& context, const interaction_snapshot& interaction) const
     {
-        return card_.busy;
+        static_cast<void>(interaction);
+        // 계속 도는 표시다. 지금 시각을 돌려주면 platform이 짧은 주기로 다시 그린다.
+        if (card_.busy)
+            return context.now;
+        return std::nullopt;
     }
 
     void card_element::draw_status_row(draw_context& context, const rect_f& row) const

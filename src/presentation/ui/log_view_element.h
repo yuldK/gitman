@@ -1,7 +1,10 @@
 #pragma once
 
-#include "presentation/ui/ui_element.h"
+#include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
+
+#include <chrono>
+#include <optional>
 
 namespace gitman::ui {
     // 선택 카드 전용 하단 로그 pane이다 (REQ-008, stage-7-plan 4.3). 헤더에 카드
@@ -13,10 +16,14 @@ namespace gitman::ui {
     public:
         // `body_viewport_height`는 본문(헤더 아래) 높이의 물리 픽셀 값이다. 스크롤
         // 막대의 thumb 계산이 생성 시점에 내용·화면 높이를 알아야 해서 받는다.
-        log_view_element(log_view_model log, float body_viewport_height, float scale);
+        // 막대에 넘기는 값은 논리 픽셀이라 배율로 되돌린다 (설계 L4).
+        log_view_element(const log_view_model& log, float body_viewport_height, float scale);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
+        // 실행 중인 변경 작업의 경과 시간(MM:SS)만 시각에 따라 달라지므로 다음 초
+        // 경계를 예고한다. 그릴 것이 없으면 nullopt다.
+        [[nodiscard]] std::optional<std::chrono::steady_clock::time_point> next_update(const update_context& context, const interaction_snapshot& interaction) const override;
 
     private:
         void draw_records(draw_context& context, const rect_f& body) const;

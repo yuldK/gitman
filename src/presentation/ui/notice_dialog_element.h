@@ -1,6 +1,6 @@
 #pragma once
 
-#include "presentation/ui/ui_element.h"
+#include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
 
 namespace gitman::ui {
@@ -10,7 +10,7 @@ namespace gitman::ui {
     class notice_dialog_element final : public ui_element
     {
     public:
-        explicit notice_dialog_element(notice_dialog_view dialog);
+        explicit notice_dialog_element(const notice_dialog_view& dialog);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;

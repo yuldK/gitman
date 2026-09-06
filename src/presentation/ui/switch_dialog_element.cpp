@@ -1,11 +1,12 @@
 #include "presentation/ui/switch_dialog_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/button_element.h"
-#include "presentation/ui/dialog_elements.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/scrollbar_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/button_element.h"
+#include "luil/ui/dialog_elements.h"
+#include "luil/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -14,7 +15,9 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -82,9 +85,9 @@ namespace gitman::ui {
 
         ui_element_id svn_status_id(const svn_repository_browser_row& row)
         {
-            ui_element_id id { ui_element_kind::switch_dialog_svn_status };
-            id.owner.value = row.url;
-            id.owner.value.append(row.kind == svn_browser_row_kind::loading ? u8"#loading" : u8"#error");
+            ui_element_id id { kind_switch_dialog_svn_status };
+            id.owner = row.url;
+            id.owner.append(row.kind == svn_browser_row_kind::loading ? u8"#loading" : u8"#error");
             return id;
         }
 
@@ -111,8 +114,7 @@ namespace gitman::ui {
                 , candidate_ { candidate }
                 , selected_ { selected }
             {
-                set_action(
-                    ui_trigger::left_click, [index](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_switch_candidate_intent { index } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(select_switch_candidate_intent { index }));
                 if (candidate_.requires_tracking_branch)
                     set_tooltip(u8"local tracking branch를 만들고 전환합니다 (확인 필요)");
                 else if (candidate_.stale)
@@ -168,8 +170,7 @@ namespace gitman::ui {
                 : ui_element { switch_dialog_svn_expand_id(url) }
                 , expanded_ { expanded }
             {
-                set_action(ui_trigger::left_click,
-                    [url = std::move(url)](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_svn_browser_node_intent { url } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(toggle_svn_browser_node_intent { std::move(url) }));
                 set_tooltip(expanded_ ? u8"접기" : u8"펼치기");
             }
 
@@ -206,12 +207,10 @@ namespace gitman::ui {
                 : ui_element { switch_dialog_svn_item_id(row.url) }
                 , row_ { std::move(row) }
             {
-                set_action(ui_trigger::left_click,
-                    [url = row_.url](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_svn_browser_node_intent { url } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(select_svn_browser_node_intent { row_.url }));
                 if (row_.can_expand)
                 {
-                    set_action(ui_trigger::double_click,
-                        [url = row_.url](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { toggle_svn_browser_node_intent { url } } } }; });
+                    set_action(ui_trigger::double_click, make_logic_click(toggle_svn_browser_node_intent { row_.url }));
                     add_child(std::make_unique<svn_expand_element>(row_.url, row_.expanded));
                 }
                 set_tooltip(row_.url);
@@ -285,9 +284,11 @@ namespace gitman::ui {
             }
 
             // 조회 중 행만 돈다. 오류 행은 정지 글리프다.
-            [[nodiscard]] bool animating() const noexcept override
+            [[nodiscard]] std::optional<std::chrono::steady_clock::time_point> next_update(const update_context& context, const interaction_snapshot&) const override
             {
-                return row_.kind == svn_browser_row_kind::loading;
+                if (row_.kind == svn_browser_row_kind::loading)
+                    return context.now;
+                return std::nullopt;
             }
 
             void draw(draw_context& context, const interaction_snapshot&) const override
@@ -297,7 +298,7 @@ namespace gitman::ui {
                 const float indent { row_tree_indent(row_.depth, box.width, scale) };
                 float text_left { box.x + (6.0f + indent + tree_glyph_width) * scale };
                 const bool failed { row_.kind == svn_browser_row_kind::error };
-                const std::uint32_t color { failed ? context.palette.warning_accent : context.palette.primary_foreground };
+                const ui_color color { failed ? context.palette.warning_accent : context.palette.primary_foreground };
                 if (context.codicon_typeface != nullptr)
                 {
                     const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
@@ -327,7 +328,7 @@ namespace gitman::ui {
         {
         public:
             explicit switch_panel_element(const switch_dialog_view& dialog)
-                : ui_element { ui_element_id { ui_element_kind::switch_dialog_panel } }
+                : ui_element { ui_element_id { kind_switch_dialog_panel } }
                 , title_ { dialog.title }
                 , loading_ { dialog.loading }
                 , stale_ { dialog.stale }
@@ -335,7 +336,12 @@ namespace gitman::ui {
                 , list_note_ { dialog.list_note }
                 , message_ { dialog.message }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                // panel 위의 클릭은 흡수만 한다. 뒤의 scrim(= dialog 자신)으로 새면
+                // 배경 클릭이 되어 dialog가 닫힌다.
+                set_hit_opaque(true);
+                // 목록 행은 panel 밖으로 흘러 나가지 않는다. 그리기는 아래에서 목록
+                // 영역으로 한 번 더 자른다.
+                set_clip_children(true);
             }
 
             void adopt(std::unique_ptr<ui_element> child)
@@ -402,22 +408,6 @@ namespace gitman::ui {
                 }
             }
 
-            const ui_element* hit_test(const float x, const float y) const override
-            {
-                if (visible() == false)
-                    return nullptr;
-                if (list_area.contains(x, y))
-                {
-                    const std::span<const std::unique_ptr<ui_element>> rows { children() };
-                    for (std::size_t index = rows.size(); index > 0; --index)
-                        if (const ui_element* const hit { rows[index - 1]->hit_test(x, y) }; hit != nullptr)
-                            return hit;
-                }
-                if (interactive() && bounds().contains(x, y))
-                    return this;
-                return nullptr;
-            }
-
         private:
             std::u8string title_ {};
             bool loading_ { false };
@@ -430,26 +420,24 @@ namespace gitman::ui {
 
     ui_element_id switch_dialog_item_id(const std::size_t index)
     {
-        ui_element_id id { ui_element_kind::switch_dialog_item };
-        id.owner.value = item_owner_value(index);
-        return id;
+        return { kind_switch_dialog_item, item_owner_value(index) };
     }
 
     ui_element_id switch_dialog_svn_item_id(const std::u8string_view url)
     {
-        return { ui_element_kind::switch_dialog_item, project_id { std::u8string { url } } };
+        return { kind_switch_dialog_item, std::u8string { url } };
     }
 
     ui_element_id switch_dialog_svn_expand_id(const std::u8string_view url)
     {
-        return { ui_element_kind::switch_dialog_svn_expand, project_id { std::u8string { url } } };
+        return { kind_switch_dialog_svn_expand, std::u8string { url } };
     }
 
-    switch_dialog_element::switch_dialog_element(switch_dialog_view dialog, const float scale, const float window_height)
-        : ui_element { ui_element_id { ui_element_kind::switch_dialog } }
-        , dialog_ { std::move(dialog) }
+    switch_dialog_element::switch_dialog_element(const switch_dialog_view& dialog, const float scale, const float window_height)
+        : ui_element { ui_element_id { kind_switch_dialog } }
+        , dialog_ { dialog }
     {
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_switch_dialog_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(cancel_switch_dialog_intent {}));
 
         auto panel { std::make_unique<switch_panel_element>(dialog_) };
         if (dialog_.svn_browser)
@@ -471,61 +459,72 @@ namespace gitman::ui {
         panel_ = panel.get();
         add_child(std::move(panel));
 
-        auto confirm { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::switch_dialog_confirm, dialog_.card }, dialog_.confirm_label, true) };
+        luil::text_button_config confirm_config {};
+        confirm_config.text = dialog_.confirm_label;
+        confirm_config.visual = luil::text_button_visual::accent;
+        auto confirm { std::make_unique<luil::text_button_element>(ui_element_id { kind_switch_dialog_confirm, dialog_.card.value }, std::move(confirm_config)) };
         confirm->set_enabled(dialog_.can_confirm);
-        confirm->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { confirm_switch_intent {} } } }; });
+        confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_switch_intent {}));
         confirm_ = confirm.get();
         add_child(std::move(confirm));
 
-        auto cancel { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::switch_dialog_cancel, dialog_.card }, std::u8string { u8"취소" }, false) };
-        cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_switch_dialog_intent {} } } }; });
+        luil::text_button_config cancel_config {};
+        cancel_config.text = u8"취소";
+        auto cancel { std::make_unique<luil::text_button_element>(ui_element_id { kind_switch_dialog_cancel, dialog_.card.value }, std::move(cancel_config)) };
+        cancel->set_action(ui_trigger::left_click, make_logic_click(cancel_switch_dialog_intent {}));
         cancel_ = cancel.get();
         add_child(std::move(cancel));
 
         // 목록의 스크롤 막대다. 내용이 목록 영역보다 길 때만 보인다. content·
         // viewport는 logic의 clamp 계산과 같은 값이라 thumb와 실제 스크롤이
-        // 어긋나지 않는다.
+        // 어긋나지 않는다. luil 막대는 전부 논리 픽셀을 받는다 (설계 L4).
         const float effective { scale > 0.0f ? scale : 1.0f };
         const std::size_t bar_rows { dialog_.svn_browser ? dialog_.svn_rows.size() : dialog_.candidates.size() };
-        const float bar_content { static_cast<float>(bar_rows) * layout_switch_dialog_row_height * effective };
-        const float bar_viewport { switch_dialog_list_height(dialog_.svn_browser, window_height / effective) * effective };
-        auto bar {
-            std::make_unique<scrollbar_element>(
-                ui_element_id { ui_element_kind::switch_dialog_scrollbar }, [](const float delta) { return logic_message { switch_dialog_scroll_intent { delta } }; }, bar_content, bar_viewport,
-                dialog_.scroll_offset * effective, effective),
-        };
+        const float bar_content { static_cast<float>(bar_rows) * layout_switch_dialog_row_height };
+        const float bar_viewport { switch_dialog_list_height(dialog_.svn_browser, window_height / effective) };
+        luil::scrollbar_config bar_config {};
+        bar_config.scroll = [](const float delta) -> input_action { return make_logic_action(switch_dialog_scroll_intent { delta }); };
+        bar_config.content_height = bar_content;
+        bar_config.viewport_height = bar_viewport;
+        bar_config.scroll_offset = dialog_.scroll_offset;
+        auto bar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_switch_dialog } }, std::move(bar_config)) };
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();
         add_child(std::move(bar));
 
-        // 질의 막대는 panel이 아니라 dialog의 자식이다. panel은 목록 영역 안에서만
-        // 자식을 hit test하므로, 막대가 panel의 자식이면 클릭이 닿지 않는다.
-        button_config refresh_config {};
+        // 질의 막대는 panel이 아니라 dialog의 자식이다. panel의 자식은 목록 행뿐이고
+        // 스크롤로 밀려 나온 행이 막대 자리까지 걸칠 수 있는데, 나중에 더한 형제가
+        // 먼저 hit test되므로 막대가 dialog의 자식이어야 클릭을 뺏기지 않는다.
+        luil::button_config refresh_config {};
         refresh_config.glyph = codicons::icon_refresh;
         refresh_config.icon_size = 13.0f;
-        auto refresh { std::make_unique<button_element>(ui_element_id { ui_element_kind::switch_dialog_query_refresh, dialog_.card }, refresh_config) };
+        auto refresh { std::make_unique<luil::button_element>(ui_element_id { kind_switch_dialog_query_refresh, dialog_.card.value }, refresh_config) };
         refresh->set_enabled(dialog_.query_enabled);
         refresh->set_tooltip(dialog_.svn_browser ? u8"선택한 디렉터리를 다시 조회합니다" : u8"전환 후보를 다시 조회합니다");
-        refresh->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { refresh_switch_dialog_intent {} } } }; });
+        refresh->set_action(ui_trigger::left_click, make_logic_click(refresh_switch_dialog_intent {}));
         query_refresh_ = refresh.get();
         add_child(std::move(refresh));
 
-        auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::switch_dialog_query_input, dialog_.card }, dialog_.query, dialog_.query_placeholder) };
+        // 지우기 버튼은 두지 않는다. 오른쪽 버튼이 search/close/arrow 3단으로
+        // 바뀌므로 형제 구조를 그대로 유지한다 (설계 L5).
+        luil::text_input_config query_config {};
+        query_config.placeholder = dialog_.query_placeholder;
+        auto input { std::make_unique<luil::text_input_element>(ui_element_id { kind_switch_dialog_query_input, dialog_.card.value }, dialog_.query, std::move(query_config)) };
         input->set_enabled(dialog_.query_enabled);
         input->set_tooltip(dialog_.svn_browser ? u8"저장소 최상단을 기준으로 한 경로입니다. Enter로 이동합니다" : u8"이름의 일부를 입력해 후보를 거릅니다. Enter가 첫 후보를 고릅니다");
         query_input_ = input.get();
         add_child(std::move(input));
 
-        button_config action_config {};
+        luil::button_config action_config {};
         action_config.glyph = query_action_glyph(dialog_.query_action);
         action_config.icon_size = 13.0f;
-        auto action { std::make_unique<button_element>(ui_element_id { ui_element_kind::switch_dialog_query_action, dialog_.card }, action_config) };
+        auto action { std::make_unique<luil::button_element>(ui_element_id { kind_switch_dialog_query_action, dialog_.card.value }, action_config) };
         action->set_enabled(dialog_.query_enabled && dialog_.query_action_enabled);
         action->set_tooltip(std::u8string { query_action_tooltip(dialog_.query_action) });
         if (dialog_.query_action == switch_query_action::clear)
-            action->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_switch_query_intent {} } } }; });
+            action->set_action(ui_trigger::left_click, make_logic_click(clear_switch_query_intent {}));
         else if (dialog_.query_action == switch_query_action::navigate)
-            action->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { submit_switch_query_intent {} } } }; });
+            action->set_action(ui_trigger::left_click, make_logic_click(submit_switch_query_intent {}));
         query_action_ = action.get();
         add_child(std::move(action));
     }

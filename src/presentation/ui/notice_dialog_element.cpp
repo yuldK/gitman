@@ -1,8 +1,9 @@
 #include "presentation/ui/notice_dialog_element.h"
 
-#include "gitman/generated/codicons.h"
-#include "presentation/ui/dialog_elements.h"
-#include "presentation/ui/draw_primitives.h"
+#include "luil/ui/dialog_elements.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+#include "presentation/ui/ui_common.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -32,15 +33,15 @@ namespace gitman::ui {
             return panel_padding * 2.0f + title_height + lines + 12.0f + button_height;
         }
 
-        // 제목·본문을 그리는 panel이다. 클릭을 흡수해 배경의 닫기로 흐르지 않게 한다.
+        // 제목·본문을 그리는 panel이다. hit를 흡수해 배경의 닫기로 흐르지 않게 한다.
         class notice_panel_element final : public ui_element
         {
         public:
             explicit notice_panel_element(const notice_dialog_view& dialog)
-                : ui_element { ui_element_id { ui_element_kind::notice_dialog_panel } }
+                : ui_element { ui_element_id { kind_notice_dialog_panel } }
                 , dialog_ { dialog }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                set_hit_opaque(true);
             }
 
             void arrange(const arrange_context& context) override
@@ -95,19 +96,21 @@ namespace gitman::ui {
         };
     } // namespace
 
-    notice_dialog_element::notice_dialog_element(notice_dialog_view dialog)
-        : ui_element { ui_element_id { ui_element_kind::notice_dialog } }
-        , dialog_ { std::move(dialog) }
+    notice_dialog_element::notice_dialog_element(const notice_dialog_view& dialog)
+        : ui_element { ui_element_id { kind_notice_dialog } }
+        , dialog_ { dialog }
     {
         // 배경 클릭은 닫기다.
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { dismiss_notice_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(dismiss_notice_intent {}));
 
         auto panel { std::make_unique<notice_panel_element>(dialog_) };
         panel_ = panel.get();
         add_child(std::move(panel));
 
-        auto confirm { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::notice_dialog_confirm }, std::u8string { u8"확인" }, true) };
-        confirm->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { dismiss_notice_intent {} } } }; });
+        // 확인은 강조 버튼이다. 기본 버튼(Enter) 표시는 dialog 뼈대와 함께 다룬다.
+        const luil::text_button_config confirm_config { .text = std::u8string { u8"확인" }, .visual = luil::text_button_visual::accent };
+        auto confirm { std::make_unique<luil::text_button_element>(ui_element_id { kind_notice_dialog_confirm }, confirm_config) };
+        confirm->set_action(ui_trigger::left_click, make_logic_click(dismiss_notice_intent {}));
         confirm_ = confirm.get();
         add_child(std::move(confirm));
     }

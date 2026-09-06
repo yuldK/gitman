@@ -1,8 +1,8 @@
 #include "presentation/ui/start_page_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/draw_primitives.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -98,13 +98,12 @@ namespace gitman::ui {
         class recent_icon_element final : public ui_element
         {
         public:
-            recent_icon_element(ui_element_id id, const char32_t glyph, std::u8string tooltip, logic_message message)
+            recent_icon_element(ui_element_id id, const char32_t glyph, std::u8string tooltip, input_action action)
                 : ui_element { std::move(id) }
                 , glyph_ { glyph }
             {
                 set_tooltip(std::move(tooltip));
-                set_action(ui_trigger::left_click,
-                    [message = std::move(message)](const ui_action_context&) -> std::vector<input_action> { return { input_action { message } }; });
+                set_action(ui_trigger::left_click, [action = std::move(action)](const ui_action_context&) -> std::vector<input_action> { return { action }; });
             }
 
             void arrange(const arrange_context& context) override
@@ -138,21 +137,21 @@ namespace gitman::ui {
             {
                 set_tooltip(recent.path);
                 set_action(ui_trigger::left_click,
-                    [path = recent.path](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_document_intent { path } } } }; });
+                    [path = recent.path](const ui_action_context&) -> std::vector<input_action> { return { make_logic_action(open_document_intent { path }) }; });
 
                 // 고정한 항목은 채워진 글리프로 구별한다 (2026-08-23 지시).
                 const char32_t pin_glyph { recent.pinned ? codicons::icon_pinned : codicons::icon_pin };
                 std::u8string pin_tooltip { recent.pinned ? u8"고정 해제" : u8"목록에 고정" };
                 auto pin {
                     std::make_unique<recent_icon_element>(
-                        start_page_recent_pin_id(index), pin_glyph, std::move(pin_tooltip), logic_message { toggle_recent_document_pin_intent { recent.path } }),
+                        start_page_recent_pin_id(index), pin_glyph, std::move(pin_tooltip), make_logic_action(toggle_recent_document_pin_intent { recent.path })),
                 };
                 pin_ = pin.get();
                 add_child(std::move(pin));
 
                 auto remove {
-                    std::make_unique<recent_icon_element>(
-                        start_page_recent_remove_id(index), codicons::icon_close, std::u8string { u8"최근 목록에서 제거" }, logic_message { remove_recent_document_intent { recent.path } }),
+                    std::make_unique<recent_icon_element>(start_page_recent_remove_id(index), codicons::icon_close, std::u8string { u8"최근 목록에서 제거" },
+                        make_logic_action(remove_recent_document_intent { recent.path })),
                 };
                 remove_ = remove.get();
                 add_child(std::move(remove));
@@ -210,33 +209,33 @@ namespace gitman::ui {
 
     ui_element_id start_page_recent_item_id(const std::size_t index)
     {
-        ui_element_id id { ui_element_kind::start_page_recent_item };
-        id.owner.value = index_owner_value(u8"start-page-recent-", index);
+        ui_element_id id { kind_start_page_recent_item };
+        id.owner = index_owner_value(u8"start-page-recent-", index);
         return id;
     }
 
     ui_element_id start_page_recent_pin_id(const std::size_t index)
     {
-        ui_element_id id { ui_element_kind::start_page_recent_pin };
-        id.owner.value = index_owner_value(u8"start-page-pin-", index);
+        ui_element_id id { kind_start_page_recent_pin };
+        id.owner = index_owner_value(u8"start-page-pin-", index);
         return id;
     }
 
     ui_element_id start_page_recent_remove_id(const std::size_t index)
     {
-        ui_element_id id { ui_element_kind::start_page_recent_remove };
-        id.owner.value = index_owner_value(u8"start-page-remove-", index);
+        ui_element_id id { kind_start_page_recent_remove };
+        id.owner = index_owner_value(u8"start-page-remove-", index);
         return id;
     }
 
     start_page_element::start_page_element(const start_page_view& page)
-        : ui_element { ui_element_id { ui_element_kind::start_page } }
+        : ui_element { ui_element_id { kind_start_page } }
         , page_ { page }
     {
-        add_child(
-            std::make_unique<start_action_element>(ui_element_kind::start_page_open_document, codicons::icon_folder_opened, u8"문서 열기…", input_action { ui_command::show_open_document_dialog }));
         add_child(std::make_unique<start_action_element>(
-            ui_element_kind::start_page_generate_document, codicons::icon_new_file, u8"새 문서 만들기…", input_action { logic_message { open_generate_document_intent {} } }));
+            kind_start_page_open_document, codicons::icon_folder_opened, u8"문서 열기…", make_app_command_action(app_command::show_open_document_dialog)));
+        add_child(std::make_unique<start_action_element>(
+            kind_start_page_generate_document, codicons::icon_new_file, u8"새 문서 만들기…", make_logic_action(open_generate_document_intent {})));
         for (std::size_t index = 0; index < page_.recents.size(); ++index)
             add_child(std::make_unique<recent_item_element>(index, page_.recents[index]));
     }

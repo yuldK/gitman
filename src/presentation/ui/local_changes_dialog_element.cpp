@@ -1,12 +1,13 @@
 #include "presentation/ui/local_changes_dialog_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/diff_presentation.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/button_element.h"
-#include "presentation/ui/dialog_elements.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/scrollbar_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/button_element.h"
+#include "luil/ui/dialog_elements.h"
+#include "luil/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -55,24 +56,23 @@ namespace gitman::ui {
                 : ui_element { local_changes_item_id(index) }
                 , row_ { row }
             {
-                set_action(
-                    ui_trigger::left_click, [index](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_local_change_intent { index } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(select_local_change_intent { index }));
 
-                ui_element_id vscode_id { ui_element_kind::local_changes_open_vscode };
-                vscode_id.owner.value = local_changes_item_id(index).owner.value;
-                auto vscode { std::make_unique<button_element>(vscode_id, button_config { .glyph = codicons::icon_file }) };
+                // 외부 열기는 UI thread 명령이다 (설계 L7). 경로를 인자로 싣는다.
+                auto vscode {
+                    std::make_unique<luil::button_element>(ui_element_id { kind_local_changes_open_vscode, item_owner_value(index) }, luil::button_config { .glyph = codicons::icon_file }),
+                };
                 vscode->set_tooltip(u8"VSCode에서 열기");
-                vscode->set_action(ui_trigger::left_click,
-                    [path = row.absolute_path](const ui_action_context&) -> std::vector<input_action> { return { input_action { open_external_request { external_open_target::vscode, path } } }; });
+                vscode->set_action(ui_trigger::left_click, make_app_command_click(app_command::open_in_vscode, row.absolute_path));
                 open_vscode_ = vscode.get();
                 add_child(std::move(vscode));
 
-                ui_element_id explorer_id { ui_element_kind::local_changes_open_explorer };
-                explorer_id.owner.value = local_changes_item_id(index).owner.value;
-                auto explorer { std::make_unique<button_element>(explorer_id, button_config { .glyph = codicons::icon_folder_opened }) };
+                auto explorer {
+                    std::make_unique<luil::button_element>(
+                        ui_element_id { kind_local_changes_open_explorer, item_owner_value(index) }, luil::button_config { .glyph = codicons::icon_folder_opened }),
+                };
                 explorer->set_tooltip(u8"탐색기에서 열기");
-                explorer->set_action(ui_trigger::left_click,
-                    [path = row.absolute_path](const ui_action_context&) -> std::vector<input_action> { return { input_action { open_external_request { external_open_target::explorer, path } } }; });
+                explorer->set_action(ui_trigger::left_click, make_app_command_click(app_command::open_in_explorer_select, row.absolute_path));
                 open_explorer_ = explorer.get();
                 add_child(std::move(explorer));
             }
@@ -152,11 +152,11 @@ namespace gitman::ui {
         {
         public:
             explicit diff_pane_element(const local_changes_dialog_view& dialog)
-                : ui_element { ui_element_id { ui_element_kind::local_changes_diff } }
+                : ui_element { ui_element_id { kind_local_changes_diff } }
                 , dialog_ { &dialog }
             {
                 // 클릭을 흡수해 배경 닫기로 흐르지 않게 한다.
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                set_hit_opaque(true);
             }
 
             void arrange(const arrange_context& context) override
@@ -268,13 +268,13 @@ namespace gitman::ui {
         {
         public:
             explicit local_changes_panel_element(const local_changes_dialog_view& dialog)
-                : ui_element { ui_element_id { ui_element_kind::local_changes_dialog_panel } }
+                : ui_element { ui_element_id { kind_local_changes_dialog_panel } }
                 , title_ { dialog.title }
                 , loading_ { dialog.loading }
                 , empty_ { dialog.rows.empty() }
                 , message_ { dialog.message }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                set_hit_opaque(true);
             }
 
             void adopt(std::unique_ptr<ui_element> child)
@@ -342,17 +342,15 @@ namespace gitman::ui {
 
     ui_element_id local_changes_item_id(const std::size_t index)
     {
-        ui_element_id id { ui_element_kind::local_changes_item };
-        id.owner.value = item_owner_value(index);
-        return id;
+        return ui_element_id { kind_local_changes_item, item_owner_value(index) };
     }
 
-    local_changes_dialog_element::local_changes_dialog_element(local_changes_dialog_view dialog, const float scale)
-        : ui_element { ui_element_id { ui_element_kind::local_changes_dialog } }
+    local_changes_dialog_element::local_changes_dialog_element(local_changes_dialog_view dialog, const float)
+        : ui_element { ui_element_id { kind_local_changes_dialog } }
         , dialog_ { std::move(dialog) }
     {
         // 배경 클릭은 닫기다.
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_local_changes_dialog_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(cancel_local_changes_dialog_intent {}));
 
         auto panel { std::make_unique<local_changes_panel_element>(dialog_) };
         for (std::size_t index = 0; index < dialog_.rows.size(); ++index)
@@ -364,30 +362,41 @@ namespace gitman::ui {
         diff_ = diff.get();
         add_child(std::move(diff));
 
-        auto close { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::local_changes_dialog_close, dialog_.card }, std::u8string { u8"닫기" }, true) };
-        close->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_local_changes_dialog_intent {} } } }; });
+        auto close {
+            std::make_unique<luil::text_button_element>(ui_element_id { kind_local_changes_dialog_close, dialog_.card.value },
+                luil::text_button_config { .text = std::u8string { u8"닫기" }, .visual = luil::text_button_visual::accent }),
+        };
+        close->set_action(ui_trigger::left_click, make_logic_click(cancel_local_changes_dialog_intent {}));
         close_ = close.get();
         add_child(std::move(close));
 
-        // 목록·diff 각각의 시각적 스크롤 막대다. 내용이 넘칠 때만 보인다.
-        const float effective { scale > 0.0f ? scale : 1.0f };
-        const float list_content { static_cast<float>(dialog_.rows.size()) * layout_local_changes_row_height * effective };
+        // 목록·diff 각각의 시각적 스크롤 막대다. 내용이 넘칠 때만 보인다. 길이는
+        // 전부 논리 픽셀이고 배율은 막대가 곱한다 (설계 L5).
+        const float list_content { static_cast<float>(dialog_.rows.size()) * layout_local_changes_row_height };
         auto list_bar {
-            std::make_unique<scrollbar_element>(
-                ui_element_id { ui_element_kind::local_changes_list_scrollbar }, [](const float delta) { return logic_message { local_changes_scroll_intent { delta } }; }, list_content,
-                layout_local_changes_list_height * effective, dialog_.list_scroll * effective, effective),
+            std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_local_changes_list } },
+                luil::scrollbar_config {
+                    .scroll = [](const float delta) -> input_action { return make_logic_action(local_changes_scroll_intent { delta }); },
+                    .content_height = list_content,
+                    .viewport_height = layout_local_changes_list_height,
+                    .scroll_offset = dialog_.list_scroll,
+                }),
         };
-        list_bar->set_visible(list_content > layout_local_changes_list_height * effective);
+        list_bar->set_visible(list_content > layout_local_changes_list_height);
         list_scrollbar_ = list_bar.get();
         add_child(std::move(list_bar));
 
-        const float diff_content { static_cast<float>(dialog_.diff_rows.size()) * layout_local_changes_diff_line_height * effective };
+        const float diff_content { static_cast<float>(dialog_.diff_rows.size()) * layout_local_changes_diff_line_height };
         auto diff_bar {
-            std::make_unique<scrollbar_element>(
-                ui_element_id { ui_element_kind::local_changes_diff_scrollbar }, [](const float delta) { return logic_message { local_changes_diff_scroll_intent { delta } }; }, diff_content,
-                layout_local_changes_diff_height * effective, dialog_.diff_scroll * effective, effective),
+            std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_local_changes_diff } },
+                luil::scrollbar_config {
+                    .scroll = [](const float delta) -> input_action { return make_logic_action(local_changes_diff_scroll_intent { delta }); },
+                    .content_height = diff_content,
+                    .viewport_height = layout_local_changes_diff_height,
+                    .scroll_offset = dialog_.diff_scroll,
+                }),
         };
-        diff_bar->set_visible(diff_content > layout_local_changes_diff_height * effective);
+        diff_bar->set_visible(diff_content > layout_local_changes_diff_height);
         diff_scrollbar_ = diff_bar.get();
         add_child(std::move(diff_bar));
     }

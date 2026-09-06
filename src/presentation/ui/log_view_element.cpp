@@ -1,12 +1,13 @@
 #include "presentation/ui/log_view_element.h"
 
-#include "gitman/generated/codicons.h"
+#include "luil/ui/button_element.h"
+#include "luil/ui/label_element.h"
+#include "luil/ui/scrollbar_element.h"
 #include "presentation/list_metrics.h"
 #include "presentation/log_presentation.h"
-#include "presentation/ui/button_element.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/label_element.h"
-#include "presentation/ui/scrollbar_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+#include "presentation/ui/ui_common.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -14,9 +15,12 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace gitman::ui {
     namespace {
@@ -35,53 +39,54 @@ namespace gitman::ui {
         }
     } // namespace
 
-    log_view_element::log_view_element(log_view_model log, const float body_viewport_height, const float scale)
-        : ui_element { ui_element_id { ui_element_kind::log_pane } }
-        , log_ { std::move(log) }
+    log_view_element::log_view_element(const log_view_model& log, const float body_viewport_height, const float scale)
+        : ui_element { ui_element_id { kind_log_pane } }
+        , log_ { log }
     {
-        // pane 배경 클릭이 root의 선택 해제로 흐르지 않도록 클릭을 흡수한다.
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+        // pane 배경 클릭이 root의 선택 해제로 흐르지 않도록 hit를 흡수한다.
+        set_hit_opaque(true);
 
-        label_config title_config {};
+        luil::label_config title_config {};
         title_config.text = log_.truncated ? log_.title + std::u8string { u8" (오래된 로그 제거됨)" } : log_.title;
         title_config.font_size = 11.5f;
-        title_config.color = label_color_role::primary;
-        auto title { std::make_unique<label_element>(ui_element_id { ui_element_kind::log_title, log_.card }, std::move(title_config)) };
+        title_config.color = luil::label_color_role::primary;
+        auto title { std::make_unique<luil::label_element>(ui_element_id { kind_log_title, log_.card.value }, std::move(title_config)) };
         title_ = title.get();
         add_child(std::move(title));
 
-        button_config filter_config {};
+        luil::button_config filter_config {};
         filter_config.glyph = codicons::icon_filter;
         filter_config.icon_size = 12.0f;
         filter_config.active = log_.filter != log_stream_filter::all;
-        auto filter { std::make_unique<button_element>(ui_element_id { ui_element_kind::log_filter, log_.card }, filter_config) };
+        auto filter { std::make_unique<luil::button_element>(ui_element_id { kind_log_filter, log_.card.value }, filter_config) };
         filter->set_tooltip(std::u8string { u8"로그 필터: " } + std::u8string { log_stream_filter_label(log_.filter) } + std::u8string { u8" (클릭해 전환)" });
-        filter->set_action(ui_trigger::left_click,
-            [next = next_log_filter(log_.filter)](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_log_filter_intent { next } } } }; });
+        filter->set_action(ui_trigger::left_click, make_logic_click(set_log_filter_intent { next_log_filter(log_.filter) }));
         filter_ = filter.get();
         add_child(std::move(filter));
 
-        button_config autoscroll_config {};
+        luil::button_config autoscroll_config {};
         autoscroll_config.glyph = codicons::icon_arrow_down;
         autoscroll_config.icon_size = 12.0f;
         autoscroll_config.active = log_.auto_scroll;
-        auto autoscroll { std::make_unique<button_element>(ui_element_id { ui_element_kind::log_autoscroll, log_.card }, autoscroll_config) };
+        auto autoscroll { std::make_unique<luil::button_element>(ui_element_id { kind_log_autoscroll, log_.card.value }, autoscroll_config) };
         autoscroll->set_tooltip(log_.auto_scroll ? std::u8string { u8"자동 스크롤 끄기" } : std::u8string { u8"자동 스크롤 켜기 (맨 아래 따라가기)" });
-        autoscroll->set_action(ui_trigger::left_click,
-            [enable = log_.auto_scroll == false](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_log_auto_scroll_intent { enable } } } }; });
+        autoscroll->set_action(ui_trigger::left_click, make_logic_click(set_log_auto_scroll_intent { log_.auto_scroll == false }));
         autoscroll_ = autoscroll.get();
         add_child(std::move(autoscroll));
 
-        auto copy { std::make_unique<button_element>(ui_element_id { ui_element_kind::log_copy, log_.card }, button_config { .glyph = codicons::icon_copy, .icon_size = 12.0f }) };
+        auto copy { std::make_unique<luil::button_element>(ui_element_id { kind_log_copy, log_.card.value }, luil::button_config { .glyph = codicons::icon_copy, .icon_size = 12.0f }) };
         copy->set_tooltip(u8"표시 중인 로그 복사");
-        copy->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::copy_selected_log } }; });
+        // 복사할 글은 누른 시점에 만든다. 클립보드 접근은 UI thread의 몫이라
+        // 요청만 돌려준다 (설계 L7).
+        copy->set_action(ui_trigger::left_click,
+            [this](const ui_action_context&) -> std::vector<input_action> { return { input_action { clipboard_copy_request { format_log_copy_text(log_) } } }; });
         copy->set_enabled(log_.records.empty() == false);
         copy_ = copy.get();
         add_child(std::move(copy));
 
-        auto clear { std::make_unique<button_element>(ui_element_id { ui_element_kind::log_clear, log_.card }, button_config { .glyph = codicons::icon_clear_all, .icon_size = 12.0f }) };
+        auto clear { std::make_unique<luil::button_element>(ui_element_id { kind_log_clear, log_.card.value }, luil::button_config { .glyph = codicons::icon_clear_all, .icon_size = 12.0f }) };
         clear->set_tooltip(u8"이 카드 로그 지우기");
-        clear->set_action(ui_trigger::left_click, [id = log_.card](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_log_intent { id } } } }; });
+        clear->set_action(ui_trigger::left_click, make_logic_click(clear_log_intent { log_.card }));
         clear->set_enabled(log_.records.empty() == false);
         clear_ = clear.get();
         add_child(std::move(clear));
@@ -89,13 +94,19 @@ namespace gitman::ui {
         // 본문의 시각적 스크롤 막대다 (stage-8-plan 5.3). 내용·화면 높이는 접힌
         // 표시 줄 기준이라 logic의 스크롤 한계와 같은 값을 쓴다. 끌기는
         // log_scroll_intent로 흘러 자동 스크롤 규칙(위로 끌면 꺼짐)이 유지된다.
+        // 막대가 받는 길이는 전부 논리 픽셀이라 물리 픽셀로 받은 본문 높이는
+        // 배율로 되돌린다 (설계 L4).
         const float effective_scale { scale > 0.0f ? scale : 1.0f };
-        const float content_height { (static_cast<float>(log_.lines.size()) * layout_log_line_height + layout_log_text_inset * 2.0f) * effective_scale };
-        const float scroll_physical { log_.scroll_offset * effective_scale };
-        const ui_element_id scrollbar_id { ui_element_kind::log_scrollbar, log_.card };
-        const scrollbar_element::scroll_message_factory make_log_scroll { [](const float delta) { return logic_message { log_scroll_intent { delta } }; } };
-        auto scrollbar { std::make_unique<scrollbar_element>(scrollbar_id, make_log_scroll, content_height, body_viewport_height, scroll_physical, effective_scale) };
-        scrollbar->set_visible(content_height > body_viewport_height && body_viewport_height > 0.0f);
+        const float content_height { static_cast<float>(log_.lines.size()) * layout_log_line_height + layout_log_text_inset * 2.0f };
+        const float viewport_height { body_viewport_height / effective_scale };
+        luil::scrollbar_config scrollbar_config {
+            .scroll = [](const float delta) -> input_action { return make_logic_action(log_scroll_intent { delta }); },
+            .content_height = content_height,
+            .viewport_height = viewport_height,
+            .scroll_offset = log_.scroll_offset,
+        };
+        auto scrollbar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_log } }, std::move(scrollbar_config)) };
+        scrollbar->set_visible(content_height > viewport_height && viewport_height > 0.0f);
         scrollbar_ = scrollbar.get();
         add_child(std::move(scrollbar));
     }
@@ -187,6 +198,18 @@ namespace gitman::ui {
 
         draw_records(context, body_);
         draw_children(context, interaction);
+    }
+
+    std::optional<std::chrono::steady_clock::time_point> log_view_element::next_update(const update_context& context, const interaction_snapshot& interaction) const
+    {
+        static_cast<void>(interaction);
+        // 멈춘 경과 시간(change_elapsed)은 값이 고정이라 다시 그릴 것이 없다.
+        // 실행 중일 때만 다음 초 경계에 글자가 넘어간다.
+        if (elapsed_right_ <= 0.0f || log_.change_started_at.has_value() == false)
+            return std::nullopt;
+        const std::chrono::steady_clock::duration elapsed { context.now - *log_.change_started_at };
+        const std::chrono::seconds whole { std::chrono::duration_cast<std::chrono::seconds>(elapsed) };
+        return *log_.change_started_at + whole + std::chrono::seconds { 1 };
     }
 
     void log_view_element::draw_records(draw_context& context, const rect_f& body) const

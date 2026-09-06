@@ -1,10 +1,11 @@
 #include "presentation/ui/settings_dialog_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/dialog_elements.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/scrollbar_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/dialog_elements.h"
+#include "luil/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -389,7 +390,7 @@ namespace gitman::ui {
                 make_item(item_kind::theme, u8"테마", theme_description(dialog.theme), {}, { settings_override_field::theme }, u8"theme", overridden(dialog, dialog.theme_follows_app)));
             appearance.sections.push_back(std::move(theme));
             section_model accent { std::u8string { u8"키 컬러" }, {} };
-            accent.items.push_back(make_item(item_kind::accent, u8"키 컬러", std::u8string { accent_for(dialog.accent_id).label }, {}, { settings_override_field::accent }, u8"accent",
+            accent.items.push_back(make_item(item_kind::accent, u8"키 컬러", std::u8string { luil::accent_for(dialog.accent_id).label }, {}, { settings_override_field::accent }, u8"accent",
                 overridden(dialog, dialog.accent_follows_app)));
             appearance.sections.push_back(std::move(accent));
             // 글꼴도 문서가 덮어쓸 수 있다 (2026-08-23 지시). 테마·키 컬러와 같은
@@ -417,12 +418,12 @@ namespace gitman::ui {
         class toggle_element final : public ui_element
         {
         public:
-            toggle_element(const ui_element_id id, const bool on, std::u8string tooltip, logic_message message)
-                : ui_element { id }
+            toggle_element(ui_element_id id, const bool on, std::u8string tooltip, logic_message message)
+                : ui_element { std::move(id) }
                 , on_ { on }
             {
                 set_tooltip(std::move(tooltip));
-                set_action(ui_trigger::left_click, [message = std::move(message)](const ui_action_context&) -> std::vector<input_action> { return { input_action { message } }; });
+                set_action(ui_trigger::left_click, make_logic_click(std::move(message)));
             }
 
             void arrange(const arrange_context& context) override
@@ -458,12 +459,12 @@ namespace gitman::ui {
         {
         public:
             tab_item_element(const settings_tab tab, const bool selected, const char32_t glyph, std::u8string label)
-                : ui_element { ui_element_id { ui_element_kind::settings_tab_item, project_id { std::u8string { settings_tab_name(tab) } } } }
+                : ui_element { ui_element_id { kind_settings_tab_item, std::u8string { settings_tab_name(tab) } } }
                 , selected_ { selected }
                 , glyph_ { glyph }
                 , label_ { std::move(label) }
             {
-                set_action(ui_trigger::left_click, [tab](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_settings_tab_intent { tab } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(select_settings_tab_intent { tab }));
             }
 
             void arrange(const arrange_context& context) override
@@ -516,13 +517,12 @@ namespace gitman::ui {
         {
         public:
             theme_option_element(const theme_preference value, const bool selected, const char32_t glyph, std::u8string tooltip)
-                : ui_element { ui_element_id { ui_element_kind::settings_theme_option, project_id { std::u8string { theme_preference_name(value) } } } }
+                : ui_element { ui_element_id { kind_settings_theme_option, std::u8string { theme_preference_name(value) } } }
                 , selected_ { selected }
                 , glyph_ { glyph }
             {
                 set_tooltip(std::move(tooltip));
-                set_action(
-                    ui_trigger::left_click, [value](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_theme_preference_intent { value } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(set_theme_preference_intent { value }));
             }
 
             void arrange(const arrange_context& context) override
@@ -563,14 +563,13 @@ namespace gitman::ui {
         class accent_swatch_element final : public ui_element
         {
         public:
-            accent_swatch_element(const accent_definition& accent, const bool selected)
-                : ui_element { ui_element_id { ui_element_kind::settings_accent_swatch, project_id { std::u8string { accent.id } } } }
+            accent_swatch_element(const luil::accent_definition& accent, const bool selected)
+                : ui_element { ui_element_id { kind_settings_accent_swatch, std::u8string { accent.id } } }
                 , swatch_ { accent.swatch }
                 , selected_ { selected }
             {
                 set_tooltip(std::u8string { accent.label });
-                set_action(ui_trigger::left_click,
-                    [id = std::u8string { accent.id }](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { set_accent_intent { id } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(set_accent_intent { std::u8string { accent.id } }));
             }
 
             void arrange(const arrange_context& context) override
@@ -609,7 +608,7 @@ namespace gitman::ui {
         {
         public:
             override_badge_element(std::u8string owner, const settings_override_field field, const bool defined)
-                : ui_element { ui_element_id { ui_element_kind::settings_override_badge, project_id { std::move(owner) } } }
+                : ui_element { ui_element_id { kind_settings_override_badge, std::move(owner) } }
                 , defined_ { defined }
             {
                 if (defined == false)
@@ -618,8 +617,7 @@ namespace gitman::ui {
                     return;
                 }
                 set_tooltip(u8"이 문서가 전역 설정을 덮어쓰고 있습니다. 클릭하면 삭제하고 전역 설정을 따릅니다.");
-                set_action(
-                    ui_trigger::left_click, [field](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_override_intent { field } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(clear_settings_override_intent { field }));
             }
 
             void arrange(const arrange_context& context) override
@@ -666,7 +664,7 @@ namespace gitman::ui {
         {
         public:
             settings_panel_element(const settings_dialog_view& dialog, tab_model active, const std::size_t accent_count, const float right_inset)
-                : ui_element { ui_element_id { ui_element_kind::settings_dialog_panel } }
+                : ui_element { ui_element_id { kind_settings_dialog_panel } }
                 , title_ { dialog.document_mode ? std::u8string { u8"환경설정 (문서)" } : std::u8string { u8"환경설정 (전역)" } }
                 , document_mode_ { dialog.document_mode }
                 , active_ { std::move(active) }
@@ -675,7 +673,8 @@ namespace gitman::ui {
                 , scroll_offset_ { dialog.scroll_offset }
                 , right_inset_ { right_inset }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                // panel 위의 클릭은 여기서 멈춘다 — 배경 닫기로 흐르지 않게 흡수만 한다.
+                set_hit_opaque(true);
             }
 
             // 탭 rail과 항목 컨트롤은 panel의 자식이다. 그래야 viewport 하나로
@@ -731,6 +730,9 @@ namespace gitman::ui {
                 context.canvas.restore();
             }
 
+            // 자를 자리가 자기 bounds가 아니라 `content_viewport`(제목·버튼 줄을 뺀
+            // 항목 열)라 `set_clip_children`으로는 대신할 수 없다. 나머지 규칙은
+            // luil 기본 hit test와 같다 — 자식은 역순, 마지막에 흡수다.
             const ui_element* hit_test(const float x, const float y) const override
             {
                 if (visible() == false)
@@ -743,7 +745,7 @@ namespace gitman::ui {
                         if (const ui_element* const hit { items[index - 1]->hit_test(x, y) }; hit != nullptr)
                             return hit;
                 }
-                if (interactive() && bounds().contains(x, y))
+                if ((interactive() || hit_opaque()) && bounds().contains(x, y))
                     return this;
                 return nullptr;
             }
@@ -855,7 +857,7 @@ namespace gitman::ui {
     settings_dialog_scroll_metrics settings_dialog_metrics(const settings_dialog_view& dialog, const float window_height)
     {
         const std::vector<tab_model> tabs { build_tabs(dialog) };
-        const std::size_t accent_count { accent_catalog().size() };
+        const std::size_t accent_count { luil::accent_catalog().size() };
 
         // panel 크기는 가장 높은 탭에 맞춰 고정한다 (S1.3). 탭을 옮길 때 dialog가
         // 커졌다 작아졌다 하면 읽기 어렵다.
@@ -882,14 +884,14 @@ namespace gitman::ui {
     }
 
     settings_dialog_element::settings_dialog_element(settings_dialog_view dialog, const float scale, const float window_height)
-        : ui_element { ui_element_id { ui_element_kind::settings_dialog } }
+        : ui_element { ui_element_id { kind_settings_dialog } }
         , dialog_ { std::move(dialog) }
     {
         // 배경 클릭은 취소다.
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_settings_dialog_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(cancel_settings_dialog_intent {}));
 
         const std::vector<tab_model> tabs { build_tabs(dialog_) };
-        const std::size_t accent_count { accent_catalog().size() };
+        const std::size_t accent_count { luil::accent_catalog().size() };
         const float effective { scale > 0.0f ? scale : 1.0f };
         metrics_ = settings_dialog_metrics(dialog_, window_height / effective);
         panel_height_ = chrome_height + metrics_.panel_content_height;
@@ -918,9 +920,9 @@ namespace gitman::ui {
             panel_raw->adopt(std::move(toggle));
         };
 
-        const auto add_text_button = [panel_raw](const ui_element_kind kind, const char8_t* const text, std::vector<ui_element*>& controls) -> text_button_element* {
-            auto button { std::make_unique<text_button_element>(ui_element_id { kind }, std::u8string { text }, false) };
-            text_button_element* const raw { button.get() };
+        const auto add_text_button = [panel_raw](const ui_element_kind kind, const char8_t* const text, std::vector<ui_element*>& controls) -> luil::text_button_element* {
+            auto button { std::make_unique<luil::text_button_element>(ui_element_id { kind }, luil::text_button_config { .text = std::u8string { text } }) };
+            luil::text_button_element* const raw { button.get() };
             controls.push_back(raw);
             panel_raw->adopt(std::move(button));
             return raw;
@@ -937,23 +939,25 @@ namespace gitman::ui {
                 case item_kind::svn_executable: {
                     const bool git { item.kind == item_kind::git_executable };
                     // 찾아보기는 UI thread의 파일 선택으로, 지우기는 intent로 처리한다.
-                    text_button_element* const browse { add_text_button(git ? ui_element_kind::settings_git_browse : ui_element_kind::settings_svn_browse, u8"찾아보기", controls) };
-                    const ui_command picker { git ? ui_command::show_git_executable_picker : ui_command::show_svn_executable_picker };
-                    browse->set_action(ui_trigger::left_click, [picker](const ui_action_context&) -> std::vector<input_action> { return { input_action { picker } }; });
+                    luil::text_button_element* const browse { add_text_button(git ? kind_settings_git_browse : kind_settings_svn_browse, u8"찾아보기", controls) };
+                    const app_command picker { git ? app_command::show_git_executable_picker : app_command::show_svn_executable_picker };
+                    browse->set_action(ui_trigger::left_click, make_app_command_click(picker));
 
                     // 지우기는 두 모드 모두 빈 값(자동 탐색)이다. 문서 정의 삭제는
                     // `덮어씀` 배지의 몫이다 (S4.2).
-                    text_button_element* const clear { add_text_button(git ? ui_element_kind::settings_git_clear : ui_element_kind::settings_svn_clear, u8"지우기", controls) };
+                    luil::text_button_element* const clear { add_text_button(git ? kind_settings_git_clear : kind_settings_svn_clear, u8"지우기", controls) };
                     clear->set_tooltip(u8"지우면 자동 탐색을 사용합니다");
                     clear->set_enabled(item.value.empty() == false);
                     const repository_kind tool { git ? repository_kind::git : repository_kind::subversion };
-                    clear->set_action(ui_trigger::left_click,
-                        [tool](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { clear_settings_executable_intent { tool } } } }; });
+                    clear->set_action(ui_trigger::left_click, make_logic_click(clear_settings_executable_intent { tool }));
                     break;
                 }
                 case item_kind::query_timeout: {
                     // 숫자 전용 초안은 logic이 거른다 (handle_edit_settings_timeout).
-                    auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::settings_timeout_input }, dialog_.timeout, std::u8string { u8"600 (기본값)" }) };
+                    auto input {
+                        std::make_unique<luil::text_input_element>(
+                            ui_element_id { kind_settings_timeout_input }, dialog_.timeout, luil::text_input_config { .placeholder = std::u8string { u8"600 (기본값)" } }),
+                    };
                     input->set_tooltip(u8"숫자만 입력합니다 (10~3600초). 비우면 기본값 600초입니다.");
                     controls.push_back(input.get());
                     panel_raw->adopt(std::move(input));
@@ -961,16 +965,16 @@ namespace gitman::ui {
                 }
                 case item_kind::update_submodules:
                     // 업데이트 실행 overlay 대신 이 토글이 값을 정한다 (2026-08-20 검수).
-                    add_toggle(ui_element_kind::settings_submodules_toggle, dialog_.update_submodules, u8"업데이트 실행 시 submodule을 함께 갱신할지 정합니다",
+                    add_toggle(kind_settings_submodules_toggle, dialog_.update_submodules, u8"업데이트 실행 시 submodule을 함께 갱신할지 정합니다",
                         logic_message { toggle_settings_submodules_intent {} }, controls);
                     break;
                 case item_kind::ignore_local_changes:
-                    add_toggle(ui_element_kind::settings_ignore_local_toggle, dialog_.ignore_local_changes,
+                    add_toggle(kind_settings_ignore_local_toggle, dialog_.ignore_local_changes,
                         u8"켜면 SVN 저장소에서 로컬 변경 확인(status)을 건너뛰고 깨끗하다고 믿은 채 조회·업데이트·스위치를 진행합니다 (git에는 적용되지 않음)",
                         logic_message { toggle_settings_ignore_local_intent {} }, controls);
                     break;
                 case item_kind::write_log_files:
-                    add_toggle(ui_element_kind::settings_log_files_toggle, dialog_.write_log_files, u8"켜면 문서 폴더에 .<문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다",
+                    add_toggle(kind_settings_log_files_toggle, dialog_.write_log_files, u8"켜면 문서 폴더에 .<문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다",
                         logic_message { toggle_settings_log_files_intent {} }, controls);
                     break;
                 case item_kind::theme: {
@@ -987,7 +991,7 @@ namespace gitman::ui {
                     break;
                 }
                 case item_kind::accent: {
-                    for (const accent_definition& accent : accent_catalog())
+                    for (const luil::accent_definition& accent : luil::accent_catalog())
                     {
                         auto swatch { std::make_unique<accent_swatch_element>(accent, accent.id == dialog_.accent_id) };
                         swatches_.push_back(swatch.get());
@@ -998,24 +1002,23 @@ namespace gitman::ui {
                 case item_kind::ui_font:
                 case item_kind::code_font: {
                     const bool code { item.kind == item_kind::code_font };
-                    text_button_element* const pick {
-                        add_text_button(code ? ui_element_kind::settings_code_font_pick : ui_element_kind::settings_ui_font_pick, u8"선택…", controls),
+                    luil::text_button_element* const pick {
+                        add_text_button(code ? kind_settings_code_font_pick : kind_settings_ui_font_pick, u8"선택…", controls),
                     };
                     pick->set_tooltip(code ? u8"로그와 diff 본문에 쓸 글꼴을 고릅니다" : u8"창 전체에 쓸 글꼴을 고릅니다");
-                    pick->set_action(
-                        ui_trigger::left_click, [code](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { open_font_dialog_intent { code } } } }; });
+                    pick->set_action(ui_trigger::left_click, make_logic_click(open_font_dialog_intent { code }));
                     break;
                 }
                 case item_kind::file_association: {
-                    // registry 작업은 UI thread의 ui_command로 수행되고 결과는 시스템
+                    // registry 작업은 UI thread의 앱 명령으로 수행되고 결과는 시스템
                     // dialog로 알린다 (REQ-016).
-                    text_button_element* const associate { add_text_button(ui_element_kind::settings_associate, u8"연결 등록", controls) };
+                    luil::text_button_element* const associate { add_text_button(kind_settings_associate, u8"연결 등록", controls) };
                     associate->set_tooltip(u8".version-list 문서를 이 프로그램에 연결합니다 (현재 사용자)");
-                    associate->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::register_file_association } }; });
+                    associate->set_action(ui_trigger::left_click, make_app_command_click(app_command::register_file_association));
 
-                    text_button_element* const dissociate { add_text_button(ui_element_kind::settings_dissociate, u8"연결 해제", controls) };
+                    luil::text_button_element* const dissociate { add_text_button(kind_settings_dissociate, u8"연결 해제", controls) };
                     dissociate->set_tooltip(u8"이 프로그램이 등록한 .version-list 연결을 제거합니다");
-                    dissociate->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { ui_command::unregister_file_association } }; });
+                    dissociate->set_action(ui_trigger::left_click, make_app_command_click(app_command::unregister_file_association));
                     break;
                 }
                 }
@@ -1031,23 +1034,31 @@ namespace gitman::ui {
                 }
             }
 
-        auto confirm { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_dialog_confirm }, std::u8string { u8"저장" }, true) };
+        auto confirm {
+            std::make_unique<luil::text_button_element>(
+                ui_element_id { kind_settings_dialog_confirm }, luil::text_button_config { .text = std::u8string { u8"저장" }, .visual = luil::text_button_visual::accent }),
+        };
         confirm->set_enabled(dialog_.can_confirm);
-        confirm->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { confirm_settings_intent {} } } }; });
+        confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_settings_intent {}));
         confirm_ = confirm.get();
         add_child(std::move(confirm));
 
-        auto cancel { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::settings_dialog_cancel }, std::u8string { u8"취소" }, false) };
-        cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_settings_dialog_intent {} } } }; });
+        auto cancel { std::make_unique<luil::text_button_element>(ui_element_id { kind_settings_dialog_cancel }, luil::text_button_config { .text = std::u8string { u8"취소" } }) };
+        cancel->set_action(ui_trigger::left_click, make_logic_click(cancel_settings_dialog_intent {}));
         cancel_ = cancel.get();
         add_child(std::move(cancel));
 
         // 항목이 창에 다 들어가지 않을 때만 막대를 만든다. 다른 dialog와 같은
-        // element를 쓰고 폭도 같다 (E1.4). 실제 치수는 arrange가 정한다.
+        // element를 쓰고 폭도 같다 (E1.4). 치수는 전부 논리 픽셀이고 배율은 막대의
+        // arrange가 곱한다.
         auto bar {
-            std::make_unique<scrollbar_element>(
-                ui_element_id { ui_element_kind::settings_dialog_scrollbar }, [](const float delta) { return logic_message { settings_scroll_intent { delta } }; },
-                metrics_.content_height * effective, metrics_.viewport_height * effective, dialog_.scroll_offset * effective, effective),
+            std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_settings_dialog } },
+                luil::scrollbar_config {
+                    .scroll = [](const float delta) -> input_action { return make_logic_action(settings_scroll_intent { delta }); },
+                    .content_height = metrics_.content_height,
+                    .viewport_height = metrics_.viewport_height,
+                    .scroll_offset = dialog_.scroll_offset,
+                }),
         };
         bar->set_visible(metrics_.maximum_scroll > 0.0f);
         scrollbar_ = bar.get();

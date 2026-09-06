@@ -1,11 +1,12 @@
 #include "presentation/ui/font_dialog_element.h"
 
-#include "gitman/generated/codicons.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/button_element.h"
-#include "presentation/ui/dialog_elements.h"
-#include "presentation/ui/draw_primitives.h"
-#include "presentation/ui/scrollbar_element.h"
+#include "presentation/ui/element_kinds.h"
+#include "presentation/ui/ui_actions.h"
+
+#include "luil/ui/button_element.h"
+#include "luil/ui/dialog_elements.h"
+#include "luil/ui/scrollbar_element.h"
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkFont.h"
@@ -18,6 +19,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace gitman::ui {
     namespace {
@@ -64,10 +66,9 @@ namespace gitman::ui {
                 , family_ { std::move(family) }
                 , selected_ { selected }
             {
-                set_action(
-                    ui_trigger::left_click, [index](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { select_font_family_intent { index } } } }; });
+                set_action(ui_trigger::left_click, make_logic_click(select_font_family_intent { index }));
                 set_action(ui_trigger::double_click, [index](const ui_action_context&) -> std::vector<input_action> {
-                    return { input_action { logic_message { select_font_family_intent { index } } }, input_action { logic_message { confirm_font_dialog_intent {} } } };
+                    return { make_logic_action(select_font_family_intent { index }), make_logic_action(confirm_font_dialog_intent {}) };
                 });
             }
 
@@ -103,13 +104,14 @@ namespace gitman::ui {
         {
         public:
             explicit font_panel_element(const font_dialog_view& dialog)
-                : ui_element { ui_element_id { ui_element_kind::font_dialog_panel } }
+                : ui_element { ui_element_id { kind_font_dialog_panel } }
                 , title_ { dialog.title }
                 , list_note_ { dialog.list_note }
                 , preview_ { dialog.preview }
                 , preview_family_ { dialog.preview_family }
             {
-                set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return {}; });
+                // 배경 클릭이 뒤의 scrim(취소)으로 새지 않게 흡수만 한다.
+                set_hit_opaque(true);
             }
 
             void adopt(std::unique_ptr<ui_element> child)
@@ -168,6 +170,9 @@ namespace gitman::ui {
                     preview_area.width - 16.0f * scale, preview_font, solid_paint(context.palette.primary_foreground)));
             }
 
+            // 목록 영역 밖에 걸친 행은 눌리지 않는다. 자르는 경계가 panel bounds가
+            // 아니라 `list_area`라 `set_clip_children`으로는 표현할 수 없어 재정의로
+            // 남긴다 (판정 나머지는 기본 구현과 같다).
             const ui_element* hit_test(const float x, const float y) const override
             {
                 if (visible() == false)
@@ -179,7 +184,7 @@ namespace gitman::ui {
                         if (const ui_element* const hit { rows[index - 1]->hit_test(x, y) }; hit != nullptr)
                             return hit;
                 }
-                if (interactive() && bounds().contains(x, y))
+                if ((interactive() || hit_opaque()) && bounds().contains(x, y))
                     return this;
                 return nullptr;
             }
@@ -194,14 +199,14 @@ namespace gitman::ui {
 
     ui_element_id font_dialog_item_id(const std::size_t index)
     {
-        return { ui_element_kind::font_dialog_item, project_id { item_owner_value(index) } };
+        return { kind_font_dialog_item, item_owner_value(index) };
     }
 
-    font_dialog_element::font_dialog_element(font_dialog_view dialog, const float scale)
-        : ui_element { ui_element_id { ui_element_kind::font_dialog } }
-        , dialog_ { std::move(dialog) }
+    font_dialog_element::font_dialog_element(const font_dialog_view& dialog, const float)
+        : ui_element { ui_element_id { kind_font_dialog } }
+        , dialog_ { dialog }
     {
-        set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_font_dialog_intent {} } } }; });
+        set_action(ui_trigger::left_click, make_logic_click(cancel_font_dialog_intent {}));
 
         auto panel { std::make_unique<font_panel_element>(dialog_) };
         for (std::size_t index = 0; index < dialog_.names.size(); ++index)
@@ -212,44 +217,59 @@ namespace gitman::ui {
         panel_ = panel.get();
         add_child(std::move(panel));
 
-        auto input { std::make_unique<text_input_element>(ui_element_id { ui_element_kind::font_dialog_query_input }, dialog_.query, dialog_.query_placeholder) };
+        // 질의 막대는 예전처럼 텍스트 칸과 버튼이 형제다. luil 텍스트 칸의 지우기
+        // 버튼은 글리프가 고정이라 search/close 두 모양을 낼 수 없다 (설계 L5).
+        auto input {
+            std::make_unique<luil::text_input_element>(
+                ui_element_id { kind_font_dialog_query_input }, dialog_.query, luil::text_input_config { .placeholder = dialog_.query_placeholder }),
+        };
         input->set_tooltip(u8"이름의 일부를 입력해 글꼴을 거릅니다");
         query_input_ = input.get();
         add_child(std::move(input));
 
-        button_config clear_config {};
-        clear_config.glyph = dialog_.query_action_enabled ? codicons::icon_close : codicons::icon_search;
-        clear_config.icon_size = 13.0f;
-        auto clear { std::make_unique<button_element>(ui_element_id { ui_element_kind::font_dialog_query_clear }, clear_config) };
+        auto clear {
+            std::make_unique<luil::button_element>(ui_element_id { kind_font_dialog_query_clear },
+                luil::button_config { .glyph = dialog_.query_action_enabled ? codicons::icon_close : codicons::icon_search, .icon_size = 13.0f }),
+        };
         clear->set_enabled(dialog_.query_action_enabled);
         clear->set_tooltip(u8"필터를 지웁니다");
         clear->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> {
             edit_text_input_intent intent {};
             intent.target = text_input_target::font_filter;
             intent.command = text_edit_command::clear;
-            return { input_action { logic_message { std::move(intent) } } };
+            return { make_logic_action(std::move(intent)) };
         });
         query_clear_ = clear.get();
         add_child(std::move(clear));
 
-        auto confirm { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::font_dialog_confirm }, std::u8string { u8"선택" }, true) };
+        auto confirm {
+            std::make_unique<luil::text_button_element>(
+                ui_element_id { kind_font_dialog_confirm }, luil::text_button_config { .text = std::u8string { u8"선택" }, .visual = luil::text_button_visual::accent }),
+        };
         confirm->set_enabled(dialog_.can_confirm);
-        confirm->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { confirm_font_dialog_intent {} } } }; });
+        confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_font_dialog_intent {}));
         confirm_ = confirm.get();
         add_child(std::move(confirm));
 
-        auto cancel { std::make_unique<text_button_element>(ui_element_id { ui_element_kind::font_dialog_cancel }, std::u8string { u8"취소" }, false) };
-        cancel->set_action(ui_trigger::left_click, [](const ui_action_context&) -> std::vector<input_action> { return { input_action { logic_message { cancel_font_dialog_intent {} } } }; });
+        auto cancel {
+            std::make_unique<luil::text_button_element>(
+                ui_element_id { kind_font_dialog_cancel }, luil::text_button_config { .text = std::u8string { u8"취소" }, .visual = luil::text_button_visual::normal }),
+        };
+        cancel->set_action(ui_trigger::left_click, make_logic_click(cancel_font_dialog_intent {}));
         cancel_ = cancel.get();
         add_child(std::move(cancel));
 
-        const float effective { scale > 0.0f ? scale : 1.0f };
-        const float bar_content { static_cast<float>(dialog_.names.size()) * layout_font_dialog_row_height * effective };
-        const float bar_viewport { layout_font_dialog_list_height * effective };
+        // 막대에 넘기는 치수와 스크롤 값은 전부 논리 픽셀이다 (설계 L4).
+        const float bar_content { static_cast<float>(dialog_.names.size()) * layout_font_dialog_row_height };
+        const float bar_viewport { layout_font_dialog_list_height };
         auto bar {
-            std::make_unique<scrollbar_element>(
-                ui_element_id { ui_element_kind::font_dialog_scrollbar }, [](const float delta) { return logic_message { font_dialog_scroll_intent { delta } }; }, bar_content, bar_viewport,
-                dialog_.scroll_offset * effective, effective),
+            std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_font_dialog } },
+                luil::scrollbar_config {
+                    .scroll = [](const float delta) -> input_action { return make_logic_action(font_dialog_scroll_intent { delta }); },
+                    .content_height = bar_content,
+                    .viewport_height = bar_viewport,
+                    .scroll_offset = dialog_.scroll_offset,
+                }),
         };
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();

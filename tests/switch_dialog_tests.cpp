@@ -444,6 +444,11 @@ TEST_CASE("The switch dialog tree wires rows and buttons and routes escape and t
     // 배경(scrim) 클릭도 취소다.
     REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_switch_dialog))) != nullptr);
 
+    // D1-B: 후보 행과 scrim은 Tab 자리가 아니고 버튼만 자리다.
+    REQUIRE(tree->find(gitman::ui::switch_dialog_item_id(0))->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_switch_dialog)->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_switch_dialog_confirm, u8"alpha")->tab_stop());
+
     interaction_harness harness { tree };
     REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(harness.process(luil::key_pressed_event { luil::key_code::escape })) != nullptr);
     REQUIRE(as_intent<gitman::switch_dialog_scroll_intent>(harness.process(luil::mouse_wheel_event { 400.0f, 300.0f, -120.0f })) != nullptr);
@@ -493,6 +498,9 @@ TEST_CASE("The SVN switch tree separates row selection from expansion", "[ui][sw
     dialog.svn_rows.push_back({ gitman::svn_browser_row_kind::loading, u8"https://svn.example.com/repo", u8"조회 중…", 1 });
 
     const auto tree { make_tree(make_dialog_view(std::move(dialog))) };
+    // SVN 행과 펼침 손잡이는 Tab 자리가 아니다 (D1-B).
+    REQUIRE(tree->find(gitman::ui::switch_dialog_svn_item_id(u8"https://svn.example.com/repo"))->tab_stop() == false);
+    REQUIRE(tree->find(gitman::ui::switch_dialog_svn_expand_id(u8"https://svn.example.com/repo"))->tab_stop() == false);
     {
         const auto intent_actions { click_action(*tree, gitman::ui::switch_dialog_svn_item_id(u8"https://svn.example.com/repo")) };
         const auto* const intent { as_intent<gitman::select_svn_browser_node_intent>(intent_actions) };

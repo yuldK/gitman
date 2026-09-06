@@ -4,6 +4,7 @@
 #include "helpers/ui_test_support.h"
 #include "presentation/list_metrics.h"
 #include "presentation/ui/element_kinds.h"
+#include "presentation/ui/font_dialog_element.h"
 #include "presentation/ui/settings_dialog_element.h"
 
 #include "luil/theme/ui_theme.h"
@@ -512,6 +513,11 @@ TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[
     REQUIRE(tools->find({ gitman::ui::kind_settings_submodules_toggle }) == nullptr);
     REQUIRE(tools->find({ gitman::ui::kind_settings_associate }) == nullptr);
     REQUIRE(tools->ids_of_kind(gitman::ui::kind_settings_accent_swatch).empty());
+
+    // D1-B: scrim은 Tab 자리가 아니고 탭 rail 항목·텍스트 칸 같은 dialog 컨트롤은 자리다.
+    REQUIRE(tools->find({ gitman::ui::kind_settings_dialog })->tab_stop() == false);
+    REQUIRE(tools->find({ gitman::ui::kind_settings_tab_item, std::u8string { u8"tools" } })->tab_stop());
+    REQUIRE(tools->find({ gitman::ui::kind_settings_timeout_input })->tab_stop());
 
     // 초안을 고친 뒤 탭을 옮겨도 값은 남는다.
     fixture.controller.handle(gitman::set_settings_executable_intent { gitman::repository_kind::subversion, u8"C:\\tools\\svn.exe" });
@@ -1201,7 +1207,12 @@ TEST_CASE("The wheel scrolls the settings dialog and the font dialog wins on top
 
     // 글꼴 dialog는 환경설정 위에 뜨므로 휠을 먼저 가져간다.
     controller.handle(gitman::open_font_dialog_intent { false });
-    harness.controller.set_tree(gitman::testing::make_tree(*controller.make_view_snapshot()));
+    const auto font_tree { gitman::testing::make_tree(*controller.make_view_snapshot()) };
+    // D1-B: 글꼴 목록의 행과 scrim은 Tab 자리가 아니고 확인·취소 버튼과 질의 칸만 자리다.
+    REQUIRE(font_tree->find(gitman::ui::font_dialog_item_id(0))->tab_stop() == false);
+    REQUIRE(font_tree->find({ gitman::ui::kind_font_dialog })->tab_stop() == false);
+    REQUIRE(font_tree->find({ gitman::ui::kind_font_dialog_query_input })->tab_stop());
+    harness.controller.set_tree(font_tree);
 
     const auto font_actions { harness.process(luil::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
     REQUIRE(gitman::testing::as_intent<gitman::font_dialog_scroll_intent>(font_actions) != nullptr);

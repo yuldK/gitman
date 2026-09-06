@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <variant>
 #include <vector>
 
@@ -240,4 +241,81 @@ TEST_CASE("Dragging a card lets the list insert it at the nearest slot", "[ui][i
         REQUIRE(harness.snapshot().drag->hovered_drop_target.kind == ui::kind_card_list);
         REQUIRE(harness.process(luil::pointer_released_event { source.x + 5.0f, source.y + 30.0f, luil::pointer_button::left, at(60) }).empty());
     }
+}
+
+// D1-B (설계 4장): Tab 자리는 버튼·dialog 컨트롤·텍스트 칸뿐이다. 카드 body·root·
+// 목록·메뉴 항목은 `set_tab_stop(false)`로 빠져 있어 마우스로만 누른다.
+TEST_CASE("Tab visits controls only and skips card bodies", "[ui][interaction][focus]")
+{
+    const auto tree { make_tree(2) };
+    interaction_harness harness { tree };
+
+    // 순회 목록 자체에 배경·목록·카드 body가 없다.
+    const std::vector<luil::ui_element_id> order { tree->focus_order() };
+    REQUIRE(order.empty() == false);
+    for (const luil::ui_element_id& id : order)
+    {
+        REQUIRE(id.kind != luil::ui_element_kind::root);
+        REQUIRE(id.kind != ui::kind_toolbar);
+        REQUIRE(id.kind != ui::kind_card_list);
+        REQUIRE(id.kind != ui::kind_card_body);
+    }
+    REQUIRE(order.front() == id_of(ui::kind_toolbar_refresh_all));
+
+    // 목록에 딸린 스크롤 막대도 자리가 아니다 (luil list_element와 같은 관례).
+    const auto long_tree { make_tree(make_view(300)) };
+    REQUIRE(find(*long_tree, ui::kind_scrollbar, ui::scrollbar_owner_cards) != nullptr);
+    for (const luil::ui_element_id& id : long_tree->focus_order())
+        REQUIRE(id.kind != ui::kind_scrollbar);
+
+    // 첫 Tab은 도구 막대의 첫 버튼에 선다. 키보드로 옮긴 초점이라 테가 그려진다.
+    REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::tab }).empty());
+    REQUIRE(harness.snapshot().focused == id_of(ui::kind_toolbar_refresh_all));
+    REQUIRE(harness.snapshot().focus_visible);
+
+    // Tab을 이어 누르면 카드 body에는 서지 않고 카드의 refresh 버튼에 닿는다.
+    bool reached_card_refresh { false };
+    for (std::size_t step = 0; step < order.size(); ++step)
+    {
+        REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::tab }).empty());
+        REQUIRE(harness.snapshot().focused.kind != ui::kind_card_body);
+        if (harness.snapshot().focused == id_of(ui::kind_card_refresh, u8"card-0"))
+        {
+            reached_card_refresh = true;
+            break;
+        }
+    }
+    REQUIRE(reached_card_refresh);
+}
+
+TEST_CASE("Enter after clicking a card refreshes it instead of reselecting", "[ui][interaction][focus]")
+{
+    const auto tree { make_tree(2) };
+    interaction_harness harness { tree };
+
+    const auto selected { click(harness, bounds_of(*tree, ui::kind_card_body, u8"card-1")) };
+    REQUIRE(as_intent<gitman::select_card_intent>(selected)->id->value == u8"card-1");
+    // 카드 body가 자리가 아니라 클릭이 초점을 세우지 않는다. policy의 focused_card_만 선다.
+    REQUIRE(harness.snapshot().focused == luil::ui_element_id {});
+    REQUIRE(harness.policy.focused_card()->value == u8"card-1");
+
+    // 그래서 Enter는 luil의 활성 키(= body의 좌클릭)가 아니라 policy로 흘러
+    // 초점 카드 새로 고침이 된다.
+    const auto refreshed { harness.process(luil::key_pressed_event { luil::key_code::enter }) };
+    const auto* const intent { as_intent<gitman::refresh_card_intent>(refreshed) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->id.value == u8"card-1");
+}
+
+TEST_CASE("Enter runs the action of the focused control", "[ui][interaction][focus]")
+{
+    interaction_harness harness { make_tree(2) };
+
+    REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::tab }).empty());
+    REQUIRE(harness.snapshot().focused == id_of(ui::kind_toolbar_refresh_all));
+
+    const auto actions { harness.process(luil::key_pressed_event { luil::key_code::enter }) };
+    const gitman::logic_message* const message { as_message(actions) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::refresh_all_intent>(*message));
 }

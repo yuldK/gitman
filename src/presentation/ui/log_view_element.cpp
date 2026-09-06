@@ -106,6 +106,8 @@ namespace gitman::ui {
             .scroll_offset = log_.scroll_offset,
         };
         auto scrollbar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_log } }, std::move(scrollbar_config)) };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        scrollbar->set_tab_stop(false);
         scrollbar->set_visible(content_height > viewport_height && viewport_height > 0.0f);
         scrollbar_ = scrollbar.get();
         add_child(std::move(scrollbar));

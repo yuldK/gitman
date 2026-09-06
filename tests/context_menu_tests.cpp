@@ -245,6 +245,13 @@ TEST_CASE("Menu item clicks close the menu first and then fire the action", "[ui
     const auto tree { make_tree(make_menu_view(100.0f, 100.0f, { true, true, true, true, false, true })) };
     interaction_harness harness { tree };
 
+    SECTION("메뉴 항목과 backdrop은 Tab 자리가 아니다")
+    {
+        // D1-B: 메뉴 안 이동은 ↑/↓ 강조가 맡고 Tab은 메뉴로 들어오지 않는다.
+        REQUIRE(tree->find(ui::context_menu_item_id(0))->tab_stop() == false);
+        REQUIRE(find(*tree, ui::kind_context_menu)->tab_stop() == false);
+    }
+
     SECTION("저장소 열기는 폴더 열기 요청이다")
     {
         const auto actions { click(harness, tree->find(ui::context_menu_item_id(0))->bounds()) };

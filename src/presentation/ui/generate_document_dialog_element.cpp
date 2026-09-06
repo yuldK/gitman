@@ -146,6 +146,8 @@ namespace gitman::ui {
         , dialog_ { std::move(dialog) }
     {
         set_action(ui_trigger::left_click, make_logic_click(cancel_generate_document_intent {}));
+        // scrim은 마우스만의 자리다. 키보드 취소는 Esc다 (설계 D1-B).
+        set_tab_stop(false);
 
         auto panel { std::make_unique<generate_panel_element>(dialog_) };
         panel_ = panel.get();

@@ -110,6 +110,9 @@ namespace gitman::ui {
                 set_enabled(item.enabled);
                 set_action(ui_trigger::left_click,
                     [entry = item.entry, owner, target = item.target_path](const ui_action_context&) { return entry_actions(entry, owner, target); });
+                // 메뉴 항목은 Tab 자리가 아니다 (설계 D1-B). 메뉴 안 이동은 ↑/↓와
+                // `menu_highlight`가 맡는다.
+                set_tab_stop(false);
             }
 
             void arrange(const arrange_context& context) override
@@ -206,6 +209,8 @@ namespace gitman::ui {
         set_hit_opaque(true);
         set_action(ui_trigger::left_click, make_logic_click(close_context_menu_intent {}));
         set_action(ui_trigger::right_click, make_logic_click(close_context_menu_intent {}));
+        // backdrop은 마우스만의 자리다 (설계 D1-B). 메뉴 닫기는 Esc가 맡는다.
+        set_tab_stop(false);
 
         auto panel { std::make_unique<menu_panel_element>() };
         for (std::size_t index = 0; index < menu_.items.size(); ++index)

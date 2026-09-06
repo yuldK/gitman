@@ -57,6 +57,11 @@ namespace gitman::ui {
         // 활성이다. 흐림 표시는 draw가 card_.enabled로 판정한다.
         set_action(ui_trigger::left_click, make_logic_click(select_card_intent { { card_.id } }));
 
+        // 카드 body는 Tab 자리가 아니다 (설계 D1-B). 카드 사이 이동은 policy의
+        // ↑/↓이고, Tab은 카드 버튼 3개만 지난다. 자리로 두면 클릭 뒤 Enter가
+        // 이 선택 액션을 다시 실행해 "초점 카드 새로 고침"과 어긋난다.
+        set_tab_stop(false);
+
         // 더블 클릭은 로컬 변경 확인 dialog다 (field-feedback-design 2.3). 카드 3번째
         // 줄 chip은 element가 아니라 hit 대상이 될 수 없어 카드 수준 진입점을 쓴다.
         set_action(ui_trigger::double_click, make_logic_click(open_local_changes_intent { card_.id }));

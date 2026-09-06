@@ -57,6 +57,9 @@ namespace gitman::ui {
                 , row_ { row }
             {
                 set_action(ui_trigger::left_click, make_logic_click(select_local_change_intent { index }));
+                // 목록 행은 Tab 자리가 아니다 (설계 D1-B). 행 안의 열기 아이콘도
+                // 같이 뺀다 — 행마다 자리가 둘씩 늘면 Tab이 목록에 갇힌다.
+                set_tab_stop(false);
 
                 // 외부 열기는 UI thread 명령이다 (설계 L7). 경로를 인자로 싣는다.
                 auto vscode {
@@ -64,6 +67,7 @@ namespace gitman::ui {
                 };
                 vscode->set_tooltip(u8"VSCode에서 열기");
                 vscode->set_action(ui_trigger::left_click, make_app_command_click(app_command::open_in_vscode, row.absolute_path));
+                vscode->set_tab_stop(false);
                 open_vscode_ = vscode.get();
                 add_child(std::move(vscode));
 
@@ -73,6 +77,7 @@ namespace gitman::ui {
                 };
                 explorer->set_tooltip(u8"탐색기에서 열기");
                 explorer->set_action(ui_trigger::left_click, make_app_command_click(app_command::open_in_explorer_select, row.absolute_path));
+                explorer->set_tab_stop(false);
                 open_explorer_ = explorer.get();
                 add_child(std::move(explorer));
             }
@@ -351,6 +356,8 @@ namespace gitman::ui {
     {
         // 배경 클릭은 닫기다.
         set_action(ui_trigger::left_click, make_logic_click(cancel_local_changes_dialog_intent {}));
+        // scrim은 마우스만의 자리다. 키보드 닫기는 Esc다 (설계 D1-B).
+        set_tab_stop(false);
 
         auto panel { std::make_unique<local_changes_panel_element>(dialog_) };
         for (std::size_t index = 0; index < dialog_.rows.size(); ++index)
@@ -382,6 +389,8 @@ namespace gitman::ui {
                     .scroll_offset = dialog_.list_scroll,
                 }),
         };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        list_bar->set_tab_stop(false);
         list_bar->set_visible(list_content > layout_local_changes_list_height);
         list_scrollbar_ = list_bar.get();
         add_child(std::move(list_bar));
@@ -396,6 +405,8 @@ namespace gitman::ui {
                     .scroll_offset = dialog_.diff_scroll,
                 }),
         };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        diff_bar->set_tab_stop(false);
         diff_bar->set_visible(diff_content > layout_local_changes_diff_height);
         diff_scrollbar_ = diff_bar.get();
         add_child(std::move(diff_bar));

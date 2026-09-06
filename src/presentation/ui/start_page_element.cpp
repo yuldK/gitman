@@ -104,6 +104,9 @@ namespace gitman::ui {
             {
                 set_tooltip(std::move(tooltip));
                 set_action(ui_trigger::left_click, [action = std::move(action)](const ui_action_context&) -> std::vector<input_action> { return { action }; });
+                // 행 안의 아이콘은 Tab 자리가 아니다 (설계 D1-B). 최근 목록이 길면
+                // 자리가 행마다 둘씩 늘어 Tab이 목록을 벗어나지 못한다.
+                set_tab_stop(false);
             }
 
             void arrange(const arrange_context& context) override
@@ -138,6 +141,9 @@ namespace gitman::ui {
                 set_tooltip(recent.path);
                 set_action(ui_trigger::left_click,
                     [path = recent.path](const ui_action_context&) -> std::vector<input_action> { return { make_logic_action(open_document_intent { path }) }; });
+                // 최근 항목 행은 Tab 자리가 아니다 (설계 D1-B). Tab은 시작 열의
+                // 두 줄(문서 열기·새 문서 만들기)만 지난다.
+                set_tab_stop(false);
 
                 // 고정한 항목은 채워진 글리프로 구별한다 (2026-08-23 지시).
                 const char32_t pin_glyph { recent.pinned ? codicons::icon_pinned : codicons::icon_pin };

@@ -155,6 +155,13 @@ TEST_CASE("A recent row opens its document and the remove icon only drops the en
     REQUIRE(remove_intent != nullptr);
     REQUIRE(remove_intent->path == u8"D:\\workspaces\\team.version-list");
 
+    // 최근 항목 행과 그 안의 아이콘은 Tab 자리가 아니다 (D1-B). Tab은 시작 열의
+    // 두 줄만 지난다.
+    REQUIRE(tree->find(gitman::ui::start_page_recent_item_id(1))->tab_stop() == false);
+    REQUIRE(tree->find(gitman::ui::start_page_recent_remove_id(0))->tab_stop() == false);
+    REQUIRE(tree->find(gitman::ui::start_page_recent_pin_id(0))->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_start_page_open_document)->tab_stop());
+
     // 제거 아이콘은 행 위에 있어 hit test에서 먼저 걸린다.
     const luil::ui_element* const remove { tree->find(gitman::ui::start_page_recent_remove_id(0)) };
     REQUIRE(remove != nullptr);

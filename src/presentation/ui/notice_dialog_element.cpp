@@ -102,6 +102,8 @@ namespace gitman::ui {
     {
         // 배경 클릭은 닫기다.
         set_action(ui_trigger::left_click, make_logic_click(dismiss_notice_intent {}));
+        // scrim은 마우스만의 자리다. 키보드 닫기는 Esc다 (설계 D1-B).
+        set_tab_stop(false);
 
         auto panel { std::make_unique<notice_panel_element>(dialog_) };
         panel_ = panel.get();

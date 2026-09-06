@@ -889,6 +889,9 @@ namespace gitman::ui {
     {
         // 배경 클릭은 취소다.
         set_action(ui_trigger::left_click, make_logic_click(cancel_settings_dialog_intent {}));
+        // scrim은 마우스만의 자리다. 키보드 취소는 Esc이고, Tab은 탭 rail·토글·
+        // 배지·버튼 같은 dialog 컨트롤만 돈다 (설계 D1-B).
+        set_tab_stop(false);
 
         const std::vector<tab_model> tabs { build_tabs(dialog_) };
         const std::size_t accent_count { luil::accent_catalog().size() };
@@ -1060,6 +1063,8 @@ namespace gitman::ui {
                     .scroll_offset = dialog_.scroll_offset,
                 }),
         };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        bar->set_tab_stop(false);
         bar->set_visible(metrics_.maximum_scroll > 0.0f);
         scrollbar_ = bar.get();
         add_child(std::move(bar));

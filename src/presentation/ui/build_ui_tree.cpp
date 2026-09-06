@@ -58,6 +58,9 @@ namespace gitman::ui {
                 : ui_element { ui_element_id { ui_element_kind::root } }
             {
                 set_action(ui_trigger::left_click, make_logic_click(select_card_intent {}));
+                // 배경은 마우스로만 누르는 자리다. Tab은 버튼·dialog 컨트롤·텍스트
+                // 칸만 돈다 (설계 D1-B).
+                set_tab_stop(false);
 
                 // 배너의 문서 주소는 unix 스타일 표시 문자열이다 (T2). snapshot의
                 // `document_path`는 셸·파일 dialog가 쓰는 Windows 원형이라 따로 있다.

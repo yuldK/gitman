@@ -70,6 +70,8 @@ namespace gitman::ui {
                 set_action(ui_trigger::double_click, [index](const ui_action_context&) -> std::vector<input_action> {
                     return { make_logic_action(select_font_family_intent { index }), make_logic_action(confirm_font_dialog_intent {}) };
                 });
+                // 목록 행은 Tab 자리가 아니다 (설계 D1-B).
+                set_tab_stop(false);
             }
 
             void arrange(const arrange_context& context) override
@@ -207,6 +209,8 @@ namespace gitman::ui {
         , dialog_ { dialog }
     {
         set_action(ui_trigger::left_click, make_logic_click(cancel_font_dialog_intent {}));
+        // scrim은 마우스만의 자리다. 키보드 취소는 Esc다 (설계 D1-B).
+        set_tab_stop(false);
 
         auto panel { std::make_unique<font_panel_element>(dialog_) };
         for (std::size_t index = 0; index < dialog_.names.size(); ++index)
@@ -271,6 +275,8 @@ namespace gitman::ui {
                     .scroll_offset = dialog_.scroll_offset,
                 }),
         };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        bar->set_tab_stop(false);
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();
         add_child(std::move(bar));

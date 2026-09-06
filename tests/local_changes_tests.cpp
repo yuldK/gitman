@@ -195,6 +195,13 @@ TEST_CASE("The dialog tree exposes rows, the diff pane, and close paths", "[ui][
     REQUIRE(as_intent<gitman::cancel_local_changes_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_local_changes_dialog_close, u8"alpha"))) != nullptr);
     REQUIRE(as_intent<gitman::cancel_local_changes_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_local_changes_dialog))) != nullptr);
 
+    // D1-B: 변경 행과 그 안의 열기 아이콘, scrim은 Tab 자리가 아니다.
+    REQUIRE(tree->find(gitman::ui::local_changes_item_id(1))->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_local_changes_dialog)->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_local_changes_open_vscode, gitman::ui::local_changes_item_id(1).owner)->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_local_changes_open_explorer, gitman::ui::local_changes_item_id(1).owner)->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_local_changes_dialog_close, u8"alpha")->tab_stop());
+
     interaction_harness harness { tree };
 
     // 휠은 diff pane 위에서 diff를, 그 밖에서 목록을 스크롤한다.

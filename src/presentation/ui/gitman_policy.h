@@ -16,6 +16,16 @@ namespace gitman::ui {
     // 카드 목록의 키보드 초점, dialog Esc 사슬. 텍스트 칸 키·클립보드·메뉴 탐색·
     // Tab·활성 키·drag 중 Esc는 luil controller가 이미 처리한다.
     //
+    // Tab 자리는 D1-B다 (설계 4장): 버튼·dialog 컨트롤·텍스트 칸만 자리이고 카드
+    // body·root·메뉴·목록 행은 element 쪽에서 `set_tab_stop(false)`로 빠졌다.
+    // 그래서 카드 body를 클릭한 뒤의 Enter는 luil의 활성 키(= 그 body의 좌클릭)가
+    // 아니라 여기 `on_key`로 흘러 `focused_card_` 새로 고침이 된다. 초점 순회 순서
+    // (`order_focus`)와 이동 알림(`on_focus_moved`)은 luil 기본 그대로다 — 그리기
+    // 순서가 곧 Tab 순서이고, 앱이 초점 이동에 낼 메시지가 없다.
+    // 반대로 Tab으로 도구 막대 버튼에 선 채 ↓로 카드 선택을 옮기면 Enter는 luil의
+    // 초점 컨트롤(그 버튼)이 먼저 받는다 — 초점 모델이 둘(luil `focused`·여기
+    // `focused_card_`)이라 생기는 수용된 차이다 (설계 5장).
+    //
     // 구현은 input thread에서 불린다.
     class gitman_policy final : public luil::interaction_policy
     {

@@ -334,6 +334,11 @@ TEST_CASE("The discovery dialog elements register toggles and actions", "[ui][di
     REQUIRE(excluded != nullptr);
     REQUIRE(excluded->enabled() == false);
 
+    // D1-B: 체크박스 행과 scrim은 Tab 자리가 아니고 버튼 줄만 자리다.
+    REQUIRE(tree->find(gitman::ui::discovery_dialog_item_id(0))->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_discovery_dialog)->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_discovery_dialog_confirm)->tab_stop());
+
     const std::vector<luil::input_action> confirm { click(*tree, id_of(gitman::ui::kind_discovery_dialog_confirm)) };
     const gitman::logic_message* const confirm_message { as_message(confirm) };
     REQUIRE(confirm_message != nullptr);

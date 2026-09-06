@@ -91,6 +91,9 @@ namespace gitman::ui {
                 : ui_element { discovery_dialog_item_id(index) }
                 , row_ { row }
             {
+                // 목록 행은 Tab 자리가 아니다 (설계 D1-B). Tab은 dialog의 버튼
+                // 줄만 지난다.
+                set_tab_stop(false);
                 if (row_.candidate.selectable())
                 {
                     set_action(ui_trigger::left_click, make_logic_click(toggle_discovery_candidate_intent { index }));
@@ -265,6 +268,8 @@ namespace gitman::ui {
     {
         // 배경 클릭은 취소다 (등록 실행 중에는 logic이 무시한다).
         set_action(ui_trigger::left_click, make_logic_click(cancel_discovery_dialog_intent {}));
+        // scrim은 마우스만의 자리다. 키보드 취소는 Esc다 (설계 D1-B).
+        set_tab_stop(false);
 
         auto panel { std::make_unique<discovery_panel_element>(dialog_) };
         for (std::size_t index = 0; index < dialog_.rows.size(); ++index)
@@ -302,6 +307,8 @@ namespace gitman::ui {
                     .scroll_offset = dialog_.scroll_offset,
                 }),
         };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        bar->set_tab_stop(false);
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();
         add_child(std::move(bar));

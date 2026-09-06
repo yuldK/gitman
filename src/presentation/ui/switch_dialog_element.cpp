@@ -115,6 +115,9 @@ namespace gitman::ui {
                 , selected_ { selected }
             {
                 set_action(ui_trigger::left_click, make_logic_click(select_switch_candidate_intent { index }));
+                // 목록 행은 Tab 자리가 아니다 (설계 D1-B). 후보 이동은 질의 칸과
+                // 마우스가 맡는다.
+                set_tab_stop(false);
                 if (candidate_.requires_tracking_branch)
                     set_tooltip(u8"local tracking branch를 만들고 전환합니다 (확인 필요)");
                 else if (candidate_.stale)
@@ -172,6 +175,8 @@ namespace gitman::ui {
             {
                 set_action(ui_trigger::left_click, make_logic_click(toggle_svn_browser_node_intent { std::move(url) }));
                 set_tooltip(expanded_ ? u8"접기" : u8"펼치기");
+                // 행 안의 펼침 손잡이도 Tab 자리가 아니다 (설계 D1-B).
+                set_tab_stop(false);
             }
 
             void arrange(const arrange_context& context) override
@@ -208,6 +213,8 @@ namespace gitman::ui {
                 , row_ { std::move(row) }
             {
                 set_action(ui_trigger::left_click, make_logic_click(select_svn_browser_node_intent { row_.url }));
+                // 저장소 browser의 행도 목록 행이라 Tab 자리가 아니다 (설계 D1-B).
+                set_tab_stop(false);
                 if (row_.can_expand)
                 {
                     set_action(ui_trigger::double_click, make_logic_click(toggle_svn_browser_node_intent { row_.url }));
@@ -438,6 +445,8 @@ namespace gitman::ui {
         , dialog_ { dialog }
     {
         set_action(ui_trigger::left_click, make_logic_click(cancel_switch_dialog_intent {}));
+        // scrim은 마우스만의 자리다. 키보드 취소는 Esc다 (설계 D1-B).
+        set_tab_stop(false);
 
         auto panel { std::make_unique<switch_panel_element>(dialog_) };
         if (dialog_.svn_browser)
@@ -488,6 +497,8 @@ namespace gitman::ui {
         bar_config.viewport_height = bar_viewport;
         bar_config.scroll_offset = dialog_.scroll_offset;
         auto bar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_switch_dialog } }, std::move(bar_config)) };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        bar->set_tab_stop(false);
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();
         add_child(std::move(bar));

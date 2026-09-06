@@ -139,6 +139,10 @@ namespace gitman::ui {
     {
         // 텍스트 칸·메뉴·Tab·활성 키·가둠 Esc·drag 중 Esc는 luil controller가 이미
         // 가져갔다. 여기 오는 것은 앱만 뜻을 아는 키다.
+        //
+        // D1-B로 카드 body가 Tab 자리에서 빠졌으므로 카드를 클릭한 뒤의 Enter도
+        // 활성 키에 걸리지 않고 여기까지 온다 — 아래 `enter` 가지가 `focused_card_`
+        // 새로 고침을 낸다 (클릭은 `on_click`이 그 값을 세워 둔다).
         switch (event.key)
         {
         case luil::key_code::arrow_down:
@@ -209,9 +213,12 @@ namespace gitman::ui {
     void gitman_policy::on_click(const luil::ui_element& element)
     {
         // 키보드 탐색의 초점을 마우스 선택에 잇는다 (예전 `process_release`의 몫).
-        if (element.id().kind == kind_card_body)
+        // 빈 배경(root·카드 목록의 빈 자리·배너 바탕)을 누르면 선택이 풀리므로 초점도
+        // 같이 지운다 — 셋 다 `select_card_intent {}`를 내는 자리다 (D1-B).
+        const luil::ui_element_kind kind { element.id().kind };
+        if (kind == kind_card_body)
             focused_card_ = project_id { element.id().owner };
-        else if (element.id().kind == luil::ui_element_kind::root)
+        else if (kind == luil::ui_element_kind::root || kind == kind_card_list || kind == kind_toolbar)
             focused_card_.reset();
     }
 

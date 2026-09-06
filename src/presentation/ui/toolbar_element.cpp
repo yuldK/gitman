@@ -33,6 +33,9 @@ namespace gitman::ui {
             // 우클릭 액션이 생기면 배너가 hit test에 걸린다. 지금까지 root로
             // 흘러가 선택을 해제하던 좌클릭을 그대로 유지한다.
             set_action(ui_trigger::left_click, make_logic_click(select_card_intent {}));
+            // 배너 바탕은 마우스만의 자리다. Tab은 배너의 버튼들로 바로 간다
+            // (설계 D1-B).
+            set_tab_stop(false);
         }
 
         auto document_label { std::make_unique<luil::label_element>(ui_element_id { kind_toolbar_document_path }, luil::label_config { .text = std::move(document_text) }) };

@@ -111,6 +111,10 @@ TEST_CASE("The notice dialog draws above the other dialogs and closes on click o
     const std::vector<luil::input_action> background { invoke_click(*dialog) };
     REQUIRE(as_intent<gitman::dismiss_notice_intent>(background) != nullptr);
 
+    // D1-B: scrim은 Tab 자리가 아니고 확인 버튼만 자리다.
+    REQUIRE(dialog->tab_stop() == false);
+    REQUIRE(confirm->tab_stop());
+
     // 알림은 환경설정 위에 있으므로 hit test와 Esc 모두 알림이 먼저 가져간다.
     const luil::rect_f box { confirm->bounds() };
     REQUIRE(tree->hit_test(box.x + box.width / 2.0f, box.y + box.height / 2.0f) == confirm);

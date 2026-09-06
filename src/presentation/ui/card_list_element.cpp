@@ -28,6 +28,8 @@ namespace gitman::ui {
 
         // 목록이 hit 대상이 되므로 빈 영역 클릭의 선택 해제를 root처럼 등록한다.
         set_action(ui_trigger::left_click, make_logic_click(select_card_intent {}));
+        // 빈 자리 클릭은 마우스만의 것이라 Tab 순회에서 뺀다 (설계 D1-B).
+        set_tab_stop(false);
 
         // 목록 밖 좌표는 자식까지 함께 걸러낸다. 스크롤로 걸친 카드가 toolbar 자리의
         // 클릭을 가져가지 않게 한다 (예전 hit_test 재정의를 대신한다).
@@ -110,6 +112,8 @@ namespace gitman::ui {
         config.viewport_height = logical_viewport;
         config.scroll_offset = logical_scroll;
         auto scrollbar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_cards } }, std::move(config)) };
+        // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
+        scrollbar->set_tab_stop(false);
         scrollbar->set_visible(content > layout.viewport_height);
         scrollbar_ = scrollbar.get();
         add_child(std::move(scrollbar));

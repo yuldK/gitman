@@ -281,6 +281,9 @@ TEST_CASE("The tree shows the log pane with wired header buttons", "[log][ui]")
     const luil::ui_element* const pane { find(*tree, gitman::ui::kind_log_pane) };
     REQUIRE(pane != nullptr);
     REQUIRE(pane->visible());
+    // D1-B: pane 자체는 클릭을 흡수만 하는 자리라 Tab이 서지 않는다. 헤더 버튼은 자리다.
+    REQUIRE(pane->tab_stop() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_log_filter, u8"alpha")->tab_stop());
 
     const std::vector<luil::input_action> filter_actions { invoke_click(*tree, gitman::ui::kind_log_filter, u8"alpha") };
     const auto* const filter_intent { as_intent<gitman::set_log_filter_intent>(filter_actions) };

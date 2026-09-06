@@ -86,10 +86,13 @@ namespace gitman::ui {
                 const rect_f box { bounds() };
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
+                // 고른 행 채움은 그대로 두고, hover·눌림 채움만 luil 공통 경로로 그린다.
+                // 색이 primary_foreground 0.06에서 팔레트 button_hover_background(눌림은
+                // button_pressed_background)로 바뀌는 것은 설계 L5가 받아들인 변화다.
                 if (selected_)
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
-                else if (interaction.hovered == id())
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
+                else
+                    draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
 
                 const float inset { 8.0f * scale };
                 const SkFont font { sk_ref_sp(family_or_ui(context, family_)), 12.5f * scale };
@@ -113,8 +116,7 @@ namespace gitman::ui {
                 , preview_ { dialog.preview }
                 , preview_family_ { dialog.preview_family }
             {
-                // 배경 클릭이 뒤의 scrim(취소)으로 새지 않게 흡수만 한다.
-                set_hit_opaque(true);
+                // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
             }
 
             void adopt(std::unique_ptr<ui_element> child)

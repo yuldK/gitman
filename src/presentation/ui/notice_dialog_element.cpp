@@ -34,7 +34,7 @@ namespace gitman::ui {
             return panel_padding * 2.0f + title_height + lines + 12.0f + button_height;
         }
 
-        // 제목·본문을 그리는 panel이다. hit를 흡수해 배경의 닫기로 흐르지 않게 한다.
+        // 제목·본문을 그리는 panel이다.
         class notice_panel_element final : public ui_element
         {
         public:
@@ -42,7 +42,7 @@ namespace gitman::ui {
                 : ui_element { ui_element_id { kind_notice_dialog_panel } }
                 , dialog_ { dialog }
             {
-                set_hit_opaque(true);
+                // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
             }
 
             void arrange(const arrange_context& context) override

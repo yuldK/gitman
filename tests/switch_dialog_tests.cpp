@@ -158,6 +158,29 @@ namespace {
         return intent;
     }
 
+    // 질의 막대의 조합 상태다 (TSF가 보내는 것과 같다). `text`는 조합 중인 글자까지
+    // 담은 박스 전체 표시 글이고, `composing_begin`부터 끝까지가 조합 구간이다.
+    gitman::set_text_composition_intent compose_query(const std::u8string_view text, const std::size_t composing_begin = 0u)
+    {
+        gitman::set_text_composition_intent intent {};
+        intent.target = gitman::text_input_target::switch_query;
+        intent.text = text;
+        intent.caret = text.size();
+        intent.composing_begin = composing_begin;
+        intent.composing_end = text.size();
+        intent.composing = true;
+        return intent;
+    }
+
+    // 조합이 끝났음을 알린다. 확정된 글은 별도의 편집 intent로 온다.
+    gitman::set_text_composition_intent end_query_composition()
+    {
+        gitman::set_text_composition_intent intent {};
+        intent.target = gitman::text_input_target::switch_query;
+        intent.composing = false;
+        return intent;
+    }
+
     // element에 걸린 왼쪽 클릭 액션을 그 자리에서 실행한다 (조립 확인용).
     std::vector<luil::input_action> click_action(const luil::ui_tree& tree, const luil::ui_element_id& id)
     {
@@ -1116,4 +1139,109 @@ TEST_CASE("Ending a composition clears the overlay and commits as one undo step"
     undo.command = gitman::text_edit_command::undo;
     fixture.controller.handle(undo);
     REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->query.text.empty());
+}
+
+TEST_CASE("A composing query narrows the Git list and falls back to the committed text", "[logic][switch-ui][ime][query]")
+{
+    // 점진 검색의 두 줄 규칙이다 (luil `search_query`와 같다). 조합 글이 섞인 표시
+    // 글로 먼저 거르고, 그 글로 하나도 맞지 않으면 확정 글로 물러선다 — 단 확정
+    // 글이 비어 있으면 물러서지 않는다 (빈 질의는 "전부"라서 목록이 되살아난다).
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    candidates.push_back(make_candidate(u8"feature/login", gitman::switch_candidate_kind::git_local_branch));
+    candidates.push_back(make_candidate(u8"main", gitman::switch_candidate_kind::git_local_branch));
+    candidates.push_back(make_candidate(u8"release", gitman::switch_candidate_kind::git_local_branch));
+    fixture.deliver_candidates(std::move(candidates));
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->candidates.size() == 3u);
+
+    // 확정 글이 없어도 조합 글만으로 목록이 좁아진다.
+    fixture.controller.handle(compose_query(u8"ma"));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->query.text.empty());
+        REQUIRE(view->switch_dialog->candidates.size() == 1u);
+        REQUIRE(view->switch_dialog->candidates[0].display_name == u8"main");
+    }
+
+    // Enter는 보이는 첫 후보를 잡는다 — 조합 중에도 같은 목록을 본다.
+    fixture.controller.handle(gitman::submit_switch_query_intent {});
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->selected.has_value());
+        REQUIRE(*view->switch_dialog->selected == 0u);
+        REQUIRE(view->switch_dialog->candidates[*view->switch_dialog->selected].display_name == u8"main");
+    }
+
+    // 맞는 것이 없어도 확정 글이 비어 있으면 물러서지 않는다.
+    fixture.controller.handle(compose_query(u8"mx"));
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->candidates.empty());
+
+    // 조합이 끝나면 확정 글(아직 빈 글) 기준으로 돌아온다.
+    fixture.controller.handle(end_query_composition());
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->candidates.size() == 3u);
+
+    // 확정 글이 있으면 맞지 않는 조합 글에서 그리로 물러선다.
+    type_query(fixture.controller, u8"ma");
+    fixture.controller.handle(compose_query(u8"max", 2u));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->query.text == u8"ma");
+        REQUIRE(view->switch_dialog->candidates.size() == 1u);
+        REQUIRE(view->switch_dialog->candidates[0].display_name == u8"main");
+    }
+
+    fixture.controller.handle(end_query_composition());
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->candidates.size() == 1u);
+        REQUIRE(view->switch_dialog->candidates[0].display_name == u8"main");
+    }
+}
+
+TEST_CASE("A composition clears the selection and the tracking confirmation", "[logic][switch-ui][ime][query]")
+{
+    // 조합 한 단계마다 목록이 달라질 수 있어(D5) 편집과 같은 규칙으로 사라질 수 있는
+    // 선택·확인 단계를 지운다 — 확인한 적 없는 후보로 tracking branch를 만들지 않는다.
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    candidates.push_back(make_candidate(u8"origin/feature", gitman::switch_candidate_kind::git_remote_branch, true));
+    candidates.push_back(make_candidate(u8"main", gitman::switch_candidate_kind::git_local_branch));
+    fixture.deliver_candidates(std::move(candidates));
+    fixture.controller.handle(gitman::select_switch_candidate_intent { 0 });
+    fixture.controller.handle(gitman::confirm_switch_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->confirm_label == u8"생성 확인");
+
+    fixture.controller.handle(compose_query(u8"m"));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->switch_dialog->selected.has_value() == false);
+        REQUIRE(view->switch_dialog->confirm_label != u8"생성 확인");
+    }
+
+    // 선택이 없는 채의 확인은 아무것도 실행하지 않는다.
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::confirm_switch_intent {});
+    REQUIRE(fixture.submitter.requests.empty());
+
+    // 표시 글이 그대로인 조합 갱신(caret 이동)은 목록이 그대로라 선택도 남는다.
+    fixture.controller.handle(gitman::select_switch_candidate_intent { 0 });
+    fixture.controller.handle(compose_query(u8"m"));
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->selected == 0u);
+    fixture.controller.handle(compose_query(u8"ma"));
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->selected.has_value() == false);
+}
+
+TEST_CASE("The SVN address bar keeps its rows while a composition is open", "[logic][switch-ui][ime][svn]")
+{
+    // SVN의 질의 막대는 필터가 아니라 주소 막대라 조합 글이 목록을 건드리지 않는다.
+    dialog_fixture fixture { gitman::repository_kind::subversion };
+    const std::uint64_t root_operation { fixture.deliver_svn_browser() };
+    fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
+    const std::size_t rows { fixture.controller.make_view_snapshot()->switch_dialog->svn_rows.size() };
+    REQUIRE(rows > 0u);
+
+    fixture.controller.handle(compose_query(u8"zzz"));
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->svn_rows.size() == rows);
+    REQUIRE(view->switch_dialog->query.composing);
 }

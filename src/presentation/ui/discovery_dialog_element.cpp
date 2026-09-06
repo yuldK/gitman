@@ -116,10 +116,11 @@ namespace gitman::ui {
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
                 const rect_f box { bounds() };
-                const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
-                if (enabled() && interaction.hovered == id())
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
+                // hover·눌림 채움은 luil 공통 경로를 쓴다. 색이 primary_foreground 0.06에서
+                // 팔레트 button_hover_background(눌림은 button_pressed_background)로 바뀌는
+                // 것은 설계 L5가 받아들인 변화다.
+                draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
 
                 const float inset { 6.0f * scale };
                 float text_left { box.x + inset };
@@ -165,8 +166,8 @@ namespace gitman::ui {
             discovery_row_view row_ {};
         };
 
-        // panel이다. 클릭을 흡수하고 제목·스캔 루트·안내·메시지를 그린다. 목록 행은
-        // 자식이고 버튼은 clip을 피해 dialog의 자식이다 (switch dialog와 같은 구조).
+        // panel이다. 제목·스캔 루트·안내·메시지를 그린다. 목록 행은 자식이고 버튼은
+        // clip을 피해 dialog의 자식이다 (switch dialog와 같은 구조).
         class discovery_panel_element final : public ui_element
         {
         public:
@@ -178,8 +179,7 @@ namespace gitman::ui {
                 , empty_ { dialog.rows.empty() }
                 , message_ { dialog.message }
             {
-                // 배경 클릭이 뒤의 scrim(취소)으로 새지 않게 흡수만 한다.
-                set_hit_opaque(true);
+                // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
             }
 
             void adopt(std::unique_ptr<ui_element> child)

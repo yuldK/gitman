@@ -1369,31 +1369,30 @@ namespace gitman {
     }
 
     std::vector<std::u8string> logic_controller::filtered_font_families() const
-
     {
-
         std::vector<std::u8string> families {};
-
         if (font_dialog_.has_value() == false)
-
             return families;
 
+        // 조합 중이면 조합 글이 섞인 표시 글로 먼저 거르고, 그 글로 하나도 맞지
+        // 않으면 확정 글로 물러선다 (search_query_for).
+        const auto any_match = [this](const std::u8string_view probe) {
+            if (contains_ignoring_ascii_case(default_font_display_name, probe))
+                return true;
+            for (const std::u8string& family : font_families_)
+                if (contains_ignoring_ascii_case(family, probe))
+                    return true;
+            return false;
+        };
+        const std::u8string query { search_query_for(text_input_target::font_filter, font_dialog_->query.text, any_match) };
+
         // 첫 항목은 내장 글꼴로 되돌리는 선택지다. 표시 이름으로 걸러진다.
-
-        const std::u8string_view query { font_dialog_->query.text };
-
         families.reserve(font_families_.size() + 1u);
-
         if (contains_ignoring_ascii_case(default_font_display_name, query))
-
             families.emplace_back();
-
         for (const std::u8string& family : font_families_)
-
             if (contains_ignoring_ascii_case(family, query))
-
                 families.push_back(family);
-
         return families;
     }
 
@@ -1468,13 +1467,9 @@ namespace gitman {
     }
 
     void logic_controller::handle_select_font_family(const std::size_t index)
-
     {
-
         if (font_dialog_.has_value() == false || index >= filtered_font_families().size())
-
             return;
-
         font_dialog_->selected = { index };
     }
 
@@ -2093,25 +2088,60 @@ namespace gitman {
 
     void logic_controller::handle_set_text_composition(const set_text_composition_intent& intent)
     {
-        // 조합이 끝났으면 상태를 버린다. 확정된 글은 별도의 insert intent로 온다.
+        const std::u8string before { displayed_text_of(intent.target) };
         if (intent.composing == false)
         {
+            // 조합이 끝났으면 상태를 버린다. 확정된 글은 별도의 insert intent로 온다.
             if (composition_.has_value() && composition_->target == intent.target)
                 composition_.reset();
-            return;
+        }
+        else
+        {
+            // 조합 글은 초안에 넣지 않는다 (E2.3). 화면에 보일 글만 따로 들고 있다가
+            // 조합이 끝나면 버린다.
+            text_composition_state state {};
+            state.target = intent.target;
+            state.text = intent.text;
+            state.caret = text_edit_clamp_offset(state.text, intent.caret);
+            state.composing_begin = text_edit_clamp_offset(state.text, intent.composing_begin);
+            state.composing_end = text_edit_clamp_offset(state.text, intent.composing_end);
+            if (state.composing_end < state.composing_begin)
+                state.composing_end = state.composing_begin;
+            composition_ = std::move(state);
         }
 
-        // 조합 글은 초안에 넣지 않는다 (E2.3). 화면에 보일 글만 따로 들고 있다가
-        // 조합이 끝나면 버린다.
-        text_composition_state state {};
-        state.target = intent.target;
-        state.text = intent.text;
-        state.caret = text_edit_clamp_offset(state.text, intent.caret);
-        state.composing_begin = text_edit_clamp_offset(state.text, intent.composing_begin);
-        state.composing_end = text_edit_clamp_offset(state.text, intent.composing_end);
-        if (state.composing_end < state.composing_begin)
-            state.composing_end = state.composing_begin;
-        composition_ = std::move(state);
+        // 화면 글이 달라지면 점진 검색 목록도 달라진다 (D5). 편집과 같은 규칙으로
+        // 사라질 수 있는 선택과 tracking 확인 단계를 남겨 두지 않는다 — 확인한 적
+        // 없는 후보로 branch를 만들면 안 된다.
+        if (displayed_text_of(intent.target) != before)
+            reset_search_selection(intent.target);
+    }
+
+    std::u8string logic_controller::displayed_text_of(const text_input_target target) const
+    {
+        if (composition_.has_value() && composition_->target == target)
+            return composition_->text;
+        if (target == text_input_target::switch_query && switch_dialog_.has_value())
+            return switch_dialog_->query.text;
+        if (target == text_input_target::font_filter && font_dialog_.has_value())
+            return font_dialog_->query.text;
+        return {};
+    }
+
+    void logic_controller::reset_search_selection(const text_input_target target)
+    {
+        // SVN 질의 막대는 주소 막대라 목록을 거르지 않는다 (트리거를 눌러야 움직인다).
+        if (target == text_input_target::switch_query && switch_dialog_.has_value() && switch_dialog_->subversion == false)
+        {
+            switch_dialog_->selected.reset();
+            switch_dialog_->tracking_confirm_pending = false;
+            switch_dialog_->scroll_offset = 0.0f;
+        }
+        else if (target == text_input_target::font_filter && font_dialog_.has_value())
+        {
+            font_dialog_->selected.reset();
+            font_dialog_->scroll_offset = 0.0f;
+        }
     }
 
     void logic_controller::apply_composition(const text_input_target target, text_input_view& view) const
@@ -2123,6 +2153,24 @@ namespace gitman {
         view.composition_caret = composition_->caret;
         view.composing_begin = composition_->composing_begin;
         view.composing_end = composition_->composing_end;
+    }
+
+    std::u8string logic_controller::search_query_for(const text_input_target target, const std::u8string& committed, const std::function<bool(std::u8string_view)>& any_match) const
+    {
+        // 조합이 없거나 다른 박스의 것이면 고를 것이 확정 글뿐이다.
+        if (composition_.has_value() == false || composition_->target != target)
+            return committed;
+
+        // 조합 글이 섞인 표시 글이 먼저다.
+        const std::u8string& displayed { composition_->text };
+        // 확정 글이 비어 있으면 물러설 자리가 없다 — 빈 질의는 좁히기가 아니라
+        // "전부"라서 첫 글자를 조합하는 동안 목록 전체가 되살아난다.
+        if (committed.empty() || any_match == nullptr)
+            return displayed;
+        if (any_match(displayed))
+            return displayed;
+        // 하나도 맞지 않으면 조합 중인 글자를 뺀 자리로 물러선다.
+        return committed;
     }
 
     void logic_controller::handle_edit_text_input(const edit_text_input_intent& intent)
@@ -2372,8 +2420,27 @@ namespace gitman {
             return visible;
         const std::vector<switch_candidate>& candidates { switch_dialog_->candidates.candidates };
         visible.reserve(candidates.size());
+
+        // SVN의 질의 막대는 필터가 아니라 주소 막대라 목록을 거르지 않는다.
+        if (switch_dialog_->subversion)
+        {
+            for (std::size_t index = 0; index < candidates.size(); ++index)
+                visible.push_back(index);
+            return visible;
+        }
+
+        // 조합 중이면 조합 글이 섞인 표시 글로 먼저 거르고, 그 글로 하나도 맞지
+        // 않으면 확정 글로 물러선다 (search_query_for).
+        const auto any_match = [&candidates](const std::u8string_view probe) {
+            for (const switch_candidate& candidate : candidates)
+                if (contains_ignoring_ascii_case(candidate.display_name, probe))
+                    return true;
+            return false;
+        };
+        const std::u8string query { search_query_for(text_input_target::switch_query, switch_dialog_->query.text, any_match) };
+
         for (std::size_t index = 0; index < candidates.size(); ++index)
-            if (switch_dialog_->subversion || contains_ignoring_ascii_case(candidates[index].display_name, switch_dialog_->query.text))
+            if (contains_ignoring_ascii_case(candidates[index].display_name, query))
                 visible.push_back(index);
         return visible;
     }

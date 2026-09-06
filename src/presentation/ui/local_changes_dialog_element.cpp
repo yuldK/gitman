@@ -104,10 +104,13 @@ namespace gitman::ui {
                 const rect_f box { bounds() };
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
+                // 고른 행 채움은 그대로 두고, hover·눌림 채움만 luil 공통 경로로 그린다.
+                // 색이 primary_foreground 0.06에서 팔레트 button_hover_background(눌림은
+                // button_pressed_background)로 바뀌는 것은 설계 L5가 받아들인 변화다.
                 if (row_.selected)
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
-                else if (interaction.hovered == id())
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
+                else
+                    draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
 
                 // 미추적 항목은 아직 저장소 밖의 파일이라 흐리게(비활성 느낌) 그린다.
                 const float dim { row_.untracked ? 0.55f : 1.0f };
@@ -161,7 +164,8 @@ namespace gitman::ui {
                 : ui_element { ui_element_id { kind_local_changes_diff } }
                 , dialog_ { &dialog }
             {
-                // 클릭을 흡수해 배경 닫기로 흐르지 않게 한다.
+                // 휠 라우팅이 이 pane을 hit로 찾아야 해서 흡수를 스스로 건다 (배경 닫기
+                // 흡수는 host가 본체에 걸어 준다).
                 set_hit_opaque(true);
             }
 
@@ -268,8 +272,8 @@ namespace gitman::ui {
             const local_changes_dialog_view* dialog_ { nullptr };
         };
 
-        // panel이다. 클릭을 흡수하고 제목·목록 안내·메시지를 그린다. 목록 행과 diff
-        // pane, 버튼은 dialog가 직접 배치한다.
+        // panel이다. 제목·목록 안내·메시지를 그린다. 목록 행과 diff pane, 버튼은
+        // dialog가 직접 배치한다.
         class local_changes_panel_element final : public ui_element
         {
         public:
@@ -280,7 +284,7 @@ namespace gitman::ui {
                 , empty_ { dialog.rows.empty() }
                 , message_ { dialog.message }
             {
-                set_hit_opaque(true);
+                // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
             }
 
             void adopt(std::unique_ptr<ui_element> child)

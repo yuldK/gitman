@@ -64,8 +64,7 @@ namespace gitman::ui {
                 : ui_element { ui_element_id { kind_generate_dialog_panel } }
                 , dialog_ { std::move(dialog) }
             {
-                // panel 위의 클릭은 배경 닫기로 흐르지 않는다.
-                set_hit_opaque(true);
+                // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
             }
 
             void arrange(const arrange_context& context) override

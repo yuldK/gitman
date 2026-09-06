@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -152,6 +153,22 @@ namespace gitman {
         // 조합 중인 박스의 표시 상태를 `view`에 실어 준다. 대상이 다르면 아무 일도
         // 하지 않는다 (E2.6).
         void apply_composition(text_input_target target, text_input_view& view) const;
+        // 그 칸의 화면 글이다 — 조합 중이면 조합 글이 섞인 표시 글, 아니면 확정 글.
+        [[nodiscard]] std::u8string displayed_text_of(text_input_target target) const;
+        // 점진 검색 목록이 달라질 때 사라질 수 있는 선택·확인 단계·스크롤을 지운다
+        // (`handle_edit_text_input`과 같은 규칙). 조합 한 단계마다 목록이 바뀔 수 있다 (D5).
+        void reset_search_selection(text_input_target target);
+        // 점진 검색(검색 칸이 목록을 좁히는 것)이 쓸 질의다. luil `search_query`의
+        // 두 줄 규칙을 그대로 옮겨 적었다 (luil UI 헤더는 application에 들이지 않는다).
+        //  - 조합 중이면 조합 글이 섞인 표시 글로 먼저 거른다.
+        //  - 그 글로 하나도 맞지 않으면 확정 글로 물러선다. 한글은 한 글자가 여러
+        //    단계로 완성되어 "토스"의 중간인 "토ㅅ"은 어디에도 없으므로, 물러서지
+        //    않으면 목록이 사라졌다 나타나기를 반복한다.
+        //  - 단 확정 글이 비어 있으면 물러서지 않는다. 빈 질의는 좁히기가 아니라
+        //    "전부"라서 첫 글자를 조합하는 동안 목록 전체가 되살아난다.
+        // 무엇이 맞는지는 부르는 쪽이 정한다 — `any_match`는 그 질의로 맞는 것이
+        // 하나라도 있는지만 답한다.
+        [[nodiscard]] std::u8string search_query_for(text_input_target target, const std::u8string& committed, const std::function<bool(std::u8string_view)>& any_match) const;
         // 글꼴 선택 dialog다 (fonts-and-in-app-dialogs-design F2). 목록은 UI thread가
         // 한 번 열거해 보낸 것을 그대로 쓴다.
         // 새 문서 만들기 dialog다 (fonts-and-in-app-dialogs-design F3). 폴더는 UI

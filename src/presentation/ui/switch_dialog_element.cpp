@@ -135,10 +135,13 @@ namespace gitman::ui {
                 const rect_f box { bounds() };
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
+                // 고른 행 채움은 그대로 두고, hover·눌림 채움만 luil 공통 경로로 그린다.
+                // 색이 primary_foreground 0.06에서 팔레트 button_hover_background(눌림은
+                // button_pressed_background)로 바뀌는 것은 설계 L5가 받아들인 변화다.
                 if (selected_)
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
-                else if (interaction.hovered == id())
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
+                else
+                    draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
 
                 const float inset { 6.0f * scale };
                 float text_left { box.x + inset };
@@ -241,10 +244,15 @@ namespace gitman::ui {
                 const rect_f box { bounds() };
                 const SkRect body { SkRect::MakeXYWH(box.x, box.y, box.width, box.height) };
 
+                // 고른 행 → hover·눌림 → 현재 행 순서를 그대로 지킨다. 가운데 갈래만 luil
+                // 공통 경로로 옮겼다 — 겹쳐 칠하면 현재 행 채움이 비쳐 보이므로 갈래를
+                // 유지하려고 상태를 한 번 더 본다. 색이 primary_foreground 0.06에서 팔레트
+                // button_hover_background(눌림은 button_pressed_background)로 바뀌는 것은
+                // 설계 L5가 받아들인 변화다.
                 if (row_.selected)
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
-                else if (interaction.hovered == id())
-                    context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.06f)));
+                else if (enabled() && (interaction.hovered == id() || interaction.pressed == id()))
+                    draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
                 else if (row_.current)
                     context.canvas.drawRect(body, solid_paint(with_alpha(context.palette.accent_soft, 0.08f)));
 
@@ -343,9 +351,7 @@ namespace gitman::ui {
                 , list_note_ { dialog.list_note }
                 , message_ { dialog.message }
             {
-                // panel 위의 클릭은 흡수만 한다. 뒤의 scrim으로 새면 배경 클릭이
-                // 되어 dialog가 닫힌다.
-                set_hit_opaque(true);
+                // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
                 // 목록 행은 panel 밖으로 흘러 나가지 않는다. 그리기는 아래에서 목록
                 // 영역으로 한 번 더 자른다.
                 set_clip_children(true);

@@ -40,6 +40,40 @@ namespace {
         return intent;
     }
 
+    // 글꼴 질의 칸의 편집 intent다.
+    gitman::edit_text_input_intent font_query_insert(const std::u8string_view text)
+    {
+        gitman::edit_text_input_intent intent {};
+        intent.target = gitman::text_input_target::font_filter;
+        intent.command = gitman::text_edit_command::insert;
+        intent.text = text;
+        return intent;
+    }
+
+    // 글꼴 질의 칸의 조합 상태다 (TSF가 보내는 것과 같다). `text`는 조합 중인
+    // 글자까지 담은 박스 전체 표시 글이고, `composing_begin`부터 끝까지가 조합
+    // 구간이다.
+    gitman::set_text_composition_intent compose_font_query(const std::u8string_view text, const std::size_t composing_begin = 0u)
+    {
+        gitman::set_text_composition_intent intent {};
+        intent.target = gitman::text_input_target::font_filter;
+        intent.text = text;
+        intent.caret = text.size();
+        intent.composing_begin = composing_begin;
+        intent.composing_end = text.size();
+        intent.composing = true;
+        return intent;
+    }
+
+    // 조합이 끝났음을 알린다. 확정된 글은 별도의 편집 intent로 온다.
+    gitman::set_text_composition_intent end_font_composition()
+    {
+        gitman::set_text_composition_intent intent {};
+        intent.target = gitman::text_input_target::font_filter;
+        intent.composing = false;
+        return intent;
+    }
+
     class recording_submitter final : public gitman::operation_submitter
     {
     public:
@@ -522,6 +556,28 @@ TEST_CASE("The settings dialog stands in a luil modal host", "[ui][settings-ui][
     REQUIRE(body != nullptr);
     REQUIRE(body->action(luil::ui_trigger::left_click) == nullptr);
     REQUIRE(body->hit_opaque());
+}
+
+TEST_CASE("Clicking the empty panel area does not cancel the settings dialog", "[ui][settings-ui][modal]")
+{
+    // panel은 흡수를 따로 걸지 않는다 — host가 content(본체)에 건 흡수가 panel의 빈
+    // 자리를 받아 scrim(취소)으로 새지 않는다 (C3-4).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const body { tree->find({ gitman::ui::kind_settings_dialog }) };
+    REQUIRE(body != nullptr);
+    // panel 왼쪽 아래 빈 자리다 — 탭 rail 아래, 버튼 줄 왼쪽.
+    const luil::rect_f box { body->bounds() };
+    const float x { box.x + 8.0f };
+    const float y { box.y + box.height - 8.0f };
+    const luil::ui_element* const hit { tree->hit_test(x, y) };
+    REQUIRE(hit != nullptr);
+    REQUIRE(hit->id().kind != luil::ui_element_kind::modal_scrim);
+
+    gitman::testing::interaction_harness harness { tree };
+    const std::vector<luil::input_action> actions { gitman::testing::click(harness, luil::rect_f { x - 1.0f, y - 1.0f, 2.0f, 2.0f }, 0) };
+    REQUIRE(gitman::testing::as_message(actions) == nullptr);
 }
 
 TEST_CASE("Enter in the timeout box runs the default save button", "[ui][settings-ui][timeout]")
@@ -1295,6 +1351,28 @@ TEST_CASE("The font dialog stands in a luil modal host", "[ui][settings-ui][font
     REQUIRE(body->hit_opaque());
 }
 
+TEST_CASE("Clicking the empty panel area does not cancel the font dialog", "[ui][settings-ui][font][modal]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { false });
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const body { tree->find({ gitman::ui::kind_font_dialog }) };
+    REQUIRE(body != nullptr);
+    // panel 왼쪽 아래 빈 자리다 — 미리 보기 칸 아래, 버튼 줄 왼쪽.
+    const luil::rect_f box { body->bounds() };
+    const float x { box.x + 8.0f };
+    const float y { box.y + box.height - 8.0f };
+    const luil::ui_element* const hit { tree->hit_test(x, y) };
+    REQUIRE(hit != nullptr);
+    REQUIRE(hit->id().kind != luil::ui_element_kind::modal_scrim);
+
+    gitman::testing::interaction_harness harness { tree };
+    const std::vector<luil::input_action> actions { gitman::testing::click(harness, luil::rect_f { x - 1.0f, y - 1.0f, 2.0f, 2.0f }, 0) };
+    REQUIRE(gitman::testing::as_message(actions) == nullptr);
+}
+
 TEST_CASE("Escape closes only the font dialog above the settings dialog", "[ui][settings-ui][font][modal]")
 {
     // 가둠이 겹치면 마지막에 그린 가둠이 Esc를 받는다 (modal-dialog-design.md).
@@ -1634,4 +1712,97 @@ TEST_CASE("Without a document the font draft still edits the app settings", "[lo
 
     REQUIRE(last_of(submitter, gitman::operation_kind::save_app_settings) != nullptr);
     REQUIRE(controller.make_view_snapshot()->fonts.ui_family == u8"Cascadia Code");
+}
+
+TEST_CASE("A composition in another box leaves the font list alone", "[logic][settings-ui][font][ime]")
+{
+    // 조합은 자기 칸의 목록만 좁힌다. 글꼴 필터의 조합은 목록이 달라지므로 선택을 지운다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code", u8"Malgun Gothic", u8"Consolas" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { true });
+    fixture.controller.handle(gitman::select_font_family_intent { 1 });
+    REQUIRE(fixture.controller.make_view_snapshot()->font_dialog->selected == 1u);
+
+    gitman::set_text_composition_intent other {};
+    other.target = gitman::text_input_target::settings_timeout;
+    other.text = u8"12";
+    other.caret = 2u;
+    other.composing_end = 2u;
+    other.composing = true;
+    fixture.controller.handle(other);
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->font_dialog->names.size() == 4u);
+        REQUIRE(view->font_dialog->selected == 1u);
+    }
+
+    fixture.controller.handle(compose_font_query(u8"Malg"));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->font_dialog->names.size() == 1u);
+        REQUIRE(view->font_dialog->selected.has_value() == false);
+    }
+}
+
+TEST_CASE("A composing font query narrows the list and falls back to the committed text", "[logic][settings-ui][font][ime]")
+{
+    // 점진 검색의 두 줄 규칙이다 (luil `search_query`와 같다). 조합 글이 섞인 표시
+    // 글로 먼저 거르고, 그 글로 하나도 맞지 않으면 확정 글로 물러선다 — 단 확정
+    // 글이 비어 있으면 물러서지 않는다 (빈 질의는 "전부"라서 목록이 되살아난다).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code", u8"Malgun Gothic", u8"Consolas" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { true });
+
+    // 기본 글꼴 행까지 넷이다.
+    REQUIRE(fixture.controller.make_view_snapshot()->font_dialog->names.size() == 4u);
+
+    // 확정 글이 없어도 조합 글만으로 좁아진다. 기본 글꼴 행이 질의에 걸리는 규칙은
+    // 그대로다.
+    fixture.controller.handle(compose_font_query(u8"기본"));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->font_dialog->query.text.empty());
+        REQUIRE(view->font_dialog->names.size() == 1u);
+        REQUIRE(view->font_dialog->names[0] == u8"(기본 글꼴)");
+    }
+
+    fixture.controller.handle(compose_font_query(u8"Malg"));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->font_dialog->names.size() == 1u);
+        REQUIRE(view->font_dialog->names[0] == u8"Malgun Gothic");
+    }
+
+    // 맞는 것이 없어도 확정 글이 비어 있으면 물러서지 않는다.
+    fixture.controller.handle(compose_font_query(u8"Malz"));
+    REQUIRE(fixture.controller.make_view_snapshot()->font_dialog->names.empty());
+
+    // 조합이 끝나면 확정 글(아직 빈 글) 기준으로 돌아온다.
+    fixture.controller.handle(end_font_composition());
+    REQUIRE(fixture.controller.make_view_snapshot()->font_dialog->names.size() == 4u);
+
+    // 확정 글이 있으면 맞지 않는 조합 글에서 그리로 물러선다.
+    fixture.controller.handle(font_query_insert(u8"Cons"));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->font_dialog->names.size() == 1u);
+        REQUIRE(view->font_dialog->names[0] == u8"Consolas");
+    }
+
+    fixture.controller.handle(compose_font_query(u8"Consz", 4u));
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->font_dialog->query.text == u8"Cons");
+        REQUIRE(view->font_dialog->names.size() == 1u);
+        REQUIRE(view->font_dialog->names[0] == u8"Consolas");
+    }
+
+    fixture.controller.handle(end_font_composition());
+    {
+        const auto view { fixture.controller.make_view_snapshot() };
+        REQUIRE(view->font_dialog->names.size() == 1u);
+        REQUIRE(view->font_dialog->names[0] == u8"Consolas");
+    }
 }

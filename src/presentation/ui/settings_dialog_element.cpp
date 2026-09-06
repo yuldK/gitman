@@ -658,9 +658,8 @@ namespace gitman::ui {
             bool defined_ { false };
         };
 
-        // panel 배경이다. 클릭을 흡수해 배경 닫기로 흐르지 않게 하고 제목, 탭 rail의
-        // 구분선, 섹션 제목과 항목의 글자를 그린다. 컨트롤은 dialog가 이 element가
-        // 계산한 배치 위에 얹는 자식이다.
+        // panel 배경이다. 제목, 탭 rail의 구분선, 섹션 제목과 항목의 글자를 그린다.
+        // 컨트롤은 dialog가 이 element가 계산한 배치 위에 얹는 자식이다.
         class settings_panel_element final : public ui_element
         {
         public:
@@ -674,8 +673,7 @@ namespace gitman::ui {
                 , scroll_offset_ { dialog.scroll_offset }
                 , right_inset_ { right_inset }
             {
-                // panel 위의 클릭은 여기서 멈춘다 — 배경 닫기로 흐르지 않게 흡수만 한다.
-                set_hit_opaque(true);
+                // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
             }
 
             // 탭 rail과 항목 컨트롤은 panel의 자식이다. 그래야 viewport 하나로

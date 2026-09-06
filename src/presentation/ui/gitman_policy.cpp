@@ -102,7 +102,6 @@ namespace gitman::ui {
         if (tree.find(luil::ui_element_id { luil::ui_element_kind::menu }) != nullptr)
             return {};
 
-
         // 로컬 변경 dialog가 열려 있으면 휠은 diff pane 위에서는 diff를, 그 밖에서는
         // 목록을 스크롤한다.
         if (tree_has(tree, kind_local_changes_dialog))

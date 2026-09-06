@@ -6,13 +6,17 @@ add_executable(gitman_process_test_child helpers/process_test_child.cpp)
 target_link_libraries(gitman_process_test_child PRIVATE gitman_project_options)
 gitman_disable_automatic_windows_manifest(gitman_process_test_child)
 
+# UI 기반 계층의 test(element·tree·상호작용·caption 배치·글꼴·TSF·messaging·
+# 테마·리소스)는 luil 저장소가 갖는다 (ADR-007). 여기에는 gitman의 의미(intent
+# 매핑·표시 모델·앱 조립)를 검증하는 test만 있다. luil의 .rc 조각을 함께 넣어
+# 코디콘 폰트·고지 리소스가 test 실행 파일에도 실린다.
 add_executable(gitman_tests
     "${GITMAN_GENERATED_LUIL_RESOURCE}"
     "${GITMAN_GENERATED_RESOURCE}"
-    app_runtime_tests.cpp
+    app_commands_tests.cpp
     app_settings_tests.cpp
     application_options_tests.cpp
-    caption_layout_tests.cpp
+    cancellation_registry_tests.cpp
     command_line_builder_tests.cpp
     context_menu_tests.cpp
     dependency_versions_tests.cpp
@@ -22,9 +26,8 @@ add_executable(gitman_tests
     discovery_integration_tests.cpp
     discovery_service_tests.cpp
     domain_model_tests.cpp
-    embedded_assets_tests.cpp
+    element_kinds_tests.cpp
     file_association_tests.cpp
-    font_fallback_tests.cpp
     git_command_builder_tests.cpp
     git_integration_tests.cpp
     git_network_tests.cpp
@@ -33,13 +36,17 @@ add_executable(gitman_tests
     git_status_parser_tests.cpp
     git_switch_tests.cpp
     git_update_tests.cpp
+    gitman_delegate_tests.cpp
+    gitman_driver_tests.cpp
     helpers/discovery_test_doubles.cpp
     helpers/discovery_test_doubles.h
     helpers/git_repository_fixture.cpp
     helpers/git_repository_fixture.h
+    helpers/ui_test_support.h
     helpers/vcs_test_doubles.cpp
     helpers/vcs_test_doubles.h
     json_project_store_tests.cpp
+    local_changes_domain_tests.cpp
     local_changes_tests.cpp
     log_file_tests.cpp
     log_isolation_stress_tests.cpp
@@ -48,8 +55,7 @@ add_executable(gitman_tests
     logic_controller_tests.cpp
     notice_dialog_tests.cpp
     operation_log_tests.cpp
-    messaging_channel_tests.cpp
-    messaging_latest_slot_tests.cpp
+    operation_result_relay_tests.cpp
     path_display_tests.cpp
     process_cancellation_tests.cpp
     process_execution_tests.cpp
@@ -58,7 +64,6 @@ add_executable(gitman_tests
     project_path_tests.cpp
     project_registration_tests.cpp
     project_schema_tests.cpp
-    renderer_policy_tests.cpp
     secret_masking_tests.cpp
     settings_dialog_tests.cpp
     stabilization_tests.cpp
@@ -72,11 +77,7 @@ add_executable(gitman_tests
     switch_dialog_tests.cpp
     switch_validation_tests.cpp
     task_scheduler_tests.cpp
-    text_edit_tests.cpp
-    tsf_input_tests.cpp
-    ui_element_tests.cpp
     ui_interaction_tests.cpp
-    ui_theme_tests.cpp
     ui_tree_build_tests.cpp
     update_ui_tests.cpp
     utf8_tests.cpp
@@ -87,7 +88,6 @@ add_executable(gitman_tests
     vcs_tool_discovery_tests.cpp
     vcs_version_tests.cpp
     version_list_generation_tests.cpp
-    win32_fonts_tests.cpp
     win32_process_runner_tests.cpp
     win32_text_transcoder_tests.cpp)
 add_dependencies(gitman_tests gitman_process_test_child)
@@ -107,47 +107,14 @@ target_link_libraries(gitman_tests
         Catch2::Catch2WithMain)
 gitman_disable_automatic_windows_manifest(gitman_tests)
 
-# ADR-005의 ASan 검증이다. messaging은 header-only라 이 실행 파일만
-# /fsanitize=address로 컴파일해도 component 전체가 검사된다. Debug 구성의 /RTC1과
-# ASan이 충돌하므로 Debug가 아닌 구성에서만 ASan을 켠다. 검증은 Release로 실행한다.
-add_executable(gitman_messaging_asan_tests
-    messaging_channel_tests.cpp
-    messaging_latest_slot_tests.cpp)
-# messaging은 header-only라 라이브러리를 링크하지 않고 include 경로만 있으면 된다.
-target_include_directories(gitman_messaging_asan_tests PRIVATE "${GITMAN_SOURCE_DIRECTORY}")
-target_link_libraries(gitman_messaging_asan_tests
-    PRIVATE
-        gitman_project_options
-        Catch2::Catch2WithMain)
-# ASAN 보고에 기호가 필요해 이 target만 Release에서도 debug 정보를 켠다 (C5072).
-# Catch2는 ASan 없이 빌드되어 STL 주석이 꺼져 있으므로(LNK2038) 이 target도 주석을
-# 끄고 heap 검사만 사용한다. `optional`은 나중에 MSVC STL이 더한 세 번째 주석이라
-# 최신 toolset에서 새로 어긋난다.
-target_compile_options(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/fsanitize=address;/Zi>")
-target_compile_definitions(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:_DISABLE_STRING_ANNOTATION;_DISABLE_VECTOR_ANNOTATION;_DISABLE_OPTIONAL_ANNOTATION>")
-target_link_options(gitman_messaging_asan_tests PRIVATE "$<$<NOT:$<CONFIG:Debug>>:/INCREMENTAL:NO;/DEBUG>")
-gitman_disable_automatic_windows_manifest(gitman_messaging_asan_tests)
-# 최신 MSVC의 ASan runtime은 항상 동적 DLL이라 실행 파일 옆에 있어야 한다. 경로는
-# configure 시점의 컴파일러(cl.exe) 디렉터리에서 해석해 따옴표 문제를 피한다.
-get_filename_component(GITMAN_MSVC_BIN_DIRECTORY "${CMAKE_CXX_COMPILER}" DIRECTORY)
-if (EXISTS "${GITMAN_MSVC_BIN_DIRECTORY}/clang_rt.asan_dynamic-x86_64.dll")
-    add_custom_command(TARGET gitman_messaging_asan_tests POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${GITMAN_MSVC_BIN_DIRECTORY}/clang_rt.asan_dynamic-x86_64.dll"
-            "$<TARGET_FILE_DIR:gitman_messaging_asan_tests>"
-        VERBATIM)
-else ()
-    message(WARNING "clang_rt.asan_dynamic-x86_64.dll을 찾지 못했습니다. asan test 실행에 PATH 구성이 필요할 수 있습니다.")
-endif ()
-catch_discover_tests(gitman_messaging_asan_tests TEST_PREFIX "asan: " PROPERTIES TIMEOUT 120 LABELS "asan")
+# ADR-005의 ASan 검증은 messaging component가 luil 소유가 되면서 luil 저장소의
+# `luil_messaging_asan_tests`(luil CI)가 맡는다 (ADR-007 결정 8). gitman 빌드에서는
+# 돌지 않는다.
+
 # hang 유형의 회귀가 CI에서 무기한 대기 대신 실패로 드러나도록 모든 Catch2 test에
 # timeout을 부여한다. 가장 긴 통합 test 기준으로 여유를 둔 값이다.
 catch_discover_tests(gitman_tests PROPERTIES TIMEOUT 120)
 
-add_test(NAME gitman_assets_checksum
-    COMMAND "${CMAKE_COMMAND}"
-        "-DASSET_DIRECTORY=${GITMAN_ASSET_DIRECTORY}"
-        -P "${GITMAN_CMAKE_DIRECTORY}/verify_codicons.cmake")
 add_test(NAME gitman_source_style
     COMMAND "${CMAKE_COMMAND}"
         "-DPOWERSHELL_EXECUTABLE=${GITMAN_POWERSHELL_EXECUTABLE}"

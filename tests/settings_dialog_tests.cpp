@@ -1,10 +1,12 @@
+#include "application/app_commands.h"
 #include "application/logic_controller.h"
 #include "domain/text_edit.h"
+#include "helpers/ui_test_support.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/build_ui_tree.h"
+#include "presentation/ui/element_kinds.h"
 #include "presentation/ui/settings_dialog_element.h"
-#include "presentation/ui/ui_interaction.h"
-#include "presentation/ui_theme.h"
+
+#include "luil/theme/ui_theme.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -112,13 +114,22 @@ namespace {
         return std::chrono::steady_clock::time_point {} + std::chrono::milliseconds { milliseconds };
     }
 
-    std::vector<gitman::ui::input_action> click(const gitman::ui::ui_tree& tree, const gitman::ui::ui_element_id& id)
+    // element가 등록한 왼쪽 클릭 액션을 그 자리에서 실행한다 (상호작용 상태 기계를
+    // 거치지 않고 "무엇을 내는가"만 본다).
+    std::vector<luil::input_action> click(const luil::ui_tree& tree, const luil::ui_element_id& id)
     {
-        const gitman::ui::ui_element* const element { tree.find(id) };
+        const luil::ui_element* const element { tree.find(id) };
         REQUIRE(element != nullptr);
-        const gitman::ui::ui_action* const action { element->action(gitman::ui::ui_trigger::left_click) };
+        const luil::ui_action* const action { element->action(luil::ui_trigger::left_click) };
         REQUIRE(action != nullptr);
         return (*action)({});
+    }
+
+    // 항목 열의 스크롤 막대다. 막대 kind는 하나뿐이고 어느 목록인지는 owner가
+    // 말한다 (설계 L4).
+    const luil::ui_element* settings_scrollbar(const luil::ui_tree& tree)
+    {
+        return gitman::testing::find(tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_settings_dialog);
     }
 } // namespace
 
@@ -369,19 +380,19 @@ TEST_CASE("Every document item shows a scope badge and only overrides are clicka
     // 누를 수 있고, 전역을 따르는 항목(svn)은 액션이 없다 (D2).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
-    const gitman::ui::ui_element_id git_badge { gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } };
+    const luil::ui_element_id git_badge { gitman::ui::kind_settings_override_badge, std::u8string { u8"git" } };
     REQUIRE(tree->find(git_badge) != nullptr);
-    const gitman::ui::ui_element* const svn_badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"svn" } }) };
+    const luil::ui_element* const svn_badge { tree->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"svn" } }) };
     REQUIRE(svn_badge != nullptr);
     // 전역 배지는 눌러도 아무 일도 하지 않는다. tooltip으로만 뜻을 알린다.
-    REQUIRE(svn_badge->action(gitman::ui::ui_trigger::left_click) == nullptr);
+    REQUIRE(svn_badge->action(luil::ui_trigger::left_click) == nullptr);
     REQUIRE_FALSE(svn_badge->tooltip().empty());
 
-    const std::vector<gitman::ui::input_action> actions { click(*tree, git_badge) };
+    const std::vector<luil::input_action> actions { click(*tree, git_badge) };
     REQUIRE(actions.size() == 1u);
-    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+    const auto* const message { gitman::testing::as_message(actions) };
     REQUIRE(message != nullptr);
     const auto* const intent { std::get_if<gitman::clear_settings_override_intent>(message) };
     REQUIRE(intent != nullptr);
@@ -392,7 +403,7 @@ TEST_CASE("Every document item shows a scope badge and only overrides are clicka
     gitman::logic_controller global_controller { global_submitter };
     global_controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
     global_controller.handle(gitman::open_settings_intent {});
-    const auto global_tree { gitman::ui::build_ui_tree(*global_controller.make_view_snapshot()) };
+    const auto global_tree { gitman::testing::make_tree(*global_controller.make_view_snapshot()) };
     REQUIRE(global_tree->find(git_badge) == nullptr);
 }
 
@@ -401,29 +412,29 @@ TEST_CASE("The settings dialog elements register the picker commands and intents
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto view { fixture.controller.make_view_snapshot() };
-    const auto tree { gitman::ui::build_ui_tree(*view) };
+    const auto tree { gitman::testing::make_tree(*view) };
 
-    REQUIRE(tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_dialog }) != nullptr);
+    REQUIRE(tree->find(luil::ui_element_id { gitman::ui::kind_settings_dialog }) != nullptr);
 
     // 찾아보기는 UI thread의 파일 선택 명령이다.
-    const std::vector<gitman::ui::input_action> browse { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_git_browse }) };
+    const std::vector<luil::input_action> browse { click(*tree, luil::ui_element_id { gitman::ui::kind_settings_git_browse }) };
     REQUIRE(browse.size() == 1u);
-    const auto* const command { std::get_if<gitman::ui::ui_command>(&browse.front()) };
+    const luil::app_ui_command* const command { gitman::testing::as_app_command(browse) };
     REQUIRE(command != nullptr);
-    REQUIRE(*command == gitman::ui::ui_command::show_git_executable_picker);
+    REQUIRE(gitman::parse_app_command(command->command) == gitman::app_command::show_git_executable_picker);
 
     // Git 경로가 지정되어 있으므로 지우기는 활성이고 intent를 반환한다.
-    const gitman::ui::ui_element* const git_clear { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_git_clear }) };
+    const luil::ui_element* const git_clear { tree->find(luil::ui_element_id { gitman::ui::kind_settings_git_clear }) };
     REQUIRE(git_clear != nullptr);
     REQUIRE(git_clear->enabled());
-    const std::vector<gitman::ui::input_action> clear_actions { click(*tree, git_clear->id()) };
+    const std::vector<luil::input_action> clear_actions { click(*tree, git_clear->id()) };
     REQUIRE(clear_actions.size() == 1u);
-    const auto* const clear_message { std::get_if<gitman::logic_message>(&clear_actions.front()) };
+    const auto* const clear_message { gitman::testing::as_message(clear_actions) };
     REQUIRE(clear_message != nullptr);
     REQUIRE(std::holds_alternative<gitman::clear_settings_executable_intent>(*clear_message));
 
     // SVN 경로는 비어 있어 지우기가 비활성이다.
-    const gitman::ui::ui_element* const svn_clear { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_svn_clear }) };
+    const luil::ui_element* const svn_clear { tree->find(luil::ui_element_id { gitman::ui::kind_settings_svn_clear }) };
     REQUIRE(svn_clear != nullptr);
     REQUIRE(svn_clear->enabled() == false);
 }
@@ -434,28 +445,28 @@ TEST_CASE("The settings dialog association buttons request the UI commands", "[u
     fixture.controller.handle(gitman::open_settings_intent {});
     // 파일 연결은 시스템 탭이다 (settings-tabs-and-appearance-scope-design S1.2).
     fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::system });
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
-    const std::vector<gitman::ui::input_action> associate { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_associate }) };
+    const std::vector<luil::input_action> associate { click(*tree, luil::ui_element_id { gitman::ui::kind_settings_associate }) };
     REQUIRE(associate.size() == 1u);
-    const auto* const associate_command { std::get_if<gitman::ui::ui_command>(&associate.front()) };
+    const luil::app_ui_command* const associate_command { gitman::testing::as_app_command(associate) };
     REQUIRE(associate_command != nullptr);
-    REQUIRE(*associate_command == gitman::ui::ui_command::register_file_association);
+    REQUIRE(gitman::parse_app_command(associate_command->command) == gitman::app_command::register_file_association);
 
-    const std::vector<gitman::ui::input_action> dissociate { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_dissociate }) };
+    const std::vector<luil::input_action> dissociate { click(*tree, luil::ui_element_id { gitman::ui::kind_settings_dissociate }) };
     REQUIRE(dissociate.size() == 1u);
-    const auto* const dissociate_command { std::get_if<gitman::ui::ui_command>(&dissociate.front()) };
+    const luil::app_ui_command* const dissociate_command { gitman::testing::as_app_command(dissociate) };
     REQUIRE(dissociate_command != nullptr);
-    REQUIRE(*dissociate_command == gitman::ui::ui_command::unregister_file_association);
+    REQUIRE(gitman::parse_app_command(dissociate_command->command) == gitman::app_command::unregister_file_association);
 }
 
 TEST_CASE("The toolbar settings button opens the dialog with or without a document", "[ui][settings-ui]")
 {
     settings_fixture fixture {};
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    const std::vector<gitman::ui::input_action> actions { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::toolbar_settings }) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    const std::vector<luil::input_action> actions { click(*tree, luil::ui_element_id { gitman::ui::kind_toolbar_settings }) };
     REQUIRE(actions.size() == 1u);
-    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+    const auto* const message { gitman::testing::as_message(actions) };
     REQUIRE(message != nullptr);
     REQUIRE(std::holds_alternative<gitman::open_settings_intent>(*message));
 
@@ -464,8 +475,8 @@ TEST_CASE("The toolbar settings button opens the dialog with or without a docume
     empty.window_width = 800.0f;
     empty.window_height = 600.0f;
     empty.scale = 1.0f;
-    const auto empty_tree { gitman::ui::build_ui_tree(empty) };
-    const gitman::ui::ui_element* const button { empty_tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::toolbar_settings }) };
+    const auto empty_tree { gitman::testing::make_tree(empty) };
+    const luil::ui_element* const button { empty_tree->find(luil::ui_element_id { gitman::ui::kind_toolbar_settings }) };
     REQUIRE(button != nullptr);
     REQUIRE(button->enabled());
 }
@@ -474,13 +485,12 @@ TEST_CASE("Escape closes the settings dialog before clearing the selection", "[u
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
-    gitman::ui::interaction_controller interaction {};
-    interaction.set_tree(tree);
-    const std::vector<gitman::ui::input_action> actions { interaction.process(gitman::ui::key_pressed_event { gitman::ui::key_code::escape }) };
+    gitman::testing::interaction_harness harness { tree };
+    const std::vector<luil::input_action> actions { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
     REQUIRE(actions.size() == 1u);
-    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+    const auto* const message { gitman::testing::as_message(actions) };
     REQUIRE(message != nullptr);
     REQUIRE(std::holds_alternative<gitman::cancel_settings_dialog_intent>(*message));
 }
@@ -492,24 +502,24 @@ TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
 
-    const auto tools { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tools { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
     // 네 탭 모두 rail에 있고, 기본 탭은 도구다.
     for (const std::u8string_view name : { std::u8string_view { u8"tools" }, std::u8string_view { u8"operations" }, std::u8string_view { u8"appearance" }, std::u8string_view { u8"system" } })
-        REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_tab_item, gitman::project_id { std::u8string { name } } }) != nullptr);
-    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_git_browse }) != nullptr);
-    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_timeout_input }) != nullptr);
+        REQUIRE(tools->find({ gitman::ui::kind_settings_tab_item, std::u8string { name } }) != nullptr);
+    REQUIRE(tools->find({ gitman::ui::kind_settings_git_browse }) != nullptr);
+    REQUIRE(tools->find({ gitman::ui::kind_settings_timeout_input }) != nullptr);
     // 다른 탭의 컨트롤은 만들어지지 않는다.
-    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_submodules_toggle }) == nullptr);
-    REQUIRE(tools->find({ gitman::ui::ui_element_kind::settings_associate }) == nullptr);
-    REQUIRE(tools->ids_of_kind(gitman::ui::ui_element_kind::settings_accent_swatch).empty());
+    REQUIRE(tools->find({ gitman::ui::kind_settings_submodules_toggle }) == nullptr);
+    REQUIRE(tools->find({ gitman::ui::kind_settings_associate }) == nullptr);
+    REQUIRE(tools->ids_of_kind(gitman::ui::kind_settings_accent_swatch).empty());
 
     // 초안을 고친 뒤 탭을 옮겨도 값은 남는다.
     fixture.controller.handle(gitman::set_settings_executable_intent { gitman::repository_kind::subversion, u8"C:\\tools\\svn.exe" });
-    const std::vector<gitman::ui::input_action> actions {
-        click(*tools, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_tab_item, gitman::project_id { u8"operations" } }),
+    const std::vector<luil::input_action> actions {
+        click(*tools, luil::ui_element_id { gitman::ui::kind_settings_tab_item, std::u8string { u8"operations" } }),
     };
     REQUIRE(actions.size() == 1u);
-    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+    const auto* const message { gitman::testing::as_message(actions) };
     REQUIRE(message != nullptr);
     const auto* const intent { std::get_if<gitman::select_settings_tab_intent>(message) };
     REQUIRE(intent != nullptr);
@@ -520,13 +530,13 @@ TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[
     REQUIRE(view->settings_dialog->active_tab == gitman::settings_tab::operations);
     REQUIRE(view->settings_dialog->svn_path == u8"C:\\tools\\svn.exe");
 
-    const auto operations { gitman::ui::build_ui_tree(*view) };
-    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_submodules_toggle }) != nullptr);
-    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_log_files_toggle }) != nullptr);
-    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_git_browse }) == nullptr);
+    const auto operations { gitman::testing::make_tree(*view) };
+    REQUIRE(operations->find({ gitman::ui::kind_settings_submodules_toggle }) != nullptr);
+    REQUIRE(operations->find({ gitman::ui::kind_settings_log_files_toggle }) != nullptr);
+    REQUIRE(operations->find({ gitman::ui::kind_settings_git_browse }) == nullptr);
 
     // panel 높이는 탭을 옮겨도 같다 — 창이 튀지 않는다 (S1.3).
-    REQUIRE(operations->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height == tools->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds().height);
+    REQUIRE(operations->find({ gitman::ui::kind_settings_dialog_panel })->bounds().height == tools->find({ gitman::ui::kind_settings_dialog_panel })->bounds().height);
 }
 
 TEST_CASE("The scope badge sits above the item title without moving the controls", "[ui][settings-ui]")
@@ -538,18 +548,18 @@ TEST_CASE("The scope badge sits above the item title without moving the controls
     // 한쪽에만 스크롤 막대가 생기면 항목 열이 그만큼 좁아져 x가 달라진다 (E1).
     fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
     fixture.controller.handle(gitman::open_settings_intent {});
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
-    const gitman::ui::ui_element* const badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } }) };
+    const luil::ui_element* const badge { tree->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"git" } }) };
     REQUIRE(badge != nullptr);
-    const gitman::ui::rect_f badge_bounds { badge->bounds() };
+    const luil::rect_f badge_bounds { badge->bounds() };
     REQUIRE(badge_bounds.height >= 16.0f);
 
     // 같은 항목의 지우기 버튼보다 위에 있고 줄이 겹치지 않는다.
-    const gitman::ui::rect_f clear { tree->find({ gitman::ui::ui_element_kind::settings_git_clear })->bounds() };
+    const luil::rect_f clear { tree->find({ gitman::ui::kind_settings_git_clear })->bounds() };
     REQUIRE(badge_bounds.y + badge_bounds.height <= clear.y);
     // 배지는 항목 왼쪽 끝에서 시작한다.
-    const gitman::ui::rect_f panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    const luil::rect_f panel { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
     REQUIRE(badge_bounds.x > panel.x);
     REQUIRE(badge_bounds.x + badge_bounds.width < clear.x);
 
@@ -558,27 +568,27 @@ TEST_CASE("The scope badge sits above the item title without moving the controls
     gitman::logic_controller global_controller { global_submitter };
     global_controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
     global_controller.handle(gitman::open_settings_intent {});
-    const auto global_tree { gitman::ui::build_ui_tree(*global_controller.make_view_snapshot()) };
-    const gitman::ui::rect_f global_clear { global_tree->find({ gitman::ui::ui_element_kind::settings_git_clear })->bounds() };
-    const gitman::ui::rect_f global_panel { global_tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    const auto global_tree { gitman::testing::make_tree(*global_controller.make_view_snapshot()) };
+    const luil::rect_f global_clear { global_tree->find({ gitman::ui::kind_settings_git_clear })->bounds() };
+    const luil::rect_f global_panel { global_tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
     REQUIRE(clear.x - panel.x == global_clear.x - global_panel.x);
 
     // 외양 항목도 같은 규칙이다. 초안을 고치면 `문서 설정`이 되어 누를 수 있다 (D4).
     fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
-    const auto follows { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    const gitman::ui::ui_element* const following_badge { follows->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"accent" } }) };
+    const auto follows { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const following_badge { follows->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"accent" } }) };
     REQUIRE(following_badge != nullptr);
-    REQUIRE(following_badge->action(gitman::ui::ui_trigger::left_click) == nullptr);
+    REQUIRE(following_badge->action(luil::ui_trigger::left_click) == nullptr);
 
     fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
-    const auto appearance { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    const gitman::ui::ui_element* const accent_badge { appearance->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"accent" } }) };
+    const auto appearance { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const accent_badge { appearance->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"accent" } }) };
     REQUIRE(accent_badge != nullptr);
-    REQUIRE(accent_badge->action(gitman::ui::ui_trigger::left_click) != nullptr);
+    REQUIRE(accent_badge->action(luil::ui_trigger::left_click) != nullptr);
 
-    const std::vector<gitman::ui::input_action> cleared { click(*appearance, accent_badge->id()) };
+    const std::vector<luil::input_action> cleared { click(*appearance, accent_badge->id()) };
     REQUIRE(cleared.size() == 1u);
-    const auto* const message { std::get_if<gitman::logic_message>(&cleared.front()) };
+    const auto* const message { gitman::testing::as_message(cleared) };
     REQUIRE(message != nullptr);
     const auto* const intent { std::get_if<gitman::clear_settings_override_intent>(message) };
     REQUIRE(intent != nullptr);
@@ -616,33 +626,33 @@ TEST_CASE("Every settings control stays inside the panel on all tabs", "[ui][set
             controller.handle(gitman::open_settings_intent {});
             controller.handle(gitman::select_settings_tab_intent { tab });
 
-            const auto tree { gitman::ui::build_ui_tree(*controller.make_view_snapshot()) };
-            const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+            const auto tree { gitman::testing::make_tree(*controller.make_view_snapshot()) };
+            const luil::ui_element* const panel { tree->find({ gitman::ui::kind_settings_dialog_panel }) };
             REQUIRE(panel != nullptr);
-            const gitman::ui::rect_f box { panel->bounds() };
+            const luil::rect_f box { panel->bounds() };
 
-            const std::vector<gitman::ui::ui_element_kind> kinds {
-                gitman::ui::ui_element_kind::settings_tab_item,
-                gitman::ui::ui_element_kind::settings_git_browse,
-                gitman::ui::ui_element_kind::settings_git_clear,
-                gitman::ui::ui_element_kind::settings_svn_browse,
-                gitman::ui::ui_element_kind::settings_svn_clear,
-                gitman::ui::ui_element_kind::settings_timeout_input,
-                gitman::ui::ui_element_kind::settings_submodules_toggle,
-                gitman::ui::ui_element_kind::settings_ignore_local_toggle,
-                gitman::ui::ui_element_kind::settings_log_files_toggle,
-                gitman::ui::ui_element_kind::settings_theme_option,
-                gitman::ui::ui_element_kind::settings_accent_swatch,
-                gitman::ui::ui_element_kind::settings_override_badge,
-                gitman::ui::ui_element_kind::settings_associate,
-                gitman::ui::ui_element_kind::settings_dissociate,
-                gitman::ui::ui_element_kind::settings_dialog_confirm,
-                gitman::ui::ui_element_kind::settings_dialog_cancel,
+            const std::vector<luil::ui_element_kind> kinds {
+                gitman::ui::kind_settings_tab_item,
+                gitman::ui::kind_settings_git_browse,
+                gitman::ui::kind_settings_git_clear,
+                gitman::ui::kind_settings_svn_browse,
+                gitman::ui::kind_settings_svn_clear,
+                gitman::ui::kind_settings_timeout_input,
+                gitman::ui::kind_settings_submodules_toggle,
+                gitman::ui::kind_settings_ignore_local_toggle,
+                gitman::ui::kind_settings_log_files_toggle,
+                gitman::ui::kind_settings_theme_option,
+                gitman::ui::kind_settings_accent_swatch,
+                gitman::ui::kind_settings_override_badge,
+                gitman::ui::kind_settings_associate,
+                gitman::ui::kind_settings_dissociate,
+                gitman::ui::kind_settings_dialog_confirm,
+                gitman::ui::kind_settings_dialog_cancel,
             };
-            for (const gitman::ui::ui_element_kind kind : kinds)
-                for (const gitman::ui::ui_element_id& id : tree->ids_of_kind(kind))
+            for (const luil::ui_element_kind kind : kinds)
+                for (const luil::ui_element_id& id : tree->ids_of_kind(kind))
                 {
-                    const gitman::ui::rect_f bounds { tree->find(id)->bounds() };
+                    const luil::rect_f bounds { tree->find(id)->bounds() };
                     REQUIRE(bounds.x >= box.x);
                     REQUIRE(bounds.y >= box.y);
                     REQUIRE(bounds.x + bounds.width <= box.x + box.width);
@@ -718,77 +728,83 @@ TEST_CASE("Typed characters reach the timeout box only while it has focus", "[ui
 
     // dialog가 없으면 문자 입력은 버려진다.
     {
-        const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-        gitman::ui::interaction_controller interaction {};
-        interaction.set_tree(tree);
-        REQUIRE(interaction.process(gitman::ui::character_typed_event { U'5' }).empty());
+        gitman::testing::interaction_harness idle { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+        REQUIRE(idle.process(luil::character_typed_event { U'5' }).empty());
     }
 
     fixture.controller.handle(gitman::open_settings_intent {});
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
     // 텍스트 박스 element가 존재하고 안내 tooltip을 가진다.
-    const gitman::ui::ui_element* const input { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_timeout_input }) };
+    const luil::ui_element* const input { gitman::testing::find(*tree, gitman::ui::kind_settings_timeout_input) };
     REQUIRE(input != nullptr);
     REQUIRE(input->visible());
     REQUIRE(input->tooltip().empty() == false);
 
     // dialog가 열려 있어도 초점이 없으면 문자는 버려진다 (자동 초점 없음).
-    gitman::ui::interaction_controller interaction {};
-    interaction.set_tree(tree);
-    REQUIRE(interaction.process(gitman::ui::character_typed_event { U'5' }).empty());
+    gitman::testing::interaction_harness harness { tree };
+    REQUIRE(harness.process(luil::character_typed_event { U'5' }).empty());
 
-    // 텍스트 박스를 누르면 초점이 생기고 문자가 편집 intent로 바뀐다.
-    const gitman::ui::rect_f box { input->bounds() };
-    static_cast<void>(interaction.process(gitman::ui::pointer_pressed_event { box.x + 2.0f, box.y + 2.0f, gitman::ui::pointer_button::left, at(0) }));
-    static_cast<void>(interaction.process(gitman::ui::pointer_released_event { box.x + 2.0f, box.y + 2.0f, gitman::ui::pointer_button::left, at(10) }));
-    const std::vector<gitman::ui::input_action> actions { interaction.process(gitman::ui::character_typed_event { U'5' }) };
-    REQUIRE(actions.size() == 1u);
-    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
-    REQUIRE(message != nullptr);
-    const auto* const intent { std::get_if<gitman::edit_text_input_intent>(message) };
+    // 텍스트 박스를 누르면 초점이 생기고 문자가 편집 intent로 바뀐다. 문자·편집
+    // 키를 `text_edit_request`로 만드는 일은 luil의 몫이라(계약 3장) 여기서는
+    // policy가 그것을 어떤 gitman intent로 옮기는지만 본다.
+    const luil::rect_f box { input->bounds() };
+    static_cast<void>(harness.process(luil::pointer_pressed_event { box.x + 2.0f, box.y + 2.0f, luil::pointer_button::left, at(0) }));
+    static_cast<void>(harness.process(luil::pointer_released_event { box.x + 2.0f, box.y + 2.0f, luil::pointer_button::left, at(10) }));
+    const std::vector<luil::input_action> actions { harness.process(luil::character_typed_event { U'5' }) };
+    const auto* const intent { gitman::testing::as_intent<gitman::edit_text_input_intent>(actions) };
     REQUIRE(intent != nullptr);
     REQUIRE(intent->target == gitman::text_input_target::settings_timeout);
     REQUIRE(intent->command == gitman::text_edit_command::insert);
     REQUIRE(intent->text == u8"5");
+
+    // 편집 키도 같은 칸의 편집 intent가 된다 (키 조합 전수는 luil test의 몫이라
+    // 대표로 Ctrl+A 하나만 본다).
+    luil::key_pressed_event select_all {};
+    select_all.key = luil::key_code::key_a;
+    select_all.control = true;
+    const auto select_actions { harness.process(select_all) };
+    const auto* const select_intent { gitman::testing::as_intent<gitman::edit_text_input_intent>(select_actions) };
+    REQUIRE(select_intent != nullptr);
+    REQUIRE(select_intent->target == gitman::text_input_target::settings_timeout);
+    REQUIRE(select_intent->command == gitman::text_edit_command::select_all);
 }
 
 TEST_CASE("Focus follows presses and carries the caret phase origin", "[ui][settings-ui][timeout]")
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    gitman::ui::interaction_controller interaction {};
-    interaction.set_tree(tree);
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    gitman::testing::interaction_harness harness { tree };
 
     // 열림만으로는 초점이 없다 (검수 지시: 자동 초점 없음).
-    REQUIRE(interaction.process(gitman::ui::pointer_moved_event { 1.0f, 1.0f, at(0) }).empty());
-    REQUIRE(interaction.snapshot().focused_input == gitman::ui::ui_element_id {});
-    REQUIRE(interaction.snapshot().focus_started_at.has_value() == false);
+    REQUIRE(harness.process(luil::pointer_moved_event { 1.0f, 1.0f, at(0) }).empty());
+    REQUIRE(harness.snapshot().focused_input == luil::ui_element_id {});
+    REQUIRE(harness.snapshot().focus_started_at.has_value() == false);
 
     // 텍스트 박스를 누르면 초점과 caret 위상 기준 시각이 생긴다.
-    const gitman::ui::rect_f input { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_timeout_input })->bounds() };
-    static_cast<void>(interaction.process(gitman::ui::pointer_pressed_event { input.x + 2.0f, input.y + 2.0f, gitman::ui::pointer_button::left, at(20) }));
-    static_cast<void>(interaction.process(gitman::ui::pointer_released_event { input.x + 2.0f, input.y + 2.0f, gitman::ui::pointer_button::left, at(30) }));
-    REQUIRE(interaction.snapshot().focused_input.kind == gitman::ui::ui_element_kind::settings_timeout_input);
-    REQUIRE(interaction.snapshot().focus_started_at == at(20));
+    const luil::rect_f input { gitman::testing::bounds_of(*tree, gitman::ui::kind_settings_timeout_input) };
+    static_cast<void>(harness.process(luil::pointer_pressed_event { input.x + 2.0f, input.y + 2.0f, luil::pointer_button::left, at(20) }));
+    static_cast<void>(harness.process(luil::pointer_released_event { input.x + 2.0f, input.y + 2.0f, luil::pointer_button::left, at(30) }));
+    REQUIRE(harness.snapshot().focused_input.kind == gitman::ui::kind_settings_timeout_input);
+    REQUIRE(harness.snapshot().focus_started_at == at(20));
 
     // 다른 곳(패널)을 누르면 초점이 풀리고 문자 입력이 버려진다.
-    const gitman::ui::rect_f panel { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
-    static_cast<void>(interaction.process(gitman::ui::pointer_pressed_event { panel.x + 2.0f, panel.y + 2.0f, gitman::ui::pointer_button::left, at(40) }));
-    static_cast<void>(interaction.process(gitman::ui::pointer_released_event { panel.x + 2.0f, panel.y + 2.0f, gitman::ui::pointer_button::left, at(50) }));
-    REQUIRE(interaction.snapshot().focused_input == gitman::ui::ui_element_id {});
-    REQUIRE(interaction.snapshot().focus_started_at.has_value() == false);
-    REQUIRE(interaction.process(gitman::ui::character_typed_event { U'5' }).empty());
+    const luil::rect_f panel { gitman::testing::bounds_of(*tree, gitman::ui::kind_settings_dialog_panel) };
+    static_cast<void>(harness.process(luil::pointer_pressed_event { panel.x + 2.0f, panel.y + 2.0f, luil::pointer_button::left, at(40) }));
+    static_cast<void>(harness.process(luil::pointer_released_event { panel.x + 2.0f, panel.y + 2.0f, luil::pointer_button::left, at(50) }));
+    REQUIRE(harness.snapshot().focused_input == luil::ui_element_id {});
+    REQUIRE(harness.snapshot().focus_started_at.has_value() == false);
+    REQUIRE(harness.process(luil::character_typed_event { U'5' }).empty());
 
     // dialog가 닫히면 남아 있던 초점도 거둔다.
-    static_cast<void>(interaction.process(gitman::ui::pointer_pressed_event { input.x + 2.0f, input.y + 2.0f, gitman::ui::pointer_button::left, at(60) }));
-    static_cast<void>(interaction.process(gitman::ui::pointer_released_event { input.x + 2.0f, input.y + 2.0f, gitman::ui::pointer_button::left, at(70) }));
-    REQUIRE(interaction.snapshot().focused_input.kind == gitman::ui::ui_element_kind::settings_timeout_input);
+    static_cast<void>(harness.process(luil::pointer_pressed_event { input.x + 2.0f, input.y + 2.0f, luil::pointer_button::left, at(60) }));
+    static_cast<void>(harness.process(luil::pointer_released_event { input.x + 2.0f, input.y + 2.0f, luil::pointer_button::left, at(70) }));
+    REQUIRE(harness.snapshot().focused_input.kind == gitman::ui::kind_settings_timeout_input);
     fixture.controller.handle(gitman::cancel_settings_dialog_intent {});
-    interaction.set_tree(gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()));
-    REQUIRE(interaction.process(gitman::ui::pointer_moved_event { 1.0f, 1.0f, at(80) }).empty());
-    REQUIRE(interaction.snapshot().focused_input == gitman::ui::ui_element_id {});
+    harness.controller.set_tree(gitman::testing::make_tree(*fixture.controller.make_view_snapshot()));
+    REQUIRE(harness.process(luil::pointer_moved_event { 1.0f, 1.0f, at(80) }).empty());
+    REQUIRE(harness.snapshot().focused_input == luil::ui_element_id {});
 }
 
 TEST_CASE("The submodule toggle edits the draft and confirm saves it", "[logic][settings-ui][submodule]")
@@ -801,9 +817,9 @@ TEST_CASE("The submodule toggle edits the draft and confirm saves it", "[logic][
 
     // 토글 버튼이 intent를 보내고 초안이 뒤집힌다.
     {
-        const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-        const std::vector<gitman::ui::input_action> actions { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_submodules_toggle }) };
-        const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+        const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+        const std::vector<luil::input_action> actions { click(*tree, luil::ui_element_id { gitman::ui::kind_settings_submodules_toggle }) };
+        const auto* const message { gitman::testing::as_message(actions) };
         REQUIRE(message != nullptr);
         REQUIRE(std::holds_alternative<gitman::toggle_settings_submodules_intent>(*message));
     }
@@ -842,9 +858,9 @@ TEST_CASE("The log file toggle edits the draft and confirm saves it", "[logic][s
     REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->write_log_files);
 
     {
-        const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-        const std::vector<gitman::ui::input_action> actions { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_log_files_toggle }) };
-        const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
+        const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+        const std::vector<luil::input_action> actions { click(*tree, luil::ui_element_id { gitman::ui::kind_settings_log_files_toggle }) };
+        const auto* const message { gitman::testing::as_message(actions) };
         REQUIRE(message != nullptr);
         REQUIRE(std::holds_alternative<gitman::toggle_settings_log_files_intent>(*message));
     }
@@ -902,7 +918,7 @@ TEST_CASE("The appearance draft lands in the document on save", "[logic][setting
     fixture.controller.handle(gitman::confirm_settings_intent {});
     const auto followed { fixture.controller.make_view_snapshot() };
     REQUIRE(followed->appearance.theme == gitman::theme_preference::system);
-    REQUIRE(followed->appearance.accent_id == gitman::default_accent_id);
+    REQUIRE(followed->appearance.accent_id == luil::default_accent_id);
 }
 
 TEST_CASE("Cancelling the settings dialog rolls the appearance preview back", "[logic][settings-ui][theme]")
@@ -923,14 +939,14 @@ TEST_CASE("Cancelling the settings dialog rolls the appearance preview back", "[
 
     const auto view { fixture.controller.make_view_snapshot() };
     REQUIRE(view->appearance.theme == gitman::theme_preference::system);
-    REQUIRE(view->appearance.accent_id == gitman::default_accent_id);
+    REQUIRE(view->appearance.accent_id == luil::default_accent_id);
     REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) == nullptr);
 
     // 다시 열면 초안도 유효 값에서 시작한다.
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto reopened { fixture.controller.make_view_snapshot() };
     REQUIRE(reopened->settings_dialog->theme == gitman::theme_preference::system);
-    REQUIRE(reopened->settings_dialog->accent_id == gitman::default_accent_id);
+    REQUIRE(reopened->settings_dialog->accent_id == luil::default_accent_id);
 }
 
 TEST_CASE("The appearance edits the app settings without a document", "[logic][settings-ui][theme]")
@@ -976,22 +992,22 @@ TEST_CASE("The appearance items show the effective values and a wrapped swatch g
     REQUIRE(view->settings_dialog->theme == gitman::theme_preference::light);
     REQUIRE(view->settings_dialog->accent_id == u8"blue");
 
-    const auto tree { gitman::ui::build_ui_tree(*view) };
-    const gitman::ui::ui_element_id light { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"light" } };
-    const gitman::ui::ui_element_id system { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"system" } };
-    const gitman::ui::ui_element_id dark { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"dark" } };
+    const auto tree { gitman::testing::make_tree(*view) };
+    const luil::ui_element_id light { gitman::ui::kind_settings_theme_option, std::u8string { u8"light" } };
+    const luil::ui_element_id system { gitman::ui::kind_settings_theme_option, std::u8string { u8"system" } };
+    const luil::ui_element_id dark { gitman::ui::kind_settings_theme_option, std::u8string { u8"dark" } };
     REQUIRE(tree->find(light) != nullptr);
     REQUIRE(tree->find(system) != nullptr);
     REQUIRE(tree->find(dark) != nullptr);
 
     // 색 동그라미는 내장 목록만큼 있고, 각자 자기 id를 가진다.
-    REQUIRE(tree->ids_of_kind(gitman::ui::ui_element_kind::settings_accent_swatch).size() == gitman::accent_catalog().size());
-    for (const gitman::accent_definition& accent : gitman::accent_catalog())
-        REQUIRE(tree->find({ gitman::ui::ui_element_kind::settings_accent_swatch, gitman::project_id { std::u8string { accent.id } } }) != nullptr);
+    REQUIRE(tree->ids_of_kind(gitman::ui::kind_settings_accent_swatch).size() == luil::accent_catalog().size());
+    for (const luil::accent_definition& accent : luil::accent_catalog())
+        REQUIRE(tree->find({ gitman::ui::kind_settings_accent_swatch, std::u8string { accent.id } }) != nullptr);
 
     // 세 칸과 동그라미는 서로 겹치지 않고 panel 안에 있다.
-    const gitman::ui::rect_f panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
-    const gitman::ui::rect_f system_bounds { tree->find(system)->bounds() };
+    const luil::rect_f panel { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
+    const luil::rect_f system_bounds { tree->find(system)->bounds() };
     REQUIRE(system_bounds.x >= panel.x);
     REQUIRE(system_bounds.x + system_bounds.width <= panel.x + panel.width);
     REQUIRE(tree->find(light)->bounds().x < system_bounds.x);
@@ -999,10 +1015,10 @@ TEST_CASE("The appearance items show the effective values and a wrapped swatch g
 
     // 색 격자는 왼쪽에서 오른쪽으로 채우고 panel을 넘지 않는다. 줄이 바뀌면 x가
     // 처음으로 돌아가고 y가 내려간다 (S2.4).
-    std::vector<gitman::ui::rect_f> swatches {};
-    for (const gitman::accent_definition& accent : gitman::accent_catalog())
-        swatches.push_back(tree->find({ gitman::ui::ui_element_kind::settings_accent_swatch, gitman::project_id { std::u8string { accent.id } } })->bounds());
-    for (const gitman::ui::rect_f& swatch : swatches)
+    std::vector<luil::rect_f> swatches {};
+    for (const luil::accent_definition& accent : luil::accent_catalog())
+        swatches.push_back(tree->find({ gitman::ui::kind_settings_accent_swatch, std::u8string { accent.id } })->bounds());
+    for (const luil::rect_f& swatch : swatches)
     {
         REQUIRE(swatch.x >= panel.x);
         REQUIRE(swatch.x + swatch.width <= panel.x + panel.width);
@@ -1026,23 +1042,23 @@ TEST_CASE("Appearance clicks preview at once and need the save button to persist
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
-    const std::vector<gitman::ui::input_action> theme_actions {
-        click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_theme_option, gitman::project_id { u8"dark" } }),
+    const std::vector<luil::input_action> theme_actions {
+        click(*tree, luil::ui_element_id { gitman::ui::kind_settings_theme_option, std::u8string { u8"dark" } }),
     };
     REQUIRE(theme_actions.size() == 1u);
-    const auto* const theme_message { std::get_if<gitman::logic_message>(&theme_actions.front()) };
+    const auto* const theme_message { gitman::testing::as_message(theme_actions) };
     REQUIRE(theme_message != nullptr);
     const auto* const theme_intent { std::get_if<gitman::set_theme_preference_intent>(theme_message) };
     REQUIRE(theme_intent != nullptr);
     REQUIRE(theme_intent->theme == gitman::theme_preference::dark);
 
-    const std::vector<gitman::ui::input_action> accent_actions {
-        click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::settings_accent_swatch, gitman::project_id { u8"blue" } }),
+    const std::vector<luil::input_action> accent_actions {
+        click(*tree, luil::ui_element_id { gitman::ui::kind_settings_accent_swatch, std::u8string { u8"blue" } }),
     };
     REQUIRE(accent_actions.size() == 1u);
-    const auto* const accent_message { std::get_if<gitman::logic_message>(&accent_actions.front()) };
+    const auto* const accent_message { gitman::testing::as_message(accent_actions) };
     REQUIRE(accent_message != nullptr);
     const auto* const accent_intent { std::get_if<gitman::set_accent_intent>(accent_message) };
     REQUIRE(accent_intent != nullptr);
@@ -1076,13 +1092,13 @@ TEST_CASE("A short window scrolls the settings items instead of overflowing", "[
     REQUIRE(metrics.maximum_scroll > 0.0f);
     REQUIRE(metrics.viewport_height < metrics.content_height);
 
-    const auto tree { gitman::ui::build_ui_tree(*snapshot) };
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar }) != nullptr);
+    const auto tree { gitman::testing::make_tree(*snapshot) };
+    REQUIRE(settings_scrollbar(*tree) != nullptr);
 
     // 저장·취소 버튼은 제자리에 남고, 항목 컨트롤은 그 위에서 끝난다.
-    const gitman::ui::ui_element* const confirm { tree->find({ gitman::ui::ui_element_kind::settings_dialog_confirm }) };
+    const luil::ui_element* const confirm { tree->find({ gitman::ui::kind_settings_dialog_confirm }) };
     REQUIRE(confirm != nullptr);
-    const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+    const luil::ui_element* const panel { tree->find({ gitman::ui::kind_settings_dialog_panel }) };
     REQUIRE(panel != nullptr);
     REQUIRE(confirm->bounds().y + confirm->bounds().height <= panel->bounds().y + panel->bounds().height);
 }
@@ -1125,8 +1141,8 @@ TEST_CASE("A tall window keeps the settings dialog unscrolled", "[ui][settings-u
     REQUIRE(gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, 1000.0f).maximum_scroll == 0.0f);
 
     // 스크롤할 것이 없으면 막대도 없고 휠도 아무 일을 하지 않는다.
-    const auto tree { gitman::ui::build_ui_tree(*snapshot) };
-    const gitman::ui::ui_element* const bar { tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar }) };
+    const auto tree { gitman::testing::make_tree(*snapshot) };
+    const luil::ui_element* const bar { settings_scrollbar(*tree) };
     REQUIRE((bar == nullptr || bar->visible() == false));
 
     controller.handle(gitman::settings_scroll_intent { 500.0f });
@@ -1141,8 +1157,8 @@ TEST_CASE("Scrolled settings controls leave the viewport and stop responding", "
     controller.handle(gitman::open_settings_intent {});
 
     const auto before { controller.make_view_snapshot() };
-    const auto tree_before { gitman::ui::build_ui_tree(*before) };
-    const gitman::ui::ui_element* const browse_before { tree_before->find({ gitman::ui::ui_element_kind::settings_git_browse }) };
+    const auto tree_before { gitman::testing::make_tree(*before) };
+    const luil::ui_element* const browse_before { tree_before->find({ gitman::ui::kind_settings_git_browse }) };
     REQUIRE(browse_before != nullptr);
     const float y_before { browse_before->bounds().y };
 
@@ -1150,25 +1166,25 @@ TEST_CASE("Scrolled settings controls leave the viewport and stop responding", "
     const auto after { controller.make_view_snapshot() };
     REQUIRE(after->settings_dialog->scroll_offset > 0.0f);
 
-    const auto tree_after { gitman::ui::build_ui_tree(*after) };
-    const gitman::ui::ui_element* const browse_after { tree_after->find({ gitman::ui::ui_element_kind::settings_git_browse }) };
+    const auto tree_after { gitman::testing::make_tree(*after) };
+    const luil::ui_element* const browse_after { tree_after->find({ gitman::ui::kind_settings_git_browse }) };
     REQUIRE(browse_after != nullptr);
     // 항목은 위로 흐르고 탭 rail은 제자리다.
     REQUIRE(browse_after->bounds().y < y_before);
 
-    const gitman::ui::ui_element_id rail_id { gitman::ui::ui_element_kind::settings_tab_item, gitman::project_id { std::u8string { u8"tools" } } };
-    const gitman::ui::ui_element* const rail_before { tree_before->find(rail_id) };
-    const gitman::ui::ui_element* const rail_after { tree_after->find(rail_id) };
+    const luil::ui_element_id rail_id { gitman::ui::kind_settings_tab_item, std::u8string { u8"tools" } };
+    const luil::ui_element* const rail_before { tree_before->find(rail_id) };
+    const luil::ui_element* const rail_after { tree_after->find(rail_id) };
     REQUIRE(rail_before != nullptr);
     REQUIRE(rail_after != nullptr);
     REQUIRE(rail_after->bounds().y == rail_before->bounds().y);
 
     // viewport 밖으로 밀려난 자리는 눌리지 않는다.
-    const gitman::ui::ui_element* const panel { tree_after->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+    const luil::ui_element* const panel { tree_after->find({ gitman::ui::kind_settings_dialog_panel }) };
     REQUIRE(panel != nullptr);
-    const gitman::ui::rect_f bounds { browse_after->bounds() };
+    const luil::rect_f bounds { browse_after->bounds() };
     if (bounds.y + bounds.height < panel->bounds().y + 44.0f)
-        REQUIRE(tree_after->root().hit_test(bounds.x + 1.0f, bounds.y + 1.0f) != browse_after);
+        REQUIRE(tree_after->hit_test(bounds.x + 1.0f, bounds.y + 1.0f) != browse_after);
 }
 
 TEST_CASE("The wheel scrolls the settings dialog and the font dialog wins on top", "[ui][settings-ui][scroll]")
@@ -1178,24 +1194,17 @@ TEST_CASE("The wheel scrolls the settings dialog and the font dialog wins on top
     controller.handle(gitman::window_metrics_intent { 1280.0f, 320.0f, 1.0f });
     controller.handle(gitman::open_settings_intent {});
 
-    gitman::ui::interaction_controller interaction {};
-    interaction.set_tree(gitman::ui::build_ui_tree(*controller.make_view_snapshot()));
+    gitman::testing::interaction_harness harness { gitman::testing::make_tree(*controller.make_view_snapshot()) };
 
-    const auto settings_actions { interaction.process(gitman::ui::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
-    REQUIRE(settings_actions.size() == 1u);
-    const auto* const settings_message { std::get_if<gitman::logic_message>(&settings_actions.front()) };
-    REQUIRE(settings_message != nullptr);
-    REQUIRE(std::get_if<gitman::settings_scroll_intent>(settings_message) != nullptr);
+    const auto settings_actions { harness.process(luil::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
+    REQUIRE(gitman::testing::as_intent<gitman::settings_scroll_intent>(settings_actions) != nullptr);
 
     // 글꼴 dialog는 환경설정 위에 뜨므로 휠을 먼저 가져간다.
     controller.handle(gitman::open_font_dialog_intent { false });
-    interaction.set_tree(gitman::ui::build_ui_tree(*controller.make_view_snapshot()));
+    harness.controller.set_tree(gitman::testing::make_tree(*controller.make_view_snapshot()));
 
-    const auto font_actions { interaction.process(gitman::ui::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
-    REQUIRE(font_actions.size() == 1u);
-    const auto* const font_message { std::get_if<gitman::logic_message>(&font_actions.front()) };
-    REQUIRE(font_message != nullptr);
-    REQUIRE(std::get_if<gitman::font_dialog_scroll_intent>(font_message) != nullptr);
+    const auto font_actions { harness.process(luil::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
+    REQUIRE(gitman::testing::as_intent<gitman::font_dialog_scroll_intent>(font_actions) != nullptr);
 }
 
 TEST_CASE("A clamped dialog keeps a margin from the client edges", "[ui][settings-ui][scroll]")
@@ -1209,10 +1218,10 @@ TEST_CASE("A clamped dialog keeps a margin from the client edges", "[ui][setting
     controller.handle(gitman::open_settings_intent {});
     controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
 
-    const auto tree { gitman::ui::build_ui_tree(*controller.make_view_snapshot()) };
-    const gitman::ui::ui_element* const panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel }) };
+    const auto tree { gitman::testing::make_tree(*controller.make_view_snapshot()) };
+    const luil::ui_element* const panel { tree->find({ gitman::ui::kind_settings_dialog_panel }) };
     REQUIRE(panel != nullptr);
-    const gitman::ui::rect_f box { panel->bounds() };
+    const luil::rect_f box { panel->bounds() };
 
     const float margin { gitman::dialog_edge_margin(window_height) };
     REQUIRE(margin > 0.0f);
@@ -1238,8 +1247,8 @@ TEST_CASE("The scroll limit accounts for the dialog margin", "[ui][settings-ui][
         gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, window_height),
     };
 
-    const auto tree { gitman::ui::build_ui_tree(*snapshot) };
-    const gitman::ui::rect_f box { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    const auto tree { gitman::testing::make_tree(*snapshot) };
+    const luil::rect_f box { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
     // panel 높이 = chrome + viewport다. 배치가 여백을 반영했으면 이 둘이 맞는다.
     REQUIRE(box.height == Catch::Approx(104.0f + metrics.viewport_height));
 
@@ -1283,8 +1292,8 @@ TEST_CASE("Each settings tab gets its own scroll extent", "[ui][settings-ui][scr
     const auto tall { controller.make_view_snapshot() };
     const auto tall_metrics { gitman::ui::settings_dialog_metrics(*tall->settings_dialog, window_height) };
     REQUIRE(tall_metrics.maximum_scroll > 0.0f);
-    const auto tall_tree { gitman::ui::build_ui_tree(*tall) };
-    REQUIRE(tall_tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar })->visible());
+    const auto tall_tree { gitman::testing::make_tree(*tall) };
+    REQUIRE(settings_scrollbar(*tall_tree)->visible());
 
     for (const gitman::settings_tab tab : short_tabs)
     {
@@ -1297,8 +1306,8 @@ TEST_CASE("Each settings tab gets its own scroll extent", "[ui][settings-ui][scr
         REQUIRE(metrics.maximum_scroll == 0.0f);
 
         // 막대도 없고 휠도 아무 일을 하지 않는다.
-        const auto tab_tree { gitman::ui::build_ui_tree(*snapshot) };
-        const gitman::ui::ui_element* const bar { tab_tree->find({ gitman::ui::ui_element_kind::settings_dialog_scrollbar }) };
+        const auto tab_tree { gitman::testing::make_tree(*snapshot) };
+        const luil::ui_element* const bar { settings_scrollbar(*tab_tree) };
         INFO("tab " << static_cast<int>(tab) << " content " << metrics.content_height << " viewport " << metrics.viewport_height << " max " << metrics.maximum_scroll);
         REQUIRE((bar == nullptr || bar->visible() == false));
         controller.handle(gitman::settings_scroll_intent { 500.0f });
@@ -1345,19 +1354,19 @@ TEST_CASE("An overridden item keeps its badge and controls off the highlight edg
     settings_fixture fixture {};
     fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
     fixture.controller.handle(gitman::open_settings_intent {});
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
-    const gitman::ui::ui_element* const badge { tree->find({ gitman::ui::ui_element_kind::settings_override_badge, gitman::project_id { u8"git" } }) };
+    const luil::ui_element* const badge { tree->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"git" } }) };
     REQUIRE(badge != nullptr);
-    const gitman::ui::rect_f badge_bounds { badge->bounds() };
+    const luil::rect_f badge_bounds { badge->bounds() };
 
     // 같은 항목의 두 버튼이 블록 오른쪽 끝이다.
-    const gitman::ui::rect_f browse { tree->find({ gitman::ui::ui_element_kind::settings_git_browse })->bounds() };
-    const gitman::ui::rect_f clear { tree->find({ gitman::ui::ui_element_kind::settings_git_clear })->bounds() };
+    const luil::rect_f browse { tree->find({ gitman::ui::kind_settings_git_browse })->bounds() };
+    const luil::rect_f clear { tree->find({ gitman::ui::kind_settings_git_clear })->bounds() };
     const float controls_right { clear.x + clear.width };
 
     // 강조 바탕이 깔리는 블록의 좌우 끝이다. 배지 왼쪽 끝이 블록 왼쪽 끝이었다.
-    const gitman::ui::rect_f panel { tree->find({ gitman::ui::ui_element_kind::settings_dialog_panel })->bounds() };
+    const luil::rect_f panel { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
     constexpr float content_left { 14.0f + 132.0f + 14.0f };
     const float block_left { panel.x + content_left };
     const float block_right { panel.x + panel.width - 14.0f };

@@ -1,8 +1,9 @@
 #include "application/logic_controller.h"
+#include "helpers/ui_test_support.h"
 #include "presentation/list_metrics.h"
 #include "presentation/log_presentation.h"
-#include "presentation/ui/build_ui_tree.h"
-#include "presentation/ui/ui_interaction.h"
+
+#include "luil/ui/ui_events.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -14,6 +15,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+using namespace gitman::testing;
 
 namespace {
     class recording_submitter final : public gitman::operation_submitter
@@ -102,12 +105,12 @@ TEST_CASE("Log filters keep the rules shared between logic and UI", "[log][prese
 
     REQUIRE(gitman::log_entry_matches_filter(output, gitman::log_stream_filter::output));
     REQUIRE(gitman::log_entry_matches_filter(info, gitman::log_stream_filter::output));
-    REQUIRE_FALSE(gitman::log_entry_matches_filter(error, gitman::log_stream_filter::output));
+    REQUIRE(gitman::log_entry_matches_filter(error, gitman::log_stream_filter::output) == false);
 
     REQUIRE(gitman::log_entry_matches_filter(error, gitman::log_stream_filter::errors));
     REQUIRE(gitman::log_entry_matches_filter(warning, gitman::log_stream_filter::errors));
-    REQUIRE_FALSE(gitman::log_entry_matches_filter(output, gitman::log_stream_filter::errors));
-    REQUIRE_FALSE(gitman::log_entry_matches_filter(info, gitman::log_stream_filter::errors));
+    REQUIRE(gitman::log_entry_matches_filter(output, gitman::log_stream_filter::errors) == false);
+    REQUIRE(gitman::log_entry_matches_filter(info, gitman::log_stream_filter::errors) == false);
 
     // 필터 버튼은 전체 → 출력 → 오류 → 전체로 순환한다.
     REQUIRE(gitman::next_log_filter(gitman::log_stream_filter::all) == gitman::log_stream_filter::output);
@@ -258,69 +261,60 @@ namespace {
         return view;
     }
 
-    // 첫 logic_message 액션을 꺼낸다. 없으면 monostate다.
-    gitman::logic_message first_logic_message(const std::vector<gitman::ui::input_action>& actions)
+    // 헤더 버튼의 왼쪽 클릭 액션을 그 자리에서 실행한다. 어떤 액션이 나오는지가
+    // gitman의 몫이고, 누름·뗌의 상태 기계는 luil test가 본다.
+    std::vector<luil::input_action> invoke_click(const luil::ui_tree& tree, const luil::ui_element_kind kind, const std::u8string_view owner = u8"")
     {
-        for (const gitman::ui::input_action& action : actions)
-            if (const auto* const message { std::get_if<gitman::logic_message>(&action) }; message != nullptr)
-                return *message;
-        return gitman::logic_message { gitman::shutdown_message {} };
+        const luil::ui_element* const element { find(tree, kind, owner) };
+        REQUIRE(element != nullptr);
+        const luil::ui_action* const action { element->action(luil::ui_trigger::left_click) };
+        REQUIRE(action != nullptr);
+        return (*action)({});
     }
 } // namespace
 
 TEST_CASE("The tree shows the log pane with wired header buttons", "[log][ui]")
 {
-    const auto tree { gitman::ui::build_ui_tree(make_view_with_log()) };
+    const gitman::view_snapshot view { make_view_with_log() };
+    const auto tree { make_tree(view) };
 
-    const gitman::ui::ui_element* const pane { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::log_pane }) };
+    const luil::ui_element* const pane { find(*tree, gitman::ui::kind_log_pane) };
     REQUIRE(pane != nullptr);
     REQUIRE(pane->visible());
 
-    const gitman::ui::ui_element_id owner_id { gitman::ui::ui_element_kind::log_filter, gitman::project_id { u8"alpha" } };
-    const gitman::ui::ui_element* const filter { tree->find(owner_id) };
-    REQUIRE(filter != nullptr);
-    const auto filter_actions { (*filter->action(gitman::ui::ui_trigger::left_click))({}) };
-    const gitman::logic_message filter_message { first_logic_message(filter_actions) };
-    const auto* const filter_intent { std::get_if<gitman::set_log_filter_intent>(&filter_message) };
+    const std::vector<luil::input_action> filter_actions { invoke_click(*tree, gitman::ui::kind_log_filter, u8"alpha") };
+    const auto* const filter_intent { as_intent<gitman::set_log_filter_intent>(filter_actions) };
     REQUIRE(filter_intent != nullptr);
     REQUIRE(filter_intent->filter == gitman::log_stream_filter::output);
 
-    const gitman::ui::ui_element* const autoscroll { tree->find({ gitman::ui::ui_element_kind::log_autoscroll, gitman::project_id { u8"alpha" } }) };
-    REQUIRE(autoscroll != nullptr);
-    const auto autoscroll_actions { (*autoscroll->action(gitman::ui::ui_trigger::left_click))({}) };
-    const gitman::logic_message autoscroll_message { first_logic_message(autoscroll_actions) };
-    const auto* const autoscroll_intent { std::get_if<gitman::set_log_auto_scroll_intent>(&autoscroll_message) };
+    const std::vector<luil::input_action> autoscroll_actions { invoke_click(*tree, gitman::ui::kind_log_autoscroll, u8"alpha") };
+    const auto* const autoscroll_intent { as_intent<gitman::set_log_auto_scroll_intent>(autoscroll_actions) };
     REQUIRE(autoscroll_intent != nullptr);
     REQUIRE(autoscroll_intent->enabled == false);
 
-    const gitman::ui::ui_element* const copy { tree->find({ gitman::ui::ui_element_kind::log_copy, gitman::project_id { u8"alpha" } }) };
-    REQUIRE(copy != nullptr);
-    const auto copy_actions { (*copy->action(gitman::ui::ui_trigger::left_click))({}) };
-    bool found_copy_command { false };
-    for (const gitman::ui::input_action& action : copy_actions)
-        if (const auto* const command { std::get_if<gitman::ui::ui_command>(&action) }; command != nullptr && *command == gitman::ui::ui_command::copy_selected_log)
-            found_copy_command = true;
-    REQUIRE(found_copy_command);
+    // 복사는 logic을 거치지 않고 클릭 시점의 표시 글을 클립보드 요청에 담는다.
+    const std::vector<luil::input_action> copy_actions { invoke_click(*tree, gitman::ui::kind_log_copy, u8"alpha") };
+    REQUIRE(copy_actions.size() == 1u);
+    const auto* const copy_request { std::get_if<luil::clipboard_copy_request>(&copy_actions.front()) };
+    REQUIRE(copy_request != nullptr);
+    REQUIRE(copy_request->text == gitman::format_log_copy_text(*view.log));
 
-    const gitman::ui::ui_element* const clear { tree->find({ gitman::ui::ui_element_kind::log_clear, gitman::project_id { u8"alpha" } }) };
-    REQUIRE(clear != nullptr);
-    const auto clear_actions { (*clear->action(gitman::ui::ui_trigger::left_click))({}) };
-    const gitman::logic_message clear_message { first_logic_message(clear_actions) };
-    const auto* const clear_intent { std::get_if<gitman::clear_log_intent>(&clear_message) };
+    const std::vector<luil::input_action> clear_actions { invoke_click(*tree, gitman::ui::kind_log_clear, u8"alpha") };
+    const auto* const clear_intent { as_intent<gitman::clear_log_intent>(clear_actions) };
     REQUIRE(clear_intent != nullptr);
     REQUIRE(clear_intent->id.value == u8"alpha");
 }
 
 TEST_CASE("An empty log disables copy and clear and a plain view has no pane", "[log][ui]")
 {
-    const auto tree { gitman::ui::build_ui_tree(make_view_with_log(false)) };
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::log_copy, gitman::project_id { u8"alpha" } })->enabled() == false);
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::log_clear, gitman::project_id { u8"alpha" } })->enabled() == false);
+    const auto tree { make_tree(make_view_with_log(false)) };
+    REQUIRE(find(*tree, gitman::ui::kind_log_copy, u8"alpha")->enabled() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_log_clear, u8"alpha")->enabled() == false);
 
     gitman::view_snapshot plain { make_view_with_log() };
     plain.log.reset();
-    const auto without { gitman::ui::build_ui_tree(plain) };
-    REQUIRE(without->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::log_pane }) == nullptr);
+    const auto without { make_tree(plain) };
+    REQUIRE(find(*without, gitman::ui::kind_log_pane) == nullptr);
 }
 
 TEST_CASE("Consecutive progress records collapse to the last one for display", "[log][presentation]")
@@ -404,20 +398,19 @@ TEST_CASE("A long log shows the pane scrollbar and dragging it scrolls the log",
         bulk.entries.push_back(make_entry(u8"line", gitman::log_entry_kind::standard_output));
     fixture.controller.handle(std::move(bulk));
 
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    const gitman::ui::ui_element* const scrollbar { tree->find({ gitman::ui::ui_element_kind::log_scrollbar, gitman::project_id { u8"alpha" } }) };
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const scrollbar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log) };
     REQUIRE(scrollbar != nullptr);
     REQUIRE(scrollbar->visible());
 
-    // 끌기는 log_scroll_intent로 흐른다 (자동 스크롤 규칙이 유지되는 경로).
-    const gitman::ui::pointer_drag_target* const drag { scrollbar->pointer_drag() };
-    REQUIRE(drag != nullptr);
-    const gitman::ui::ui_action_context previous { scrollbar->id(), 400.0f, 500.0f, false };
-    const gitman::ui::ui_action_context current { scrollbar->id(), 400.0f, 490.0f, false };
-    const std::vector<gitman::ui::input_action> actions { drag->on_move(previous, current) };
-    REQUIRE(actions.size() == 1u);
-    const gitman::logic_message message { first_logic_message(actions) };
-    const auto* const intent { std::get_if<gitman::log_scroll_intent>(&message) };
+    // 막대를 잡고 위로 끌면 log_scroll_intent가 흐른다 (자동 스크롤 규칙이
+    // 유지되는 경로). 끌기의 산술은 luil test가 본다.
+    interaction_harness harness { tree };
+    const luil::rect_f box { scrollbar->bounds() };
+    const float x { box.x + box.width / 2.0f };
+    static_cast<void>(harness.process(luil::pointer_pressed_event { x, box.y + 1.0f, luil::pointer_button::left, at(0) }));
+    const std::vector<luil::input_action> actions { harness.process(luil::pointer_moved_event { x, box.y - 20.0f, at(10) }) };
+    const auto* const intent { as_intent<gitman::log_scroll_intent>(actions) };
     REQUIRE(intent != nullptr);
     REQUIRE(intent->delta < 0.0f);
 }
@@ -425,24 +418,22 @@ TEST_CASE("A long log shows the pane scrollbar and dragging it scrolls the log",
 TEST_CASE("A short log hides the pane scrollbar", "[log][ui]")
 {
     log_fixture fixture {};
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    const gitman::ui::ui_element* const scrollbar { tree->find({ gitman::ui::ui_element_kind::log_scrollbar, gitman::project_id { u8"alpha" } }) };
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const scrollbar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log) };
     REQUIRE(scrollbar != nullptr);
     REQUIRE(scrollbar->visible() == false);
 }
 
 TEST_CASE("The wheel over the log pane scrolls the log instead of the list", "[log][ui]")
 {
-    gitman::ui::interaction_controller controller {};
-    controller.set_tree(gitman::ui::build_ui_tree(make_view_with_log()));
+    const gitman::view_snapshot view { make_view_with_log() };
+    interaction_harness harness { make_tree(view) };
 
     // 로그 pane 위: window 600 높이에서 pane은 아래 160이다.
-    const auto log_actions { controller.process(gitman::ui::mouse_wheel_event { 400.0f, 520.0f, 120.0f }) };
-    const gitman::logic_message log_message { first_logic_message(log_actions) };
-    REQUIRE(std::get_if<gitman::log_scroll_intent>(&log_message) != nullptr);
+    const std::vector<luil::input_action> log_actions { harness.process(luil::mouse_wheel_event { 400.0f, 520.0f, -120.0f, at(0) }) };
+    REQUIRE(as_intent<gitman::log_scroll_intent>(log_actions) != nullptr);
 
     // 카드 목록 위는 기존 목록 스크롤이다.
-    const auto list_actions { controller.process(gitman::ui::mouse_wheel_event { 400.0f, 200.0f, 120.0f }) };
-    const gitman::logic_message list_message { first_logic_message(list_actions) };
-    REQUIRE(std::get_if<gitman::scroll_intent>(&list_message) != nullptr);
+    const std::vector<luil::input_action> list_actions { harness.process(luil::mouse_wheel_event { 400.0f, 200.0f, -120.0f, at(0) }) };
+    REQUIRE(as_intent<gitman::scroll_intent>(list_actions) != nullptr);
 }

@@ -1,7 +1,8 @@
+#include "application/app_commands.h"
 #include "application/logic_controller.h"
-#include "presentation/ui/build_ui_tree.h"
+#include "helpers/ui_test_support.h"
 #include "presentation/ui/discovery_dialog_element.h"
-#include "presentation/ui/ui_interaction.h"
+#include "presentation/ui/element_kinds.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,6 +14,12 @@
 #include <vector>
 
 namespace {
+    using gitman::testing::as_intent;
+    using gitman::testing::as_message;
+    using gitman::testing::find;
+    using gitman::testing::id_of;
+    using gitman::testing::make_tree;
+
     class recording_submitter final : public gitman::operation_submitter
     {
     public:
@@ -87,11 +94,13 @@ namespace {
         }
     };
 
-    std::vector<gitman::ui::input_action> click(const gitman::ui::ui_tree& tree, const gitman::ui::ui_element_id& id)
+    // element가 등록한 왼쪽 클릭 액션을 그 자리에서 실행한다 (상호작용 상태 기계를
+    // 거치지 않고 "무엇을 내는가"만 본다).
+    std::vector<luil::input_action> click(const luil::ui_tree& tree, const luil::ui_element_id& id)
     {
-        const gitman::ui::ui_element* const element { tree.find(id) };
+        const luil::ui_element* const element { tree.find(id) };
         REQUIRE(element != nullptr);
-        const gitman::ui::ui_action* const action { element->action(gitman::ui::ui_trigger::left_click) };
+        const luil::ui_action* const action { element->action(luil::ui_trigger::left_click) };
         REQUIRE(action != nullptr);
         return (*action)({});
     }
@@ -310,27 +319,23 @@ TEST_CASE("The discovery dialog elements register toggles and actions", "[ui][di
         make_candidate(u8"repo-a", gitman::repository_kind::git),
         make_candidate(u8"taken", gitman::repository_kind::git, gitman::discovery_exclusion::already_registered),
     });
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
 
-    REQUIRE(tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::discovery_dialog }) != nullptr);
+    REQUIRE(find(*tree, gitman::ui::kind_discovery_dialog) != nullptr);
 
     // 후보 행 클릭은 index를 담은 toggle intent다.
-    const std::vector<gitman::ui::input_action> toggle { click(*tree, gitman::ui::discovery_dialog_item_id(0)) };
-    REQUIRE(toggle.size() == 1u);
-    const auto* const toggle_message { std::get_if<gitman::logic_message>(&toggle.front()) };
-    REQUIRE(toggle_message != nullptr);
-    const auto* const toggle_intent { std::get_if<gitman::toggle_discovery_candidate_intent>(toggle_message) };
+    const std::vector<luil::input_action> toggle { click(*tree, gitman::ui::discovery_dialog_item_id(0)) };
+    const auto* const toggle_intent { as_intent<gitman::toggle_discovery_candidate_intent>(toggle) };
     REQUIRE(toggle_intent != nullptr);
     REQUIRE(toggle_intent->index == 0u);
 
     // 제외 후보 행은 비활성이다.
-    const gitman::ui::ui_element* const excluded { tree->find(gitman::ui::discovery_dialog_item_id(1)) };
+    const luil::ui_element* const excluded { tree->find(gitman::ui::discovery_dialog_item_id(1)) };
     REQUIRE(excluded != nullptr);
     REQUIRE(excluded->enabled() == false);
 
-    const std::vector<gitman::ui::input_action> confirm { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::discovery_dialog_confirm }) };
-    REQUIRE(confirm.size() == 1u);
-    const auto* const confirm_message { std::get_if<gitman::logic_message>(&confirm.front()) };
+    const std::vector<luil::input_action> confirm { click(*tree, id_of(gitman::ui::kind_discovery_dialog_confirm)) };
+    const gitman::logic_message* const confirm_message { as_message(confirm) };
     REQUIRE(confirm_message != nullptr);
     REQUIRE(std::holds_alternative<gitman::confirm_discovery_intent>(*confirm_message));
 }
@@ -339,19 +344,20 @@ TEST_CASE("The toolbar discover button requests the folder picker only with a do
 {
     discovery_fixture fixture {};
     fixture.controller.handle(gitman::cancel_discovery_dialog_intent {});
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    const std::vector<gitman::ui::input_action> actions { click(*tree, gitman::ui::ui_element_id { gitman::ui::ui_element_kind::toolbar_discover }) };
-    REQUIRE(actions.size() == 1u);
-    const auto* const command { std::get_if<gitman::ui::ui_command>(&actions.front()) };
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const std::vector<luil::input_action> actions { click(*tree, id_of(gitman::ui::kind_toolbar_discover)) };
+    const luil::app_ui_command* const command { gitman::testing::as_app_command(actions) };
     REQUIRE(command != nullptr);
-    REQUIRE(*command == gitman::ui::ui_command::show_discovery_folder_picker);
+    REQUIRE(gitman::parse_app_command(command->command) == gitman::app_command::show_discovery_folder_picker);
+    // 폴더 선택은 문서가 있는 폴더에서 시작한다.
+    REQUIRE(command->argument == u8"C:\\work");
 
     gitman::view_snapshot empty {};
     empty.window_width = 800.0f;
     empty.window_height = 600.0f;
     empty.scale = 1.0f;
-    const auto empty_tree { gitman::ui::build_ui_tree(empty) };
-    const gitman::ui::ui_element* const button { empty_tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::toolbar_discover }) };
+    const auto empty_tree { make_tree(empty) };
+    const luil::ui_element* const button { find(*empty_tree, gitman::ui::kind_toolbar_discover) };
     REQUIRE(button != nullptr);
     REQUIRE(button->enabled() == false);
 }
@@ -370,28 +376,25 @@ TEST_CASE("The discovery dialog shows a scrollbar only when the candidates overf
     }
     fixture.deliver_candidates(std::move(candidates));
 
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
-    const gitman::ui::ui_element* const bar { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::discovery_dialog_scrollbar }) };
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_discovery_dialog) };
     REQUIRE(bar != nullptr);
     REQUIRE(bar->visible());
 
-    // thumb 밖 track을 누르면 그 자리로 이동하는 스크롤 intent가 나간다.
-    gitman::ui::interaction_controller interaction {};
-    interaction.set_tree(tree);
-    const gitman::ui::rect_f track { bar->bounds() };
-    const auto actions { interaction.process(gitman::ui::pointer_pressed_event { track.x + track.width - 1.0f, track.y + track.height - 2.0f, gitman::ui::pointer_button::left, {} }) };
-    REQUIRE(actions.size() == 1u);
-    const auto* const message { std::get_if<gitman::logic_message>(&actions.front()) };
-    REQUIRE(message != nullptr);
-    const auto* const intent { std::get_if<gitman::discovery_dialog_scroll_intent>(message) };
+    // thumb 밖 track을 누르면 그 자리로 이동하는 스크롤 intent가 나간다 (막대 산술
+    // 자체는 luil test의 몫이라 여기서는 어떤 intent인지만 본다).
+    gitman::testing::interaction_harness harness { tree };
+    const luil::rect_f track { bar->bounds() };
+    const auto actions { harness.process(luil::pointer_pressed_event { track.x + track.width - 1.0f, track.y + track.height - 2.0f, luil::pointer_button::left, {} }) };
+    const auto* const intent { as_intent<gitman::discovery_dialog_scroll_intent>(actions) };
     REQUIRE(intent != nullptr);
     REQUIRE(intent->delta > 0.0f);
 
     // 목록이 영역에 다 들어가면 막대가 보이지 않는다.
     discovery_fixture short_fixture {};
     short_fixture.deliver_candidates({ make_candidate(u8"repo-a", gitman::repository_kind::git) });
-    const auto short_tree { gitman::ui::build_ui_tree(*short_fixture.controller.make_view_snapshot()) };
-    const gitman::ui::ui_element* const short_bar { short_tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::discovery_dialog_scrollbar }) };
+    const auto short_tree { make_tree(*short_fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const short_bar { find(*short_tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_discovery_dialog) };
     REQUIRE(short_bar != nullptr);
     REQUIRE(short_bar->visible() == false);
 }
@@ -400,20 +403,15 @@ TEST_CASE("Escape closes the discovery dialog and the wheel scrolls its list", "
 {
     discovery_fixture fixture {};
     fixture.deliver_candidates({ make_candidate(u8"repo-a", gitman::repository_kind::git) });
-    const auto tree { gitman::ui::build_ui_tree(*fixture.controller.make_view_snapshot()) };
+    gitman::testing::interaction_harness harness { make_tree(*fixture.controller.make_view_snapshot()) };
 
-    gitman::ui::interaction_controller interaction {};
-    interaction.set_tree(tree);
-
-    const std::vector<gitman::ui::input_action> escape { interaction.process(gitman::ui::key_pressed_event { gitman::ui::key_code::escape }) };
-    REQUIRE(escape.size() == 1u);
-    const auto* const escape_message { std::get_if<gitman::logic_message>(&escape.front()) };
+    const std::vector<luil::input_action> escape { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
+    const gitman::logic_message* const escape_message { as_message(escape) };
     REQUIRE(escape_message != nullptr);
     REQUIRE(std::holds_alternative<gitman::cancel_discovery_dialog_intent>(*escape_message));
 
-    const std::vector<gitman::ui::input_action> wheel { interaction.process(gitman::ui::mouse_wheel_event { 400.0f, 300.0f, -120.0f }) };
-    REQUIRE(wheel.size() == 1u);
-    const auto* const wheel_message { std::get_if<gitman::logic_message>(&wheel.front()) };
-    REQUIRE(wheel_message != nullptr);
-    REQUIRE(std::holds_alternative<gitman::discovery_dialog_scroll_intent>(*wheel_message));
+    const std::vector<luil::input_action> wheel { harness.process(luil::mouse_wheel_event { 400.0f, 300.0f, -120.0f }) };
+    const auto* const wheel_intent { as_intent<gitman::discovery_dialog_scroll_intent>(wheel) };
+    REQUIRE(wheel_intent != nullptr);
+    REQUIRE(wheel_intent->delta > 0.0f);
 }

@@ -1,93 +1,79 @@
-#include "presentation/ui/build_ui_tree.h"
+#include "helpers/ui_test_support.h"
 
-#include "platform/win32/caption_layout.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/caption_metrics.h"
+#include "presentation/ui/element_kinds.h"
+
+#include "luil/ui/ui_element_id.h"
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <memory>
-#include <string>
+#include <cstddef>
 
 namespace {
-    gitman::view_snapshot make_view(const std::size_t card_count, const float scale = 1.0f, const float scroll = 0.0f, const gitman::view_empty_state empty_state = gitman::view_empty_state::none)
-    {
-        gitman::view_snapshot view {};
-        view.window_width = 800.0f * scale;
-        view.window_height = 600.0f * scale;
-        view.scale = scale;
-        view.scroll_offset = scroll;
-        view.empty_state = empty_state;
-        for (std::size_t index = 0; index < card_count; ++index)
-        {
-            gitman::card_view_model card {};
-            const std::string digits { std::to_string(index) };
-            card.id.value = u8"card-";
-            card.id.value.append(digits.begin(), digits.end());
-            view.cards.push_back(std::move(card));
-        }
-        return view;
-    }
-
-    gitman::ui::ui_element_id card_id(const gitman::ui::ui_element_kind kind, const std::u8string_view value)
-    {
-        return { kind, gitman::project_id { std::u8string { value } } };
-    }
+    namespace ui = gitman::ui;
 } // namespace
+
+// tree·view 만들기와 clean 검사(중복 id·미배치 없음)는 공통 도우미의 몫이다.
+using namespace gitman::testing;
 
 TEST_CASE("The built tree contains toolbar, cards, and their buttons", "[ui][tree]")
 {
-    const auto tree { gitman::ui::build_ui_tree(make_view(3)) };
+    const auto tree { make_tree(3) };
 
-    REQUIRE(tree->ids_of_kind(gitman::ui::ui_element_kind::card_body).size() == 3u);
-    REQUIRE(tree->ids_of_kind(gitman::ui::ui_element_kind::card_refresh).size() == 3u);
-    REQUIRE(tree->ids_of_kind(gitman::ui::ui_element_kind::card_update).size() == 3u);
-    REQUIRE(tree->ids_of_kind(gitman::ui::ui_element_kind::card_switch).size() == 3u);
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_refresh_all }) != nullptr);
+    REQUIRE(tree->ids_of_kind(ui::kind_card_body).size() == 3u);
+    REQUIRE(tree->ids_of_kind(ui::kind_card_refresh).size() == 3u);
+    REQUIRE(tree->ids_of_kind(ui::kind_card_update).size() == 3u);
+    REQUIRE(tree->ids_of_kind(ui::kind_card_switch).size() == 3u);
+    REQUIRE(find(*tree, ui::kind_toolbar_refresh_all) != nullptr);
 
     // 문서가 열려 있으면 열기 버튼은 숨겨진다.
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_open_document })->visible() == false);
+    REQUIRE(find(*tree, ui::kind_toolbar_open_document)->visible() == false);
 
     // 단계 7 전까지 update와 switch는 비활성이고 사유 tooltip을 가진다.
-    const auto* const update { tree->find(card_id(gitman::ui::ui_element_kind::card_update, u8"card-0")) };
+    const luil::ui_element* const update { find(*tree, ui::kind_card_update, u8"card-0") };
     REQUIRE(update->enabled() == false);
     REQUIRE(update->tooltip().empty() == false);
 
     // 카드 body는 순서 변경의 drag 출발지다. drop 대상은 목록이다 (4.1).
-    const auto* const draggable { tree->find(card_id(gitman::ui::ui_element_kind::card_body, u8"card-1")) };
+    const luil::ui_element* const draggable { find(*tree, ui::kind_card_body, u8"card-1") };
     REQUIRE(draggable->drag() != nullptr);
     REQUIRE(draggable->drop() == nullptr);
-    const auto* const list { tree->find({ gitman::ui::ui_element_kind::card_list }) };
-    REQUIRE(list->drop() != nullptr);
+    REQUIRE(find(*tree, ui::kind_card_list)->drop() != nullptr);
+
+    // 스크롤 막대는 kind 하나에 owner로 어느 목록인지를 담는다 (설계 L4). 카드가
+    // 적어 흘릴 것이 없으면 있어도 보이지 않는다.
+    const luil::ui_element* const scrollbar { find(*tree, ui::kind_scrollbar, ui::scrollbar_owner_cards) };
+    REQUIRE(scrollbar != nullptr);
+    REQUIRE(scrollbar->visible() == false);
 
     // 버튼은 카드 body 위에 그려지므로 hit에서도 이긴다.
-    const auto* const refresh { tree->find(card_id(gitman::ui::ui_element_kind::card_refresh, u8"card-0")) };
+    const luil::ui_element* const refresh { find(*tree, ui::kind_card_refresh, u8"card-0") };
     REQUIRE(tree->hit_test(refresh->bounds().x + 1.0f, refresh->bounds().y + 1.0f) == refresh);
 
-    const auto* const body { tree->find(card_id(gitman::ui::ui_element_kind::card_body, u8"card-0")) };
+    const luil::ui_element* const body { find(*tree, ui::kind_card_body, u8"card-0") };
     REQUIRE(tree->hit_test(body->bounds().x + 1.0f, body->bounds().y + 1.0f) == body);
 
     // 목록 안 빈 영역은 목록이 받고, 목록도 클릭이 선택 해제다.
-    const auto* const empty_hit { tree->hit_test(799.0f, 599.0f) };
-    REQUIRE(empty_hit->id().kind == gitman::ui::ui_element_kind::card_list);
-    REQUIRE(empty_hit->action(gitman::ui::ui_trigger::left_click) != nullptr);
+    const luil::ui_element* const empty_hit { tree->hit_test(799.0f, 599.0f) };
+    REQUIRE(empty_hit->id().kind == ui::kind_card_list);
+    REQUIRE(empty_hit->action(luil::ui_trigger::left_click) != nullptr);
 }
 
 TEST_CASE("The open document button appears only without a document", "[ui][tree]")
 {
-    const auto tree { gitman::ui::build_ui_tree(make_view(0, 1.0f, 0.0f, gitman::view_empty_state::no_document)) };
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_open_document })->visible());
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::empty_state })->visible());
+    const auto tree { make_tree(0, gitman::view_empty_state::no_document) };
+    REQUIRE(find(*tree, ui::kind_toolbar_open_document)->visible());
+    REQUIRE(find(*tree, ui::kind_empty_state)->visible());
 }
 
 TEST_CASE("The toolbar keeps refresh at the left end and close at the right end", "[ui][tree]")
 {
     // 2026-08-21 사용자 지시: 새로 고침은 왼쪽 끝, 닫기는 오른쪽 끝이다.
-    const auto tree { gitman::ui::build_ui_tree(make_view(2)) };
-    const gitman::ui::rect_f refresh { tree->find({ gitman::ui::ui_element_kind::toolbar_refresh_all })->bounds() };
-    const gitman::ui::rect_f close { tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->bounds() };
-    const gitman::ui::rect_f settings { tree->find({ gitman::ui::ui_element_kind::toolbar_settings })->bounds() };
-    const gitman::ui::rect_f label { tree->find({ gitman::ui::ui_element_kind::toolbar_document_path })->bounds() };
+    const auto tree { make_tree(2) };
+    const luil::rect_f refresh { bounds_of(*tree, ui::kind_toolbar_refresh_all) };
+    const luil::rect_f close { bounds_of(*tree, ui::kind_toolbar_close_document) };
+    const luil::rect_f settings { bounds_of(*tree, ui::kind_toolbar_settings) };
+    const luil::rect_f label { bounds_of(*tree, ui::kind_toolbar_document_path) };
 
     REQUIRE(refresh.x < settings.x);
     REQUIRE(refresh.x < label.x);
@@ -103,59 +89,56 @@ TEST_CASE("The toolbar has no generate button and the close button follows the d
 {
     // 새 문서 만들기 진입점은 시작 페이지뿐이다 (2026-08-22 사용자 지시, G2).
     // 도구 막대는 문서가 열려 있으면 닫기 버튼을, 없으면 열기 버튼만 보인다.
-    const auto open_tree { gitman::ui::build_ui_tree(make_view(2)) };
-    REQUIRE(open_tree->ids_of_kind(gitman::ui::ui_element_kind::start_page_generate_document).empty());
-    REQUIRE(open_tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible());
+    const auto open_tree { make_tree(2) };
+    REQUIRE(open_tree->ids_of_kind(ui::kind_start_page_generate_document).empty());
+    REQUIRE(find(*open_tree, ui::kind_toolbar_close_document)->visible());
 
-    const auto tree { gitman::ui::build_ui_tree(make_view(0, 1.0f, 0.0f, gitman::view_empty_state::no_document)) };
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_open_document })->visible());
+    const auto tree { make_tree(0, gitman::view_empty_state::no_document) };
+    REQUIRE(find(*tree, ui::kind_toolbar_open_document)->visible());
     // 문서가 없으면 닫기 버튼은 없다.
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible() == false);
+    REQUIRE(find(*tree, ui::kind_toolbar_close_document)->visible() == false);
 }
 
 TEST_CASE("Only cards near the viewport become elements", "[ui][tree]")
 {
-    const auto tree { gitman::ui::build_ui_tree(make_view(300)) };
-    const std::size_t visible { tree->ids_of_kind(gitman::ui::ui_element_kind::card_body).size() };
+    const auto tree { make_tree(300) };
+    const std::size_t visible { tree->ids_of_kind(ui::kind_card_body).size() };
     REQUIRE(visible >= 6u);
     REQUIRE(visible < 20u);
+    // 흘릴 것이 있으면 카드 목록 막대가 보인다.
+    REQUIRE(find(*tree, ui::kind_scrollbar, ui::scrollbar_owner_cards)->visible());
 
     // 스크롤하면 앞 카드가 빠지고 뒤 카드가 들어온다.
-    const auto scrolled { gitman::ui::build_ui_tree(make_view(300, 1.0f, 4000.0f)) };
-    const auto scrolled_cards { scrolled->ids_of_kind(gitman::ui::ui_element_kind::card_body) };
+    const auto scrolled { make_tree(make_view(300, gitman::view_empty_state::none, 1.0f, 4000.0f)) };
+    const auto scrolled_cards { scrolled->ids_of_kind(ui::kind_card_body) };
     REQUIRE(scrolled_cards.empty() == false);
-    REQUIRE(scrolled_cards.front().owner.value != u8"card-0");
+    REQUIRE(scrolled_cards.front().owner != u8"card-0");
 }
 
 TEST_CASE("DPI scale multiplies every bound", "[ui][tree]")
 {
-    const auto base { gitman::ui::build_ui_tree(make_view(2, 1.0f)) };
-    const auto scaled { gitman::ui::build_ui_tree(make_view(2, 2.0f)) };
+    const auto base { make_tree(make_view(2, gitman::view_empty_state::none, 1.0f)) };
+    const auto scaled { make_tree(make_view(2, gitman::view_empty_state::none, 2.0f)) };
 
-    const auto* const base_body { base->find(card_id(gitman::ui::ui_element_kind::card_body, u8"card-0")) };
-    const auto* const scaled_body { scaled->find(card_id(gitman::ui::ui_element_kind::card_body, u8"card-0")) };
-    REQUIRE(scaled_body->bounds().y == base_body->bounds().y * 2.0f);
-    REQUIRE(scaled_body->bounds().height == base_body->bounds().height * 2.0f);
+    const luil::rect_f base_body { bounds_of(*base, ui::kind_card_body, u8"card-0") };
+    const luil::rect_f scaled_body { bounds_of(*scaled, ui::kind_card_body, u8"card-0") };
+    REQUIRE(scaled_body.y == base_body.y * 2.0f);
+    REQUIRE(scaled_body.height == base_body.height * 2.0f);
 }
 
-TEST_CASE("Caption buttons in the tree match the Win32 non-client layout", "[ui][tree][caption]")
+TEST_CASE("The caption row carries the three window buttons", "[ui][tree][caption]")
 {
-    // WM_NCHITTEST는 caption_layout으로 동기 판정하고, 그리기는 tree의 caption
-    // element가 담당한다. 두 계산이 같은 metrics에서 같은 좌표를 내야 한다.
-    const auto tree { gitman::ui::build_ui_tree(make_view(1)) };
-    const auto layout { gitman::win32::make_caption_layout(800, 96) };
+    // caption 버튼의 배치와 WM_NCHITTEST 일치는 luil caption test의 몫이다 (ADR-007).
+    // gitman은 caption이 tree에 있고 목록 layout과 같은 높이를 차지하는지만 본다.
+    const auto tree { make_tree(1) };
+    const luil::ui_element* const caption { find(*tree, luil::ui_element_kind::caption) };
+    REQUIRE(caption != nullptr);
+    REQUIRE(caption->bounds().height == gitman::layout_caption_height);
 
-    const auto* const minimize { tree->find({ gitman::ui::ui_element_kind::caption_minimize }) };
-    const auto* const maximize { tree->find({ gitman::ui::ui_element_kind::caption_maximize }) };
-    const auto* const close { tree->find({ gitman::ui::ui_element_kind::caption_close }) };
-    REQUIRE(minimize->bounds().x == static_cast<float>(layout.minimize_left));
-    REQUIRE(maximize->bounds().x == static_cast<float>(layout.maximize_left));
-    REQUIRE(close->bounds().x == static_cast<float>(layout.close_left));
-    REQUIRE(minimize->bounds().width == static_cast<float>(layout.button_width));
-    REQUIRE(minimize->bounds().height == static_cast<float>(layout.height));
-
-    // caption 높이 상수는 목록 layout과도 일치해야 한다 (list_metrics 주석).
-    REQUIRE(static_cast<float>(gitman::ui::default_caption_ui_metrics.height) == gitman::layout_caption_height);
+    // 창 버튼 3개는 luil caption이 만든다 (gitman element가 아니다).
+    REQUIRE(find(*tree, luil::ui_element_kind::caption_minimize) != nullptr);
+    REQUIRE(find(*tree, luil::ui_element_kind::caption_maximize) != nullptr);
+    REQUIRE(find(*tree, luil::ui_element_kind::caption_close) != nullptr);
 }
 
 TEST_CASE("Card drag slot and offset share one insertion formula", "[ui][tree][drag]")

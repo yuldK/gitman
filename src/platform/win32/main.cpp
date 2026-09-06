@@ -88,8 +88,9 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
     config.smoke_test = options.smoke_test;
     config.accept_file_drop = true;
 
-    // 앱의 세 조각이다. smoke 모드에서도 만들지만 그때는 luil이 host를 조립하지
-    // 않으므로 logic thread도 worker도 서지 않는다.
+    // 앱의 세 조각이다. smoke 모드에서도 만든다 — luil이 host를 조립하지 않아 logic
+    // thread는 서지 않지만, driver가 드는 worker pool과 로그 writer thread는 잠깐 섰다가
+    // 소멸자에서 정리된다 (한 frame만 그리는 경로라 비용은 무시할 만하다).
     gitman::win32::gitman_driver driver {};
     gitman::ui::gitman_policy policy {};
     gitman::win32::gitman_delegate delegate { driver, options.workspace_document_path };

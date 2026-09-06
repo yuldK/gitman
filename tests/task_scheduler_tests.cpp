@@ -1,15 +1,26 @@
 #include "application/task_scheduler.h"
 
+#include "luil/messaging/channel.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <functional>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
+    // scheduler는 이제 채널이 아니라 sink 하나만 안다 (설계 L3). 실제 앱에서는
+    // relay의 `post`가 이 자리에 오고, test는 관찰하기 쉬운 채널에 넣는다.
+    [[nodiscard]] std::function<void(gitman::logic_message)> channel_sink(messaging::channel<gitman::logic_message>& inbox)
+    {
+        return [&inbox](gitman::logic_message message) { static_cast<void>(inbox.post(std::move(message))); };
+    }
+
     // 실행 순서와 병렬성을 기록하는 executor 대역이다. 프로세스를 만들지 않는다.
     class scripted_executor final : public gitman::operation_executor
     {
@@ -128,7 +139,7 @@ TEST_CASE("A single worker executes requests in submission order", "[scheduler][
 {
     scripted_executor executor {};
     messaging::channel<gitman::logic_message> logic_inbox { messaging::channel_options { 64, messaging::overflow_policy::reject_newest, {} } };
-    gitman::task_scheduler scheduler { executor, logic_inbox, 1 };
+    gitman::task_scheduler scheduler { executor, channel_sink(logic_inbox), 1 };
 
     REQUIRE(scheduler.submit(make_request(u8"alpha", 1)));
     REQUIRE(scheduler.submit(make_request(u8"beta", 2)));
@@ -150,7 +161,7 @@ TEST_CASE("Different lanes run in parallel on separate workers", "[scheduler][ap
     scripted_executor executor {};
     executor.require_parallel_start(2);
     messaging::channel<gitman::logic_message> logic_inbox { messaging::channel_options { 64, messaging::overflow_policy::reject_newest, {} } };
-    gitman::task_scheduler scheduler { executor, logic_inbox, 2 };
+    gitman::task_scheduler scheduler { executor, channel_sink(logic_inbox), 2 };
 
     const auto [first, second] { two_distinct_lane_ids(2) };
     REQUIRE(gitman::operation_lane(gitman::project_id { first }, 2) != gitman::operation_lane(gitman::project_id { second }, 2));
@@ -168,7 +179,7 @@ TEST_CASE("Completed operations arrive in the logic inbox", "[scheduler][app]")
 {
     scripted_executor executor {};
     messaging::channel<gitman::logic_message> logic_inbox { messaging::channel_options { 64, messaging::overflow_policy::reject_newest, {} } };
-    gitman::task_scheduler scheduler { executor, logic_inbox, 2 };
+    gitman::task_scheduler scheduler { executor, channel_sink(logic_inbox), 2 };
 
     REQUIRE(scheduler.submit(make_request(u8"alpha", 41)));
     REQUIRE(executor.wait_finished(1));
@@ -186,7 +197,7 @@ TEST_CASE("Document loads always take lane zero", "[scheduler][app]")
 {
     scripted_executor executor {};
     messaging::channel<gitman::logic_message> logic_inbox { messaging::channel_options { 64, messaging::overflow_policy::reject_newest, {} } };
-    gitman::task_scheduler scheduler { executor, logic_inbox, 4 };
+    gitman::task_scheduler scheduler { executor, channel_sink(logic_inbox), 4 };
 
     gitman::operation_request load {};
     load.operation_id = 7;
@@ -202,7 +213,7 @@ TEST_CASE("Submissions after shutdown are refused and shutdown is idempotent", "
 {
     scripted_executor executor {};
     messaging::channel<gitman::logic_message> logic_inbox { messaging::channel_options { 64, messaging::overflow_policy::reject_newest, {} } };
-    gitman::task_scheduler scheduler { executor, logic_inbox, 2 };
+    gitman::task_scheduler scheduler { executor, channel_sink(logic_inbox), 2 };
 
     scheduler.shutdown();
     scheduler.shutdown();

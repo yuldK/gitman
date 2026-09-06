@@ -1,15 +1,14 @@
 #include "application/logic_controller.h"
 #include "helpers/git_repository_fixture.h"
+#include "helpers/ui_test_support.h"
 #include "infrastructure/vcs_operation_executor.h"
 #include "presentation/list_metrics.h"
-#include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/switch_dialog_element.h"
-#include "presentation/ui/ui_interaction.h"
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <chrono>
-#include <memory>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,6 +16,14 @@
 #include <vector>
 
 namespace {
+    using gitman::testing::as_intent;
+    using gitman::testing::at;
+    using gitman::testing::bounds_of;
+    using gitman::testing::find;
+    using gitman::testing::id_of;
+    using gitman::testing::interaction_harness;
+    using gitman::testing::make_tree;
+
     class recording_submitter final : public gitman::operation_submitter
     {
     public:
@@ -129,14 +136,6 @@ namespace {
         }
     };
 
-    gitman::logic_message first_logic_message(const std::vector<gitman::ui::input_action>& actions)
-    {
-        for (const gitman::ui::input_action& action : actions)
-            if (const auto* const message { std::get_if<gitman::logic_message>(&action) }; message != nullptr)
-                return *message;
-        return gitman::logic_message { gitman::shutdown_message {} };
-    }
-
     // 질의 막대에 글자를 한 개씩 친다 (WM_CHAR 한 번과 같다).
     void type_query(gitman::logic_controller& controller, const std::u8string_view text)
     {
@@ -159,13 +158,55 @@ namespace {
         return intent;
     }
 
-    std::vector<gitman::ui::input_action> click(const gitman::ui::ui_tree& tree, const gitman::ui::ui_element_id& id)
+    // element에 걸린 왼쪽 클릭 액션을 그 자리에서 실행한다 (조립 확인용).
+    std::vector<luil::input_action> click_action(const luil::ui_tree& tree, const luil::ui_element_id& id)
     {
-        const gitman::ui::ui_element* const element { tree.find(id) };
+        const luil::ui_element* const element { tree.find(id) };
         REQUIRE(element != nullptr);
-        const gitman::ui::ui_action* const action { element->action(gitman::ui::ui_trigger::left_click) };
+        const luil::ui_action* const action { element->action(luil::ui_trigger::left_click) };
         REQUIRE(action != nullptr);
         return (*action)({});
+    }
+
+    // dialog 하나만 띄운 창 800×600·배율 1의 view다.
+    gitman::view_snapshot make_dialog_view(gitman::switch_dialog_view dialog)
+    {
+        gitman::view_snapshot view {};
+        view.window_width = 800.0f;
+        view.window_height = 600.0f;
+        view.scale = 1.0f;
+        view.switch_dialog = { std::move(dialog) };
+        return view;
+    }
+
+    gitman::switch_dialog_view make_dialog(const std::u8string_view confirm_label = u8"전환 실행")
+    {
+        gitman::switch_dialog_view dialog {};
+        dialog.card.value = u8"alpha";
+        dialog.title = u8"alpha";
+        dialog.loading = false;
+        dialog.confirm_label = confirm_label;
+        return dialog;
+    }
+
+    // 질의 칸 id는 dialog가 붙은 카드의 id를 owner로 쓴다.
+    const luil::ui_element_id query_input_id { gitman::ui::kind_switch_dialog_query_input, std::u8string { u8"alpha" } };
+
+    // 질의 칸을 눌러 초점을 준다. 누름이 caret 자리 액션을 내므로 click 도우미를
+    // 쓰지 않는다.
+    void focus_query(interaction_harness& harness, const luil::rect_f& box, const int time_milliseconds = 0)
+    {
+        static_cast<void>(harness.process(luil::pointer_pressed_event { box.x + 4.0f, box.y + 4.0f, luil::pointer_button::left, at(time_milliseconds) }));
+        static_cast<void>(harness.process(luil::pointer_released_event { box.x + 4.0f, box.y + 4.0f, luil::pointer_button::left, at(time_milliseconds + 10) }));
+        REQUIRE(harness.snapshot().focused_input == query_input_id);
+    }
+
+    // 편집 키 하나가 만든 편집 intent다.
+    gitman::edit_text_input_intent edit_of(const std::vector<luil::input_action>& actions)
+    {
+        const auto* const intent { as_intent<gitman::edit_text_input_intent>(actions) };
+        REQUIRE(intent != nullptr);
+        return *intent;
     }
 } // namespace
 
@@ -373,76 +414,51 @@ TEST_CASE("Closing the SVN browser discards its cache and late directory result"
 
 TEST_CASE("The switch dialog tree wires rows and buttons and routes escape and the wheel", "[ui][switch-ui]")
 {
-    gitman::view_snapshot view {};
+    gitman::switch_dialog_view dialog { make_dialog() };
+    dialog.candidates.push_back(make_candidate(u8"origin/feature", gitman::switch_candidate_kind::git_remote_branch, true));
+    dialog.candidates.push_back(make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch));
+    dialog.selected = { 1u };
+    dialog.can_confirm = true;
+
+    gitman::view_snapshot view { make_dialog_view(std::move(dialog)) };
     view.document_path = u8"C:\\work\\p.version-list";
-    view.window_width = 800.0f;
-    view.window_height = 600.0f;
-    view.scale = 1.0f;
     gitman::card_view_model card {};
     card.id.value = u8"alpha";
     card.display_name = u8"alpha";
     view.cards.push_back(std::move(card));
 
-    gitman::switch_dialog_view dialog {};
-    dialog.card.value = u8"alpha";
-    dialog.title = u8"alpha";
-    dialog.loading = false;
-    dialog.candidates.push_back(make_candidate(u8"origin/feature", gitman::switch_candidate_kind::git_remote_branch, true));
-    dialog.candidates.push_back(make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch));
-    dialog.selected = { 1u };
-    dialog.can_confirm = true;
-    dialog.confirm_label = u8"전환 실행";
-    view.switch_dialog = { std::move(dialog) };
+    const auto tree { make_tree(view) };
+    REQUIRE(find(*tree, gitman::ui::kind_switch_dialog) != nullptr);
 
-    const auto tree { gitman::ui::build_ui_tree(view) };
-    REQUIRE(tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::switch_dialog }) != nullptr);
+    // 후보 행의 owner는 index를 담은 문자열이다 (element와 test가 같은 규칙을 쓴다).
+    REQUIRE(gitman::ui::switch_dialog_item_id(0).owner == u8"switch-item-0");
 
     {
-        const gitman::logic_message message { first_logic_message(click(*tree, gitman::ui::switch_dialog_item_id(0))) };
-        const auto* const intent { std::get_if<gitman::select_switch_candidate_intent>(&message) };
+        const auto intent_actions { click_action(*tree, gitman::ui::switch_dialog_item_id(0)) };
+        const auto* const intent { as_intent<gitman::select_switch_candidate_intent>(intent_actions) };
         REQUIRE(intent != nullptr);
         REQUIRE(intent->index == 0u);
     }
-    {
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::switch_dialog_confirm, gitman::project_id { u8"alpha" } })) };
-        REQUIRE(std::get_if<gitman::confirm_switch_intent>(&message) != nullptr);
-    }
-    {
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::switch_dialog_cancel, gitman::project_id { u8"alpha" } })) };
-        REQUIRE(std::get_if<gitman::cancel_switch_dialog_intent>(&message) != nullptr);
-    }
-    {
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::switch_dialog })) };
-        REQUIRE(std::get_if<gitman::cancel_switch_dialog_intent>(&message) != nullptr);
-    }
+    REQUIRE(as_intent<gitman::confirm_switch_intent>(click_action(*tree, id_of(gitman::ui::kind_switch_dialog_confirm, u8"alpha"))) != nullptr);
+    REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_switch_dialog_cancel, u8"alpha"))) != nullptr);
+    // 배경(scrim) 클릭도 취소다.
+    REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_switch_dialog))) != nullptr);
 
-    gitman::ui::interaction_controller controller {};
-    controller.set_tree(tree);
-    const gitman::logic_message escape_message { first_logic_message(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::escape })) };
-    REQUIRE(std::get_if<gitman::cancel_switch_dialog_intent>(&escape_message) != nullptr);
-
-    const gitman::logic_message wheel_message { first_logic_message(controller.process(gitman::ui::mouse_wheel_event { 400.0f, 300.0f, -120.0f })) };
-    REQUIRE(std::get_if<gitman::switch_dialog_scroll_intent>(&wheel_message) != nullptr);
+    interaction_harness harness { tree };
+    REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(harness.process(luil::key_pressed_event { luil::key_code::escape })) != nullptr);
+    REQUIRE(as_intent<gitman::switch_dialog_scroll_intent>(harness.process(luil::mouse_wheel_event { 400.0f, 300.0f, -120.0f })) != nullptr);
 }
 
 TEST_CASE("The switch dialog shows a scrollbar only when the candidates overflow", "[ui][switch-ui]")
 {
-    gitman::view_snapshot view {};
-    view.window_width = 800.0f;
-    view.window_height = 600.0f;
-    view.scale = 1.0f;
-
-    gitman::switch_dialog_view dialog {};
-    dialog.card.value = u8"alpha";
-    dialog.title = u8"alpha";
-    dialog.confirm_label = u8"전환 실행";
+    gitman::switch_dialog_view dialog { make_dialog() };
     dialog.candidates.push_back(make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch));
-    view.switch_dialog = { dialog };
 
-    // 목록이 영역에 다 들어가면 막대가 보이지 않는다.
+    // 목록이 영역에 다 들어가면 막대가 보이지 않는다. 막대는 kind 하나에 owner로
+    // 갈린다 (계약 2장).
     {
-        const auto tree { gitman::ui::build_ui_tree(view) };
-        const gitman::ui::ui_element* const bar { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::switch_dialog_scrollbar }) };
+        const auto tree { make_tree(make_dialog_view(dialog)) };
+        const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_switch_dialog) };
         REQUIRE(bar != nullptr);
         REQUIRE(bar->visible() == false);
     }
@@ -456,49 +472,36 @@ TEST_CASE("The switch dialog shows a scrollbar only when the candidates overflow
         name.append(digits.begin(), digits.end());
         dialog.candidates.push_back(make_candidate(name, gitman::switch_candidate_kind::git_local_branch));
     }
-    view.switch_dialog = { std::move(dialog) };
-    const auto tree { gitman::ui::build_ui_tree(view) };
-    const gitman::ui::ui_element* const bar { tree->find(gitman::ui::ui_element_id { gitman::ui::ui_element_kind::switch_dialog_scrollbar }) };
+    const auto tree { make_tree(make_dialog_view(std::move(dialog))) };
+    const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_switch_dialog) };
     REQUIRE(bar != nullptr);
     REQUIRE(bar->visible());
 
-    gitman::ui::interaction_controller controller {};
-    controller.set_tree(tree);
-    const gitman::ui::rect_f track { bar->bounds() };
-    const auto actions { controller.process(gitman::ui::pointer_pressed_event { track.x + track.width - 1.0f, track.y + track.height - 2.0f, gitman::ui::pointer_button::left, {} }) };
-    const gitman::logic_message message { first_logic_message(actions) };
-    const auto* const intent { std::get_if<gitman::switch_dialog_scroll_intent>(&message) };
+    interaction_harness harness { tree };
+    const luil::rect_f track { bar->bounds() };
+    const auto actions { harness.process(luil::pointer_pressed_event { track.x + track.width - 1.0f, track.y + track.height - 2.0f, luil::pointer_button::left, at(0) }) };
+    const auto* const intent { as_intent<gitman::switch_dialog_scroll_intent>(actions) };
     REQUIRE(intent != nullptr);
     REQUIRE(intent->delta > 0.0f);
 }
 
 TEST_CASE("The SVN switch tree separates row selection from expansion", "[ui][switch-ui][svn]")
 {
-    gitman::view_snapshot view {};
-    view.window_width = 800.0f;
-    view.window_height = 600.0f;
-    view.scale = 1.0f;
-
-    gitman::switch_dialog_view dialog {};
-    dialog.card.value = u8"alpha";
-    dialog.title = u8"alpha";
-    dialog.loading = false;
+    gitman::switch_dialog_view dialog { make_dialog(u8"전환") };
     dialog.svn_browser = true;
-    dialog.confirm_label = u8"전환";
     dialog.svn_rows.push_back({ gitman::svn_browser_row_kind::directory, u8"https://svn.example.com/repo", u8"https://svn.example.com/repo", 0, true, true, false, false });
     dialog.svn_rows.push_back({ gitman::svn_browser_row_kind::loading, u8"https://svn.example.com/repo", u8"조회 중…", 1 });
-    view.switch_dialog = { std::move(dialog) };
 
-    const auto tree { gitman::ui::build_ui_tree(view) };
+    const auto tree { make_tree(make_dialog_view(std::move(dialog))) };
     {
-        const gitman::logic_message message { first_logic_message(click(*tree, gitman::ui::switch_dialog_svn_item_id(u8"https://svn.example.com/repo"))) };
-        const auto* const intent { std::get_if<gitman::select_svn_browser_node_intent>(&message) };
+        const auto intent_actions { click_action(*tree, gitman::ui::switch_dialog_svn_item_id(u8"https://svn.example.com/repo")) };
+        const auto* const intent { as_intent<gitman::select_svn_browser_node_intent>(intent_actions) };
         REQUIRE(intent != nullptr);
         REQUIRE(intent->url == u8"https://svn.example.com/repo");
     }
     {
-        const gitman::logic_message message { first_logic_message(click(*tree, gitman::ui::switch_dialog_svn_expand_id(u8"https://svn.example.com/repo"))) };
-        const auto* const intent { std::get_if<gitman::toggle_svn_browser_node_intent>(&message) };
+        const auto intent_actions { click_action(*tree, gitman::ui::switch_dialog_svn_expand_id(u8"https://svn.example.com/repo")) };
+        const auto* const intent { as_intent<gitman::toggle_svn_browser_node_intent>(intent_actions) };
         REQUIRE(intent != nullptr);
         REQUIRE(intent->url == u8"https://svn.example.com/repo");
     }
@@ -874,226 +877,6 @@ TEST_CASE("Refreshing the SVN dialog requeries the selected directory", "[logic]
     REQUIRE(view->switch_dialog->svn_rows.back().text == u8"source");
 }
 
-TEST_CASE("The switch dialog tree wires the query bar", "[ui][switch-ui][query]")
-{
-    gitman::view_snapshot view {};
-    view.window_width = 800.0f;
-    view.window_height = 600.0f;
-    view.scale = 1.0f;
-
-    gitman::switch_dialog_view dialog {};
-    dialog.card.value = u8"alpha";
-    dialog.title = u8"alpha";
-    dialog.loading = false;
-    dialog.query.text = u8"feat";
-    dialog.query_enabled = true;
-    dialog.query_action = gitman::switch_query_action::clear;
-    dialog.query_action_enabled = true;
-    dialog.candidates.push_back(make_candidate(u8"feature", gitman::switch_candidate_kind::git_local_branch));
-    view.switch_dialog = { dialog };
-
-    const gitman::ui::ui_element_id input_id { gitman::ui::ui_element_kind::switch_dialog_query_input, gitman::project_id { u8"alpha" } };
-    const gitman::ui::ui_element_id action_id { gitman::ui::ui_element_kind::switch_dialog_query_action, gitman::project_id { u8"alpha" } };
-    const gitman::ui::ui_element_id refresh_id { gitman::ui::ui_element_kind::switch_dialog_query_refresh, gitman::project_id { u8"alpha" } };
-
-    {
-        const auto tree { gitman::ui::build_ui_tree(view) };
-        REQUIRE(tree->find(input_id) != nullptr);
-        REQUIRE(tree->find(input_id)->enabled());
-        REQUIRE(tree->find(action_id)->enabled());
-        const gitman::logic_message cleared { first_logic_message(click(*tree, action_id)) };
-        REQUIRE(std::get_if<gitman::clear_switch_query_intent>(&cleared) != nullptr);
-        const gitman::logic_message refreshed { first_logic_message(click(*tree, refresh_id)) };
-        REQUIRE(std::get_if<gitman::refresh_switch_dialog_intent>(&refreshed) != nullptr);
-
-        // 질의 박스를 누르면 초점을 받고, 그 뒤의 문자와 Enter가 그리로 간다.
-        gitman::ui::interaction_controller controller {};
-        controller.set_tree(tree);
-        const gitman::ui::rect_f box { tree->find(input_id)->bounds() };
-        static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { box.x + 4.0f, box.y + 4.0f, gitman::ui::pointer_button::left, {} }));
-        REQUIRE(controller.snapshot().focused_input == input_id);
-
-        const gitman::logic_message typed { first_logic_message(controller.process(gitman::ui::character_typed_event { U'x' })) };
-        const auto* const edit { std::get_if<gitman::edit_text_input_intent>(&typed) };
-        REQUIRE(edit != nullptr);
-        REQUIRE(edit->target == gitman::text_input_target::switch_query);
-        REQUIRE(edit->command == gitman::text_edit_command::insert);
-        REQUIRE(edit->text == u8"x");
-
-        const gitman::logic_message entered { first_logic_message(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::enter })) };
-        REQUIRE(std::get_if<gitman::submit_switch_query_intent>(&entered) != nullptr);
-
-        // dialog가 닫히면 초점도 사라진다.
-        gitman::view_snapshot closed {};
-        closed.window_width = 800.0f;
-        closed.window_height = 600.0f;
-        closed.scale = 1.0f;
-        controller.set_tree(gitman::ui::build_ui_tree(closed));
-        REQUIRE(controller.snapshot().focused_input == gitman::ui::ui_element_id {});
-    }
-
-    // SVN은 이동 버튼이고, 조회 중에는 막대 전체가 비활성이다.
-    gitman::switch_dialog_view svn { dialog };
-    svn.svn_browser = true;
-    svn.loading = true;
-    svn.query_enabled = false;
-    svn.query_action = gitman::switch_query_action::navigate;
-    view.switch_dialog = { std::move(svn) };
-    const auto tree { gitman::ui::build_ui_tree(view) };
-    REQUIRE_FALSE(tree->find(input_id)->enabled());
-    REQUIRE_FALSE(tree->find(action_id)->enabled());
-    REQUIRE_FALSE(tree->find(refresh_id)->enabled());
-    const gitman::logic_message navigated { first_logic_message(click(*tree, action_id)) };
-    REQUIRE(std::get_if<gitman::submit_switch_query_intent>(&navigated) != nullptr);
-}
-
-TEST_CASE("The query bar routes editing keys, the mouse and the clipboard", "[ui][switch-ui][query][text-edit]")
-{
-    gitman::view_snapshot view {};
-    view.window_width = 800.0f;
-    view.window_height = 600.0f;
-    view.scale = 1.0f;
-
-    gitman::switch_dialog_view dialog {};
-    dialog.card.value = u8"alpha";
-    dialog.title = u8"alpha";
-    dialog.loading = false;
-    dialog.query.text = u8"origin/main";
-    dialog.query.caret = 11u;
-    dialog.query.anchor = 11u;
-    dialog.query_enabled = true;
-    dialog.query_action = gitman::switch_query_action::clear;
-    dialog.query_action_enabled = true;
-    view.switch_dialog = { dialog };
-
-    const gitman::ui::ui_element_id input_id { gitman::ui::ui_element_kind::switch_dialog_query_input, gitman::project_id { u8"alpha" } };
-    const auto tree { gitman::ui::build_ui_tree(view) };
-
-    // 글자 폭을 고정한 가짜 측정 함수다. 한 바이트를 7px로 세어 offset이 결정적이다.
-    gitman::ui::interaction_config config {};
-    config.measure_text = [](const std::u8string_view text, float) { return static_cast<float>(text.size()) * 7.0f; };
-    gitman::ui::interaction_controller controller { config };
-    controller.set_tree(tree);
-
-    const gitman::ui::rect_f box { tree->find(input_id)->bounds() };
-    const auto at = [](const int milliseconds) { return std::chrono::steady_clock::time_point {} + std::chrono::milliseconds { milliseconds }; };
-    // 글은 박스 왼쪽에서 7px 안쪽부터 그려진다. 세 글자 뒤가 21px이다.
-    const float text_left { box.x + 7.0f };
-
-    const auto edit_of = [](const std::vector<gitman::ui::input_action>& actions) {
-        const gitman::logic_message message { first_logic_message(actions) };
-        const auto* const intent { std::get_if<gitman::edit_text_input_intent>(&message) };
-        REQUIRE(intent != nullptr);
-        return *intent;
-    };
-
-    // 누르면 그 자리로 caret이 간다.
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::pointer_pressed_event { text_left + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(0) })) };
-        REQUIRE(intent.target == gitman::text_input_target::switch_query);
-        REQUIRE(intent.command == gitman::text_edit_command::place_caret);
-        REQUIRE(intent.offset == 3u);
-        REQUIRE_FALSE(intent.extend);
-        REQUIRE(controller.snapshot().focused_input == input_id);
-    }
-
-    // 누른 채 끌면 범위가 잡힌다 (anchor를 두고 caret만 옮긴다).
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::pointer_moved_event { text_left + 49.0f, box.y + 4.0f, at(20) })) };
-        REQUIRE(intent.command == gitman::text_edit_command::place_caret);
-        REQUIRE(intent.offset == 7u);
-        REQUIRE(intent.extend);
-    }
-    REQUIRE(controller.process(gitman::ui::pointer_released_event { text_left + 49.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(30) }).empty());
-
-    // 임계 시간·거리 안의 두 번째 누름은 그 자리의 낱말을 고른다.
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::pointer_pressed_event { text_left + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(60) })) };
-        REQUIRE(intent.command == gitman::text_edit_command::select_word);
-        REQUIRE(intent.offset == 3u);
-    }
-    REQUIRE(controller.process(gitman::ui::pointer_released_event { text_left + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(70) }).empty());
-
-    // 이동 키다. Ctrl은 낱말 단위, Shift는 범위 늘리기다.
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::arrow_left, false, true })) };
-        REQUIRE(intent.command == gitman::text_edit_command::move_left);
-        REQUIRE(intent.extend);
-    }
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::arrow_right, true, false })) };
-        REQUIRE(intent.command == gitman::text_edit_command::move_word_right);
-        REQUIRE_FALSE(intent.extend);
-    }
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::home, false, true })) };
-        REQUIRE(intent.command == gitman::text_edit_command::move_line_start);
-        REQUIRE(intent.extend);
-    }
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::delete_forward })) };
-        REQUIRE(intent.command == gitman::text_edit_command::delete_forward);
-    }
-    {
-        const gitman::edit_text_input_intent intent { edit_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_a, true })) };
-        REQUIRE(intent.command == gitman::text_edit_command::select_all);
-    }
-
-    // 선택이 없으면 Ctrl+C는 아무것도 내지 않는다. 이 view의 caret과 anchor가 같다.
-    REQUIRE(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_c, true }).empty());
-
-    // Ctrl+V는 UI thread가 클립보드를 읽도록 대상만 담아 넘긴다.
-    {
-        const std::vector<gitman::ui::input_action> actions { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_v, true }) };
-        REQUIRE(actions.size() == 1u);
-        const auto* const paste { std::get_if<gitman::ui::clipboard_paste_request>(&actions.front()) };
-        REQUIRE(paste != nullptr);
-        REQUIRE(paste->target == gitman::text_input_target::switch_query);
-    }
-
-    // 선택이 있으면 Ctrl+X가 복사와 지우기를 함께 낸다.
-    gitman::switch_dialog_view selected { dialog };
-    selected.query.anchor = 7u;
-    view.switch_dialog = { std::move(selected) };
-    controller.set_tree(gitman::ui::build_ui_tree(view));
-    static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { text_left + 4.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(500) }));
-    static_cast<void>(controller.process(gitman::ui::pointer_released_event { text_left + 4.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(510) }));
-
-    const std::vector<gitman::ui::input_action> cut { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_x, true }) };
-    REQUIRE(cut.size() == 2u);
-    const auto* const copy { std::get_if<gitman::ui::clipboard_copy_request>(&cut.front()) };
-    REQUIRE(copy != nullptr);
-    REQUIRE(copy->text == u8"main");
-    const gitman::logic_message erase { first_logic_message(cut) };
-    const auto* const erase_intent { std::get_if<gitman::edit_text_input_intent>(&erase) };
-    REQUIRE(erase_intent != nullptr);
-    REQUIRE(erase_intent->command == gitman::text_edit_command::cut);
-}
-
-TEST_CASE("Editing keys pass through when no text box has focus", "[ui][switch-ui][text-edit]")
-{
-    gitman::view_snapshot view {};
-    view.window_width = 800.0f;
-    view.window_height = 600.0f;
-    view.scale = 1.0f;
-    gitman::card_view_model card {};
-    card.id.value = u8"alpha";
-    card.display_name = u8"alpha";
-    view.cards.push_back(std::move(card));
-
-    gitman::ui::interaction_controller controller {};
-    controller.set_tree(gitman::ui::build_ui_tree(view));
-
-    // 초점을 가진 박스가 없으면 새 키는 아무 일도 하지 않는다.
-    REQUIRE(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::arrow_left }).empty());
-    REQUIRE(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_c, true }).empty());
-    REQUIRE(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::delete_forward }).empty());
-
-    // ↓는 여전히 카드 목록 탐색이다.
-    const gitman::logic_message message { first_logic_message(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::arrow_down })) };
-    REQUIRE(std::get_if<gitman::select_card_intent>(&message) != nullptr);
-}
-
 TEST_CASE("The switch query applies edits at the caret and the timeout box keeps digits only", "[logic][switch-ui][query][text-edit]")
 {
     dialog_fixture fixture {};
@@ -1124,88 +907,129 @@ TEST_CASE("The switch query applies edits at the caret and the timeout box keeps
     REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->query.text.empty());
 }
 
-TEST_CASE("The query bar routes undo, word delete and the legacy clipboard keys", "[ui][switch-ui][query][text-edit]")
+TEST_CASE("The switch dialog tree wires the query bar", "[ui][switch-ui][query]")
+{
+    gitman::switch_dialog_view dialog { make_dialog() };
+    dialog.query.text = u8"feat";
+    dialog.query_enabled = true;
+    dialog.query_action = gitman::switch_query_action::clear;
+    dialog.query_action_enabled = true;
+    dialog.candidates.push_back(make_candidate(u8"feature", gitman::switch_candidate_kind::git_local_branch));
+
+    const luil::ui_element_id action_id { gitman::ui::kind_switch_dialog_query_action, std::u8string { u8"alpha" } };
+    const luil::ui_element_id refresh_id { gitman::ui::kind_switch_dialog_query_refresh, std::u8string { u8"alpha" } };
+
+    {
+        const auto tree { make_tree(make_dialog_view(dialog)) };
+        REQUIRE(find(*tree, gitman::ui::kind_switch_dialog_query_input, u8"alpha") != nullptr);
+        REQUIRE(tree->find(query_input_id)->enabled());
+        REQUIRE(tree->find(action_id)->enabled());
+        REQUIRE(as_intent<gitman::clear_switch_query_intent>(click_action(*tree, action_id)) != nullptr);
+        REQUIRE(as_intent<gitman::refresh_switch_dialog_intent>(click_action(*tree, refresh_id)) != nullptr);
+
+        // 질의 박스를 누르면 초점을 받고, 그 뒤의 문자와 Enter가 그리로 간다.
+        interaction_harness harness { tree };
+        focus_query(harness, bounds_of(*tree, gitman::ui::kind_switch_dialog_query_input, u8"alpha"));
+
+        const gitman::edit_text_input_intent typed { edit_of(harness.process(luil::character_typed_event { U'x' })) };
+        REQUIRE(typed.target == gitman::text_input_target::switch_query);
+        REQUIRE(typed.command == gitman::text_edit_command::insert);
+        REQUIRE(typed.text == u8"x");
+
+        REQUIRE(as_intent<gitman::submit_switch_query_intent>(harness.process(luil::key_pressed_event { luil::key_code::enter })) != nullptr);
+
+        // dialog가 닫히면 초점도 사라진다.
+        gitman::view_snapshot closed {};
+        closed.window_width = 800.0f;
+        closed.window_height = 600.0f;
+        closed.scale = 1.0f;
+        harness.controller.set_tree(make_tree(closed));
+        REQUIRE(harness.snapshot().focused_input == luil::ui_element_id {});
+    }
+
+    // SVN은 이동 버튼이고, 조회 중에는 막대 전체가 비활성이다.
+    gitman::switch_dialog_view svn { std::move(dialog) };
+    svn.svn_browser = true;
+    svn.loading = true;
+    svn.query_enabled = false;
+    svn.query_action = gitman::switch_query_action::navigate;
+    const auto tree { make_tree(make_dialog_view(std::move(svn))) };
+    REQUIRE_FALSE(tree->find(query_input_id)->enabled());
+    REQUIRE_FALSE(tree->find(action_id)->enabled());
+    REQUIRE_FALSE(tree->find(refresh_id)->enabled());
+    REQUIRE(as_intent<gitman::submit_switch_query_intent>(click_action(*tree, action_id)) != nullptr);
+}
+
+TEST_CASE("The query bar routes the editing keys and the clipboard to the switch query", "[ui][switch-ui][query][text-edit]")
+{
+    // 낱낱의 키 조합 전수는 luil test의 몫이다. 여기서는 gitman 의미 — 초점을 가진
+    // 질의 칸의 키가 `switch_query` 대상의 편집 intent·클립보드 요청이 되는가 —
+    // 만 대표 사례로 확인한다 (C2-4 test 계약 3장).
+    gitman::switch_dialog_view dialog { make_dialog() };
+    dialog.query.text = u8"origin/main";
+    dialog.query.anchor = 7u;
+    dialog.query.caret = 11u;
+    dialog.query_enabled = true;
+
+    const auto tree { make_tree(make_dialog_view(std::move(dialog))) };
+    interaction_harness harness { tree };
+    focus_query(harness, bounds_of(*tree, gitman::ui::kind_switch_dialog_query_input, u8"alpha"));
+
+    // 이동·선택 키다. Shift는 범위를 늘린다.
+    {
+        const gitman::edit_text_input_intent intent { edit_of(harness.process(luil::key_pressed_event { luil::key_code::key_a, true })) };
+        REQUIRE(intent.target == gitman::text_input_target::switch_query);
+        REQUIRE(intent.command == gitman::text_edit_command::select_all);
+    }
+    REQUIRE(edit_of(harness.process(luil::key_pressed_event { luil::key_code::home })).command == gitman::text_edit_command::move_line_start);
+    REQUIRE(edit_of(harness.process(luil::key_pressed_event { luil::key_code::end })).command == gitman::text_edit_command::move_line_end);
+    {
+        const gitman::edit_text_input_intent intent { edit_of(harness.process(luil::key_pressed_event { luil::key_code::arrow_left, false, true })) };
+        REQUIRE(intent.command == gitman::text_edit_command::move_left);
+        REQUIRE(intent.extend);
+    }
+    REQUIRE(edit_of(harness.process(luil::key_pressed_event { luil::key_code::key_z, true })).command == gitman::text_edit_command::undo);
+
+    // 복사는 UI thread가 클립보드에 넣도록 고른 글을 담아 넘긴다. 이 view의 선택은
+    // `main`이다.
+    {
+        const std::vector<luil::input_action> actions { harness.process(luil::key_pressed_event { luil::key_code::key_c, true }) };
+        REQUIRE(actions.size() == 1u);
+        const auto* const copy { std::get_if<luil::clipboard_copy_request>(&actions.front()) };
+        REQUIRE(copy != nullptr);
+        REQUIRE(copy->text == u8"main");
+    }
+
+    // 붙여넣기는 UI thread가 클립보드를 읽도록 대상만 담아 넘긴다.
+    {
+        const std::vector<luil::input_action> actions { harness.process(luil::key_pressed_event { luil::key_code::key_v, true }) };
+        REQUIRE(actions.size() == 1u);
+        const auto* const paste { std::get_if<luil::clipboard_paste_request>(&actions.front()) };
+        REQUIRE(paste != nullptr);
+        REQUIRE(paste->target == gitman::ui::to_luil_target(gitman::text_input_target::switch_query));
+    }
+}
+
+TEST_CASE("Editing keys pass through when no text box has focus", "[ui][switch-ui][text-edit]")
 {
     gitman::view_snapshot view {};
     view.window_width = 800.0f;
     view.window_height = 600.0f;
     view.scale = 1.0f;
+    gitman::card_view_model card {};
+    card.id.value = u8"alpha";
+    card.display_name = u8"alpha";
+    view.cards.push_back(std::move(card));
 
-    gitman::switch_dialog_view dialog {};
-    dialog.card.value = u8"alpha";
-    dialog.title = u8"alpha";
-    dialog.loading = false;
-    dialog.query.text = u8"origin/main";
-    dialog.query.anchor = 7u;
-    dialog.query.caret = 11u;
-    dialog.query_enabled = true;
-    view.switch_dialog = { dialog };
+    interaction_harness harness { make_tree(view) };
 
-    const gitman::ui::ui_element_id input_id { gitman::ui::ui_element_kind::switch_dialog_query_input, gitman::project_id { u8"alpha" } };
-    const auto tree { gitman::ui::build_ui_tree(view) };
-    gitman::ui::interaction_config config {};
-    config.measure_text = [](const std::u8string_view text, float) { return static_cast<float>(text.size()) * 7.0f; };
-    gitman::ui::interaction_controller controller { config };
-    controller.set_tree(tree);
+    // 초점을 가진 박스가 없으면 편집 키는 아무 일도 하지 않는다.
+    REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::arrow_left }).empty());
+    REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::key_c, true }).empty());
+    REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::delete_forward }).empty());
 
-    const gitman::ui::rect_f box { tree->find(input_id)->bounds() };
-    const auto at = [](const int milliseconds) { return std::chrono::steady_clock::time_point {} + std::chrono::milliseconds { milliseconds }; };
-    static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { box.x + 10.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(0) }));
-    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 10.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(10) }));
-    REQUIRE(controller.snapshot().focused_input == input_id);
-
-    const auto command_of = [](const std::vector<gitman::ui::input_action>& actions) {
-        const gitman::logic_message message { first_logic_message(actions) };
-        const auto* const intent { std::get_if<gitman::edit_text_input_intent>(&message) };
-        REQUIRE(intent != nullptr);
-        return intent->command;
-    };
-
-    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_z, true })) == gitman::text_edit_command::undo);
-    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_z, true, true })) == gitman::text_edit_command::redo);
-    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::key_y, true })) == gitman::text_edit_command::redo);
-
-    // Ctrl+Backspace는 WM_CHAR가 U+007F로 준다. Ctrl+Delete는 오른쪽 낱말이다.
-    REQUIRE(command_of(controller.process(gitman::ui::character_typed_event { 0x7Fu })) == gitman::text_edit_command::delete_word_left);
-    REQUIRE(command_of(controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::delete_forward, true })) == gitman::text_edit_command::delete_word_right);
-
-    // 예전 클립보드 배치다. 이 view에는 선택이 있어 복사가 나온다.
-    {
-        const std::vector<gitman::ui::input_action> actions { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::insert, true }) };
-        REQUIRE(actions.size() == 1u);
-        const auto* const copy { std::get_if<gitman::ui::clipboard_copy_request>(&actions.front()) };
-        REQUIRE(copy != nullptr);
-        REQUIRE(copy->text == u8"main");
-    }
-    {
-        const std::vector<gitman::ui::input_action> actions { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::insert, false, true }) };
-        REQUIRE(actions.size() == 1u);
-        REQUIRE(std::get_if<gitman::ui::clipboard_paste_request>(&actions.front()) != nullptr);
-    }
-    {
-        const std::vector<gitman::ui::input_action> actions { controller.process(gitman::ui::key_pressed_event { gitman::ui::key_code::delete_forward, false, true }) };
-        REQUIRE(actions.size() == 2u);
-        REQUIRE(std::get_if<gitman::ui::clipboard_copy_request>(&actions.front()) != nullptr);
-    }
-
-    // Shift+클릭은 caret만 옮겨 선택을 늘린다.
-    {
-        const gitman::ui::pointer_pressed_event press { box.x + 7.0f + 14.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(2000), true };
-        const gitman::logic_message message { first_logic_message(controller.process(press)) };
-        const auto* const intent { std::get_if<gitman::edit_text_input_intent>(&message) };
-        REQUIRE(intent != nullptr);
-        REQUIRE(intent->command == gitman::text_edit_command::place_caret);
-        REQUIRE(intent->offset == 2u);
-        REQUIRE(intent->extend);
-    }
-    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(2010) }));
-
-    // 같은 자리를 세 번 누르면 전부 선택이다.
-    static_cast<void>(controller.process(gitman::ui::pointer_pressed_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3000) }));
-    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3010) }));
-    REQUIRE(command_of(controller.process(gitman::ui::pointer_pressed_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3100) })) == gitman::text_edit_command::select_word);
-    static_cast<void>(controller.process(gitman::ui::pointer_released_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3110) }));
-    REQUIRE(command_of(controller.process(gitman::ui::pointer_pressed_event { box.x + 21.0f, box.y + 4.0f, gitman::ui::pointer_button::left, at(3200) })) == gitman::text_edit_command::select_all);
+    // ↓는 여전히 카드 목록 탐색이다.
+    REQUIRE(as_intent<gitman::select_card_intent>(harness.process(luil::key_pressed_event { luil::key_code::arrow_down })) != nullptr);
 }
 
 TEST_CASE("An IME composition shows in the box without touching the draft", "[logic][switch-ui][ime]")

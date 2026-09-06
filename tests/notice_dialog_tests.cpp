@@ -1,6 +1,7 @@
 #include "application/logic_controller.h"
-#include "presentation/ui/build_ui_tree.h"
-#include "presentation/ui/ui_interaction.h"
+#include "helpers/ui_test_support.h"
+
+#include "luil/ui/ui_events.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -10,6 +11,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
+
+using namespace gitman::testing;
 
 namespace {
     class recording_submitter final : public gitman::operation_submitter
@@ -63,6 +66,14 @@ namespace {
             controller.handle(gitman::logic_message { std::move(notice) });
         }
     };
+
+    // element의 왼쪽 클릭 액션을 그 자리에서 실행한다.
+    std::vector<luil::input_action> invoke_click(const luil::ui_element& element)
+    {
+        const luil::ui_action* const action { element.action(luil::ui_trigger::left_click) };
+        REQUIRE(action != nullptr);
+        return (*action)({});
+    }
 } // namespace
 
 TEST_CASE("A notice intent opens an in-app dialog that any of its exits close", "[logic][notice]")
@@ -87,28 +98,26 @@ TEST_CASE("The notice dialog draws above the other dialogs and closes on click o
     fixture.controller.handle(gitman::logic_message { gitman::open_settings_intent {} });
     fixture.show_notice(true);
 
-    const std::shared_ptr<const gitman::ui::ui_tree> tree { gitman::ui::build_ui_tree(*fixture.view()) };
-    const gitman::ui::ui_element* const dialog { tree->find({ gitman::ui::ui_element_kind::notice_dialog }) };
+    const std::shared_ptr<const luil::ui_tree> tree { make_tree(*fixture.view()) };
+    const luil::ui_element* const dialog { find(*tree, gitman::ui::kind_notice_dialog) };
     REQUIRE(dialog != nullptr);
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::settings_dialog }) != nullptr);
+    REQUIRE(find(*tree, gitman::ui::kind_settings_dialog) != nullptr);
 
     // 확인 버튼과 배경 클릭이 모두 닫기다.
-    const gitman::ui::ui_element* const confirm { tree->find({ gitman::ui::ui_element_kind::notice_dialog_confirm }) };
+    const luil::ui_element* const confirm { find(*tree, gitman::ui::kind_notice_dialog_confirm) };
     REQUIRE(confirm != nullptr);
-    const std::vector<gitman::ui::input_action> confirmed { (*confirm->action(gitman::ui::ui_trigger::left_click))({}) };
-    REQUIRE(std::holds_alternative<gitman::dismiss_notice_intent>(std::get<gitman::logic_message>(confirmed.front())));
-    const std::vector<gitman::ui::input_action> background { (*dialog->action(gitman::ui::ui_trigger::left_click))({}) };
-    REQUIRE(std::holds_alternative<gitman::dismiss_notice_intent>(std::get<gitman::logic_message>(background.front())));
+    const std::vector<luil::input_action> confirmed { invoke_click(*confirm) };
+    REQUIRE(as_intent<gitman::dismiss_notice_intent>(confirmed) != nullptr);
+    const std::vector<luil::input_action> background { invoke_click(*dialog) };
+    REQUIRE(as_intent<gitman::dismiss_notice_intent>(background) != nullptr);
 
     // 알림은 환경설정 위에 있으므로 hit test와 Esc 모두 알림이 먼저 가져간다.
-    const gitman::ui::rect_f box { confirm->bounds() };
+    const luil::rect_f box { confirm->bounds() };
     REQUIRE(tree->hit_test(box.x + box.width / 2.0f, box.y + box.height / 2.0f) == confirm);
 
-    gitman::ui::interaction_controller interaction {};
-    interaction.set_tree(tree);
-    const std::vector<gitman::ui::input_action> escaped { interaction.process(gitman::ui::key_pressed_event { gitman::ui::key_code::escape }) };
-    REQUIRE(escaped.size() == 1);
-    REQUIRE(std::holds_alternative<gitman::dismiss_notice_intent>(std::get<gitman::logic_message>(escaped.front())));
+    interaction_harness harness { tree };
+    const std::vector<luil::input_action> escaped { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
+    REQUIRE(as_intent<gitman::dismiss_notice_intent>(escaped) != nullptr);
 }
 
 TEST_CASE("Closing a document returns to the start page and keeps the recent list", "[logic][close-document]")
@@ -131,10 +140,10 @@ TEST_CASE("Closing a document returns to the start page and keeps the recent lis
     // 닫기 뒤에는 시작 페이지가 새 문서 만들기 진입점을 제공한다 (G2: 도구
     // 막대에는 생성 버튼이 없다). 환경설정은 전역 설정 진입점으로 계속 활성이다
     // (G3.2).
-    const std::shared_ptr<const gitman::ui::ui_tree> tree { gitman::ui::build_ui_tree(*view) };
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::start_page_generate_document }) != nullptr);
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_close_document })->visible() == false);
-    REQUIRE(tree->find({ gitman::ui::ui_element_kind::toolbar_settings })->enabled());
+    const std::shared_ptr<const luil::ui_tree> tree { make_tree(*view) };
+    REQUIRE(find(*tree, gitman::ui::kind_start_page_generate_document) != nullptr);
+    REQUIRE(find(*tree, gitman::ui::kind_toolbar_close_document)->visible() == false);
+    REQUIRE(find(*tree, gitman::ui::kind_toolbar_settings)->enabled());
 
     // 닫힌 뒤의 두 번째 닫기는 아무 일도 하지 않는다.
     fixture.controller.handle(gitman::logic_message { gitman::close_document_intent {} });

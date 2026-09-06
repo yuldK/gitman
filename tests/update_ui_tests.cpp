@@ -1,17 +1,21 @@
 #include "application/logic_controller.h"
 #include "helpers/git_repository_fixture.h"
+#include "helpers/ui_test_support.h"
 #include "infrastructure/vcs_operation_executor.h"
-#include "presentation/ui/build_ui_tree.h"
-#include "presentation/ui/ui_interaction.h"
+
+#include "luil/ui/ui_events.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
+
+using namespace gitman::testing;
 
 namespace {
     class recording_submitter final : public gitman::operation_submitter
@@ -98,19 +102,12 @@ namespace {
         return card;
     }
 
-    gitman::logic_message first_logic_message(const std::vector<gitman::ui::input_action>& actions)
+    // element의 왼쪽 클릭 액션을 그 자리에서 실행한다.
+    std::vector<luil::input_action> invoke_click(const luil::ui_tree& tree, const luil::ui_element_id& id)
     {
-        for (const gitman::ui::input_action& action : actions)
-            if (const auto* const message { std::get_if<gitman::logic_message>(&action) }; message != nullptr)
-                return *message;
-        return gitman::logic_message { gitman::shutdown_message {} };
-    }
-
-    std::vector<gitman::ui::input_action> click(const gitman::ui::ui_tree& tree, const gitman::ui::ui_element_id& id)
-    {
-        const gitman::ui::ui_element* const element { tree.find(id) };
+        const luil::ui_element* const element { tree.find(id) };
         REQUIRE(element != nullptr);
-        const gitman::ui::ui_action* const action { element->action(gitman::ui::ui_trigger::left_click) };
+        const luil::ui_action* const action { element->action(luil::ui_trigger::left_click) };
         REQUIRE(action != nullptr);
         return (*action)({});
     }
@@ -163,13 +160,15 @@ TEST_CASE("Update requests honor an enabled submodule setting", "[logic][update-
 
 TEST_CASE("The card update button routes by kind and running state", "[ui][update-ui]")
 {
+    const luil::ui_element_id update_id { id_of(gitman::ui::kind_card_update, u8"alpha") };
+
     SECTION("준비된 카드는 종류와 무관하게 곧바로 update를 요청한다")
     {
         for (const gitman::repository_kind kind : { gitman::repository_kind::git, gitman::repository_kind::subversion })
         {
-            const auto tree { gitman::ui::build_ui_tree(make_card_view(make_ready_card(kind))) };
-            const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::card_update, gitman::project_id { u8"alpha" } })) };
-            const auto* const intent { std::get_if<gitman::request_update_intent>(&message) };
+            const auto tree { make_tree(make_card_view(make_ready_card(kind))) };
+            const std::vector<luil::input_action> actions { invoke_click(*tree, update_id) };
+            const auto* const intent { as_intent<gitman::request_update_intent>(actions) };
             REQUIRE(intent != nullptr);
             REQUIRE(intent->id.value == u8"alpha");
         }
@@ -181,17 +180,17 @@ TEST_CASE("The card update button routes by kind and running state", "[ui][updat
         card.can_change = false;
         card.busy = true;
         card.change_running = true;
-        const auto tree { gitman::ui::build_ui_tree(make_card_view(card)) };
-        const gitman::logic_message message { first_logic_message(click(*tree, { gitman::ui::ui_element_kind::card_update, gitman::project_id { u8"alpha" } })) };
-        REQUIRE(std::get_if<gitman::cancel_operation_intent>(&message) != nullptr);
+        const auto tree { make_tree(make_card_view(card)) };
+        const std::vector<luil::input_action> actions { invoke_click(*tree, update_id) };
+        REQUIRE(as_intent<gitman::cancel_operation_intent>(actions) != nullptr);
     }
 
     SECTION("준비되지 않은 카드의 update 버튼은 비활성이다")
     {
         gitman::card_view_model card { make_ready_card(gitman::repository_kind::git) };
         card.can_change = false;
-        const auto tree { gitman::ui::build_ui_tree(make_card_view(card)) };
-        REQUIRE(tree->find({ gitman::ui::ui_element_kind::card_update, gitman::project_id { u8"alpha" } })->enabled() == false);
+        const auto tree { make_tree(make_card_view(card)) };
+        REQUIRE(tree->find(update_id)->enabled() == false);
     }
 }
 

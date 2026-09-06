@@ -1,6 +1,7 @@
 #include "application/logic_controller.h"
 #include "application/task_scheduler.h"
-#include "messaging/channel.h"
+
+#include "luil/messaging/channel.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -8,6 +9,7 @@
 #include <cstddef>
 #include <functional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -134,7 +136,16 @@ TEST_CASE("Parallel change operations never mix their card logs", "[logic][sched
 {
     chatty_executor executor {};
     messaging::channel<gitman::logic_message> inbox { messaging::channel_options { 256, messaging::overflow_policy::reject_newest, {} } };
-    gitman::task_scheduler scheduler { executor, inbox, 4 };
+    // scheduler는 sink 하나만 안다 (설계 L3). 앱에서는 relay의 `post`가, 여기서는
+    // 관찰하기 쉬운 채널이 그 자리다.
+    // 앱에서는 relay 큐가 정본이라 유실이 없다. 여기서는 채널이 그 자리라 가득 차면
+    // 예전 emit_to_logic처럼 잠깐 물러났다 다시 넣는다 — 결과를 버리면 카드가 영영
+    // busy로 남는다.
+    const auto sink = [&inbox](gitman::logic_message message) {
+        while (inbox.post(gitman::logic_message { message }) == messaging::post_result::channel_full)
+            std::this_thread::sleep_for(std::chrono::milliseconds { 1 });
+    };
+    gitman::task_scheduler scheduler { executor, sink, 4 };
     gitman::logic_controller controller { scheduler };
 
     controller.handle(gitman::open_document_intent { u8"C:\\work\\stress.version-list" });

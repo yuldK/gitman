@@ -73,7 +73,7 @@
 
 ### T1.3 영향 범위
 
-`view_snapshot.h`(entry·필드 이름), `context_menu_element.cpp`(아이콘·액션),
+`view_snapshot.h`(entry·필드 이름), `context_menu_popup.cpp`(아이콘·액션; 2026-09-06 luil popup 이식으로 `context_menu_element.cpp`를 대체),
 `app_messages.h`(새 intent), `logic_controller`(상태·핸들러·snapshot 조립),
 `toolbar_element`(우클릭 액션). 기존 카드 메뉴의 동작은 바뀌지 않는다.
 

@@ -4,6 +4,8 @@
 
 승인됨 - 2026-08-14 사용자 검수 반영
 
+> 2026-09-06 주석: 창·입력·DPI·클립보드·렌더러·custom caption의 구현은 UI 프레임워크 luil이 맡는다 ([ADR-007](ADR-007-luil-ui-framework-adoption.md)). 아래 표의 vcpkg baseline 행은 [ADR-006](ADR-006-restricted-network-dependency-provisioning.md)으로, Skia 취득은 ADR-007로 대체됐다. 플랫폼·도구체인·단일 실행 파일 결정은 그대로 유효하며 본문은 결정 당시 그대로 둔다.
+
 ## 배경
 
 Gitman은 Skia를 사용하는 C++ GUI 애플리케이션이며 지원 플랫폼을 Windows 11로 제한할 수 있다. 창, 입력, DPI, 클립보드, 프로세스 실행을 제공할 네이티브 경계와 재현 가능한 빌드 기준선이 필요하다.

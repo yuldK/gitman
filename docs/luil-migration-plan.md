@@ -15,7 +15,7 @@
   커밋하고, 마지막에 전역 검증을 한 번 보고한다. 검수는 커밋 단위로 사후에 한다.
 - 시작 기준선: `main` `1f61c16`. 전체 CTest 통과 수는 C1 시작 시 현재 빌드로
   실측해 첫 검증 기록에 적는다.
-- 검증 기록: 체크포인트마다 `docs/verification/2026-09-DD-luil-migration-cN.md`.
+- 검증 기록: 체크포인트마다 `docs/verification/2026-09-06-luil-migration-cN.md`.
 
 ## 2. 사용자 결정 사항 (2026-09-05)
 
@@ -165,7 +165,7 @@ C1-1·C1-2 절차 재현). 실행 파일 고지에 WebView2·Skia 항목이 이�
 | --- | --- | --- |
 | C3-1 초점 정책 (D1-B) | 카드 body·root·메뉴·목록 행·행 안 아이콘에 `set_tab_stop(false)`; 버튼·dialog 컨트롤·텍스트 칸은 기본; `order_focus`는 기본; 텍스트 칸 초점 규칙 변화(배경 클릭 해제·지우기 버튼 유지) 확인 | `ui_interaction_tests`에 Tab 순서·Enter가 카드 refresh를 유지하는지 |
 | C3-2 dialog 뼈대 (D2-A) | 7개 dialog를 `modal_host_element`(owner, scrim 0.45, outside 비움, dismiss=취소, focus_entry/return은 D1-B 범위에서 confirm/cancel 버튼)+`panel`+`stack`으로. `content_height`에 `dialog_available_height` 반영. `build_ui_tree`의 `generate`/`font` 추가 순서 교정. policy `on_key`의 dialog Esc 사슬 삭제. 확인 버튼 `default_button` | dialog test 7종 + Esc 순서 test(notice > local_changes > discovery > generate > font > settings > switch) |
-| C3-3 컨텍스트 메뉴 (D3-A) | `ui_frame::popups`에 `ui_popup` + `menu_element`; `context_menu_element` 삭제; logic이 항목 선택 시 메뉴를 닫고 intent 처리; policy `menu()`를 `{menu, menu_item}`로, `on_wheel`의 메뉴 검사 줄 삭제; `context_menu_view`의 anchor를 논리 픽셀로 | `context_menu_tests` 재작성(popup tree) + 수동: 바깥 클릭·휠·활성 전환·창 이동 |
+| C3-3 컨텍스트 메뉴 (D3-A) | `ui_frame::popups`에 `ui_popup` + `menu_element`; `context_menu_element` 삭제; logic이 항목 선택 시 메뉴를 닫고 intent 처리; policy `menu()`를 `{menu, menu_item}`로, `on_wheel`의 메뉴 검사 줄 삭제; `context_menu_view`의 anchor는 물리 픽셀 그대로 두고 popup 빌더가 배율로 나눔 | `context_menu_tests` 재작성(popup tree) + 수동: 바깥 클릭·휠·활성 전환·창 이동 |
 | C3-4 마무리 | D5 점진 검색(두 줄 규칙을 `filtered_switch_candidates`·`filtered_font_families`에), `draw_hover_fill`·`hit_opaque` 정리 잔여, `text_button` 남은 `accent` 플래그를 `visual`로 | `switch_dialog_tests`·`settings_dialog_tests`의 IME 조합 필터 사례 |
 
 제안 커밋 메시지:
@@ -180,7 +180,7 @@ C1-1·C1-2 절차 재현). 실행 파일 고지에 WebView2·Skia 항목이 이�
 | --- | --- |
 | C4-1 | 설계 L10의 문서 전부: `build.md`(§1·2·3.2·5·7), `README.md`, `deployment.md`, `user-manual.md`(+`.html`), ADR-001/002/004/005/006 주석, `dependency-provisioning-design.md` 폐기 표시, `requirements.md` REQ-009, `plan.md`·`handoff.md` 날짜 항목, `ui-element-design.md` 머리말, `change_log.md` 구현 요약, 설계 문서 상태란 "구현 완료" |
 | C4-2 | 전역 검증: `ctest` Debug·Release 전체, `cmake --preset vs2026-analysis` 빌드, `check_source_style.ps1`, `cmake --build --preset vs2026-debug`·`-release`, `cmake --install`로 `bin/gitman.exe`, 새 clone에서 준비 절차 재현(온라인·오프라인 각 1회), 빌드 로그 네트워크 취득 0건, 고지 파일 항목 확인, 실행 파일 크기 전후 비교 |
-| C4-3 | 최종 검증 기록 `docs/verification/2026-09-DD-luil-migration.md`와 보고 |
+| C4-3 | 최종 검증 기록 `docs/verification/2026-09-06-luil-migration.md`와 보고 |
 
 제안 커밋 메시지: `docs: luil 채택에 맞춰 빌드·배포 문서와 ADR을 갱신함`
 
@@ -216,4 +216,7 @@ C1-1·C1-2 절차 재현). 실행 파일 고지에 WebView2·Skia 항목이 이�
 ## 10. 승인
 
 2026-09-06 승인. `feature/luil-migration` 브랜치를 만들어 C1부터 시작했다. 진행
-기록은 `docs/verification/2026-09-DD-luil-migration-cN.md`와 `change_log.md`에 있다.
+기록은 `docs/verification/2026-09-06-luil-migration-cN.md`와 `change_log.md`에 있다.
+
+2026-09-06 C1~C4 구현 완료. 커밋 12개, 전체 CTest 812건 Debug·Release 통과, 새
+clone 재현(온라인·오프라인) 통과. 최종 검증 `docs/verification/2026-09-06-luil-migration.md`.

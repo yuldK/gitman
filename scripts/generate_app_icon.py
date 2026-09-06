@@ -1,4 +1,8 @@
-"""Generate Gitman's Windows icon from the bundled Codicons font."""
+"""Generate Gitman's Windows icon from luil's bundled Codicons font.
+
+The font and mapping live in the luil submodule (third_party/luil/assets/codicons/);
+see docs/build.md section 5 for the exact command line.
+"""
 
 from __future__ import annotations
 

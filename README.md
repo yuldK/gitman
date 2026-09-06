@@ -9,7 +9,7 @@ Gitman은 여러 Git 및 SVN 작업 경로의 상태와 변경 작업을 한 화
 ## 개요
 
 - Windows 11 x64에서 실행되는 C++20 Win32 네이티브 애플리케이션입니다.
-- Skia로 화면을 렌더링하며 Direct3D를 우선 사용하고, 초기화에 실패하면 CPU 렌더링으로 전환합니다.
+- UI 프레임워크 [luil](https://github.com/yuldK/luil)(Skia 내장)로 화면을 렌더링하며 Direct3D를 우선 사용하고, 초기화에 실패하면 CPU 렌더링으로 전환합니다.
 - Git과 SVN 저장소를 하나의 `.version-list` 문서로 관리합니다.
 - 전체 또는 개별 저장소의 상태 새로 고침, Git pull/SVN update, Git branch/SVN URL 전환을 제공합니다.
 - 카드별 변경 로그와 선택 카드 전용 하단 로그 창을 제공합니다.
@@ -18,7 +18,7 @@ Gitman은 여러 Git 및 SVN 작업 경로의 상태와 변경 작업을 한 화
 - `.version-list` Windows 파일 연결을 현재 사용자 범위에서 관리할 수 있습니다.
 - 배포 산출물은 의존성과 UI 자산을 포함한 단일 `gitman.exe` 파일입니다. Git과 SVN 명령줄 도구는 해당 저장소를 사용할 때 별도로 설치하면 됩니다.
 
-단계별 검증 기록은 `docs/verification/`에 있으며 가장 최근 기록은 2026-08-23입니다. CTest에 등록된 테스트는 837개이고, 여기에는 단위 테스트 외에 ASan 구성, renderer smoke test, 자산 checksum, 소스 스타일 검사가 포함됩니다. 실제 SVN CLI와 네트워크 드라이브는 아직 보증 범위에 포함하지 않습니다.
+단계별 검증 기록은 `docs/verification/`에 있으며 가장 최근 기록은 2026-09-06(luil 이식)입니다. CTest에 등록된 테스트는 812개이고, 여기에는 단위 테스트 외에 renderer smoke test와 소스 스타일 검사가 포함됩니다. 렌더러·텍스트 편집·TSF·글꼴 대체 같은 기반 계층의 테스트는 luil 저장소가 맡습니다. 실제 SVN CLI와 네트워크 드라이브는 아직 보증 범위에 포함하지 않습니다.
 
 ## 목적
 
@@ -46,10 +46,9 @@ Git과 SVN 실행 파일은 `PATH`에서 자동 탐색합니다. 열린 `.versio
 - Visual Studio 2022 17.10 이상 또는 Visual Studio 2026
   - `Desktop development with C++` 워크로드
   - Windows SDK 10.0.22621.0 이상
-- Python 3.9 이상
-- Skia를 빌드할 GN과 Ninja 1.13 이상
+- Python 3.9 이상과 Pillow (앱 아이콘을 다시 만들 때만)
 
-CMake가 의존성을 자동으로 내려받지는 않습니다. submodule과 luil의 패키지 스크립트로 준비합니다. UI 프레임워크 luil은 `third_party/luil` submodule이며, luil이 쓰는 Skia 패키지와 WebView2 SDK는 luil의 스크립트가 해시를 확인하며 설치합니다.
+CMake가 의존성을 자동으로 내려받지는 않습니다. submodule과 luil의 패키지 스크립트로 준비합니다. UI 프레임워크 luil은 `third_party/luil` submodule이며, luil이 쓰는 Skia 패키지(미리 빌드된 정적 라이브러리)와 WebView2 SDK는 luil의 스크립트가 해시를 확인하며 설치합니다. Skia를 직접 빌드하지 않으며 GN·Ninja도 필요하지 않습니다.
 
 ```powershell
 git submodule update --init third_party/nlohmann-json
@@ -61,31 +60,13 @@ third_party\luil\scripts\fetch_webview2.ps1
 
 제한된 환경에서는 아카이브를 브라우저로 받아 `third_party/luil/third_party/skia-prep-archives/`와 `webview2-prep-archives/`에 두고 같은 스크립트를 실행합니다. 절차의 근거는 [ADR-007](docs/decisions/ADR-007-luil-ui-framework-adoption.md)에 있습니다.
 
-gitman의 UI 코드가 luil로 옮겨 가는 동안(C2 이전) 앱은 아직 자기 Skia로도 빌드되므로 아래 Skia submodule과 빌드도 필요합니다. 이 절은 이식이 끝나면 없어집니다.
-
-```powershell
-git submodule update --init `
-    third_party/skia `
-    third_party/skia-externals/d3d12allocator `
-    third_party/skia-externals/spirv-cross `
-    third_party/skia-externals/spirv-headers
-```
-
 테스트까지 빌드하려면 Catch2 submodule도 초기화합니다.
 
 ```powershell
 git submodule update --init third_party/catch2
 ```
 
-Skia는 Debug와 Release를 각각 한 번씩 빌드합니다.
-
-```powershell
-.\scripts\build_skia.ps1 -Configuration Debug
-.\scripts\build_skia.ps1 -Configuration Release
-.\scripts\verify_skia_root.ps1
-```
-
-GN과 Ninja는 스크립트가 `third_party\skia-tools`, Skia 트리, Visual Studio 설치본, `PATH` 순으로 찾습니다. 어디에도 없다면 `-FetchTools`로 Skia의 `bin/fetch-gn`·`bin/fetch-ninja`를 한 번 실행해 받거나, `-GnPath`와 `-NinjaPath`로 실행 파일 경로를 지정합니다. 자세한 GN 옵션과 제한된 네트워크 환경에서의 준비 방법은 [Skia 준비 안내](docs/skia-build.md)를 참고합니다.
+Skia 패키지의 내용과 갱신 절차는 luil 저장소의 `docs/skia-build.md`(`third_party/luil/docs/skia-build.md`)에 있습니다.
 
 ### 3. 빌드 및 설치
 
@@ -231,7 +212,7 @@ Gitman을 인자 없이 실행합니다.
 
 ## 테스트
 
-테스트는 앱 빌드와 분리된 전용 preset을 사용합니다. Skia Debug·Release와 Catch2 submodule이 준비되어 있어야 합니다.
+테스트는 앱 빌드와 분리된 전용 preset을 사용합니다. luil의 Skia 패키지 Debug·Release와 Catch2 submodule이 준비되어 있어야 합니다.
 
 ```powershell
 cmake --preset vs2022-tests
@@ -246,7 +227,7 @@ cmake --build --preset vs2022-tests-release
 ctest --preset vs2022-tests-release
 ```
 
-테스트 모음은 작업공간 JSON, 경로와 schema, Git·SVN 명령과 출력 파서, 실제 Git update·switch 통합, 프로세스 실행·취소, 동시 작업과 로그 격리, UI 상호작용과 tree 배치, 텍스트 편집·TSF 입력·글꼴 대체, 환경설정·전환·탐색 dialog, 앱 설정과 최근 목록, 파일 연결, 렌더러 smoke test, 자산 checksum을 포함합니다. 현재 CTest 등록 수는 837개이며, 최종 단계 8 검증에서 VS2022 Debug/Release와 VS2026 구성, ASan, 3회 반복을 확인했습니다.
+테스트 모음은 작업공간 JSON, 경로와 schema, Git·SVN 명령과 출력 파서, 실제 Git update·switch 통합, 프로세스 실행·취소, 동시 작업과 로그 격리, UI 상호작용과 tree 배치, 환경설정·전환·탐색 dialog, 앱 설정과 최근 목록, 파일 연결, luil 위의 driver·relay·policy 조립, 렌더러 smoke test를 포함합니다. 텍스트 편집·TSF 입력·글꼴 대체·렌더러 같은 기반 계층의 테스트는 luil 저장소에 있습니다. 현재 CTest 등록 수는 812개이며, luil 이식 최종 검증에서 VS2026 Debug/Release를 확인했습니다.
 
 정적 분석과 포맷·소스 스타일 검사는 다음과 같이 실행합니다.
 
@@ -265,7 +246,7 @@ ctest --preset vs2022-tests-debug -R Git
 
 ## 배포와 데이터
 
-Gitman은 installer나 MSIX 없이 `bin\gitman.exe`를 원하는 위치에 복사해 배포합니다. Skia와 C/C++ runtime은 정적으로 연결되고, Codicons·앱 아이콘·제3자 라이선스 고지문은 실행 파일 resource에 포함됩니다. Git/SVN CLI는 외부 prerequisite입니다.
+Gitman은 installer나 MSIX 없이 `bin\gitman.exe`를 원하는 위치에 복사해 배포합니다. luil(Skia·WebView2 로더 포함)과 C/C++ runtime은 정적으로 연결되고, Codicons·앱 아이콘·제3자 라이선스 고지문은 실행 파일 resource에 포함됩니다. Git/SVN CLI는 외부 prerequisite입니다.
 
 사용자 데이터는 다음 위치에 저장됩니다.
 
@@ -293,8 +274,9 @@ Gitman은 installer나 MSIX 없이 `bin\gitman.exe`를 원하는 위치에 복�
 - [사용 설명서](docs/user-manual.md) — 실제 화면 캡처로 설명하는 사용 안내
 - [변경 이력](docs/change_log.md)
 - [빌드 및 실행 안내](docs/build.md)
-- [Skia 준비 안내](docs/skia-build.md)
+- [luil 채택 설계](docs/luil-migration-design.md)와 [ADR-007](docs/decisions/ADR-007-luil-ui-framework-adoption.md)
 - [배포 안내](docs/deployment.md)
 - [요구사항 기준선](docs/requirements.md)
 - [코드 스타일](docs/code_style.md)
 - [단계 8 최종 검증 기록](docs/verification/2026-08-19-stage-8.md)
+- [luil 이식 최종 검증 기록](docs/verification/2026-09-06-luil-migration.md)

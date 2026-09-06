@@ -11,7 +11,7 @@
 
 ## 2. 제품 범위
 
-Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케이션이다. JSON 형식의 `.version-list` 작업공간 문서에 등록된 Git 및 SVN 작업 경로의 상태를 조회하고, 명시적인 refresh, 안전한 update 및 switch, 카드별 읽기 전용 로그를 Skia GUI로 제공한다.
+Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케이션이다. JSON 형식의 `.version-list` 작업공간 문서에 등록된 Git 및 SVN 작업 경로의 상태를 조회하고, 명시적인 refresh, 안전한 update 및 switch, 카드별 읽기 전용 로그를 GUI로 제공한다. GUI는 2026-09-06부터 UI 프레임워크 luil(Skia 렌더링) 위에 있다 (ADR-007).
 
 초기 버전은 커밋, 푸시, 병합, 리베이스, 충돌 해결, 자동 stash, 강제 전환, 터미널 입력, 자격 증명 저장을 제공하지 않는다.
 
@@ -21,13 +21,13 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 | --- | --- | --- | --- |
 | REQ-001 | JSON 형식의 `.version-list` 프로젝트 목록을 읽는다. | 스키마 버전과 항목별 오류를 사용한다. | 일부 항목이 잘못되어도 유효 항목을 표시한다. |
 | REQ-002 | Git/SVN 상태를 공통 모델로 표시한다. | Git은 remote target을 우선하고 remote가 없을 때 local을 기준으로 한다. | 최신 판단 기준 ref와 remote/local source, 마지막 확인 시각을 표시한다. |
-| REQ-003 | Skia GUI를 제공한다. | Windows 11 x64 Win32, Direct3D 기본, CPU fallback, custom caption을 사용한다. | 두 renderer와 일체형 caption이 DPI 및 창 상태 변경에서 정상 동작한다. |
+| REQ-003 | Skia 렌더링 GUI를 제공한다. | Windows 11 x64 Win32, Direct3D 기본, CPU fallback, custom caption을 사용한다. 2026-09-06부터 창·렌더러·caption은 luil이 맡는다 (ADR-007). | 두 renderer와 일체형 caption이 DPI 및 창 상태 변경에서 정상 동작한다. |
 | REQ-004 | 바로 아래 자식 저장소를 발견하고 등록한다. | 깊이 1만 검사한다. | 후보 미리보기와 선택 등록을 제공한다. |
 | REQ-005 | 프로젝트를 가로형 카드로 표시한다. | Codicons `v0.0.46-24`를 사용한다. | 아이콘, 색상, 한국어 툴팁으로 상태를 구분한다. |
 | REQ-006 | Git pull과 SVN update를 실행한다. | Git은 `--ff-only`와 optional recursive submodule update를 제공한다. | 위험 상태와 인증 필요 상태에서 작업을 시작하지 않고 submodule 선택을 로그로 추적한다. |
 | REQ-007 | Git/SVN switch를 제공한다. | Git은 remote branch를 먼저, local branch를 다음에 조사하며 SVN은 repository root부터 디렉터리를 lazy 조회한다. | dialog 검증 실패 시 오류를 표시하고 명령을 생성하지 않으며 SVN 대상은 실행 직전 root/UUID 일치를 다시 확인한다. |
 | REQ-008 | 선택 카드 전용 하단 로그를 표시한다. | 카드별 ring buffer와 sequence를 사용한다. | 병렬 작업 중에도 선택 카드의 로그만 순서대로 보인다. |
-| REQ-009 | C++과 Skia를 사용한다. | C++20과 Skia 148을 사용한다. | UI와 무관한 계층에 Skia 타입이 노출되지 않는다. |
+| REQ-009 | C++과 luil(내부 Skia)을 사용한다. | C++20과 luil submodule(핀 `c971f32`, Skia 152 패키지)을 사용한다. 2026-09-06 ADR-007로 개정했다 (이전: Skia 148 직접 빌드). | UI와 무관한 계층(domain·application·infrastructure)은 luil의 UI 헤더(`luil/ui/**`, `luil/win32/{app_host,win32_window}.h`)를 include하지 않는다. 값 타입만 담은 `luil/text/*`, `luil/theme/*`, `luil/messaging/*`, `luil/win32/renderer_policy.h`는 허용한다 (luil-migration-design.md 1장). |
 | REQ-010 | 코드 및 파일 규칙을 지킨다. | 상세 기준은 `docs/code_style.md`에 따른다. C++, CMake, PowerShell, JSON, XML 및 resource 코드에 공백 4칸을 적용하고, Allman 중괄호, namespace 내부 1단계 들여쓰기, `snake_case`, UTF-8, CRLF, 가능한 중괄호 초기화, 단일 문장 제어문의 중괄호 생략, 조건 연산자의 새 줄 시작, 생성자 초기화 목록의 줄바꿈 쉼표와 긴 표현식의 닫는 기호 줄 분리를 적용한다. | 자동 검사와 코드 리뷰에서 위반이 보고된다. |
 | REQ-011 | 설명과 주석을 한국어로 작성한다. | 외부 API와 명령 고유 명칭은 원문을 허용한다. | 이유와 제약을 설명하는 주석과 문서가 한국어다. |
 | REQ-012 | 지시와 검증을 문서화한다. | ADR, 단계별 검증 기록, 변경 이력을 사용한다. | 요구사항에서 결정과 검증 결과를 추적할 수 있다. |
@@ -50,10 +50,10 @@ Gitman은 Windows 11에서 실행되는 x64 Win32 네이티브 C++ 애플리케�
 | NFR-007 | 외부 명령 | shell 미사용, 인자 배열, timeout, 취소, 비대화형 |
 | NFR-008 | 보안 | 자격 증명 미저장, 민감 로그 마스킹, 강제 변경 명령 제외 |
 | NFR-009 | 반응성 | UI/input thread에서 파일, 네트워크, 프로세스 I/O 금지 |
-| NFR-010 | 재현성 | vcpkg baseline, Codicons 태그 및 커밋, 자산 checksum 고정 |
+| NFR-010 | 재현성 | submodule 핀(luil·nlohmann/json·Catch2), luil 패키지 아카이브의 SHA-256, Codicons 태그 및 커밋 고정 (2026-08-19 vcpkg 제거 ADR-006, 2026-09-06 luil 채택 ADR-007) |
 | NFR-011 | 배포 | Gitman dependency와 asset을 포함한 단일 `gitman.exe`; Git/SVN CLI는 외부 prerequisite |
 | NFR-012 | 렌더링 | Direct3D 기본, CPU 명시 선택 및 자동 fallback |
-| NFR-013 | 창 UI | Skia custom caption과 Windows 11 drag, resize, system menu, Snap Layout 호환 |
+| NFR-013 | 창 UI | luil custom caption(Skia 렌더링)과 Windows 11 drag, resize, system menu, Snap Layout 호환 |
 | NFR-014 | 메시지 재사용 | 범용 메시지 구조는 단계 6 구현 전 별도 사용자 설계 승인을 받아야 함 |
 
 ## 5. 단계 0 완료 기준

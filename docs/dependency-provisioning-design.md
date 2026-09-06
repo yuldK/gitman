@@ -2,6 +2,8 @@
 
 이 문서는 [ADR-006](decisions/ADR-006-restricted-network-dependency-provisioning.md)의 결정을 파일 단위 변경으로 옮긴 구현 설계다. 상태는 **초안 - 검수 대기**다. 승인 전에는 이 문서에 기술한 코드와 build file을 작성하지 않는다.
 
+> 2026-09-06 폐기 표시: 이 설계의 Skia 부분(2장의 Skia submodule, 3~4장, 5.1·5.9, `docs/skia-build.md`)은 luil 채택([ADR-007](decisions/ADR-007-luil-ui-framework-adoption.md), [luil-migration-design.md](luil-migration-design.md))으로 폐기됐다. Skia submodule·GN args·패치·`build_skia.ps1`·`verify_skia_root.ps1`·`skia.cmake`는 삭제됐고 Skia는 luil의 패키지 스크립트가 설치한다. vcpkg 제거, nlohmann/json·Catch2 submodule, 고지 생성 원칙은 구현된 대로 유효하다. 아래 본문은 2026-08-19 실측 기록으로 남긴다.
+
 ## 1. 설계 제약
 
 의존성이 앱 코드에 닿는 지점은 세 target 이름뿐이다.

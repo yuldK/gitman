@@ -4,6 +4,8 @@
 
 승인됨 - 2026-08-17 사용자가 `MSG-P0` 설계안(`docs/thread-message-design.md`)을 승인했다. ADR-004의 구현 차단 조건이 해소되어 단계 6을 진행할 수 있다.
 
+> 2026-09-06 주석: 이 component의 구현은 luil(`luil::messaging`, 계약 동일)로 옮겨 갔고 gitman은 luil의 것을 쓴다 ([ADR-007](ADR-007-luil-ui-framework-adoption.md)). 검증 계획의 ASan 항목은 luil 저장소의 CI로 위임한다 (ADR-007 결정 8).
+
 ## 배경
 
 ADR-004는 input, UI, logic thread와 worker pool 사이의 통신을 재사용 가능한 독립 component로 설계하되, 상세 구조를 구현 전에 별도 검수받도록 차단 조건을 두었다. `docs/thread-message-design.md`가 그 설계안이며 이 ADR은 승인된 결정을 고정한다. 상세 계약과 근거, sequence diagram, 고려한 대안은 설계 문서를 기준으로 한다.

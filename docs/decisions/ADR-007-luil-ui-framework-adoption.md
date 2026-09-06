@@ -2,8 +2,8 @@
 
 ## 상태
 
-승인됨 - 2026-09-05 설계 검수(D1~D8)에서 채택, 2026-09-06 계획서 승인으로 구현 시작. 설계 문서는 [luil-migration-design.md](../luil-migration-design.md)다.
-승인되면 ADR-006의 Skia 취득 절(submodule + 직접 GN 빌드)과 ADR-002의 Skia 행을
+승인됨 - 2026-09-05 설계 검수(D1~D8)에서 채택, 2026-09-06 계획서 승인으로 구현 시작, 같은 날 구현 완료 (`feature/luil-migration`, 최종 검증 `docs/verification/2026-09-06-luil-migration.md`). 설계 문서는 [luil-migration-design.md](../luil-migration-design.md)다.
+ADR-006의 Skia 취득 절(submodule + 직접 GN 빌드)과 ADR-002의 Skia 행을
 이 문서가 대체한다. ADR-006의 원칙(빌드 체계는 네트워크를 쓰지 않는다, 준비는
 사람이 한다)과 Catch2·단일 경로·고지 규칙은 그대로 유효하다. ADR-005의 ASan
 검증 조항은 luil 저장소의 CI로 위임한다 (아래 결정 8).

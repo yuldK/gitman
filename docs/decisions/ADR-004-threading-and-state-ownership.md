@@ -4,6 +4,8 @@
 
 승인됨 - 기본 소유권 승인, 재사용 메시지 구조는 구현 전 별도 검수 필요
 
+> 2026-09-06 주석: UI thread·input thread, `HWND`·Skia surface, frame snapshot 게시와 종료 순서는 luil의 `app_host`·`logic_driver`가 소유한다 ([ADR-007](ADR-007-luil-ui-framework-adoption.md), luil-migration-design.md L3). gitman은 `gitman_driver`(logic thread)·`operation_result_relay`·`cancellation_registry`로 logic thread 단일 소유권과 worker pool 원칙을 그대로 지킨다. 아래 본문의 thread 이름과 순서는 이관 전 기록이다.
+
 ## 배경
 
 여러 카드의 Git/SVN 작업이 병렬로 실행되는 동안 Win32 메시지 처리와 Skia 렌더링이 멈추지 않아야 한다. UI와 입력 코드에서 직접 상태를 변경하면 경쟁 조건과 수명 문제가 발생한다. 사용자가 확장하거나 제어할 코드는 logic command 경계에 집중되어야 한다.

@@ -1,5 +1,15 @@
 # Gitman 후속 구현 세션 인수인계
 
+## 0. 2026-09-06 추가 — UI 계층의 luil 이식
+
+아래 1장 이후는 2026-08-19 기준 기록이며 고치지 않는다. 그 뒤의 변화는 이 절이 덮는다.
+
+- UI 프레임워크를 자체 사본에서 [luil](https://github.com/yuldK/luil) submodule(`third_party/luil`, 핀 `c971f32`)로 바꿨다. 근거는 [ADR-007](decisions/ADR-007-luil-ui-framework-adoption.md), 설계는 [luil-migration-design.md](luil-migration-design.md), 순서는 [luil-migration-plan.md](luil-migration-plan.md), 검증 기록은 `verification/2026-09-06-luil-migration*.md`다.
+- 2장 표의 dependency·Skia·창 행은 다음으로 읽는다: dependency는 submodule과 해시 고정 패키지(vcpkg 없음, ADR-006), Skia는 luil의 skia-prep 패키지(milestone 152, 직접 빌드 없음), 창·렌더러·caption·TSF·클립보드·글꼴은 luil이 맡는다. Codicons 자산도 luil의 것이다.
+- gitman에 남은 UI 코드는 앱 element(`src/presentation/ui/`)와 `gitman_policy`, 조립부 `src/platform/win32/{gitman_driver,gitman_delegate,operation_result_relay}`, `src/application/cancellation_registry`다. 준비 절차는 [build.md](build.md) 2장.
+- 삭제한 Skia 작업 트리(빌드 산출물 포함)는 `E:\Programming\Lusain\gitman-skia-backup\`에 옮겨 두었다. 저장소 밖이라 필요 없으면 지운다.
+- luil에 요청해 둔 후속(없어도 동작): `LUIL_ENABLE_WEBVIEW=OFF`, fetch 스크립트 `-Offline`, 시작 오류 상자 훅, `LUIL_WARNINGS_AS_ERRORS`, 텍스트 칸 지우기 글리프, 고지 생성기의 `;` 잔재. 목록은 설계 문서 부록 B.
+
 ## 1. 현재 상태
 
 - 기준일: 2026-08-19

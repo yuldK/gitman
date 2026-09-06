@@ -22,7 +22,28 @@
 
 - 계획서(`docs/luil-migration-plan.md`) 승인으로 보고 `feature/luil-migration`
   브랜치에서 C1부터 체크포인트마다 커밋한다. 검증 기록은
-  `docs/verification/2026-09-DD-luil-migration-cN.md`.
+  `docs/verification/2026-09-06-luil-migration-cN.md`.
+
+### 구현 요약 (같은 날 완료)
+
+- 커밋 12개: 설계 `e6aeeb4` → C1 `70288c3`(luil submodule·리소스 분리) → C2
+  `48aacbf`·`e1ac361`·`6a8887c`·`2411c0b`·`956430e`(기반 계층 삭제와 luil 채택,
+  driver·policy·delegate 조립, element 이식, test 정리) → C3 `72760d3`(Tab 초점
+  D1-B)·`f411fce`(dialog `modal_host` D2-A)·`d435a9b`(컨텍스트 메뉴 popup
+  D3-A)·`160424f`(IME 점진 검색 D5·hover 정리) → C4 문서·검증.
+- 삭제: Skia submodule 8개, GN args·패치·`build_skia.ps1`·`verify_skia_root.ps1`·
+  `skia.cmake`, 코디콘 자산과 생성기, UI 프레임워크 파일 약 60쌍. 남은 UI
+  코드는 앱 element·`gitman_policy`·`gitman_driver`·`gitman_delegate`·
+  `operation_result_relay`·`cancellation_registry`다.
+- 수용한 동작 변화(설계 5장): Tab 순회 범위, dialog 초점 가둠과 Esc 우선순위,
+  메뉴 popup(모니터 작업 영역 안 다듬기·우클릭 흡수 없음·여백 4), scrim·hover
+  색은 luil 팔레트, 조합 중 점진 검색.
+- 검증: 전체 CTest 812건 Debug·Release 통과, analysis 빌드, style 검사, 새
+  clone 재현 온라인·오프라인 각 1회(`fetch_*.ps1`가 아카이브만으로 동작), 실행
+  파일 7,117,312 → 8,757,760 B. 기록 `docs/verification/2026-09-06-luil-migration.md`.
+- luil에 남긴 요청(설계 부록 B): `LUIL_ENABLE_WEBVIEW=OFF`, fetch `-Offline`,
+  시작 오류 상자 훅, `LUIL_WARNINGS_AS_ERRORS`, 텍스트 칸 지우기 글리프, 고지
+  머리글 `;` 잔재, `menu_config::owner`와 `find_menu`의 불일치 문서화.
 
 ## 2026-09-05 - luil 채택 설계 검수
 

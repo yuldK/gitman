@@ -39,6 +39,8 @@
 | 2026-08-17 | 단계 5 최종 승인과 `MSG-P0` 범용 메시지 구조 설계 승인 | `docs/decisions/ADR-005-thread-messaging.md`, `docs/stage-6-plan.md` | REQ-012, REQ-015 |
 | 2026-08-18 | 단계 7 개시 지시와 커밋까지의 자동 진행 위임. 이 지시로 단계 6과 이후 UI 개선·CMake 정리를 최종 승인으로 기록 | `docs/stage-7-plan.md`, 단계 7 | REQ-006, REQ-007, REQ-008, REQ-012 |
 | 2026-08-19 | 단계 8 개시. SVN 미설치 유지, GitHub 공개 저장소 실측, UI 이월 3건 포함을 결정. 자동 진행 위임을 종료하고 매 체크포인트 검수와 제안 커밋 메시지 첨부를 지시 | `docs/stage-8-plan.md`, 단계 8 | REQ-004, REQ-012, REQ-016, REQ-017 |
+| 2026-09-05 | UI 계층을 luil로 교체하고 Skia 종속성 제거. 구현 전 계획서 작성, 서브 에이전트 모델 지정(기본 sonnet, 코드 작업은 opus) | `docs/luil-migration-design.md`, ADR-007 | REQ-003, REQ-009, REQ-013 |
+| 2026-09-06 | luil 공개 API 개선분을 확인해 반영하고, 판단이 필요한 일 외에는 묻지 않고 끝까지 진행 | `docs/luil-migration-plan.md`, `docs/verification/2026-09-06-luil-migration*.md` | REQ-009, REQ-012 |
 
 ### 1.2 단계 진행 상태
 
@@ -54,6 +56,7 @@
 | 단계 6: GUI와 상태 연결 | 완료 - 2026-08-18 사용자가 단계 7 개시를 지시하며 최종 승인 | `docs/verification/2026-08-17-stage-6.md` |
 | 단계 7: 작업 UI와 로그 | 구현 완료 - `S7-V1` 최종 검증 후 사용자 보고 | `docs/verification/2026-08-19-stage-7.md` |
 | 단계 8: 안정화와 배포 | 구현 완료 - `S8-V1` 최종 검증 후 사용자 보고 | `docs/verification/2026-08-19-stage-8.md` |
+| luil 이식 (2026-09) | 구현 완료 - 최종 검증 후 사용자 보고, `feature/luil-migration` 브랜치 | `docs/verification/2026-09-06-luil-migration.md` |
 
 ## 2. 목표와 범위
 

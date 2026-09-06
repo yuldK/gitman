@@ -4,6 +4,8 @@
 
 초안 - 검수 대기 (2026-08-19, 3차 개정)
 
+> 2026-09-06 주석: Skia 취득 절(submodule 10개 + GN 직접 빌드, `scripts/build_skia.ps1`, `cmake/dependencies/skia.cmake`, `GITMAN_SKIA_ROOT`)은 [ADR-007](ADR-007-luil-ui-framework-adoption.md)의 luil 패키지 스크립트(`fetch_skia.ps1`·`fetch_webview2.ps1`, 해시 고정 아카이브)로 대체됐고 해당 파일은 삭제됐다. "빌드 체계는 네트워크를 쓰지 않는다, 준비는 사람이 한다, 취득 경로는 하나다, 고지는 빌드 시 원문에서 만든다"는 원칙과 nlohmann/json·Catch2 submodule은 그대로 유효하다.
+
 ## 배경
 
 Gitman은 GitHub에 소스만 제공하고 사용자가 자기 환경에서 직접 빌드해 사용하는 형태로 배포한다. 그 환경의 제약은 다음과 같다.

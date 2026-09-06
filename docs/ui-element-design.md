@@ -7,6 +7,8 @@ caption은 이번에 통합, `input_action`은 `ui_command`를 포함한 variant
 참고한다. drag & drop의 첫 소비자(카드 순서 변경과 문서 저장)는 2026-08-18에
 구현됐다 (`change_log.md` 해당 항목).
 
+> 2026-09-06: 이 문서가 설계한 기반 계층(`ui_element`·tree·drag & drop·caption·`input_action`·messaging)은 luil로 이관됐다 ([luil-migration-design.md](luil-migration-design.md), [ADR-007](decisions/ADR-007-luil-ui-framework-adoption.md)). gitman에는 앱 element(카드·도구 막대·dialog 본체·로그 pane)와 `gitman_policy`·`gitman_driver`만 남는다. 아래 본문은 이관 전 설계 기록이다.
+
 ## 1. 목표와 범위
 
 - caption, 카드, 버튼 등 모든 화면 요소가 하나의 최상위 추상 클래스 `ui_element`를

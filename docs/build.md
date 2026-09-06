@@ -9,7 +9,7 @@
 - Windows SDK 10.0.22621.0 이상
 - Git
 
-Ninja와 GN은 CMake 프로젝트 생성기에 필요하지 않다. Skia를 직접 빌드할 때만 쓰며 준비 방법은 [Skia 준비 안내](skia-build.md)에 있다.
+Ninja와 GN은 필요하지 않다. Skia는 직접 빌드하지 않고 luil의 스크립트가 미리 빌드된 패키지를 설치한다 (2.2). Python은 앱 아이콘을 다시 만들 때만 쓴다 (5장).
 
 ## 2. 의존성 준비
 
@@ -37,17 +37,6 @@ third_party\luil\scripts\fetch_webview2.ps1
 두고 같은 스크립트를 실행한다. 해시가 맞는 아카이브가 있으면 스크립트는 네트워크를
 쓰지 않는다. 접근 대상은 `github.com/yuldK/skia-prep` 릴리스와 `api.nuget.org`다.
 
-gitman의 UI 코드가 luil로 옮겨 가는 동안(C2 이전) 앱은 아직 자기 Skia로도
-빌드되므로 아래 Skia submodule과 2.2의 빌드도 필요하다. 이 절은 이식이 끝나면
-없어진다.
-
-```powershell
-git submodule update --init third_party/skia
-git submodule update --init third_party/skia-externals/d3d12allocator
-git submodule update --init third_party/skia-externals/spirv-cross
-git submodule update --init third_party/skia-externals/spirv-headers
-```
-
 Catch2는 test를 빌드할 때만 필요하다. 앱만 빌드한다면 초기화하지 않아도 configure와
 빌드가 성립한다.
 
@@ -58,22 +47,14 @@ git submodule update --init third_party/catch2
 사내 미러를 쓰는 환경은 `git config --global url."https://<사내미러>/".insteadOf
 "https://github.com/"`로 원격을 치환한다.
 
-### 2.2 Skia 빌드
+### 2.2 Skia 패키지
 
-Skia는 1회 직접 빌드한다. `gn`과 `ninja` 실행 파일이 필요하며 나머지는 submodule로
-받은 소스로 해결된다.
-
-```powershell
-scriptsuild_skia.ps1 -Configuration Release
-scriptsuild_skia.ps1 -Configuration Debug
-scriptserify_skia_root.ps1
-```
-
-이 스크립트는 사용자가 직접 실행하며 CMake와 CTest는 호출하지 않는다. 절차와 GN
-args의 세부는 [Skia 준비 안내](skia-build.md)에 있다.
-
-산출물 위치를 바꾸려면 `GITMAN_SKIA_ROOT`, `GITMAN_SKIA_BUILD_DEBUG`,
-`GITMAN_SKIA_BUILD_RELEASE`를 CMake cache로 준다.
+Skia는 직접 빌드하지 않는다. `fetch_skia.ps1`이 설치하는 패키지
+(`third_party/luil/third_party/skia-prep/`)는 luil이 정한 기능 집합으로 미리 빌드된
+정적 라이브러리·헤더·`NOTICE.md`이며 Debug(`/MTd`)·Release(`/MT`) 산출물이 따로
+있다. 패키지의 내용, 빌드 옵션과 갱신 절차는 luil 저장소의 `docs/skia-build.md`에
+있다. gitman의 CMake는 패키지 위치를 바꾸는 변수를 두지 않으며, configure는
+패키지의 존재만 검사한다.
 
 ## 3. Configure, build와 test
 
@@ -109,7 +90,7 @@ ctest --preset vs2022-tests-release
 target(`gitman_format`, `gitman_format_check`)은 `-DGITMAN_BUILD_TOOLING=ON`이며
 test preset은 두 flag를 모두 켠다.
 
-Skia와 애플리케이션은 같은 정적 CRT(`/MT`·`/MTd`)로 빌드해야 한다. GN args가 이를 고정하며, 어긋나면 LNK2038로 드러난다. `scriptserify_skia_root.ps1`이 미리 검사한다.
+Skia 패키지와 애플리케이션은 같은 정적 CRT(`/MT`·`/MTd`)로 빌드돼야 한다. 패키지는 정적 CRT로 빌드되어 있고 최상위 `CMakeLists.txt`가 `CMAKE_MSVC_RUNTIME_LIBRARY`를 같은 값으로 고정한다. 어긋나면 LNK2038로 드러난다.
 
 ## 4. 정적 분석과 포맷 검사
 
@@ -144,14 +125,14 @@ cmake --install build\vs2022 --config Release
 bin/gitman.exe
 ```
 
-Skia와 C/C++ runtime은 정적으로 연결되고 Codicons font, mapping에서 생성한 코드, Codicons license, 앱 아이콘과 제3자 고지문은 실행 파일 resource에 들어간다. 코디콘 폰트·라이선스·고지문은 luil의 `.rc` 조각(ID 101~104)이 싣고, 고지문은 luil의 생성기가 Skia 패키지의 `NOTICE.md`, WebView2 SDK, nlohmann/json, Codicons 라이선스 원문에서 만든다. gitman의 `.rc`는 manifest·아이콘(ID 105)·버전 정보만 담는다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
+luil(Skia·WebView2 로더 포함)과 C/C++ runtime은 정적으로 연결되고 Codicons font, Codicons license, 앱 아이콘과 제3자 고지문은 실행 파일 resource에 들어간다. 코디콘 폰트·라이선스·고지문은 luil의 `.rc` 조각(ID 101~104)이 싣고, 고지문은 luil의 생성기가 Skia 패키지의 `NOTICE.md`, WebView2 SDK, nlohmann/json, Codicons 라이선스 원문에서 만든다. gitman의 `.rc`는 manifest·아이콘(ID 105)·버전 정보만 담는다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
 
-앱 아이콘은 현재 custom caption에서 사용하는 `source-control` Codicon을 기준으로 생성한다. Codicons 자산을 갱신한 뒤 아이콘도 다시 생성하려면 저장소 루트에서 다음을 실행한다.
+앱 아이콘은 현재 custom caption에서 사용하는 `source-control` Codicon을 기준으로 생성한다. Codicons 자산은 luil의 것(`third_party/luil/assets/codicons/`)을 쓰며, 그 자산이 갱신된 뒤 아이콘도 다시 만들려면 저장소 루트에서 다음을 실행한다 (Python 3.9 이상과 Pillow).
 
 ```powershell
 python .\scripts\generate_app_icon.py `
-    --font .\assets\codicons\codicon.ttf `
-    --mapping .\assets\codicons\mapping.json `
+    --font .\third_party\luil\assets\codicons\codicon.ttf `
+    --mapping .\third_party\luil\assets\codicons\mapping.json `
     --output .\assets\gitman.ico
 ```
 
@@ -169,13 +150,10 @@ bin\gitman.exe --renderer=cpu
 
 `--smoke-test`와 `--simulate-direct3d-failure`는 CTest용 진단 옵션이다. 실패 주입은 smoke test와 함께 사용할 때만 허용한다.
 
-## 7. Codicons 갱신
+## 7. Codicons와 luil 갱신
 
-Codicons를 갱신할 때는 version, tag commit, tarball과 네 자산의 SHA-256을 한 변경으로 갱신한다.
-
-```powershell
-.\scripts\fetch_codicons.ps1
-cmake -DASSET_DIRECTORY="$PWD/assets/codicons" -P cmake/verify_codicons.cmake
-```
-
-임의의 최신 버전을 받지 않는다. 현재 기준은 `v0.0.46-24`, tag commit `abd28d775fc5c40b437b8303807c17a6e63f6d6a`다.
+Codicons 자산(font·mapping·license)은 luil의 것이다 (`third_party/luil/assets/codicons/`,
+현재 `v0.0.46-24`). gitman은 자산을 따로 두지 않으며 갱신은 luil 저장소에서 한다.
+luil을 올릴 때는 submodule 핀을 새 커밋으로 옮기고, Skia·WebView2 패키지 핀이 바뀌었으면
+2.1의 스크립트를 다시 실행하며, `tests/dependency_versions_tests.cpp`의 Skia milestone과
+[ADR-007](decisions/ADR-007-luil-ui-framework-adoption.md)의 핀 기록을 함께 맞춘다.

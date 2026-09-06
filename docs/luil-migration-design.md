@@ -1,6 +1,6 @@
 # luil 채택 설계 — gitman UI 계층을 luil로 교체
 
-상태: **검수 승인** (2026-09-05 작성. 같은 날 코드 대조 검토 3종 — 정확성·
+상태: **구현 완료** — 2026-09-06 `feature/luil-migration` 브랜치, 최종 검증 [verification/2026-09-06-luil-migration.md](verification/2026-09-06-luil-migration.md). 검수 승인 (2026-09-05 작성. 같은 날 코드 대조 검토 3종 — 정확성·
 완결성·실현성 — 의 지적을 반영한 2차 초안을 사용자가 검수해 D1~D8을 결정했다:
 D1-B, D2-A, D3-A, D4-B(luil 공개 API는 후속 개선), D5-A, D6-A, D7-A, D8-B).
 구현은 [luil-migration-plan.md](luil-migration-plan.md)의 순서를 따르며, 사용자

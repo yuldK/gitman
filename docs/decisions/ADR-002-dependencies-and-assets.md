@@ -4,6 +4,8 @@
 
 승인됨 - 2026-08-14 사용자 검수 반영
 
+> 2026-09-06 주석: vcpkg 취득은 [ADR-006](ADR-006-restricted-network-dependency-provisioning.md)이, Skia 행(148 직접 빌드)은 [ADR-007](ADR-007-luil-ui-framework-adoption.md)의 luil 패키지(Skia 152)가 대체했다. Codicons 자산은 luil의 것(같은 `v0.0.46-24`)을 쓰며 gitman에는 자산이 없다. "버전을 고정하고 갱신을 기능 변경과 분리한다"는 원칙은 그대로다.
+
 ## 배경
 
 Skia는 자체 빌드 체계와 많은 전이 의존성을 가지고 있다. JSON 파서, 테스트 프레임워크, Codicons 자산까지 개발자마다 다른 버전을 사용하면 빌드와 UI가 재현되지 않는다.

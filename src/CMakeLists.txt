@@ -2,9 +2,6 @@ set(gitman_resource_directory "${CMAKE_CURRENT_SOURCE_DIR}/platform/win32/resour
 set(gitman_manifest_file "${gitman_resource_directory}/gitman.manifest")
 set(gitman_resource_ids_file "${gitman_resource_directory}/resource_ids.h")
 set(gitman_resource_template "${gitman_resource_directory}/gitman.rc.in")
-set(gitman_codicons_font "${GITMAN_ASSET_DIRECTORY}/codicon.ttf")
-set(gitman_codicons_license "${GITMAN_ASSET_DIRECTORY}/LICENSE")
-set(gitman_codicons_code_license "${GITMAN_ASSET_DIRECTORY}/LICENSE-CODE")
 set(gitman_app_icon "${CMAKE_CURRENT_SOURCE_DIR}/../assets/gitman.ico")
 
 # Codicons C++ 매핑은 파일 하나를 만드는 custom command다. 결과 header를 라이브러리
@@ -34,16 +31,9 @@ add_custom_command(
     COMMENT "Generating the accent catalog"
     VERBATIM)
 
-include("${GITMAN_CMAKE_DIRECTORY}/generate_notices.cmake")
-gitman_generate_third_party_notices("${GITMAN_THIRD_PARTY_NOTICES}")
-
 file(TO_CMAKE_PATH "${gitman_manifest_file}" GITMAN_MANIFEST_PATH)
 file(TO_CMAKE_PATH "${gitman_resource_ids_file}" GITMAN_RESOURCE_IDS_PATH)
-file(TO_CMAKE_PATH "${gitman_codicons_font}" GITMAN_CODICONS_FONT_PATH)
-file(TO_CMAKE_PATH "${gitman_codicons_license}" GITMAN_CODICONS_LICENSE_PATH)
-file(TO_CMAKE_PATH "${gitman_codicons_code_license}" GITMAN_CODICONS_LICENSE_CODE_PATH)
 file(TO_CMAKE_PATH "${gitman_app_icon}" GITMAN_APP_ICON_PATH)
-file(TO_CMAKE_PATH "${GITMAN_THIRD_PARTY_NOTICES}" GITMAN_THIRD_PARTY_NOTICES_PATH)
 configure_file(
     "${gitman_resource_template}"
     "${GITMAN_GENERATED_RESOURCE}"
@@ -327,7 +317,10 @@ list(REMOVE_ITEM gitman_lib_sources "${GITMAN_GENERATED_CODICONS}" "${GITMAN_GEN
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "src" FILES ${gitman_lib_sources})
 source_group("generated" FILES "${GITMAN_GENERATED_CODICONS}" "${GITMAN_GENERATED_ACCENTS}")
 
+# resource는 두 .rc다: luil 조각(코디콘 폰트·라이선스·고지, ID 101~104)과 gitman
+# 조각(manifest·아이콘·VERSIONINFO).
 add_executable(gitman WIN32
+    "${GITMAN_GENERATED_LUIL_RESOURCE}"
     "${GITMAN_GENERATED_RESOURCE}"
     platform/win32/main.cpp
     "${gitman_resource_ids_file}")

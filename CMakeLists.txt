@@ -30,6 +30,10 @@ set(GITMAN_ACCENT_CATALOG "${PROJECT_SOURCE_DIR}/assets/accents.json")
 set(GITMAN_GENERATED_ACCENTS
     "${GITMAN_GENERATED_INCLUDE_DIRECTORY}/gitman/generated/accents.h")
 set(GITMAN_GENERATED_RESOURCE "${GITMAN_GENERATED_DIRECTORY}/gitman.rc")
+# luil이 요구하는 resource(코디콘 폰트·라이선스·고지) 조각이다. gitman.rc와 함께
+# 실행 파일과 test 실행 파일에 들어간다. ID 규칙: 101~104 luil, 105 앱 아이콘,
+# 이후 gitman resource는 106부터다 (ADR-007 결정 7).
+set(GITMAN_GENERATED_LUIL_RESOURCE "${GITMAN_GENERATED_DIRECTORY}/luil_resources.rc")
 set(GITMAN_THIRD_PARTY_NOTICES
     "${GITMAN_GENERATED_DIRECTORY}/third_party_notices.txt")
 set(GITMAN_SOURCE_STYLE_SCRIPT "${PROJECT_SOURCE_DIR}/scripts/check_source_style.ps1")
@@ -97,6 +101,25 @@ find_program(GITMAN_POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
 include("${GITMAN_CMAKE_DIRECTORY}/dependencies.cmake")
 gitman_find_dependencies(BUILD_TESTS ${GITMAN_BUILD_TESTS})
 
+# UI 프레임워크 luil (ADR-007). submodule 안의 Skia 패키지·WebView2 SDK는 luil의
+# 스크립트가 준비하며 configure는 존재만 검사한다.
+#  - LUIL_BUILD_TESTS는 반드시 OFF다. 켜면 luil이 자기 Catch2를 같은 바이너리
+#    디렉터리(third_party/catch2)에 add_subdirectory해 gitman의 것과 충돌한다.
+#  - SYSTEM: luil 공개 헤더를 gitman의 /W4·/analyze 밖에 둔다.
+#  - 정적 CRT 설정은 project() 앞의 것을 luil이 그대로 따른다.
+set(LUIL_BUILD_TESTS OFF)
+set(LUIL_BUILD_EXAMPLES OFF)
+set(LUIL_BUILD_TOOLING OFF)
+add_subdirectory(third_party/luil SYSTEM)
+# luil의 고지·resource 함수는 호출 scope의 세 변수를 읽는다. 하위 디렉터리의
+# 일반 변수는 부모로 올라오지 않으므로 여기서 다시 정한다.
+set(LUIL_SOURCE_DIRECTORY "${GITMAN_THIRD_PARTY_DIRECTORY}/luil/src")
+set(LUIL_ASSET_DIRECTORY "${GITMAN_THIRD_PARTY_DIRECTORY}/luil/assets/codicons")
+set(LUIL_NLOHMANN_JSON_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/luil/third_party/nlohmann_json")
+# 제3자 고지와 .rc 조각은 src/와 tests/가 함께 쓰므로 여기서 한 번 만든다.
+luil_generate_third_party_notices("${GITMAN_THIRD_PARTY_NOTICES}")
+luil_configure_resource_script("${GITMAN_GENERATED_LUIL_RESOURCE}" "${GITMAN_THIRD_PARTY_NOTICES}")
+
 # `include(CTest)`는 Continuous·Experimental·Nightly 등 dashboard target을 함께
 # 만들어 솔루션을 부풀린다. 필요한 것은 test 등록뿐이라 enable_testing만 쓴다.
 if(GITMAN_BUILD_TESTS)
@@ -132,7 +155,7 @@ endif()
 
 # IDE 필터 구성은 target 정의와 분리해 이 한 곳에서만 관리한다. 실행 파일 target인
 # `gitman`만 최상위에 남겨 솔루션을 열었을 때 진입점이 바로 보이게 한다.
-gitman_set_ide_folder("Libraries" gitman_lib)
+gitman_set_ide_folder("Libraries" gitman_lib luil)
 if(GITMAN_BUILD_TESTS)
     gitman_set_ide_folder("Tests"
         gitman_messaging_asan_tests

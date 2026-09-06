@@ -7,6 +7,7 @@ target_link_libraries(gitman_process_test_child PRIVATE gitman_project_options)
 gitman_disable_automatic_windows_manifest(gitman_process_test_child)
 
 add_executable(gitman_tests
+    "${GITMAN_GENERATED_LUIL_RESOURCE}"
     "${GITMAN_GENERATED_RESOURCE}"
     app_runtime_tests.cpp
     app_settings_tests.cpp

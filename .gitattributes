@@ -27,3 +27,4 @@ CMakeLists.txt text eol=crlf
 # submodule로 가져오는 제3자 소스는 정규화하지 않는다.
 /third_party/skia/** -text
 /third_party/skia-externals/** -text
+/third_party/luil/** -text

@@ -49,11 +49,22 @@ Git과 SVN 실행 파일은 `PATH`에서 자동 탐색합니다. 열린 `.versio
 - Python 3.9 이상
 - Skia를 빌드할 GN과 Ninja 1.13 이상
 
-CMake가 의존성을 자동으로 내려받지는 않습니다. submodule과 사용자가 직접 빌드한 Skia를 준비합니다.
+CMake가 의존성을 자동으로 내려받지는 않습니다. submodule과 luil의 패키지 스크립트로 준비합니다. UI 프레임워크 luil은 `third_party/luil` submodule이며, luil이 쓰는 Skia 패키지와 WebView2 SDK는 luil의 스크립트가 해시를 확인하며 설치합니다.
+
+```powershell
+git submodule update --init third_party/nlohmann-json
+git submodule update --init third_party/luil
+git -C third_party/luil submodule update --init third_party/nlohmann_json
+third_party\luil\scripts\fetch_skia.ps1 -Configuration Debug,Release
+third_party\luil\scripts\fetch_webview2.ps1
+```
+
+제한된 환경에서는 아카이브를 브라우저로 받아 `third_party/luil/third_party/skia-prep-archives/`와 `webview2-prep-archives/`에 두고 같은 스크립트를 실행합니다. 절차의 근거는 [ADR-007](docs/decisions/ADR-007-luil-ui-framework-adoption.md)에 있습니다.
+
+gitman의 UI 코드가 luil로 옮겨 가는 동안(C2 이전) 앱은 아직 자기 Skia로도 빌드되므로 아래 Skia submodule과 빌드도 필요합니다. 이 절은 이식이 끝나면 없어집니다.
 
 ```powershell
 git submodule update --init `
-    third_party/nlohmann-json `
     third_party/skia `
     third_party/skia-externals/d3d12allocator `
     third_party/skia-externals/spirv-cross `

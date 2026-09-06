@@ -13,13 +13,35 @@ Ninja와 GN은 CMake 프로젝트 생성기에 필요하지 않다. Skia를 직�
 
 ## 2. 의존성 준비
 
-의존성은 submodule과 사용자가 직접 빌드한 Skia로만 구성한다. 빌드 체계는 아무것도
-내려받지 않는다. 근거는 [ADR-006](decisions/ADR-006-restricted-network-dependency-provisioning.md)에 있다.
+의존성은 submodule과 해시가 고정된 패키지 아카이브로만 구성한다. 빌드 체계는
+아무것도 내려받지 않는다. 근거는 [ADR-006](decisions/ADR-006-restricted-network-dependency-provisioning.md)과
+[ADR-007](decisions/ADR-007-luil-ui-framework-adoption.md)에 있다.
 
-### 2.1 submodule
+### 2.1 submodule과 luil 패키지
+
+UI 프레임워크 luil은 `third_party/luil` submodule이다. luil이 쓰는 Skia 패키지와
+WebView2 SDK는 luil의 스크립트가 준비한다. 두 스크립트는 사람이 실행하며 핀 파일
+(`third_party/luil/third_party/{skia-prep,webview2-prep}.json`)의 SHA-256과 맞는
+아카이브만 설치한다.
 
 ```powershell
 git submodule update --init third_party/nlohmann-json
+git submodule update --init third_party/luil
+git -C third_party/luil submodule update --init third_party/nlohmann_json
+third_party\luil\scripts\fetch_skia.ps1 -Configuration Debug,Release
+third_party\luil\scripts\fetch_webview2.ps1
+```
+
+제한된 환경에서는 브라우저로 아카이브를 받아
+`third_party/luil/third_party/skia-prep-archives/`와 `webview2-prep-archives/`에
+두고 같은 스크립트를 실행한다. 해시가 맞는 아카이브가 있으면 스크립트는 네트워크를
+쓰지 않는다. 접근 대상은 `github.com/yuldK/skia-prep` 릴리스와 `api.nuget.org`다.
+
+gitman의 UI 코드가 luil로 옮겨 가는 동안(C2 이전) 앱은 아직 자기 Skia로도
+빌드되므로 아래 Skia submodule과 2.2의 빌드도 필요하다. 이 절은 이식이 끝나면
+없어진다.
+
+```powershell
 git submodule update --init third_party/skia
 git submodule update --init third_party/skia-externals/d3d12allocator
 git submodule update --init third_party/skia-externals/spirv-cross
@@ -122,7 +144,7 @@ cmake --install build\vs2022 --config Release
 bin/gitman.exe
 ```
 
-Skia와 C/C++ runtime은 정적으로 연결되고 Codicons font, mapping에서 생성한 코드, Codicons license, 앱 아이콘과 제3자 고지문은 실행 파일 resource에 들어간다. 고지문은 submodule의 라이선스 원문에서 생성한다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
+Skia와 C/C++ runtime은 정적으로 연결되고 Codicons font, mapping에서 생성한 코드, Codicons license, 앱 아이콘과 제3자 고지문은 실행 파일 resource에 들어간다. 코디콘 폰트·라이선스·고지문은 luil의 `.rc` 조각(ID 101~104)이 싣고, 고지문은 luil의 생성기가 Skia 패키지의 `NOTICE.md`, WebView2 SDK, nlohmann/json, Codicons 라이선스 원문에서 만든다. gitman의 `.rc`는 manifest·아이콘(ID 105)·버전 정보만 담는다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
 
 앱 아이콘은 현재 custom caption에서 사용하는 `source-control` Codicon을 기준으로 생성한다. Codicons 자산을 갱신한 뒤 아이콘도 다시 생성하려면 저장소 루트에서 다음을 실행한다.
 

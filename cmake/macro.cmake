@@ -18,6 +18,38 @@ function(gitman_set_ide_folder folder)
     endforeach()
 endfunction()
 
+# IDE 필터 하나를 정하고 그 파일을 <variable>에 덧붙인다 (luil의 같은 이름 함수와
+# 같은 계약이다).
+#
+#   gitman_add_source_filter(<variable> <filter> <file>...)
+#
+# target의 source 목록을 이 <variable>로 만들면 필터와 빌드 목록이 한 벌이 된다.
+# 두 벌이면 새 파일이 한쪽에만 들어가고 빠진 쪽은 조용하다 — 빌드는 그대로 되고
+# IDE에서만 파일이 엉뚱한 자리에 놓여, 알아채는 것은 한참 뒤다.
+#
+# 필터 이름의 `/`는 하위 필터를 연다 ("presentation/ui/dialogs"). 상대 경로는
+# 부르는 CMakeLists.txt 기준이고 절대 경로(생성 파일)는 그대로 쓴다.
+function(gitman_add_source_filter variable filter)
+    if(NOT filter)
+        message(FATAL_ERROR "A source filter name is required.")
+    endif()
+    if(NOT ARGN)
+        message(FATAL_ERROR "At least one file is required for the source filter ${filter}.")
+    endif()
+
+    set(files)
+    foreach(file IN LISTS ARGN)
+        if(IS_ABSOLUTE "${file}")
+            list(APPEND files "${file}")
+        else()
+            list(APPEND files "${CMAKE_CURRENT_SOURCE_DIR}/${file}")
+        endif()
+    endforeach()
+
+    source_group("${filter}" FILES ${files})
+    set("${variable}" ${${variable}} ${files} PARENT_SCOPE)
+endfunction()
+
 function(gitman_add_clang_format_targets)
     set(one_value_arguments
         CLANG_FORMAT_EXECUTABLE

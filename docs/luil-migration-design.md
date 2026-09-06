@@ -790,6 +790,9 @@ luil에 추가로 요청하는 것 (2026-09-06, 이번 이식은 없어도 진�
   gitman 빌드를 막는 것을 소비자가 풀 수 있게 한다.
 - (낮음) `text_input_config`의 지우기 버튼 글리프 지정 (switch 질의 막대의
   search/close/arrow 3단 전환). 지금은 형제 구조로 우회하므로 급하지 않다.
+- (낮음) `cmake/generate_notices.cmake`의 `set(notice_text "a" "b" …)`가 CMake list를
+  만들어 고지 머리글에 `;`가 섞인다. `string(CONCAT …)`로 바꾸면 없어진다 (C1
+  검증에서 발견).
 
 gitman 쪽 후속: 절대 위치 스크롤 intent와 `scroll_to` 연결, 커스텀 element의
 `accessibility()` 재정의, `dialog_caption_element` 채택, nlohmann submodule 통합.

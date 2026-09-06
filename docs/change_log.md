@@ -1,5 +1,63 @@
 # 변경 이력
 
+## 2026-09-06 - luil 채택 구현 시작 (feature/luil-migration)
+
+### 사용자 지시
+
+- luil 공개 API를 개선했으니 최신 버전을 확인하고, 그래도 없으면 추가로
+  요청한다. 판단이 필요한 일이 아니면 작업이 끝날 때까지 묻지 않고 진행한다.
+
+### luil 확인 결과
+
+- luil `c971f32`(2026-09-06)에 `luil::installed_font_families`·
+  `luil::set_ui_typeface_families`(`luil/text/fonts.h`),
+  `drag_payload::suppress_drop_highlight`, `LUIL_DEFAULT_ACCENT_ID`가 들어왔다.
+  설계 D4-B의 gitman 우회(자체 글꼴 열거, frame 기본 글꼴 채움, drag 강조 수용)를
+  없애고 핀을 `c971f32`로 잡는다.
+- 아직 없는 것(설계 부록 B에 요청으로 기록, 없어도 진행): `LUIL_ENABLE_WEBVIEW=OFF`,
+  fetch 스크립트 `-Offline`, 시작 오류 메시지 상자 훅, `LUIL_WARNINGS_AS_ERRORS`,
+  (낮음) `text_input_config` 지우기 버튼 글리프.
+
+### 진행
+
+- 계획서(`docs/luil-migration-plan.md`) 승인으로 보고 `feature/luil-migration`
+  브랜치에서 C1부터 체크포인트마다 커밋한다. 검증 기록은
+  `docs/verification/2026-09-DD-luil-migration-cN.md`.
+
+## 2026-09-05 - luil 채택 설계 검수
+
+### 사용자 지시
+
+- gitman의 UI 단 코드를 luil(https://github.com/yuldK/luil)로 바꾼다. Skia
+  종속성을 제거하고 luil을 submodule로 더하며 연관 코드를 모두 수정한다.
+- 구현을 바로 하지 말고 계획서부터 쓴다.
+- 서브 에이전트는 기본 sonnet, 코드 작업·고려 사항은 opus를 쓴다.
+
+### 검수 결정
+
+| 지점 | 결정 |
+|---|---|
+| D1 Tab·초점 | B · 버튼·dialog 컨트롤·텍스트 칸만 Tab 자리, 카드·root·행은 제외 |
+| D2 dialog 뼈대 | A · `modal_host_element` 채택 |
+| D3 컨텍스트 메뉴 | A · luil popup 창 |
+| D4 luil 상류 변경 | B · 일단 gitman 안에서 해결, luil 공개 API는 후속 개선 |
+| D5 IME 점진 검색 | A · 채택 |
+| D6 nlohmann submodule | A · 둘 다 유지 |
+| D7 코디콘·accents 자산 | A · gitman 사본 삭제 |
+| D8 진행 방식 | B · 별도 브랜치 위임, 끝에 전역 검증 |
+
+### 반영 내용
+
+- `docs/luil-migration-design.md`(설계), `docs/decisions/ADR-007-luil-ui-framework-adoption.md`,
+  `docs/luil-migration-plan.md`(계획서)를 작성했다.
+
+### 다음 작업 제한
+
+- 계획서 승인 전에는 코드·빌드 파일을 바꾸지 않는다.
+- 승인되면 `feature/luil-migration` 브랜치에서 체크포인트마다 커밋하고 끝에
+  전역 검증(전체 CTest Debug·Release, `vs2026-analysis`, 스타일 검사, 앱 빌드)을
+  한 번 보고한다.
+
 ## 2026-08-23 - IME · BMP 밖 문자 · 글꼴 대체 · 설정 dialog 스크롤
 
 진행 중이다. 설계는 `docs/text-input-and-font-fallback-design.md`이고 세부 단계마다

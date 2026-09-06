@@ -3,4 +3,3 @@
 /vcpkg_installed/
 /.vs/
 /CMakeUserPresets.json
-/third_party/skia-tools/

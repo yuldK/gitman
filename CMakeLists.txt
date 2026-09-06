@@ -20,15 +20,7 @@ set(GITMAN_CMAKE_DIRECTORY "${PROJECT_SOURCE_DIR}/cmake")
 set(GITMAN_THIRD_PARTY_DIRECTORY "${PROJECT_SOURCE_DIR}/third_party")
 set(GITMAN_SOURCE_DIRECTORY "${PROJECT_SOURCE_DIR}/src")
 set(GITMAN_TEST_DIRECTORY "${PROJECT_SOURCE_DIR}/tests")
-set(GITMAN_ASSET_DIRECTORY "${PROJECT_SOURCE_DIR}/assets/codicons")
 set(GITMAN_GENERATED_DIRECTORY "${PROJECT_BINARY_DIR}/generated")
-set(GITMAN_GENERATED_INCLUDE_DIRECTORY "${GITMAN_GENERATED_DIRECTORY}/include")
-set(GITMAN_GENERATED_CODICONS
-    "${GITMAN_GENERATED_INCLUDE_DIRECTORY}/gitman/generated/codicons.h")
-# 키 컬러 정의는 assets/accents.json에서 빌드 시점에 만든다 (T4.3).
-set(GITMAN_ACCENT_CATALOG "${PROJECT_SOURCE_DIR}/assets/accents.json")
-set(GITMAN_GENERATED_ACCENTS
-    "${GITMAN_GENERATED_INCLUDE_DIRECTORY}/gitman/generated/accents.h")
 set(GITMAN_GENERATED_RESOURCE "${GITMAN_GENERATED_DIRECTORY}/gitman.rc")
 # luil이 요구하는 resource(코디콘 폰트·라이선스·고지) 조각이다. gitman.rc와 함께
 # 실행 파일과 test 실행 파일에 들어간다. ID 규칙: 101~104 luil, 105 앱 아이콘,
@@ -39,28 +31,10 @@ set(GITMAN_THIRD_PARTY_NOTICES
 set(GITMAN_SOURCE_STYLE_SCRIPT "${PROJECT_SOURCE_DIR}/scripts/check_source_style.ps1")
 set(GITMAN_SOURCE_STYLE_CMAKE_SCRIPT "${GITMAN_CMAKE_DIRECTORY}/run_style_check.cmake")
 
-# 의존성 위치. Skia만 사용자가 손으로 빌드하며 나머지는 submodule이다.
-set(GITMAN_SKIA_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/skia"
-    CACHE PATH "Skia source tree that the user built by hand.")
-set(GITMAN_SKIA_BUILD_DEBUG "${GITMAN_SKIA_ROOT}/out/gitman-debug"
-    CACHE PATH "Skia Debug build directory.")
-set(GITMAN_SKIA_BUILD_RELEASE "${GITMAN_SKIA_ROOT}/out/gitman-release"
-    CACHE PATH "Skia Release build directory.")
+# 의존성 위치. 전부 submodule이다. Skia·WebView2 SDK는 luil의 패키지 스크립트가
+# third_party/luil 안에 준비한다 (ADR-007).
 set(GITMAN_NLOHMANN_JSON_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/nlohmann-json")
 set(GITMAN_CATCH2_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/catch2")
-
-# Skia 빌드가 내는 라이브러리다. vcpkg는 하나로 합쳐 주었지만 직접 빌드에서는
-# external별로 나오므로 모두 링크한다.
-set(GITMAN_SKIA_COMPONENTS
-    skia
-    skcms
-    spirv_cross
-    d3d12allocator)
-
-# Gitman이 요구하는 Skia 기능이다. 이 값으로 빌드되지 않은 Skia는 configure에서
-# 거른다. SkShaper를 쓰기 시작하면 skia_use_harfbuzz를 여기에 추가한다.
-set(GITMAN_SKIA_REQUIRED_ARGUMENTS
-    "skia_use_direct3d=true")
 
 set(CMAKE_CXX_STANDARD ${GITMAN_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -96,13 +70,14 @@ gitman_apply_msvc_options(
 
 find_program(GITMAN_POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
 
-# 의존성은 submodule과 사용자가 손으로 빌드한 Skia로만 구성한다 (ADR-006). 취득을
+# 의존성은 submodule과 luil이 준비한 패키지로만 구성한다 (ADR-006·ADR-007). 취득을
 # 자동화하지 않으므로 configure는 네트워크를 전혀 쓰지 않는다.
 include("${GITMAN_CMAKE_DIRECTORY}/dependencies.cmake")
 gitman_find_dependencies(BUILD_TESTS ${GITMAN_BUILD_TESTS})
 
 # UI 프레임워크 luil (ADR-007). submodule 안의 Skia 패키지·WebView2 SDK는 luil의
-# 스크립트가 준비하며 configure는 존재만 검사한다.
+# 스크립트가 준비하며 configure는 존재만 검사한다. Skia·nlohmann(single_include)·
+# WebView2 로더는 luil::luil이 PUBLIC으로 나른다.
 #  - LUIL_BUILD_TESTS는 반드시 OFF다. 켜면 luil이 자기 Catch2를 같은 바이너리
 #    디렉터리(third_party/catch2)에 add_subdirectory해 gitman의 것과 충돌한다.
 #  - SYSTEM: luil 공개 헤더를 gitman의 /W4·/analyze 밖에 둔다.
@@ -158,7 +133,6 @@ endif()
 gitman_set_ide_folder("Libraries" gitman_lib luil)
 if(GITMAN_BUILD_TESTS)
     gitman_set_ide_folder("Tests"
-        gitman_messaging_asan_tests
         gitman_process_test_child
         gitman_tests)
 endif()

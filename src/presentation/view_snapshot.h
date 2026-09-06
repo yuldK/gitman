@@ -11,6 +11,8 @@
 #include "presentation/diff_presentation.h"
 #include "presentation/status_presentation.h"
 
+#include "luil/ui/text_input_state.h"
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -98,28 +100,9 @@ namespace gitman {
         std::optional<std::chrono::steady_clock::duration> change_elapsed {};
     };
 
-    // 한 줄 텍스트 박스의 표시 상태다 (switch-dialog-query-bar-design R2). caret과
-    // 선택 anchor는 UTF-8 byte offset이고 둘이 같으면 선택이 없다. element는 이
-    // 값으로 선택 띠와 caret 위치를 그린다.
-    struct text_input_view
-    {
-        std::u8string text {};
-        std::size_t caret { 0 };
-        std::size_t anchor { 0 };
-
-        // IME 조합 중이다 (text-input-and-font-fallback-design E2). 조합 글은 아직
-        // 사용자의 글이 아니므로 `text`에 넣지 않는다 — 실행 취소 기록이 조합 단계
-        // 마다 더럽혀진다. 대신 그 동안 **화면에 보이는 글 전체**를 따로 싣고
-        // element가 그것을 그린다.
-        bool composing { false };
-        std::u8string composition_text {};
-        std::size_t composition_caret { 0 };
-        // `composition_text` 안에서 밑줄을 긋는 구간이다 (UTF-8 byte offset).
-        std::size_t composing_begin { 0 };
-        std::size_t composing_end { 0 };
-
-        [[nodiscard]] bool operator==(const text_input_view&) const = default;
-    };
+    // 한 줄 텍스트 박스의 표시 상태는 luil의 것이다 (`luil/ui/text_input_state.h`).
+    // element 어휘가 없는 값 헤더라 application 계층이 include해도 된다 (설계 L4).
+    using luil::text_input_view;
 
     // 질의 막대 우측 버튼이 맡은 몫이다 (switch-dialog-query-bar-design Q1).
     // element가 이 값으로 glyph와 클릭 intent를 정한다.

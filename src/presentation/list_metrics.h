@@ -1,12 +1,16 @@
 #pragma once
 
+#include "luil/ui/caption_metrics.h"
+#include "luil/ui/layout_metrics.h"
+
 #include <cstddef>
 
 namespace gitman {
     // 논리 픽셀 단위의 layout 상수다. 실제 좌표는 DPI 배율을 곱한다.
     // custom caption이 client 영역 위쪽을 차지하므로 목록은 그 아래에서 시작한다.
-    // 값은 `ui::default_caption_ui_metrics.height`와 같아야 한다.
-    inline constexpr float layout_caption_height { 36.0f };
+    // luil의 caption 치수에서 직접 읽어 수동 동기화를 없앤다 (설계 L4). 두 헤더는
+    // element 어휘가 없는 값 헤더라 logic이 include해도 된다.
+    inline constexpr float layout_caption_height { static_cast<float>(luil::default_caption_ui_metrics.height) };
     inline constexpr float layout_toolbar_height { 40.0f };
     // notice 배너의 높이다. 배너가 보이면 목록이 그만큼 아래에서 시작한다.
     inline constexpr float layout_notice_height { 22.0f };
@@ -24,10 +28,10 @@ namespace gitman {
     // 카드가 막대 아래로 지나갈 때만 나타난다.
     inline constexpr float layout_content_shadow_height { 8.0f };
     inline constexpr float layout_content_shadow_strength { 0.45f };
-    // 스크롤 막대의 치수다. 보이는 막대는 `width`이고, 잡기 쉽도록 클릭·끌기를 받는
-    // hit 영역은 `hit_width`로 더 넓다. `right_inset`은 창 오른쪽 가장자리의 크기
-    // 조절 테두리와 겹치지 않도록 안쪽으로 들여놓는 거리다.
-    inline constexpr float layout_scrollbar_width { 8.0f };
+    // 스크롤 막대의 치수다. 보이는 막대 폭과 thumb 최소 높이는 luil 상수
+    // (`scrollbar_visual_width`·`scrollbar_minimum_thumb`)를 막대가 직접 쓰고, 여기는
+    // 잡기 쉽도록 클릭·끌기를 받는 hit 영역 `hit_width`와 창 오른쪽 가장자리의 크기
+    // 조절 테두리와 겹치지 않도록 안쪽으로 들여놓는 `right_inset`만 둔다.
     inline constexpr float layout_scrollbar_hit_width { 16.0f };
     // 로그 헤더의 경과 시간(MM:SS) 표시에 예약하는 폭이다. 제목이 이 자리를
     // 침범하지 않는다.
@@ -35,7 +39,6 @@ namespace gitman {
     inline constexpr float layout_scrollbar_right_inset { 6.0f };
     // 막대가 목록 위아래 끝에 붙지 않도록 두는 여백이다.
     inline constexpr float layout_scrollbar_vertical_inset { 6.0f };
-    inline constexpr float layout_scrollbar_minimum_thumb { 24.0f };
     // 선택 카드 전용 하단 로그 pane의 치수다 (stage-7-plan 4.3).
     inline constexpr float layout_log_pane_height { 160.0f };
     inline constexpr float layout_log_header_height { 26.0f };
@@ -170,8 +173,12 @@ namespace gitman {
     // 현재 값을 그대로 돌려준다.
     [[nodiscard]] float scroll_offset_showing_card(float offset, std::size_t card_index, std::size_t card_count, float viewport_height, float scale) noexcept;
 
-    // 스크롤을 [0, 최대]로 고정한다. 내용이 화면보다 작으면 0이다.
-    [[nodiscard]] float clamp_scroll_offset(float offset, float content_height, float viewport_height) noexcept;
+    // 스크롤을 [0, 최대]로 고정한다. 내용이 화면보다 작으면 0이다. 식은 luil의
+    // `clamp_scroll`(인자 순서가 다르다)이라 흘리는 컨테이너·막대와 같은 값을 본다.
+    [[nodiscard]] constexpr float clamp_scroll_offset(const float offset, const float content_height, const float viewport_height) noexcept
+    {
+        return luil::clamp_scroll(content_height, viewport_height, offset);
+    }
 
     // 카드 drag 중의 삽입 위치다. `dragged_index`를 뺀 나머지 목록 기준의 위치
     // [0, card_count - 1]을 돌려주며, 경계는 각 카드의 세로 중앙이다(위 절반이면 그

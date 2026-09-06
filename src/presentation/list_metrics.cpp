@@ -55,16 +55,6 @@ namespace gitman {
         return clamp_scroll_offset(adjusted, card_list_content_height(card_count, scale), viewport_height);
     }
 
-    float clamp_scroll_offset(const float offset, const float content_height, const float viewport_height) noexcept
-    {
-        const float maximum { content_height - viewport_height };
-        if (maximum <= 0.0f)
-            return 0.0f;
-        if (offset < 0.0f)
-            return 0.0f;
-        return offset > maximum ? maximum : offset;
-    }
-
     std::size_t card_drag_insertion_slot(
         const float pointer_y, const float list_top, const float scroll, const std::size_t dragged_index, const std::size_t card_count, const float scale) noexcept
     {

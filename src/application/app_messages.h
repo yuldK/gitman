@@ -8,6 +8,7 @@
 #include "domain/discovery.h"
 #include "domain/operation_log.h"
 #include "domain/project.h"
+#include "domain/text_edit.h"
 #include "domain/vcs_operation.h"
 #include "presentation/view_snapshot.h"
 
@@ -301,11 +302,15 @@ namespace gitman {
 
     // 초점을 받을 수 있는 텍스트 박스다 (switch-dialog-query-bar-design R2.2).
     // 편집 intent 하나가 대상을 담고 다니므로 박스가 늘어도 intent는 늘지 않는다.
-    enum class text_input_target
+    //
+    // 값은 luil의 불투명 `text_input_target`(uint32)에 그대로 실린다 — 0은 luil의
+    // `none`과 겹치므로 1부터 매긴다. 변환은 gitman_policy 한 곳에서만 한다 (설계 L4).
+    enum class text_input_target : std::uint32_t
     {
+        none = 0,
         // 환경설정의 상태 확인 제한 시간이다. 숫자 4자리만 받는다
         // (field-feedback-design 1.3). 빈 초안은 기본값을 뜻한다.
-        settings_timeout,
+        settings_timeout = 1,
         // switch dialog의 질의 막대다. Git은 필터, SVN은 이동할 경로다.
         switch_query,
         // 글꼴 선택 dialog의 이름 필터다 (fonts-and-in-app-dialogs-design F2.5).
@@ -314,37 +319,8 @@ namespace gitman {
         generate_document_name,
     };
 
-    enum class text_edit_command
-    {
-        // `text`를 넣는다. 선택이 있으면 대체한다.
-        insert,
-        backspace,
-        delete_forward,
-        // Ctrl+Backspace·Ctrl+Delete다. 선택이 없으면 낱말 하나를 지운다.
-        delete_word_left,
-        delete_word_right,
-        // Ctrl+Z·Ctrl+Y(Ctrl+Shift+Z)다. 한 덩어리씩 되돌리고 다시 실행한다.
-        undo,
-        redo,
-        move_left,
-        move_right,
-        move_word_left,
-        move_word_right,
-        move_line_start,
-        move_line_end,
-        select_all,
-        // `offset`이 가리키는 낱말을 고른다 (더블 클릭).
-        select_word,
-        // 선택을 지운다. 클립보드 복사는 UI thread가 이미 했다.
-        cut,
-        // 글 전체를 비운다 (필터 지우기 버튼).
-        clear,
-        // IME 조합이 확정한 글 전체다 (E2.3). `text`가 새 글, `offset`이 caret이며
-        // 한 번의 조합이 실행 취소 한 덩어리가 된다.
-        replace_all,
-        // `offset`으로 caret을 옮긴다. `extend`면 드래그 중이라 anchor를 둔다.
-        place_caret,
-    };
+    // 편집 명령의 어휘는 luil의 것이다 (`domain/text_edit.h`가 전달한다). 적용은
+    // logic이 지금처럼 `text_edit_*` 함수로 한다.
 
     // IME 조합 상태를 UI thread가 알린다 (text-input-and-font-fallback-design E2.3).
     // TSF는 문서를 동기로 읽고 쓰므로 초점을 가진 박스의 그림자 문서를 UI thread가
@@ -514,6 +490,17 @@ namespace gitman {
     };
 
     struct close_intent
+    {};
+
+    // logic thread가 시작된 뒤 delegate가 host를 묶고 처음 보내는 메시지다 (설계
+    // L3). 앱 단위 설정 읽기 제출이 여기서 일어나 relay가 host를 알기 전에 결과가
+    // 도착하는 창이 없다.
+    struct startup_intent
+    {};
+
+    // worker 결과 relay의 깨우기다. 내용은 relay 큐에 있고 driver가 `handle` 첫
+    // 줄에서 비운다. logic은 이 메시지 자체로는 아무 일도 하지 않는다.
+    struct relay_drain_intent
     {};
 
     // worker가 수행할 작업이다. logic만 만들고 scheduler가 lane 정책으로 배정한다.
@@ -737,6 +724,7 @@ namespace gitman {
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
         local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent, set_accent_intent,
         remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
+        startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
         local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 

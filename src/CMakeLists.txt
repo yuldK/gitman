@@ -4,33 +4,6 @@ set(gitman_resource_ids_file "${gitman_resource_directory}/resource_ids.h")
 set(gitman_resource_template "${gitman_resource_directory}/gitman.rc.in")
 set(gitman_app_icon "${CMAKE_CURRENT_SOURCE_DIR}/../assets/gitman.ico")
 
-# Codicons C++ 매핑은 파일 하나를 만드는 custom command다. 결과 header를 라이브러리
-# 소스에 넣어 두면 빌드 순서가 저절로 맞으므로 별도 target을 두지 않는다.
-add_custom_command(
-    OUTPUT "${GITMAN_GENERATED_CODICONS}"
-    COMMAND "${CMAKE_COMMAND}"
-        "-DINPUT_FILE=${GITMAN_ASSET_DIRECTORY}/mapping.json"
-        "-DOUTPUT_FILE=${GITMAN_GENERATED_CODICONS}"
-        -P "${GITMAN_CMAKE_DIRECTORY}/generate_codicons.cmake"
-    DEPENDS
-        "${GITMAN_ASSET_DIRECTORY}/mapping.json"
-        "${GITMAN_CMAKE_DIRECTORY}/generate_codicons.cmake"
-    COMMENT "Generating the Codicons C++ mapping"
-    VERBATIM)
-
-# 키 컬러 표도 같은 방식이다 (T4.3). JSON이 원본이고 형식 검증은 생성 script가 한다.
-add_custom_command(
-    OUTPUT "${GITMAN_GENERATED_ACCENTS}"
-    COMMAND "${CMAKE_COMMAND}"
-        "-DINPUT_FILE=${GITMAN_ACCENT_CATALOG}"
-        "-DOUTPUT_FILE=${GITMAN_GENERATED_ACCENTS}"
-        -P "${GITMAN_CMAKE_DIRECTORY}/generate_accents.cmake"
-    DEPENDS
-        "${GITMAN_ACCENT_CATALOG}"
-        "${GITMAN_CMAKE_DIRECTORY}/generate_accents.cmake"
-    COMMENT "Generating the accent catalog"
-    VERBATIM)
-
 file(TO_CMAKE_PATH "${gitman_manifest_file}" GITMAN_MANIFEST_PATH)
 file(TO_CMAKE_PATH "${gitman_resource_ids_file}" GITMAN_RESOURCE_IDS_PATH)
 file(TO_CMAKE_PATH "${gitman_app_icon}" GITMAN_APP_ICON_PATH)
@@ -48,13 +21,14 @@ set_source_files_properties(
 # infrastructure → presentation → platform)은 디렉터리 구조와 코드 리뷰로 지키며,
 # target 경계로는 나누지 않는다. 프로젝트 규모에 비해 target이 지나치게 많아지는
 # 것을 피하기 위한 결정이다 (docs/window-state-and-scroll-design.md 10장).
+#
+# UI 기반 계층(element·tree·상호작용·창·렌더러·TSF·클립보드·글꼴·messaging)은
+# luil이 맡는다 (ADR-007). gitman은 앱 element와 driver·policy·delegate만 갖는다.
 add_library(gitman_lib STATIC
-    "${GITMAN_GENERATED_CODICONS}"
-    "${GITMAN_GENERATED_ACCENTS}"
-    # 도메인: 순수 규칙과 값 타입이다. 다른 계층에 의존하지 않는다.
+    # 도메인: 순수 규칙과 값 타입이다. 다른 계층에 의존하지 않는다. 외양·텍스트
+    # 편집·UTF-8 헤더는 luil의 값 타입을 `gitman::` 이름으로 전달한다.
     domain/app_settings.cpp
     domain/app_settings.h
-    domain/appearance.cpp
     domain/appearance.h
     domain/diagnostic.cpp
     domain/diagnostic.h
@@ -76,20 +50,22 @@ add_library(gitman_lib STATIC
     domain/project.h
     domain/repository_snapshot.cpp
     domain/repository_snapshot.h
-    domain/text_edit.cpp
     domain/text_edit.h
-    domain/utf8_text.cpp
     domain/utf8_text.h
     domain/vcs_operation.cpp
     domain/vcs_operation.h
     domain/vcs_tool.cpp
     domain/vcs_tool.h
 
-    # application: 상태 소유와 계약(interface)이다. OS API를 직접 부르지 않는다.
+    # application: 상태 소유와 계약(interface)이다. OS API를 직접 부르지 않고 luil
+    # UI 헤더를 include하지 않는다.
+    application/app_commands.h
     application/app_messages.h
     application/app_settings_store.h
     application/application_options.cpp
     application/application_options.h
+    application/cancellation_registry.cpp
+    application/cancellation_registry.h
     application/directory_enumerator.h
     application/discovery_service.cpp
     application/discovery_service.h
@@ -170,111 +146,78 @@ add_library(gitman_lib STATIC
     infrastructure/workspace_document_paths.cpp
     infrastructure/workspace_document_paths.h
 
-    # messaging: 스레드 경계 채널이다 (ADR-005). header-only component다.
-    messaging/channel.h
-    messaging/envelope.h
-    messaging/latest_slot.h
-
-    # presentation/ui: view snapshot을 그리는 UI element 계층이다.
+    # presentation/ui: view snapshot을 luil element tree로 짓는 앱 element 계층과
+    # 입력 정책이다.
     presentation/ui/build_ui_tree.cpp
     presentation/ui/build_ui_tree.h
-    presentation/ui/button_element.cpp
-    presentation/ui/button_element.h
-    presentation/ui/caption_element.cpp
-    presentation/ui/caption_element.h
-    presentation/ui/caption_metrics.h
     presentation/ui/card_element.cpp
     presentation/ui/card_element.h
     presentation/ui/card_list_element.cpp
     presentation/ui/card_list_element.h
     presentation/ui/context_menu_element.cpp
     presentation/ui/context_menu_element.h
-    presentation/ui/dialog_elements.cpp
-    presentation/ui/dialog_elements.h
     presentation/ui/discovery_dialog_element.cpp
     presentation/ui/discovery_dialog_element.h
-    presentation/ui/draw_primitives.cpp
+    presentation/ui/element_kinds.h
     presentation/ui/font_dialog_element.cpp
     presentation/ui/font_dialog_element.h
     presentation/ui/generate_document_dialog_element.cpp
     presentation/ui/generate_document_dialog_element.h
-    presentation/ui/draw_primitives.h
-    presentation/ui/label_element.cpp
-    presentation/ui/label_element.h
+    presentation/ui/gitman_caption.h
+    presentation/ui/gitman_policy.cpp
+    presentation/ui/gitman_policy.h
     presentation/ui/local_changes_dialog_element.cpp
     presentation/ui/local_changes_dialog_element.h
     presentation/ui/log_view_element.cpp
     presentation/ui/log_view_element.h
     presentation/ui/notice_dialog_element.cpp
     presentation/ui/notice_dialog_element.h
-    presentation/ui/scrollbar_element.cpp
-    presentation/ui/scrollbar_element.h
     presentation/ui/settings_dialog_element.cpp
     presentation/ui/settings_dialog_element.h
     presentation/ui/start_page_element.cpp
     presentation/ui/start_page_element.h
+    presentation/ui/status_glyphs.cpp
+    presentation/ui/status_glyphs.h
     presentation/ui/switch_dialog_element.cpp
     presentation/ui/switch_dialog_element.h
     presentation/ui/toolbar_element.cpp
     presentation/ui/toolbar_element.h
-    presentation/ui/ui_element.cpp
-    presentation/ui/ui_element.h
-    presentation/ui/ui_events.h
-    presentation/ui/ui_interaction.cpp
-    presentation/ui/ui_interaction.h
-    presentation/ui/ui_tree.cpp
-    presentation/ui/ui_tree.h
+    presentation/ui/ui_actions.h
+    presentation/ui/ui_common.h
 
-    # presentation: 표시 모델과 theme이다.
+    # presentation: 표시 모델이다.
     presentation/diff_presentation.cpp
     presentation/diff_presentation.h
     presentation/list_metrics.cpp
     presentation/list_metrics.h
     presentation/log_presentation.cpp
     presentation/log_presentation.h
-    presentation/renderer_policy.cpp
-    presentation/renderer_policy.h
-    presentation/skia_smoke_view.cpp
-    presentation/skia_smoke_view.h
     presentation/status_presentation.cpp
     presentation/status_presentation.h
-    presentation/ui_theme.cpp
-    presentation/ui_theme.h
     presentation/view_snapshot.h
 
-    # platform/win32: Win32와 Skia 조립이다. 실행 파일만 이 계층을 쓴다.
-    platform/win32/caption_layout.cpp
-    platform/win32/caption_layout.h
-    platform/win32/cpu_skia_renderer.cpp
-    platform/win32/direct3d_skia_renderer.cpp
-    platform/win32/embedded_assets.cpp
-    platform/win32/embedded_assets.h
+    # platform/win32: Win32 어댑터와 luil 앱 조립(driver·delegate·relay)이다. 창·
+    # 렌더러·입력은 luil 안에 있다. 실행 파일만 이 계층을 쓴다.
+    platform/win32/gitman_delegate.cpp
+    platform/win32/gitman_delegate.h
+    platform/win32/gitman_driver.cpp
+    platform/win32/gitman_driver.h
+    platform/win32/operation_result_relay.cpp
+    platform/win32/operation_result_relay.h
     platform/win32/project_file_system.cpp
     platform/win32/project_file_system.h
-    platform/win32/skia_renderer.cpp
-    platform/win32/skia_renderer.h
     platform/win32/utf8.cpp
     platform/win32/utf8.h
-    platform/win32/win32_app_runtime.cpp
-    platform/win32/win32_app_runtime.h
     platform/win32/win32_app_settings_path.cpp
     platform/win32/win32_app_settings_path.h
-    platform/win32/win32_application.cpp
-    platform/win32/win32_application.h
-    platform/win32/win32_clipboard.cpp
-    platform/win32/win32_clipboard.h
     platform/win32/win32_directory_enumerator.cpp
     platform/win32/win32_directory_enumerator.h
     platform/win32/win32_file_association.cpp
     platform/win32/win32_file_association.h
-    platform/win32/win32_fonts.cpp
-    platform/win32/win32_fonts.h
     platform/win32/win32_log_file_system.cpp
     platform/win32/win32_log_file_system.h
     platform/win32/win32_process_runner.cpp
     platform/win32/win32_process_runner.h
-    platform/win32/win32_tsf_input.cpp
-    platform/win32/win32_tsf_input.h
     platform/win32/win32_text_transcoder.cpp
     platform/win32/win32_text_transcoder.h
     platform/win32/win32_vcs_file_probe.cpp
@@ -283,39 +226,20 @@ add_library(gitman_lib STATIC
     platform/win32/workspace_document_file_system.h)
 target_include_directories(gitman_lib
     PUBLIC
-        "${GITMAN_SOURCE_DIRECTORY}"
-        "${GITMAN_GENERATED_INCLUDE_DIRECTORY}")
+        "${GITMAN_SOURCE_DIRECTORY}")
+# luil이 Skia·nlohmann(single_include)·WebView2 로더·Windows 시스템 라이브러리를
+# PUBLIC으로 나른다. `advapi32`는 win32_file_association.cpp의 `Reg*` 때문에
+# 명시한다.
 target_link_libraries(gitman_lib
     PUBLIC
         gitman_project_options
         nlohmann_json::nlohmann_json
-        unofficial::skia::skia
-        advapi32
-        d3d12
-        dwrite
-        dwmapi
-        dxgi
-        gdi32
-        imm32
-        ole32
-        shell32
-        user32)
-
-# 자산 checksum 검증은 빌드마다 한 번 실행한다. 별도 target 대신 라이브러리의
-# 빌드 전 단계에 붙여 솔루션 구성 요소를 늘리지 않는다.
-add_custom_command(TARGET gitman_lib PRE_BUILD
-    COMMAND "${CMAKE_COMMAND}"
-        "-DASSET_DIRECTORY=${GITMAN_ASSET_DIRECTORY}"
-        -P "${GITMAN_CMAKE_DIRECTORY}/verify_codicons.cmake"
-    COMMENT "Verifying Codicons checksums"
-    VERBATIM)
+        luil::luil
+        advapi32)
 
 # IDE에서 디렉터리 구조를 그대로 보여 준다. target을 합쳐도 계층은 눈에 보인다.
-# 생성 파일은 source tree 밖에 있으므로 따로 묶는다.
 get_target_property(gitman_lib_sources gitman_lib SOURCES)
-list(REMOVE_ITEM gitman_lib_sources "${GITMAN_GENERATED_CODICONS}" "${GITMAN_GENERATED_ACCENTS}")
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "src" FILES ${gitman_lib_sources})
-source_group("generated" FILES "${GITMAN_GENERATED_CODICONS}" "${GITMAN_GENERATED_ACCENTS}")
 
 # resource는 두 .rc다: luil 조각(코디콘 폰트·라이선스·고지, ID 101~104)과 gitman
 # 조각(manifest·아이콘·VERSIONINFO).

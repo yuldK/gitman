@@ -13,18 +13,8 @@ CMakeLists.txt text eol=crlf
 .clang-tidy text eol=crlf
 .gitignore text eol=crlf
 
-# 공식 배포본의 checksum을 보존해야 하는 vendored 자산이다.
-/assets/codicons/** -text
 *.ttf binary
 *.ico binary
 
-# patch 파일은 LF를 유지해야 `git apply`가 성립한다.
-*.patch -text
-
-# Skia GN args 파일이다.
-*.gn text eol=crlf
-
 # submodule로 가져오는 제3자 소스는 정규화하지 않는다.
-/third_party/skia/** -text
-/third_party/skia-externals/** -text
 /third_party/luil/** -text

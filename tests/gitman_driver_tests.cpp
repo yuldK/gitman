@@ -4,6 +4,7 @@
 #include "helpers/ui_test_support.h"
 
 #include "application/app_messages.h"
+#include "presentation/ui/context_menu_popup.h"
 #include "presentation/ui/gitman_policy.h"
 
 #include "luil/win32/app_host.h"
@@ -285,6 +286,49 @@ TEST_CASE("The frame carries the tree, appearance, fonts and placement revision 
 
     // 문서가 없으므로 창 배치 요청도 없다 (열 때 비로소 생긴다).
     REQUIRE(frame->window_placement_request.has_value() == false);
+
+    // 메뉴가 없으면 popup 목록도 비어 있다.
+    REQUIRE(frame->popups.empty());
+}
+
+TEST_CASE("An open context menu rides the frame as a popup", "[driver][frame][popup]")
+{
+    // 컨텍스트 메뉴는 주 tree의 overlay가 아니라 popup 창이다 (설계 D3-A). 앞 사례와
+    // 같이 host 없이 driver를 직접 굴리고, 문서는 적재 결과를 곧바로 넣어 카드를 세운다.
+    gitman::win32::gitman_driver driver {};
+    driver.handle(luil::app_message { gitman::logic_message { gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f } } });
+
+    gitman::document_loaded_event loaded {};
+    gitman::workspace_document document {};
+    document.document_path = u8"C:\\work\\p.version-list";
+    gitman::project_definition project {};
+    project.id.value = u8"alpha";
+    project.display_name = u8"alpha";
+    project.path.original = u8"C:\\work\\alpha";
+    project.path.normalized = project.path.original;
+    document.projects.push_back(std::move(project));
+    loaded.document = { std::move(document) };
+    driver.handle(luil::app_message { gitman::logic_message { std::move(loaded) } });
+    driver.handle(luil::app_message { gitman::logic_message { gitman::open_context_menu_intent { gitman::project_id { u8"alpha" }, 120.0f, 240.0f } } });
+
+    const std::shared_ptr<const luil::win32::ui_frame> frame { driver.make_frame() };
+    REQUIRE(frame != nullptr);
+    REQUIRE(frame->popups.size() == 1u);
+    REQUIRE(frame->popups.front().id == gitman::ui::card_menu_popup_id);
+    REQUIRE(frame->popups.front().tree != nullptr);
+    // 주 tree에는 메뉴가 없다 — popup tree가 통째로 들고 있다.
+    REQUIRE(frame->tree->ids_of_kind(luil::ui_element_kind::menu).empty());
+
+    // 배율이 바뀌면 물리 앵커를 새 배율로 나눈 자리에 popup이 선다.
+    driver.handle(luil::app_message { gitman::logic_message { gitman::window_metrics_intent { 800.0f, 600.0f, 2.0f } } });
+    const std::shared_ptr<const luil::win32::ui_frame> scaled { driver.make_frame() };
+    REQUIRE(scaled->popups.size() == 1u);
+    REQUIRE(scaled->popups.front().x == 60.0f);
+    REQUIRE(scaled->popups.front().y == 120.0f);
+
+    // 닫으면 popup도 함께 빠진다.
+    driver.handle(luil::app_message { gitman::logic_message { gitman::close_context_menu_intent {} } });
+    REQUIRE(driver.make_frame()->popups.empty());
 }
 
 TEST_CASE("Cancel shortens handling to the close message only", "[driver][shutdown]")

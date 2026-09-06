@@ -434,6 +434,14 @@ namespace gitman {
     struct close_context_menu_intent
     {};
 
+    // popup 메뉴의 항목 선택이다 (luil-migration-design L6). logic이 메뉴를 닫고
+    // 항목의 intent를 이어서 처리한다. 외부 열기 항목은 여기로 오지 않는다 — UI
+    // thread가 실행하는 앱 명령이라 메뉴의 select factory가 곧바로 낸다.
+    struct select_context_menu_item_intent
+    {
+        context_menu_entry entry { context_menu_entry::refresh };
+    };
+
     // 열린 문서를 명시적으로 닫는다 (2026-08-21 사용자 지시). 문서 상태와 카드를
     // 버리고 시작 페이지로 돌아간다. 최근 목록은 그대로 둔다.
     struct close_document_intent
@@ -722,7 +730,7 @@ namespace gitman {
         confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
         clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
-        local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, set_theme_preference_intent, set_accent_intent,
+        local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
         remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,

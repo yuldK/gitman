@@ -3,6 +3,7 @@
 #include "platform/win32/gitman_delegate.h"
 #include "platform/win32/win32_app_settings_path.h"
 #include "presentation/ui/build_ui_tree.h"
+#include "presentation/ui/context_menu_popup.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -64,6 +65,10 @@ namespace gitman::win32 {
         const std::shared_ptr<const view_snapshot> view { controller_->make_view_snapshot() };
         const std::shared_ptr<luil::win32::ui_frame> frame { std::make_shared<luil::win32::ui_frame>() };
         frame->tree = ui::build_ui_tree(*view);
+        // 컨텍스트 메뉴는 popup 창이다 (설계 D3-A). 주 tree 안 overlay가 아니라
+        // frame의 popup 목록에 실어 창 경계를 넘게 한다.
+        if (view->context_menu.has_value())
+            frame->popups.push_back(ui::build_context_menu_popup(*view->context_menu, view->scale));
         frame->appearance = view->appearance;
         frame->fonts = view->fonts;
         frame->window_placement_revision = view->window_placement_revision;

@@ -98,9 +98,6 @@ namespace gitman::ui {
             local_changes_open_explorer,
             local_changes_diff,
             local_changes_dialog_close,
-            context_menu,
-            context_menu_panel,
-            context_menu_item,
             notice_dialog,
             notice_dialog_panel,
             notice_dialog_confirm,
@@ -198,9 +195,6 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_local_changes_open_explorer { detail::application_kind(detail::application_kind_index::local_changes_open_explorer) };
     inline constexpr luil::ui_element_kind kind_local_changes_diff { detail::application_kind(detail::application_kind_index::local_changes_diff) };
     inline constexpr luil::ui_element_kind kind_local_changes_dialog_close { detail::application_kind(detail::application_kind_index::local_changes_dialog_close) };
-    inline constexpr luil::ui_element_kind kind_context_menu { detail::application_kind(detail::application_kind_index::context_menu) };
-    inline constexpr luil::ui_element_kind kind_context_menu_panel { detail::application_kind(detail::application_kind_index::context_menu_panel) };
-    inline constexpr luil::ui_element_kind kind_context_menu_item { detail::application_kind(detail::application_kind_index::context_menu_item) };
     inline constexpr luil::ui_element_kind kind_notice_dialog { detail::application_kind(detail::application_kind_index::notice_dialog) };
     inline constexpr luil::ui_element_kind kind_notice_dialog_panel { detail::application_kind(detail::application_kind_index::notice_dialog_panel) };
     inline constexpr luil::ui_element_kind kind_notice_dialog_confirm { detail::application_kind(detail::application_kind_index::notice_dialog_confirm) };
@@ -294,9 +288,6 @@ namespace gitman::ui {
         kind_local_changes_open_explorer,
         kind_local_changes_diff,
         kind_local_changes_dialog_close,
-        kind_context_menu,
-        kind_context_menu_panel,
-        kind_context_menu_item,
         kind_notice_dialog,
         kind_notice_dialog_panel,
         kind_notice_dialog_confirm,

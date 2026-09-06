@@ -263,6 +263,10 @@ namespace gitman::win32 {
         case app_command::open_in_explorer_select:
         case app_command::open_in_explorer_folder:
             execute_open_external(owner, *parsed, command.argument);
+            // 메뉴 항목의 외부 열기는 예전부터 "닫고 실행"이었다 (설계 D3-A).
+            // popup의 select는 앱 명령 하나만 내므로 닫기를 여기서 잇는다. 메뉴가
+            // 없을 때(로컬 변경 dialog의 아이콘)는 logic이 무시하므로 무해하다.
+            post_intent(host, close_context_menu_intent {});
             return;
         }
     }

@@ -3,7 +3,6 @@
 #include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
 #include "presentation/ui/card_list_element.h"
-#include "presentation/ui/context_menu_element.h"
 #include "presentation/ui/discovery_dialog_element.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/font_dialog_element.h"
@@ -125,8 +124,8 @@ namespace gitman::ui {
                 caption_ = caption.get();
                 add_child(std::move(caption));
 
-                // overlay와 dialog는 맨 마지막 자식이라 모든 것 위에 그려지고 hit
-                // test도 먼저 걸린다. 창 이동은 비클라이언트 경로라 계속 동작한다.
+                // dialog는 맨 마지막 자식이라 모든 것 위에 그려지고 hit test도 먼저
+                // 걸린다. 창 이동은 비클라이언트 경로라 계속 동작한다.
                 //
                 // dialog 하나하나가 luil `modal_host_element`다 (설계 D2-A). host가
                 // scrim·가운데 배치·초점 가둠·Esc를 맡고 gitman element는 그 안의
@@ -178,20 +177,14 @@ namespace gitman::ui {
                     local_changes_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
-                // 알림은 다른 dialog 위, 컨텍스트 메뉴 아래다 (app-shell-design A3.2).
+                // 알림은 다른 dialog 위다 (app-shell-design A3.2). 컨텍스트 메뉴는
+                // 주 tree에 없다 — 창 경계를 넘는 popup 창이다 (설계 D3-A,
+                // `build_context_menu_popup`).
                 if (view.notice_dialog.has_value())
                 {
                     auto dialog { make_notice_dialog(*view.notice_dialog, logical_width, logical_height) };
                     notice_dialog_ = dialog.get();
                     add_child(std::move(dialog));
-                }
-                // 컨텍스트 메뉴는 맨 마지막 자식이라 dialog 위에도 그려지고 hit
-                // test도 가장 먼저 걸린다 (field-feedback-design 3장).
-                if (view.context_menu.has_value())
-                {
-                    auto menu { std::make_unique<context_menu_element>(*view.context_menu) };
-                    context_menu_ = menu.get();
-                    add_child(std::move(menu));
                 }
             }
 
@@ -229,8 +222,6 @@ namespace gitman::ui {
                     local_changes_dialog_->arrange({ context.slot, scale });
                 if (notice_dialog_ != nullptr)
                     notice_dialog_->arrange({ context.slot, scale });
-                if (context_menu_ != nullptr)
-                    context_menu_->arrange({ context.slot, scale });
                 if (start_page_ != nullptr)
                     start_page_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale });
 
@@ -262,7 +253,6 @@ namespace gitman::ui {
             ui_element* discovery_dialog_ { nullptr };
             ui_element* local_changes_dialog_ { nullptr };
             ui_element* notice_dialog_ { nullptr };
-            ui_element* context_menu_ { nullptr };
         };
     } // namespace
 

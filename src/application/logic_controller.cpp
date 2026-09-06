@@ -312,6 +312,8 @@ namespace gitman {
                     handle_set_accent(value);
                 else if constexpr (std::is_same_v<value_type, close_context_menu_intent>)
                     context_menu_.reset();
+                else if constexpr (std::is_same_v<value_type, select_context_menu_item_intent>)
+                    handle_select_context_menu_item(value);
                 else if constexpr (std::is_same_v<value_type, remove_recent_document_intent>)
                     handle_remove_recent_document(value);
                 else if constexpr (std::is_same_v<value_type, toggle_recent_document_pin_intent>)
@@ -2423,6 +2425,62 @@ namespace gitman {
 
         // 문서 메뉴는 선택 카드를 바꾸지 않는다 — 카드와 무관한 대상이다.
         context_menu_ = { context_menu_state { context_menu_kind::document, {}, intent.anchor_x, intent.anchor_y } };
+    }
+
+    void logic_controller::handle_select_context_menu_item(const select_context_menu_item_intent& intent)
+    {
+        // 메뉴가 이미 닫혔으면 늦게 도착한 클릭이다. 버린다.
+        if (context_menu_.has_value() == false)
+            return;
+
+        // 문서(배너) 메뉴의 두 항목은 외부 열기뿐이라 UI thread가 앱 명령으로 곧바로
+        // 처리한다. 여기로 오면 닫기만 한다.
+        if ((context_menu_->kind == context_menu_kind::card) == false)
+        {
+            context_menu_.reset();
+            return;
+        }
+
+        // 항목을 고르면 메뉴는 어느 경우에나 닫힌다 (예전 element가 닫기 액션을 함께
+        // 내던 것과 같다). 대상 카드를 먼저 잡아 둔다.
+        const project_id card { context_menu_->card };
+        context_menu_.reset();
+
+        card_state* const state { find_card(card) };
+        if (state == nullptr)
+            return;
+
+        // 비활성 항목은 view에서 이미 걸렀지만, 메뉴가 떠 있는 동안 카드 상태가
+        // 바뀌었을 수 있다. view를 만들 때와 같은 판정을 다시 본다 (늦은 클릭 방어).
+        const bool can_change { state->project.enabled && state->busy == false && state->has_local_result && state->snapshot.availability == repository_availability::ready };
+        const bool change_running { state->change_operation_id != 0 };
+
+        switch (intent.entry)
+        {
+        case context_menu_entry::show_local_changes:
+            handle_open_local_changes(open_local_changes_intent { card });
+            break;
+        case context_menu_entry::refresh:
+            // `refresh_card_intent`의 처리와 같다.
+            if (state->project.enabled)
+                request_refresh(*state);
+            break;
+        case context_menu_entry::update:
+            // submodule 여부는 logic이 문서 settings로 채운다 (카드 버튼과 동일).
+            if (can_change && change_running == false)
+                handle_request_update(request_update_intent { card, {} });
+            break;
+        case context_menu_entry::switch_to:
+            if (can_change)
+                handle_begin_switch(begin_switch_intent { card });
+            break;
+        case context_menu_entry::open_repository:
+        case context_menu_entry::open_in_vscode:
+        case context_menu_entry::open_document_folder:
+        case context_menu_entry::open_document_in_vscode:
+            // 외부 열기는 UI thread의 앱 명령이라 logic으로 오지 않는다. 닫기만 한다.
+            break;
+        }
     }
 
     void logic_controller::handle_set_theme_preference(const set_theme_preference_intent& intent)

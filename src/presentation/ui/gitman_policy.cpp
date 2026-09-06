@@ -83,7 +83,9 @@ namespace gitman::ui {
 
     std::optional<luil::menu_kinds> gitman_policy::menu() const
     {
-        return luil::menu_kinds { kind_context_menu, kind_context_menu_item };
+        // 메뉴는 luil `menu_element`가 뿌리인 popup tree다 (설계 D3-A). 키보드
+        // 탐색(↑/↓/Enter/Esc)이 그 tree에서 돌도록 luil kind를 그대로 돌려준다.
+        return luil::menu_kinds { luil::ui_element_kind::menu, luil::ui_element_kind::menu_item };
     }
 
     std::vector<luil::input_action> gitman_policy::close_menu() const
@@ -93,10 +95,13 @@ namespace gitman::ui {
 
     std::vector<luil::input_action> gitman_policy::on_wheel(const luil::ui_tree& tree, const luil::mouse_wheel_event& event, const float scroll_delta)
     {
-        // 컨텍스트 메뉴가 떠 있는 동안 휠은 무시한다. 앵커에 붙은 메뉴 아래로
-        // 목록이 흘러가면 대상 카드와 어긋난다.
-        if (tree_has(tree, kind_context_menu))
+        // 메뉴 popup 위의 휠은 아무 데도 흘리지 않는다. 주 창 위의 휠은 UI thread가
+        // `ui_popup::dismiss`로 닫기를 먼저 내지만(설계 D3-A), popup 표면 자체의 휠은
+        // 닫힘 계기가 아니라 popup tree가 그대로 여기로 온다 — 뒤의 카드 목록이
+        // 스크롤되면 메뉴가 앵커에서 떠 버린다.
+        if (tree.find(luil::ui_element_id { luil::ui_element_kind::menu }) != nullptr)
             return {};
+
 
         // 로컬 변경 dialog가 열려 있으면 휠은 diff pane 위에서는 diff를, 그 밖에서는
         // 목록을 스크롤한다.

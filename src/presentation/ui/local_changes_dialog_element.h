@@ -3,18 +3,24 @@
 #include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
 
+#include "luil/ui/modal_host_element.h"
+
 #include <cstddef>
+#include <memory>
 
 namespace gitman::ui {
-    // 로컬 변경 확인 dialog다 (field-feedback-design 2.3). 화면 전체를 덮는 dim 배경
-    // 위에 panel을 띄우고, 상단에 변경 항목 목록, 하단에 선택 항목의 diff viewer를
-    // 세로로 나눠 담는다. 배경 클릭과 Esc가 닫기다.
+    // 로컬 변경 확인 dialog의 본체다 (field-feedback-design 2.3). panel 안 상단에 변경
+    // 항목 목록, 하단에 선택 항목의 diff viewer를 세로로 나눠 담는다.
+    //
+    // 이 element는 luil `modal_host_element`의 content다 (설계 D2-A). 화면을 덮는
+    // scrim·가운데 배치·초점 가둠·Esc는 host가 맡고, `arrange`가 받는 slot이 곧
+    // panel 상자다.
     class local_changes_dialog_element final : public ui_element
     {
     public:
-        // `scale`은 조립 쪽 호출을 그대로 두려고 남긴 인자다. 스크롤 값이 논리
-        // 픽셀이 된 뒤로는 막대가 배율을 스스로 곱해 여기서 쓸 곳이 없다 (설계 L5).
-        local_changes_dialog_element(local_changes_dialog_view dialog, float scale);
+        // 스크롤 값이 논리 픽셀이라(설계 L5) 막대가 배율을 스스로 곱하고, 조립
+        // 시점에 배율이 필요 없다.
+        explicit local_changes_dialog_element(local_changes_dialog_view dialog);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
@@ -30,4 +36,8 @@ namespace gitman::ui {
 
     // 목록 행의 element id다. owner 값에 index를 담는다 (switch dialog와 같은 규칙).
     [[nodiscard]] ui_element_id local_changes_item_id(std::size_t index);
+
+    // 본체를 host에 담아 돌려준다. 배경(scrim) 클릭과 Esc가 모두 닫기다.
+    // `window_width`·`window_height`는 논리 픽셀이며 panel이 창을 넘지 않게 하는 데 쓴다.
+    [[nodiscard]] std::unique_ptr<luil::modal_host_element> make_local_changes_dialog(const local_changes_dialog_view& view, float window_width, float window_height);
 } // namespace gitman::ui

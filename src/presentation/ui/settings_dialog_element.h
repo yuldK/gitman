@@ -3,7 +3,10 @@
 #include "presentation/ui/ui_common.h"
 #include "presentation/view_snapshot.h"
 
+#include "luil/ui/modal_host_element.h"
+
 #include <cstddef>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -28,15 +31,17 @@ namespace gitman::ui {
     // `window_height`는 논리 픽셀이다.
     [[nodiscard]] settings_dialog_scroll_metrics settings_dialog_metrics(const settings_dialog_view& dialog, float window_height);
 
-    // 환경설정 dialog다 (REQ-017, stage-8-plan 5.1,
-    // docs/settings-tabs-and-appearance-scope-design.md S1). 화면 전체를 덮는 dim
-    // 배경 위에 panel을 띄우고, 왼쪽 탭 rail이 고른 탭의 섹션과 항목만 담는다.
-    // 경로는 자유 입력 없이 찾아보기(파일 선택)와 지우기로만 바꾼다. 배경 클릭과
-    // Esc가 취소다.
+    // 환경설정 dialog의 **본체**다 (REQ-017, stage-8-plan 5.1,
+    // docs/settings-tabs-and-appearance-scope-design.md S1). luil `modal_host_element`의
+    // content로 들어간다 — scrim·가운데 배치·초점 가둠·Esc는 host가 맡고 (설계 D2-A)
+    // 본체는 host가 잡아 준 panel 상자를 그대로 받아 왼쪽 탭 rail과 고른 탭의
+    // 섹션·항목만 담는다. 경로는 자유 입력 없이 찾아보기(파일 선택)와 지우기로만
+    // 바꾼다.
     class settings_dialog_element final : public ui_element
     {
     public:
-        settings_dialog_element(settings_dialog_view dialog, float scale, float window_height);
+        // `window_height`는 논리 픽셀이며 항목 열의 스크롤 치수를 세는 데만 쓴다.
+        settings_dialog_element(settings_dialog_view dialog, float window_height);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
@@ -46,9 +51,8 @@ namespace gitman::ui {
         // panel은 활성 탭의 모델과 배치를 함께 들고 있다. dialog는 panel이 계산한
         // 항목 사각형 위에 컨트롤을 얹으므로 그리기와 배치가 어긋나지 않는다.
         ui_element* panel_ { nullptr };
-        // 네 탭 중 가장 높은 내용에 맞춘 panel 높이다. 탭을 옮길 때 창이 튀지 않게
-        // 고정한다 (S1.3). 창이 더 낮으면 잘리고 항목 열이 스크롤된다 (E1).
-        float panel_height_ { 0.0f };
+        // panel 높이(네 탭 중 가장 높은 내용 + chrome)와 창에 맞춘 줄임은 factory가
+        // 세어 host에 넘긴다 (S1.3, E1). 본체는 그 상자를 받기만 한다.
         settings_dialog_scroll_metrics metrics_ {};
         // 내용이 넘칠 때만 보인다.
         ui_element* scrollbar_ { nullptr };
@@ -65,4 +69,8 @@ namespace gitman::ui {
         ui_element* confirm_ { nullptr };
         ui_element* cancel_ { nullptr };
     };
+
+    // 환경설정 dialog를 host째 만든다 (설계 D2-A). `window_width`·`window_height`는
+    // **논리 픽셀**이며, panel이 창을 넘지 않게 여기서 미리 줄여 host에 넘긴다.
+    [[nodiscard]] std::unique_ptr<luil::modal_host_element> make_settings_dialog(const settings_dialog_view& view, float window_width, float window_height);
 } // namespace gitman::ui

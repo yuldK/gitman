@@ -441,14 +441,21 @@ TEST_CASE("The switch dialog tree wires rows and buttons and routes escape and t
     }
     REQUIRE(as_intent<gitman::confirm_switch_intent>(click_action(*tree, id_of(gitman::ui::kind_switch_dialog_confirm, u8"alpha"))) != nullptr);
     REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_switch_dialog_cancel, u8"alpha"))) != nullptr);
-    // 배경(scrim) 클릭도 취소다.
-    REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_switch_dialog))) != nullptr);
 
-    // D1-B: 후보 행과 scrim은 Tab 자리가 아니고 버튼만 자리다.
-    REQUIRE(tree->find(gitman::ui::switch_dialog_item_id(0))->tab_stop() == false);
+    // 본체는 luil modal host의 content다 (설계 D2-A). scrim·가운데 배치·초점 가둠·
+    // Esc는 host가 맡는다.
+    REQUIRE(find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_switch) != nullptr);
+    REQUIRE(tree->focus_trap() != nullptr);
+    // 배경(scrim) 클릭도 취소다. 그 액션은 이제 host의 scrim에 걸린다.
+    REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(click_action(*tree, id_of(luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_switch))) != nullptr);
+
+    // D1-B: 본체·후보 행·scrim은 Tab 자리가 아니고 버튼만 자리다.
     REQUIRE(find(*tree, gitman::ui::kind_switch_dialog)->tab_stop() == false);
+    REQUIRE(tree->find(gitman::ui::switch_dialog_item_id(0))->tab_stop() == false);
+    REQUIRE(find(*tree, luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_switch)->tab_stop() == false);
     REQUIRE(find(*tree, gitman::ui::kind_switch_dialog_confirm, u8"alpha")->tab_stop());
 
+    // Esc는 가둠의 dismiss 액션으로 나간다 (luil `process_dismiss_key`).
     interaction_harness harness { tree };
     REQUIRE(as_intent<gitman::cancel_switch_dialog_intent>(harness.process(luil::key_pressed_event { luil::key_code::escape })) != nullptr);
     REQUIRE(as_intent<gitman::switch_dialog_scroll_intent>(harness.process(luil::mouse_wheel_event { 400.0f, 300.0f, -120.0f })) != nullptr);
@@ -944,6 +951,10 @@ TEST_CASE("The switch dialog tree wires the query bar", "[ui][switch-ui][query]"
         REQUIRE(typed.command == gitman::text_edit_command::insert);
         REQUIRE(typed.text == u8"x");
 
+        // 확인 버튼에는 `default_button`을 걸지 않는다 (C3-2). 질의 칸에 초점이
+        // 있는 동안의 Enter는 첫 후보 선택·경로 이동이라 기본 버튼이 가로채면
+        // 안 된다. tree 전체에 기본 버튼이 없어야 규칙이 잠긴다.
+        REQUIRE(tree->default_button() == nullptr);
         REQUIRE(as_intent<gitman::submit_switch_query_intent>(harness.process(luil::key_pressed_event { luil::key_code::enter })) != nullptr);
 
         // dialog가 닫히면 초점도 사라진다.

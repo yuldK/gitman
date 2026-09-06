@@ -1,6 +1,7 @@
 #include "presentation/ui/font_dialog_element.h"
 
 #include "presentation/list_metrics.h"
+#include "presentation/ui/dialog_host.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/ui_actions.h"
 
@@ -204,12 +205,13 @@ namespace gitman::ui {
         return { kind_font_dialog_item, item_owner_value(index) };
     }
 
-    font_dialog_element::font_dialog_element(const font_dialog_view& dialog, const float)
+    font_dialog_element::font_dialog_element(const font_dialog_view& dialog)
         : ui_element { ui_element_id { kind_font_dialog } }
         , dialog_ { dialog }
     {
-        set_action(ui_trigger::left_click, make_logic_click(cancel_font_dialog_intent {}));
-        // scrim은 마우스만의 자리다. 키보드 취소는 Esc다 (설계 D1-B).
+        // 배경 클릭(취소)은 host의 scrim이 맡는다 — 본체에는 액션을 걸지 않는다
+        // (설계 D2-A). 누름 흡수도 host의 `set_content`가 걸어 준다.
+        // 본체는 판일 뿐이라 Tab 자리가 아니다 (설계 D1-B).
         set_tab_stop(false);
 
         auto panel { std::make_unique<font_panel_element>(dialog_) };
@@ -248,7 +250,10 @@ namespace gitman::ui {
 
         auto confirm {
             std::make_unique<luil::text_button_element>(
-                ui_element_id { kind_font_dialog_confirm }, luil::text_button_config { .text = std::u8string { u8"선택" }, .visual = luil::text_button_visual::accent }),
+                ui_element_id { kind_font_dialog_confirm },
+                // Enter의 기본 자리다 — 질의 칸에서 Enter를 쳐도 선택으로 간다
+                // (enter-default-design.md).
+                luil::text_button_config { .text = std::u8string { u8"선택" }, .visual = luil::text_button_visual::accent, .default_button = true }),
         };
         confirm->set_enabled(dialog_.can_confirm);
         confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_font_dialog_intent {}));
@@ -287,14 +292,12 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        float width { layout_font_dialog_width * scale };
-        float height { layout_font_dialog_height * scale };
-        if (width > context.slot.width)
-            width = context.slot.width;
-        if (height > context.slot.height)
-            height = context.slot.height;
-        const float left { context.slot.x + (context.slot.width - width) / 2.0f };
-        const float top { context.slot.y + (context.slot.height - height) / 2.0f };
+        // `context.slot`이 곧 panel 상자다 — host가 `make_font_dialog`가 준 논리 크기를
+        // 창 가운데에 놓아 건네준다 (설계 D2-A). 창에 맞춘 줄임도 factory가 마쳤다.
+        const float left { context.slot.x };
+        const float top { context.slot.y };
+        const float width { context.slot.width };
+        const float height { context.slot.height };
         panel_->arrange({ { left, top, width, height }, scale });
 
         const float padding { dialog_padding * scale };
@@ -338,8 +341,28 @@ namespace gitman::ui {
 
     void font_dialog_element::draw(draw_context& context, const interaction_snapshot& interaction) const
     {
-        const rect_f box { bounds() };
-        context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), solid_paint(with_alpha(0xFF000000u, 0.45f)));
+        // 화면을 덮는 scrim은 host가 그린다 (설계 D2-A). 본체는 자식만 그린다.
         draw_children(context, interaction);
+    }
+
+    std::unique_ptr<luil::modal_host_element> make_font_dialog(const font_dialog_view& view, const float window_width, const float window_height)
+    {
+        // panel 논리 크기다. 창보다 크면 창에 맞춰 줄인다 (예전 arrange의 clamp 규칙
+        // 그대로 — 모양 보존).
+        float width { layout_font_dialog_width };
+        if (width > window_width)
+            width = window_width;
+        float height { layout_font_dialog_height };
+        if (height > window_height)
+            height = window_height;
+
+        dialog_host_spec spec {};
+        spec.owner = std::u8string { dialog_owner_font };
+        spec.content_width = width;
+        spec.content_height = height;
+        // 배경 클릭도 Esc도 취소다 — 예전 overlay의 배경 클릭 액션을 그대로 옮겼다.
+        spec.outside = make_logic_click(cancel_font_dialog_intent {});
+        spec.dismiss = make_logic_click(cancel_font_dialog_intent {});
+        return make_dialog_host(std::move(spec), std::make_unique<font_dialog_element>(view));
     }
 } // namespace gitman::ui

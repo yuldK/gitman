@@ -1,6 +1,7 @@
 #include "presentation/ui/notice_dialog_element.h"
 
 #include "luil/ui/dialog_elements.h"
+#include "presentation/ui/dialog_host.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/ui_actions.h"
 #include "presentation/ui/ui_common.h"
@@ -100,17 +101,17 @@ namespace gitman::ui {
         : ui_element { ui_element_id { kind_notice_dialog } }
         , dialog_ { dialog }
     {
-        // 배경 클릭은 닫기다.
-        set_action(ui_trigger::left_click, make_logic_click(dismiss_notice_intent {}));
-        // scrim은 마우스만의 자리다. 키보드 닫기는 Esc다 (설계 D1-B).
+        // 배경 클릭(닫기)은 host의 scrim이 맡는다 — `make_notice_dialog`의 outside다.
+        // 본체 자체는 Tab 자리가 아니다 (설계 D1-B). 키보드 닫기는 host의 Esc다.
         set_tab_stop(false);
 
         auto panel { std::make_unique<notice_panel_element>(dialog_) };
         panel_ = panel.get();
         add_child(std::move(panel));
 
-        // 확인은 강조 버튼이다. 기본 버튼(Enter) 표시는 dialog 뼈대와 함께 다룬다.
-        const luil::text_button_config confirm_config { .text = std::u8string { u8"확인" }, .visual = luil::text_button_visual::accent };
+        // 확인은 강조 버튼이자 이 dialog의 기본 버튼이다 — Enter가 여기로 간다
+        // (enter-default-design).
+        const luil::text_button_config confirm_config { .text = std::u8string { u8"확인" }, .visual = luil::text_button_visual::accent, .default_button = true };
         auto confirm { std::make_unique<luil::text_button_element>(ui_element_id { kind_notice_dialog_confirm }, confirm_config) };
         confirm->set_action(ui_trigger::left_click, make_logic_click(dismiss_notice_intent {}));
         confirm_ = confirm.get();
@@ -122,14 +123,11 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        float width { panel_width * scale };
-        float height { panel_height(dialog_.lines.size()) * scale };
-        if (width > context.slot.width)
-            width = context.slot.width;
-        if (height > context.slot.height)
-            height = context.slot.height;
-        const float left { context.slot.x + (context.slot.width - width) / 2.0f };
-        const float top { context.slot.y + (context.slot.height - height) / 2.0f };
+        // host가 창 가운데에 놓아 준 panel 상자를 그대로 받는다 (설계 D2-A).
+        const float left { context.slot.x };
+        const float top { context.slot.y };
+        const float width { context.slot.width };
+        const float height { context.slot.height };
         panel_->arrange({ { left, top, width, height }, scale });
 
         const float padding { panel_padding * scale };
@@ -138,8 +136,27 @@ namespace gitman::ui {
 
     void notice_dialog_element::draw(draw_context& context, const interaction_snapshot& interaction) const
     {
-        const rect_f box { bounds() };
-        context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), solid_paint(with_alpha(0xFF000000u, 0.45f)));
+        // 뒤를 덮는 scrim은 host가 그린다 (팔레트 `content_shadow`).
         draw_children(context, interaction);
+    }
+
+    std::unique_ptr<luil::modal_host_element> make_notice_dialog(const notice_dialog_view& view, const float window_width, const float window_height)
+    {
+        // 예전 arrange의 clamp 규칙 그대로다 — 창보다 크면 창 크기까지 줄인다.
+        float width { panel_width };
+        float height { panel_height(view.lines.size()) };
+        if (width > window_width)
+            width = window_width;
+        if (height > window_height)
+            height = window_height;
+
+        dialog_host_spec spec {};
+        spec.owner = std::u8string { dialog_owner_notice };
+        spec.content_width = width;
+        spec.content_height = height;
+        // 배경 클릭도 Esc도 닫기다 (예전 overlay의 left_click과 policy 사슬을 옮긴 것).
+        spec.outside = make_logic_click(dismiss_notice_intent {});
+        spec.dismiss = make_logic_click(dismiss_notice_intent {});
+        return make_dialog_host(std::move(spec), std::make_unique<notice_dialog_element>(view));
     }
 } // namespace gitman::ui

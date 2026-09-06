@@ -484,6 +484,8 @@ TEST_CASE("The toolbar settings button opens the dialog with or without a docume
 
 TEST_CASE("Escape closes the settings dialog before clearing the selection", "[ui][settings-ui]")
 {
+    // Esc는 host의 dismiss 액션이다 (설계 D2-A, modal-dialog-design.md). 앱 키 정책은
+    // dialog가 없을 때만 카드 선택을 푼다.
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
@@ -494,6 +496,56 @@ TEST_CASE("Escape closes the settings dialog before clearing the selection", "[u
     const auto* const message { gitman::testing::as_message(actions) };
     REQUIRE(message != nullptr);
     REQUIRE(std::holds_alternative<gitman::cancel_settings_dialog_intent>(*message));
+}
+
+TEST_CASE("The settings dialog stands in a luil modal host", "[ui][settings-ui][modal]")
+{
+    // C3-2: 본체는 host의 content이고 scrim·가운데 배치·초점 가둠·Esc는 host의 몫이다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+
+    REQUIRE(gitman::testing::find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_settings) != nullptr);
+    // 초점은 dialog 안에 갇힌다 — Tab이 뒤의 카드로 새지 않는다.
+    REQUIRE(tree->focus_trap() != nullptr);
+
+    // 배경 클릭은 이제 host의 scrim이 낸다.
+    const luil::ui_element* const scrim { gitman::testing::find(*tree, luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_settings) };
+    REQUIRE(scrim != nullptr);
+    const std::vector<luil::input_action> actions { click(*tree, scrim->id()) };
+    const auto* const message { gitman::testing::as_message(actions) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::cancel_settings_dialog_intent>(*message));
+
+    // 본체에는 배경 클릭 액션이 남아 있지 않고, 누름은 host가 흡수하게 세워 준다.
+    const luil::ui_element* const body { tree->find({ gitman::ui::kind_settings_dialog }) };
+    REQUIRE(body != nullptr);
+    REQUIRE(body->action(luil::ui_trigger::left_click) == nullptr);
+    REQUIRE(body->hit_opaque());
+}
+
+TEST_CASE("Enter in the timeout box runs the default save button", "[ui][settings-ui][timeout]")
+{
+    // 저장이 기본 버튼이라 텍스트 칸의 Enter가 그리로 흐른다 (enter-default-design.md).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+
+    const luil::ui_element* const confirm { tree->find({ gitman::ui::kind_settings_dialog_confirm }) };
+    REQUIRE(confirm != nullptr);
+    REQUIRE(confirm->default_button());
+    REQUIRE(confirm->enabled());
+
+    gitman::testing::interaction_harness harness { tree };
+    const luil::rect_f input { gitman::testing::bounds_of(*tree, gitman::ui::kind_settings_timeout_input) };
+    static_cast<void>(harness.process(luil::pointer_pressed_event { input.x + 2.0f, input.y + 2.0f, luil::pointer_button::left, at(0) }));
+    static_cast<void>(harness.process(luil::pointer_released_event { input.x + 2.0f, input.y + 2.0f, luil::pointer_button::left, at(10) }));
+    REQUIRE(harness.snapshot().focused_input.kind == gitman::ui::kind_settings_timeout_input);
+
+    const std::vector<luil::input_action> actions { harness.process(luil::key_pressed_event { luil::key_code::enter }) };
+    const auto* const message { gitman::testing::as_message(actions) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::confirm_settings_intent>(*message));
 }
 
 TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[ui][settings-ui][tabs]")
@@ -1216,6 +1268,78 @@ TEST_CASE("The wheel scrolls the settings dialog and the font dialog wins on top
 
     const auto font_actions { harness.process(luil::mouse_wheel_event { 640.0f, 200.0f, -120.0f }) };
     REQUIRE(gitman::testing::as_intent<gitman::font_dialog_scroll_intent>(font_actions) != nullptr);
+}
+
+TEST_CASE("The font dialog stands in a luil modal host", "[ui][settings-ui][font][modal]")
+{
+    // C3-2: 글꼴 dialog도 host의 content다. 배경 클릭은 host의 scrim이 낸다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code", u8"맑은 고딕" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { false });
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+
+    REQUIRE(gitman::testing::find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_font) != nullptr);
+    REQUIRE(tree->focus_trap() != nullptr);
+
+    const luil::ui_element* const scrim { gitman::testing::find(*tree, luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_font) };
+    REQUIRE(scrim != nullptr);
+    const std::vector<luil::input_action> actions { click(*tree, scrim->id()) };
+    const auto* const message { gitman::testing::as_message(actions) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::cancel_font_dialog_intent>(*message));
+
+    const luil::ui_element* const body { tree->find({ gitman::ui::kind_font_dialog }) };
+    REQUIRE(body != nullptr);
+    REQUIRE(body->action(luil::ui_trigger::left_click) == nullptr);
+    REQUIRE(body->hit_opaque());
+}
+
+TEST_CASE("Escape closes only the font dialog above the settings dialog", "[ui][settings-ui][font][modal]")
+{
+    // 가둠이 겹치면 마지막에 그린 가둠이 Esc를 받는다 (modal-dialog-design.md).
+    // 환경설정은 그대로 남고 글꼴 dialog만 닫힌다.
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code", u8"맑은 고딕" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { false });
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    REQUIRE(gitman::testing::find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_settings) != nullptr);
+    REQUIRE(gitman::testing::find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_font) != nullptr);
+
+    gitman::testing::interaction_harness harness { tree };
+    const std::vector<luil::input_action> actions { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
+    REQUIRE(actions.size() == 1u);
+    const auto* const message { gitman::testing::as_message(actions) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::cancel_font_dialog_intent>(*message));
+}
+
+TEST_CASE("Enter in the font query box runs the default pick button", "[ui][settings-ui][font]")
+{
+    // 선택이 기본 버튼이라 질의 칸의 Enter가 그리로 흐른다 (enter-default-design.md).
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::font_families_event { { u8"Cascadia Code", u8"맑은 고딕" } });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::open_font_dialog_intent { true });
+    fixture.controller.handle(gitman::select_font_family_intent { 0u });
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+
+    const luil::ui_element* const confirm { tree->find({ gitman::ui::kind_font_dialog_confirm }) };
+    REQUIRE(confirm != nullptr);
+    REQUIRE(confirm->default_button());
+    REQUIRE(confirm->enabled());
+
+    gitman::testing::interaction_harness harness { tree };
+    const luil::rect_f query { gitman::testing::bounds_of(*tree, gitman::ui::kind_font_dialog_query_input) };
+    static_cast<void>(harness.process(luil::pointer_pressed_event { query.x + 2.0f, query.y + 2.0f, luil::pointer_button::left, at(0) }));
+    static_cast<void>(harness.process(luil::pointer_released_event { query.x + 2.0f, query.y + 2.0f, luil::pointer_button::left, at(10) }));
+    REQUIRE(harness.snapshot().focused_input.kind == gitman::ui::kind_font_dialog_query_input);
+
+    const std::vector<luil::input_action> actions { harness.process(luil::key_pressed_event { luil::key_code::enter }) };
+    const auto* const message { gitman::testing::as_message(actions) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::confirm_font_dialog_intent>(*message));
 }
 
 TEST_CASE("A clamped dialog keeps a margin from the client edges", "[ui][settings-ui][scroll]")

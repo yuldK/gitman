@@ -319,4 +319,14 @@ namespace gitman::ui {
     inline constexpr std::u8string_view scrollbar_owner_local_changes_list { u8"local-changes-list" };
     inline constexpr std::u8string_view scrollbar_owner_local_changes_diff { u8"local-changes-diff" };
     inline constexpr std::u8string_view scrollbar_owner_discovery_dialog { u8"discovery" };
+
+    // luil `modal_host_element`(scrim 포함)가 쓰는 owner 문자열이다. dialog 7종을 가른다
+    // (설계 L6, D2-A). 본체 element의 kind(`kind_*_dialog`)는 그대로다.
+    inline constexpr std::u8string_view dialog_owner_notice { u8"notice" };
+    inline constexpr std::u8string_view dialog_owner_switch { u8"switch" };
+    inline constexpr std::u8string_view dialog_owner_settings { u8"settings" };
+    inline constexpr std::u8string_view dialog_owner_generate { u8"generate" };
+    inline constexpr std::u8string_view dialog_owner_font { u8"font" };
+    inline constexpr std::u8string_view dialog_owner_discovery { u8"discovery" };
+    inline constexpr std::u8string_view dialog_owner_local_changes { u8"local-changes" };
 } // namespace gitman::ui

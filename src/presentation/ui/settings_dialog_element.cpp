@@ -1,6 +1,7 @@
 #include "presentation/ui/settings_dialog_element.h"
 
 #include "presentation/list_metrics.h"
+#include "presentation/ui/dialog_host.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/ui_actions.h"
 
@@ -883,21 +884,19 @@ namespace gitman::ui {
         return metrics;
     }
 
-    settings_dialog_element::settings_dialog_element(settings_dialog_view dialog, const float scale, const float window_height)
+    settings_dialog_element::settings_dialog_element(settings_dialog_view dialog, const float window_height)
         : ui_element { ui_element_id { kind_settings_dialog } }
         , dialog_ { std::move(dialog) }
     {
-        // 배경 클릭은 취소다.
-        set_action(ui_trigger::left_click, make_logic_click(cancel_settings_dialog_intent {}));
-        // scrim은 마우스만의 자리다. 키보드 취소는 Esc이고, Tab은 탭 rail·토글·
-        // 배지·버튼 같은 dialog 컨트롤만 돈다 (설계 D1-B).
+        // 배경 클릭(취소)은 host의 scrim이 맡는다 — 본체에는 액션을 걸지 않는다
+        // (설계 D2-A). 누름 흡수도 host의 `set_content`가 걸어 준다.
+        // 본체는 판일 뿐이라 Tab 자리가 아니다. Tab은 탭 rail·토글·배지·버튼 같은
+        // dialog 컨트롤만 돈다 (설계 D1-B).
         set_tab_stop(false);
 
         const std::vector<tab_model> tabs { build_tabs(dialog_) };
         const std::size_t accent_count { luil::accent_catalog().size() };
-        const float effective { scale > 0.0f ? scale : 1.0f };
-        metrics_ = settings_dialog_metrics(dialog_, window_height / effective);
-        panel_height_ = chrome_height + metrics_.panel_content_height;
+        metrics_ = settings_dialog_metrics(dialog_, window_height);
 
         const tab_model& active { active_tab(tabs, dialog_.active_tab) };
 
@@ -1039,7 +1038,10 @@ namespace gitman::ui {
 
         auto confirm {
             std::make_unique<luil::text_button_element>(
-                ui_element_id { kind_settings_dialog_confirm }, luil::text_button_config { .text = std::u8string { u8"저장" }, .visual = luil::text_button_visual::accent }),
+                ui_element_id { kind_settings_dialog_confirm },
+                // Enter의 기본 자리다 — 제한 시간 칸에서 Enter를 쳐도 저장으로 간다
+                // (enter-default-design.md).
+                luil::text_button_config { .text = std::u8string { u8"저장" }, .visual = luil::text_button_visual::accent, .default_button = true }),
         };
         confirm->set_enabled(dialog_.can_confirm);
         confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_settings_intent {}));
@@ -1075,17 +1077,13 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        float width { panel_width * scale };
-        float height { panel_height_ * scale };
-        if (width > context.slot.width)
-            width = context.slot.width;
-        // 창이 낮아도 클라이언트 위아래에 딱 붙지 않게 여백을 남긴다. 스크롤 한계를
-        // 세는 `viewport_height_for`와 **같은 함수**를 쓴다.
-        const float available_height { dialog_available_height(context.slot.height / scale) * scale };
-        if (height > available_height)
-            height = available_height;
-        const float left { context.slot.x + (context.slot.width - width) / 2.0f };
-        const float top { context.slot.y + (context.slot.height - height) / 2.0f };
+        // `context.slot`이 곧 panel 상자다 — host가 `make_settings_dialog`가 준 논리
+        // 크기를 창 가운데에 놓아 건네준다 (설계 D2-A). 창보다 크지 않게 줄이는
+        // 일도 factory가 이미 마쳤다.
+        const float left { context.slot.x };
+        const float top { context.slot.y };
+        const float width { context.slot.width };
+        const float height { context.slot.height };
         const float padding { panel_padding * scale };
 
         auto* const panel { static_cast<settings_panel_element*>(panel_) };
@@ -1223,9 +1221,31 @@ namespace gitman::ui {
 
     void settings_dialog_element::draw(draw_context& context, const interaction_snapshot& interaction) const
     {
-        const rect_f box { bounds() };
-        // 화면 전체를 어둡게 덮어 뒤 내용이 비활성임을 보인다.
-        context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), solid_paint(with_alpha(0xFF000000u, 0.45f)));
+        // 화면을 덮는 scrim은 host가 그린다 (설계 D2-A). 본체는 자식만 그린다.
         draw_children(context, interaction);
+    }
+
+    std::unique_ptr<luil::modal_host_element> make_settings_dialog(const settings_dialog_view& view, const float window_width, const float window_height)
+    {
+        // panel 논리 크기다. 높이는 가장 높은 탭에 맞춘 뒤(S1.3) 창 위아래 여백을 뺀
+        // 만큼으로 자른다 — 스크롤 한계를 세는 `viewport_height_for`와 **같은 함수**를
+        // 쓴다.
+        const settings_dialog_scroll_metrics metrics { settings_dialog_metrics(view, window_height) };
+        float width { panel_width };
+        if (width > window_width)
+            width = window_width;
+        float height { chrome_height + metrics.panel_content_height };
+        const float available_height { dialog_available_height(window_height) };
+        if (height > available_height)
+            height = available_height;
+
+        dialog_host_spec spec {};
+        spec.owner = std::u8string { dialog_owner_settings };
+        spec.content_width = width;
+        spec.content_height = height;
+        // 배경 클릭도 Esc도 취소다 — 예전 overlay의 배경 클릭 액션을 그대로 옮겼다.
+        spec.outside = make_logic_click(cancel_settings_dialog_intent {});
+        spec.dismiss = make_logic_click(cancel_settings_dialog_intent {});
+        return make_dialog_host(std::move(spec), std::make_unique<settings_dialog_element>(view, window_height));
     }
 } // namespace gitman::ui

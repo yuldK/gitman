@@ -185,6 +185,10 @@ TEST_CASE("The dialog tree exposes rows, the diff pane, and close paths", "[ui][
     REQUIRE(find(*tree, gitman::ui::kind_local_changes_dialog) != nullptr);
     REQUIRE(find(*tree, gitman::ui::kind_local_changes_diff) != nullptr);
 
+    // D2-A: 본체는 luil modal host의 content이고 초점은 그 안에 갇힌다.
+    REQUIRE(find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_local_changes) != nullptr);
+    REQUIRE(tree->focus_trap() != nullptr);
+
     // 행 클릭은 선택 intent다.
     const auto selected_actions { click_action(*tree, gitman::ui::local_changes_item_id(1)) };
     const auto* const selected { as_intent<gitman::select_local_change_intent>(selected_actions) };
@@ -193,11 +197,13 @@ TEST_CASE("The dialog tree exposes rows, the diff pane, and close paths", "[ui][
 
     // 닫기 버튼과 배경(scrim) 클릭은 둘 다 dialog 닫기다.
     REQUIRE(as_intent<gitman::cancel_local_changes_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_local_changes_dialog_close, u8"alpha"))) != nullptr);
-    REQUIRE(as_intent<gitman::cancel_local_changes_dialog_intent>(click_action(*tree, id_of(gitman::ui::kind_local_changes_dialog))) != nullptr);
+    REQUIRE(
+        as_intent<gitman::cancel_local_changes_dialog_intent>(click_action(*tree, id_of(luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_local_changes))) != nullptr);
 
-    // D1-B: 변경 행과 그 안의 열기 아이콘, scrim은 Tab 자리가 아니다.
+    // D1-B: 변경 행과 그 안의 열기 아이콘, 본체와 scrim은 Tab 자리가 아니다.
     REQUIRE(tree->find(gitman::ui::local_changes_item_id(1))->tab_stop() == false);
     REQUIRE(find(*tree, gitman::ui::kind_local_changes_dialog)->tab_stop() == false);
+    REQUIRE(find(*tree, luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_local_changes)->tab_stop() == false);
     REQUIRE(find(*tree, gitman::ui::kind_local_changes_open_vscode, gitman::ui::local_changes_item_id(1).owner)->tab_stop() == false);
     REQUIRE(find(*tree, gitman::ui::kind_local_changes_open_explorer, gitman::ui::local_changes_item_id(1).owner)->tab_stop() == false);
     REQUIRE(find(*tree, gitman::ui::kind_local_changes_dialog_close, u8"alpha")->tab_stop());
@@ -209,7 +215,7 @@ TEST_CASE("The dialog tree exposes rows, the diff pane, and close paths", "[ui][
     REQUIRE(as_intent<gitman::local_changes_diff_scroll_intent>(harness.process(luil::mouse_wheel_event { diff.x + 5.0f, diff.y + 5.0f, -120.0f })) != nullptr);
     REQUIRE(as_intent<gitman::local_changes_scroll_intent>(harness.process(luil::mouse_wheel_event { diff.x + 5.0f, diff.y - 60.0f, -120.0f })) != nullptr);
 
-    // Esc는 dialog 닫기다 (policy의 dialog 사슬).
+    // Esc는 dialog 닫기다 (host의 dismiss 액션, D2-A).
     REQUIRE(as_intent<gitman::cancel_local_changes_dialog_intent>(harness.process(luil::key_pressed_event { luil::key_code::escape })) != nullptr);
 }
 

@@ -1,6 +1,7 @@
 #include "presentation/ui/discovery_dialog_element.h"
 
 #include "presentation/list_metrics.h"
+#include "presentation/ui/dialog_host.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/ui_actions.h"
 
@@ -262,13 +263,13 @@ namespace gitman::ui {
         return { kind_discovery_dialog_item, item_owner_value(index) };
     }
 
-    discovery_dialog_element::discovery_dialog_element(const discovery_dialog_view& dialog, const float)
+    discovery_dialog_element::discovery_dialog_element(const discovery_dialog_view& dialog)
         : ui_element { ui_element_id { kind_discovery_dialog } }
         , dialog_ { dialog }
     {
-        // 배경 클릭은 취소다 (등록 실행 중에는 logic이 무시한다).
-        set_action(ui_trigger::left_click, make_logic_click(cancel_discovery_dialog_intent {}));
-        // scrim은 마우스만의 자리다. 키보드 취소는 Esc다 (설계 D1-B).
+        // 배경 클릭(취소)은 host의 scrim이 받는다 (설계 D2-A). 본체는 자기 자리의
+        // 누름을 흡수하기만 한다 — 흡수는 host의 `set_content`가 걸어 준다.
+        // 본체는 Tab 자리가 아니다. 초점은 안의 버튼이 받는다 (설계 D1-B).
         set_tab_stop(false);
 
         auto panel { std::make_unique<discovery_panel_element>(dialog_) };
@@ -280,7 +281,10 @@ namespace gitman::ui {
 
         auto confirm {
             std::make_unique<luil::text_button_element>(
-                ui_element_id { kind_discovery_dialog_confirm }, luil::text_button_config { .text = std::u8string { u8"선택 등록" }, .visual = luil::text_button_visual::accent }),
+                ui_element_id { kind_discovery_dialog_confirm },
+                // Enter의 기본 자리다 (luil enter-default-design). 목록에 초점이 없으면
+                // Enter가 등록을 실행한다.
+                luil::text_button_config { .text = std::u8string { u8"선택 등록" }, .visual = luil::text_button_visual::accent, .default_button = true }),
         };
         confirm->set_enabled(dialog_.can_confirm);
         confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_discovery_intent {}));
@@ -319,15 +323,12 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        float width { layout_discovery_dialog_width * scale };
-        float height { layout_discovery_dialog_height * scale };
-        if (width > context.slot.width)
-            width = context.slot.width;
-        if (height > context.slot.height)
-            height = context.slot.height;
-        const float left { context.slot.x + (context.slot.width - width) / 2.0f };
-        const float top { context.slot.y + (context.slot.height - height) / 2.0f };
-        panel_->arrange({ { left, top, width, height }, scale });
+        // 받은 자리가 곧 panel 상자다 — 크기와 가운데 배치는 host가 끝냈다.
+        const float left { context.slot.x };
+        const float top { context.slot.y };
+        const float width { context.slot.width };
+        const float height { context.slot.height };
+        panel_->arrange({ context.slot, scale });
 
         const float padding { dialog_padding * scale };
         auto* const panel { static_cast<discovery_panel_element*>(panel_) };
@@ -364,8 +365,28 @@ namespace gitman::ui {
 
     void discovery_dialog_element::draw(draw_context& context, const interaction_snapshot& interaction) const
     {
-        const rect_f box { bounds() };
-        context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), solid_paint(with_alpha(0xFF000000u, 0.45f)));
+        // 뒤를 덮는 scrim은 host가 그린다. 본체는 자식(panel·버튼·막대)만 그린다.
         draw_children(context, interaction);
+    }
+
+    std::unique_ptr<luil::modal_host_element> make_discovery_dialog(const discovery_dialog_view& view, const float window_width, const float window_height)
+    {
+        // panel의 논리 크기다. 창보다 크면 창에 맞춰 줄인다 (예전 arrange의 clamp 규칙
+        // 그대로 — 모양 보존).
+        float width { layout_discovery_dialog_width };
+        if (width > window_width)
+            width = window_width;
+        float height { layout_discovery_dialog_height };
+        if (height > window_height)
+            height = window_height;
+
+        dialog_host_spec spec {};
+        spec.owner = std::u8string { dialog_owner_discovery };
+        spec.content_width = width;
+        spec.content_height = height;
+        // 배경 클릭과 Esc가 모두 취소다 (등록 실행 중에는 logic이 무시한다).
+        spec.outside = make_logic_click(cancel_discovery_dialog_intent {});
+        spec.dismiss = make_logic_click(cancel_discovery_dialog_intent {});
+        return make_dialog_host(std::move(spec), std::make_unique<discovery_dialog_element>(view));
     }
 } // namespace gitman::ui

@@ -323,6 +323,11 @@ TEST_CASE("The discovery dialog elements register toggles and actions", "[ui][di
 
     REQUIRE(find(*tree, gitman::ui::kind_discovery_dialog) != nullptr);
 
+    // 뼈대는 luil `modal_host_element`다 (설계 D2-A). host가 scrim·가운데 배치·초점
+    // 가둠을 맡고 본체는 panel과 버튼만 그린다.
+    REQUIRE(find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_discovery) != nullptr);
+    REQUIRE(tree->focus_trap() != nullptr);
+
     // 후보 행 클릭은 index를 담은 toggle intent다.
     const std::vector<luil::input_action> toggle { click(*tree, gitman::ui::discovery_dialog_item_id(0)) };
     const auto* const toggle_intent { as_intent<gitman::toggle_discovery_candidate_intent>(toggle) };
@@ -343,6 +348,24 @@ TEST_CASE("The discovery dialog elements register toggles and actions", "[ui][di
     const gitman::logic_message* const confirm_message { as_message(confirm) };
     REQUIRE(confirm_message != nullptr);
     REQUIRE(std::holds_alternative<gitman::confirm_discovery_intent>(*confirm_message));
+
+    // 등록 버튼이 Enter의 기본 자리다 (luil enter-default-design).
+    REQUIRE(find(*tree, gitman::ui::kind_discovery_dialog_confirm)->default_button());
+    REQUIRE(tree->default_button() == find(*tree, gitman::ui::kind_discovery_dialog_confirm));
+}
+
+TEST_CASE("Clicking the discovery scrim cancels the dialog", "[ui][discovery-ui]")
+{
+    discovery_fixture fixture {};
+    fixture.deliver_candidates({ make_candidate(u8"repo-a", gitman::repository_kind::git) });
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+
+    // 배경 클릭은 이제 host의 scrim이 받는다. 본체에는 배경 액션이 없다.
+    const std::vector<luil::input_action> outside { click(*tree, id_of(luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_discovery)) };
+    const gitman::logic_message* const outside_message { as_message(outside) };
+    REQUIRE(outside_message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::cancel_discovery_dialog_intent>(*outside_message));
+    REQUIRE(find(*tree, gitman::ui::kind_discovery_dialog)->action(luil::ui_trigger::left_click) == nullptr);
 }
 
 TEST_CASE("The toolbar discover button requests the folder picker only with a document", "[ui][discovery-ui]")
@@ -410,6 +433,7 @@ TEST_CASE("Escape closes the discovery dialog and the wheel scrolls its list", "
     fixture.deliver_candidates({ make_candidate(u8"repo-a", gitman::repository_kind::git) });
     gitman::testing::interaction_harness harness { make_tree(*fixture.controller.make_view_snapshot()) };
 
+    // Esc는 host의 dismiss가 낸다 (설계 D2-A). 앱 policy의 dialog 사슬은 없다.
     const std::vector<luil::input_action> escape { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
     const gitman::logic_message* const escape_message { as_message(escape) };
     REQUIRE(escape_message != nullptr);

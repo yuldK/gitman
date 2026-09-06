@@ -103,16 +103,23 @@ TEST_CASE("The notice dialog draws above the other dialogs and closes on click o
     REQUIRE(dialog != nullptr);
     REQUIRE(find(*tree, gitman::ui::kind_settings_dialog) != nullptr);
 
-    // 확인 버튼과 배경 클릭이 모두 닫기다.
+    // D2-A: 본체는 luil modal host의 content이고 초점은 그 안에 갇힌다.
+    REQUIRE(find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_notice) != nullptr);
+    REQUIRE(tree->focus_trap() != nullptr);
+
+    // 확인 버튼과 배경(scrim) 클릭이 모두 닫기다.
     const luil::ui_element* const confirm { find(*tree, gitman::ui::kind_notice_dialog_confirm) };
     REQUIRE(confirm != nullptr);
     const std::vector<luil::input_action> confirmed { invoke_click(*confirm) };
     REQUIRE(as_intent<gitman::dismiss_notice_intent>(confirmed) != nullptr);
-    const std::vector<luil::input_action> background { invoke_click(*dialog) };
+    const luil::ui_element* const scrim { find(*tree, luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_notice) };
+    REQUIRE(scrim != nullptr);
+    const std::vector<luil::input_action> background { invoke_click(*scrim) };
     REQUIRE(as_intent<gitman::dismiss_notice_intent>(background) != nullptr);
 
-    // D1-B: scrim은 Tab 자리가 아니고 확인 버튼만 자리다.
+    // D1-B: 본체도 scrim도 Tab 자리가 아니고 확인 버튼만 자리다.
     REQUIRE(dialog->tab_stop() == false);
+    REQUIRE(scrim->tab_stop() == false);
     REQUIRE(confirm->tab_stop());
 
     // 알림은 환경설정 위에 있으므로 hit test와 Esc 모두 알림이 먼저 가져간다.
@@ -122,6 +129,22 @@ TEST_CASE("The notice dialog draws above the other dialogs and closes on click o
     interaction_harness harness { tree };
     const std::vector<luil::input_action> escaped { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
     REQUIRE(as_intent<gitman::dismiss_notice_intent>(escaped) != nullptr);
+}
+
+TEST_CASE("The notice dialog's confirm button is the default button for Enter", "[ui][notice]")
+{
+    notice_fixture fixture {};
+    fixture.show_notice();
+
+    const std::shared_ptr<const luil::ui_tree> tree { make_tree(*fixture.view()) };
+    const luil::ui_element* const confirm { find(*tree, gitman::ui::kind_notice_dialog_confirm) };
+    REQUIRE(confirm != nullptr);
+    REQUIRE(tree->default_button() == confirm);
+
+    // 초점을 아무 데도 두지 않아도 Enter가 기본 버튼으로 흐른다 (enter-default-design).
+    interaction_harness harness { tree };
+    const std::vector<luil::input_action> entered { harness.process(luil::key_pressed_event { luil::key_code::enter }) };
+    REQUIRE(as_intent<gitman::dismiss_notice_intent>(entered) != nullptr);
 }
 
 TEST_CASE("Closing a document returns to the start page and keeps the recent list", "[logic][close-document]")

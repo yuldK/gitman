@@ -2,6 +2,7 @@
 
 #include "presentation/diff_presentation.h"
 #include "presentation/list_metrics.h"
+#include "presentation/ui/dialog_host.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/ui_actions.h"
 
@@ -350,13 +351,12 @@ namespace gitman::ui {
         return ui_element_id { kind_local_changes_item, item_owner_value(index) };
     }
 
-    local_changes_dialog_element::local_changes_dialog_element(local_changes_dialog_view dialog, const float)
+    local_changes_dialog_element::local_changes_dialog_element(local_changes_dialog_view dialog)
         : ui_element { ui_element_id { kind_local_changes_dialog } }
         , dialog_ { std::move(dialog) }
     {
-        // 배경 클릭은 닫기다.
-        set_action(ui_trigger::left_click, make_logic_click(cancel_local_changes_dialog_intent {}));
-        // scrim은 마우스만의 자리다. 키보드 닫기는 Esc다 (설계 D1-B).
+        // 배경 클릭(닫기)은 host의 scrim이 맡는다 — `make_local_changes_dialog`의 outside다.
+        // 본체 자체는 Tab 자리가 아니다 (설계 D1-B). 키보드 닫기는 host의 Esc다.
         set_tab_stop(false);
 
         auto panel { std::make_unique<local_changes_panel_element>(dialog_) };
@@ -417,14 +417,11 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        float width { layout_local_changes_dialog_width * scale };
-        float height { layout_local_changes_dialog_height * scale };
-        if (width > context.slot.width)
-            width = context.slot.width;
-        if (height > context.slot.height)
-            height = context.slot.height;
-        const float left { context.slot.x + (context.slot.width - width) / 2.0f };
-        const float top { context.slot.y + (context.slot.height - height) / 2.0f };
+        // host가 창 가운데에 놓아 준 panel 상자를 그대로 받는다 (설계 D2-A).
+        const float left { context.slot.x };
+        const float top { context.slot.y };
+        const float width { context.slot.width };
+        const float height { context.slot.height };
         panel_->arrange({ { left, top, width, height }, scale });
 
         const float padding { dialog_padding * scale };
@@ -460,9 +457,27 @@ namespace gitman::ui {
 
     void local_changes_dialog_element::draw(draw_context& context, const interaction_snapshot& interaction) const
     {
-        const rect_f box { bounds() };
-        // 화면 전체를 어둡게 덮어 뒤 내용이 비활성임을 보인다.
-        context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), solid_paint(with_alpha(0xFF000000u, 0.45f)));
+        // 화면 전체를 덮는 scrim은 host가 그린다 (팔레트 `content_shadow`).
         draw_children(context, interaction);
+    }
+
+    std::unique_ptr<luil::modal_host_element> make_local_changes_dialog(const local_changes_dialog_view& view, const float window_width, const float window_height)
+    {
+        // 예전 arrange의 clamp 규칙 그대로다 — 창보다 크면 창 크기까지 줄인다.
+        float width { layout_local_changes_dialog_width };
+        float height { layout_local_changes_dialog_height };
+        if (width > window_width)
+            width = window_width;
+        if (height > window_height)
+            height = window_height;
+
+        dialog_host_spec spec {};
+        spec.owner = std::u8string { dialog_owner_local_changes };
+        spec.content_width = width;
+        spec.content_height = height;
+        // 배경 클릭도 Esc도 닫기다 (예전 overlay의 left_click과 policy 사슬을 옮긴 것).
+        spec.outside = make_logic_click(cancel_local_changes_dialog_intent {});
+        spec.dismiss = make_logic_click(cancel_local_changes_dialog_intent {});
+        return make_dialog_host(std::move(spec), std::make_unique<local_changes_dialog_element>(view));
     }
 } // namespace gitman::ui

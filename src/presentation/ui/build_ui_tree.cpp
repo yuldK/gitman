@@ -127,48 +127,61 @@ namespace gitman::ui {
 
                 // overlay와 dialog는 맨 마지막 자식이라 모든 것 위에 그려지고 hit
                 // test도 먼저 걸린다. 창 이동은 비클라이언트 경로라 계속 동작한다.
+                //
+                // dialog 하나하나가 luil `modal_host_element`다 (설계 D2-A). host가
+                // scrim·가운데 배치·초점 가둠·Esc를 맡고 gitman element는 그 안의
+                // content다. 그래서 **추가 순서가 곧 Esc 우선순위**다 — luil은 그리기
+                // 순서상 마지막 가둠에 Esc를 준다. 목표 우선순위(notice >
+                // local_changes > discovery > generate > font > settings > switch)를
+                // 뒤집어 단다.
+                //
+                // factory에 넘기는 창 크기는 **논리 픽셀**이다 (설계 L4). host가
+                // 자기 arrange에서 배율을 곱한다.
+                const float dialog_scale { view.scale > 0.0f ? view.scale : 1.0f };
+                const float logical_width { view.window_width / dialog_scale };
+                const float logical_height { view.window_height / dialog_scale };
                 if (view.switch_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<switch_dialog_element>(*view.switch_dialog, view.scale, view.window_height) };
+                    auto dialog { make_switch_dialog(*view.switch_dialog, logical_width, logical_height) };
                     switch_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
                 if (view.settings_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<settings_dialog_element>(*view.settings_dialog, view.scale, view.window_height) };
+                    auto dialog { make_settings_dialog(*view.settings_dialog, logical_width, logical_height) };
                     settings_dialog_ = dialog.get();
-                    add_child(std::move(dialog));
-                }
-                // 새 문서 만들기 dialog다 (F3).
-                if (view.generate_dialog.has_value())
-                {
-                    auto dialog { std::make_unique<generate_document_dialog_element>(*view.generate_dialog) };
-                    generate_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
                 // 글꼴 선택 dialog는 환경설정 위에 뜬다 (F2.5).
                 if (view.font_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<font_dialog_element>(*view.font_dialog, view.scale) };
+                    auto dialog { make_font_dialog(*view.font_dialog, logical_width, logical_height) };
                     font_dialog_ = dialog.get();
+                    add_child(std::move(dialog));
+                }
+                // 새 문서 만들기 dialog다 (F3).
+                if (view.generate_dialog.has_value())
+                {
+                    auto dialog { make_generate_document_dialog(*view.generate_dialog, logical_width, logical_height) };
+                    generate_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
                 if (view.discovery_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<discovery_dialog_element>(*view.discovery_dialog, view.scale) };
+                    auto dialog { make_discovery_dialog(*view.discovery_dialog, logical_width, logical_height) };
                     discovery_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
                 if (view.local_changes_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<local_changes_dialog_element>(*view.local_changes_dialog, view.scale) };
+                    auto dialog { make_local_changes_dialog(*view.local_changes_dialog, logical_width, logical_height) };
                     local_changes_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
                 // 알림은 다른 dialog 위, 컨텍스트 메뉴 아래다 (app-shell-design A3.2).
                 if (view.notice_dialog.has_value())
                 {
-                    auto dialog { std::make_unique<notice_dialog_element>(*view.notice_dialog) };
+                    auto dialog { make_notice_dialog(*view.notice_dialog, logical_width, logical_height) };
                     notice_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
@@ -200,14 +213,16 @@ namespace gitman::ui {
                 card_list_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale, context.scroll_offset });
                 if (log_pane_ != nullptr)
                     log_pane_->arrange({ { 0.0f, layout.log_top, context.slot.width, layout.log_height }, scale });
+                // dialog host는 창 slot을 통째로 받는다 — scrim이 그것을 덮고 본체는
+                // host가 가운데에 놓는다 (설계 D2-A).
                 if (switch_dialog_ != nullptr)
                     switch_dialog_->arrange({ context.slot, scale });
                 if (settings_dialog_ != nullptr)
                     settings_dialog_->arrange({ context.slot, scale });
-                if (generate_dialog_ != nullptr)
-                    generate_dialog_->arrange({ context.slot, scale });
                 if (font_dialog_ != nullptr)
                     font_dialog_->arrange({ context.slot, scale });
+                if (generate_dialog_ != nullptr)
+                    generate_dialog_->arrange({ context.slot, scale });
                 if (discovery_dialog_ != nullptr)
                     discovery_dialog_->arrange({ context.slot, scale });
                 if (local_changes_dialog_ != nullptr)

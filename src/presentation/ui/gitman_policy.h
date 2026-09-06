@@ -12,9 +12,13 @@ namespace gitman::ui {
     // 칸인지, 휠이 무엇을 스크롤하는지, 메뉴 kind 짝이 무엇인지, 남은 키가 어떤
     // intent가 되는지를 앱이 답한다.
     //
-    // 예전 `interaction_controller`가 들고 있던 것 중 앱의 몫만 남았다: 휠 라우팅,
-    // 카드 목록의 키보드 초점, dialog Esc 사슬. 텍스트 칸 키·클립보드·메뉴 탐색·
-    // Tab·활성 키·drag 중 Esc는 luil controller가 이미 처리한다.
+    // 예전 `interaction_controller`가 들고 있던 것 중 앱의 몫만 남았다: 휠 라우팅과
+    // 카드 목록의 키보드 초점. 텍스트 칸 키·클립보드·메뉴 탐색·Tab·활성 키·drag 중
+    // Esc는 luil controller가 이미 처리한다.
+    //
+    // dialog Esc 사슬도 여기 없다 (설계 D2-A): dialog마다 luil `modal_host_element`가
+    // 서 있어 controller가 그 가둠의 dismiss를 먼저 낸다. 남은 Esc는 dialog가 하나도
+    // 없을 때의 카드 선택 해제뿐이다.
     //
     // Tab 자리는 D1-B다 (설계 4장): 버튼·dialog 컨트롤·텍스트 칸만 자리이고 카드
     // body·root·메뉴·목록 행은 element 쪽에서 `set_tab_stop(false)`로 빠졌다.

@@ -10,15 +10,11 @@
 namespace gitman::ui {
     namespace {
         // dialog가 tree에 있는지만 본다. 포인터 자리는 묻지 않는다 — 열린 dialog는
-        // 화면을 가두므로 휠·Esc가 그 dialog의 것이다.
+        // 화면을 가두므로 휠이 그 dialog의 것이다. Esc는 여기까지 오지 않는다
+        // (luil `modal_host_element`가 먼저 받는다).
         [[nodiscard]] bool tree_has(const luil::ui_tree& tree, const luil::ui_element_kind kind)
         {
             return tree.find(luil::ui_element_id { kind }) != nullptr;
-        }
-
-        [[nodiscard]] bool tree_has(const luil::ui_tree* const tree, const luil::ui_element_kind kind)
-        {
-            return tree != nullptr && tree_has(*tree, kind);
         }
     } // namespace
 
@@ -185,23 +181,13 @@ namespace gitman::ui {
                 return {};
             return { make_logic_action(refresh_all_intent {}) };
         case luil::key_code::escape:
-            // 열린 dialog·overlay가 있으면 닫기가 먼저다. 알림은 다른 dialog 위에
-            // 뜨므로 가장 먼저 닫힌다 (app-shell-design A3.2).
-            if (tree_has(tree, kind_notice_dialog))
-                return { make_logic_action(dismiss_notice_intent {}) };
-            if (tree_has(tree, kind_local_changes_dialog))
-                return { make_logic_action(cancel_local_changes_dialog_intent {}) };
-            if (tree_has(tree, kind_discovery_dialog))
-                return { make_logic_action(cancel_discovery_dialog_intent {}) };
-            if (tree_has(tree, kind_generate_dialog))
-                return { make_logic_action(cancel_generate_document_intent {}) };
-            // 글꼴 선택 dialog가 환경설정 위에 있으므로 먼저 닫는다.
-            if (tree_has(tree, kind_font_dialog))
-                return { make_logic_action(cancel_font_dialog_intent {}) };
-            if (tree_has(tree, kind_settings_dialog))
-                return { make_logic_action(cancel_settings_dialog_intent {}) };
-            if (tree_has(tree, kind_switch_dialog))
-                return { make_logic_action(cancel_switch_dialog_intent {}) };
+            // 열린 dialog의 Esc는 여기까지 오지 않는다. dialog마다 luil
+            // `modal_host_element`가 서 있고 controller의 `process_dismiss_key`가
+            // 가둠의 dismiss 액션을 먼저 낸다 (설계 D2-A). 어느 dialog가 임자인지는
+            // 그리기 순서가 정하므로 우선순위도 tree를 짓는 순서에 산다 — 앱이
+            // 사슬을 따로 들면 두 곳이 반드시 어긋난다.
+            //
+            // 그래서 여기 남는 것은 가둠이 하나도 없을 때의 몫뿐이다: 카드 선택 해제.
             focused_card_.reset();
             return { make_logic_action(select_card_intent {}) };
         default:

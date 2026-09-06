@@ -156,6 +156,7 @@ add_library(gitman_lib STATIC
     presentation/ui/card_list_element.h
     presentation/ui/context_menu_element.cpp
     presentation/ui/context_menu_element.h
+    presentation/ui/dialog_host.h
     presentation/ui/discovery_dialog_element.cpp
     presentation/ui/discovery_dialog_element.h
     presentation/ui/element_kinds.h

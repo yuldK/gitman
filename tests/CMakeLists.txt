@@ -28,6 +28,7 @@ add_executable(gitman_tests
     domain_model_tests.cpp
     element_kinds_tests.cpp
     file_association_tests.cpp
+    generate_document_dialog_tests.cpp
     git_command_builder_tests.cpp
     git_integration_tests.cpp
     git_network_tests.cpp

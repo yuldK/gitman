@@ -4,10 +4,14 @@
 #include "presentation/ui/element_kinds.h"
 
 #include "luil/ui/ui_element_id.h"
+#include "luil/ui/ui_events.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <string>
+#include <variant>
+#include <vector>
 
 namespace {
     namespace ui = gitman::ui;
@@ -173,4 +177,80 @@ TEST_CASE("Card drag slot and offset share one insertion formula", "[ui][tree][d
     // 제자리 여백(원래 위치)이면 아무 카드도 움직이지 않는다.
     REQUIRE(gitman::card_drag_offset(1u, 0u, 0u, 1.0f) == 0.0f);
     REQUIRE(gitman::card_drag_offset(2u, 0u, 0u, 1.0f) == 0.0f);
+}
+
+TEST_CASE("Escape closes only the topmost dialog", "[ui][tree][dialog]")
+{
+    // 우선순위는 policy의 사슬이 아니라 **tree를 짓는 순서**가 정한다 (설계 D2-A):
+    // dialog마다 luil `modal_host_element`가 서고, luil은 그리기 순서상 마지막
+    // 가둠에 Esc를 준다. 그래서 겹쳐 뜬 dialog 중 위의 것 하나만 닫힌다.
+    const auto dismiss = [](const gitman::view_snapshot& view) {
+        const auto tree { make_tree(view) };
+        REQUIRE(tree->focus_trap() != nullptr);
+        interaction_harness harness { tree };
+        return harness.process(luil::key_pressed_event { luil::key_code::escape });
+    };
+
+    // 알림은 다른 dialog 위다 (app-shell-design A3.2).
+    gitman::view_snapshot notice_over_settings { make_view(1) };
+    notice_over_settings.settings_dialog = gitman::settings_dialog_view {};
+    notice_over_settings.notice_dialog = gitman::notice_dialog_view {};
+    const auto notice { dismiss(notice_over_settings) };
+    REQUIRE(std::holds_alternative<gitman::dismiss_notice_intent>(*as_message(notice)));
+
+    // 글꼴 선택은 환경설정 위에서 열린다 (F2.5).
+    gitman::view_snapshot font_over_settings { make_view(1) };
+    font_over_settings.settings_dialog = gitman::settings_dialog_view {};
+    font_over_settings.font_dialog = gitman::font_dialog_view {};
+    const auto font { dismiss(font_over_settings) };
+    REQUIRE(std::holds_alternative<gitman::cancel_font_dialog_intent>(*as_message(font)));
+
+    // 새 문서 만들기는 글꼴 선택보다 위다.
+    gitman::view_snapshot generate_over_font { make_view(1) };
+    generate_over_font.font_dialog = gitman::font_dialog_view {};
+    generate_over_font.generate_dialog = gitman::generate_document_dialog_view {};
+    const auto generate { dismiss(generate_over_font) };
+    REQUIRE(std::holds_alternative<gitman::cancel_generate_document_intent>(*as_message(generate)));
+
+    // 로컬 변경 확인은 탐색 등록보다 위다.
+    gitman::view_snapshot local_over_discovery { make_view(1) };
+    local_over_discovery.discovery_dialog = gitman::discovery_dialog_view {};
+    local_over_discovery.local_changes_dialog = gitman::local_changes_dialog_view {};
+    const auto local_changes { dismiss(local_over_discovery) };
+    REQUIRE(std::holds_alternative<gitman::cancel_local_changes_dialog_intent>(*as_message(local_changes)));
+}
+
+TEST_CASE("An open dialog keeps the focus order inside itself", "[ui][tree][dialog]")
+{
+    // 가둠이 서면 Tab 순회가 그 안에서 시작한다 (modal-dialog-design). 도구 막대와
+    // 카드 버튼은 목록에서 통째로 빠진다.
+    gitman::view_snapshot view { make_view(3) };
+    view.settings_dialog = gitman::settings_dialog_view {};
+    const auto tree { make_tree(view) };
+
+    const luil::ui_element* const trap { tree->focus_trap() };
+    REQUIRE(trap != nullptr);
+    REQUIRE(trap->id().kind == luil::ui_element_kind::modal_host);
+    REQUIRE(trap->id().owner == std::u8string { ui::dialog_owner_settings });
+
+    const std::vector<luil::ui_element_id> order { tree->focus_order() };
+    REQUIRE(order.empty() == false);
+    for (const luil::ui_element_id& id : order)
+    {
+        REQUIRE(tree->within_focus_trap(id));
+        REQUIRE(id.kind != ui::kind_toolbar_refresh_all);
+        REQUIRE(id.kind != ui::kind_toolbar_settings);
+        REQUIRE(id.kind != ui::kind_card_body);
+        REQUIRE(id.kind != ui::kind_card_refresh);
+    }
+
+    // dialog가 없으면 도구 막대가 다시 순회에 든다.
+    const auto plain { make_tree(3) };
+    REQUIRE(plain->focus_trap() == nullptr);
+    const std::vector<luil::ui_element_id> plain_order { plain->focus_order() };
+    bool has_toolbar { false };
+    for (const luil::ui_element_id& id : plain_order)
+        if (id.kind == ui::kind_toolbar_refresh_all)
+            has_toolbar = true;
+    REQUIRE(has_toolbar);
 }

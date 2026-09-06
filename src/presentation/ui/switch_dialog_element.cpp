@@ -343,8 +343,8 @@ namespace gitman::ui {
                 , list_note_ { dialog.list_note }
                 , message_ { dialog.message }
             {
-                // panel 위의 클릭은 흡수만 한다. 뒤의 scrim(= dialog 자신)으로 새면
-                // 배경 클릭이 되어 dialog가 닫힌다.
+                // panel 위의 클릭은 흡수만 한다. 뒤의 scrim으로 새면 배경 클릭이
+                // 되어 dialog가 닫힌다.
                 set_hit_opaque(true);
                 // 목록 행은 panel 밖으로 흘러 나가지 않는다. 그리기는 아래에서 목록
                 // 영역으로 한 번 더 자른다.
@@ -440,14 +440,16 @@ namespace gitman::ui {
         return { kind_switch_dialog_svn_expand, std::u8string { url } };
     }
 
-    switch_dialog_element::switch_dialog_element(const switch_dialog_view& dialog, const float scale, const float window_height)
+    switch_dialog_element::switch_dialog_element(const switch_dialog_view& dialog, const float window_height)
         : ui_element { ui_element_id { kind_switch_dialog } }
         , dialog_ { dialog }
+        , window_height_ { window_height }
     {
-        set_action(ui_trigger::left_click, make_logic_click(cancel_switch_dialog_intent {}));
-        // scrim은 마우스만의 자리다. 키보드 취소는 Esc다 (설계 D1-B).
+        // 배경 클릭 취소와 Esc는 host가 맡는다 (설계 D2-A). 본체는 panel 상자만
+        // 차지하고, 그 위의 클릭을 흡수하는 것은 host의 `set_content`가 세운다.
+        // 본체는 판일 뿐이라 Tab 자리가 아니다 — 나중에 클릭 액션이 붙어도 그대로다
+        // (설계 D1-B, 다른 여섯 dialog와 같은 규칙).
         set_tab_stop(false);
-
         auto panel { std::make_unique<switch_panel_element>(dialog_) };
         if (dialog_.svn_browser)
         {
@@ -487,10 +489,9 @@ namespace gitman::ui {
         // 목록의 스크롤 막대다. 내용이 목록 영역보다 길 때만 보인다. content·
         // viewport는 logic의 clamp 계산과 같은 값이라 thumb와 실제 스크롤이
         // 어긋나지 않는다. luil 막대는 전부 논리 픽셀을 받는다 (설계 L4).
-        const float effective { scale > 0.0f ? scale : 1.0f };
         const std::size_t bar_rows { dialog_.svn_browser ? dialog_.svn_rows.size() : dialog_.candidates.size() };
         const float bar_content { static_cast<float>(bar_rows) * layout_switch_dialog_row_height };
-        const float bar_viewport { switch_dialog_list_height(dialog_.svn_browser, window_height / effective) };
+        const float bar_viewport { switch_dialog_list_height(dialog_.svn_browser, window_height_) };
         luil::scrollbar_config bar_config {};
         bar_config.scroll = [](const float delta) -> input_action { return make_logic_action(switch_dialog_scroll_intent { delta }); };
         bar_config.content_height = bar_content;
@@ -543,24 +544,19 @@ namespace gitman::ui {
     void switch_dialog_element::arrange(const arrange_context& context)
     {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+        // slot이 곧 panel 상자다. 창 가운데에 놓고 창 크기에 맞게 줄이는 일은
+        // factory와 luil modal host가 이미 했다 (설계 D2-A).
         set_bounds(context.slot);
 
-        float width { (dialog_.svn_browser ? layout_svn_browser_dialog_width : layout_switch_dialog_width) * scale };
-        float height { (dialog_.svn_browser ? layout_svn_browser_dialog_height : layout_switch_dialog_height) * scale };
-        if (width > context.slot.width)
-            width = context.slot.width;
-        // 창이 낮아도 클라이언트 위아래에 딱 붙지 않게 여백을 남긴다 (2026-08-23
-        // 지시). 목록 높이를 정하는 `switch_dialog_list_height`가 같은 여백을 쓴다.
-        const float available_height { dialog_available_height(context.slot.height / scale) * scale };
-        if (height > available_height)
-            height = available_height;
-        const float left { context.slot.x + (context.slot.width - width) / 2.0f };
-        const float top { context.slot.y + (context.slot.height - height) / 2.0f };
+        const float left { context.slot.x };
+        const float top { context.slot.y };
+        const float width { context.slot.width };
+        const float height { context.slot.height };
         panel_->arrange({ { left, top, width, height }, scale });
 
         const float padding { dialog_padding * scale };
         auto* const panel { static_cast<switch_panel_element*>(panel_) };
-        const float list_height { switch_dialog_list_height(dialog_.svn_browser, context.slot.height / scale) * scale };
+        const float list_height { switch_dialog_list_height(dialog_.svn_browser, window_height_) * scale };
         panel->list_area = { left + padding, top + layout_switch_dialog_list_top * scale, width - padding * 2.0f, list_height };
 
         // 질의 막대다. 좌우 끝의 정사각 버튼 사이를 텍스트 박스가 채운다.
@@ -605,8 +601,34 @@ namespace gitman::ui {
 
     void switch_dialog_element::draw(draw_context& context, const interaction_snapshot& interaction) const
     {
-        const rect_f box { bounds() };
-        context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y, box.width, box.height), solid_paint(with_alpha(0xFF000000u, 0.45f)));
+        // scrim은 host가 그린다. 본체는 panel과 그 위의 것만 그린다.
         draw_children(context, interaction);
+    }
+
+    std::unique_ptr<luil::modal_host_element> make_switch_dialog(const switch_dialog_view& dialog, const float window_width, const float window_height)
+    {
+        // panel의 논리 크기다. 예전에 arrange가 창 slot에서 하던 clamp를 그대로
+        // 옮겼다.
+        float width { dialog.svn_browser ? layout_svn_browser_dialog_width : layout_switch_dialog_width };
+        if (width > window_width)
+            width = window_width;
+        float height { dialog.svn_browser ? layout_svn_browser_dialog_height : layout_switch_dialog_height };
+        // 창이 낮아도 클라이언트 위아래에 딱 붙지 않게 여백을 남긴다 (2026-08-23
+        // 지시). 목록 높이를 정하는 `switch_dialog_list_height`가 같은 여백을 쓴다.
+        const float available_height { dialog_available_height(window_height) };
+        if (height > available_height)
+            height = available_height;
+
+        dialog_host_spec spec {};
+        spec.owner = std::u8string { dialog_owner_switch };
+        spec.content_width = width;
+        spec.content_height = height;
+        // 예전에는 창 전체를 덮던 본체의 클릭이 취소였다. 이제 그 자리가 scrim이다.
+        spec.outside = make_logic_click(cancel_switch_dialog_intent {});
+        spec.dismiss = make_logic_click(cancel_switch_dialog_intent {});
+        // 확인 버튼에는 `default_button`을 걸지 않는다. 질의 칸의 Enter가 첫 후보
+        // 선택(Git)·경로 이동(SVN)인 `submit_switch_query_intent`라, 기본 버튼이
+        // 그 Enter를 가로채면 안 된다 (enter-default-design).
+        return make_dialog_host(std::move(spec), std::make_unique<switch_dialog_element>(dialog, window_height));
     }
 } // namespace gitman::ui

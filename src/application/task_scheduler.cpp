@@ -80,9 +80,9 @@ namespace gitman {
         return static_cast<std::size_t>(hash % worker_count);
     }
 
-    task_scheduler::task_scheduler(operation_executor& executor, messaging::channel<logic_message>& logic_inbox, const std::size_t worker_count)
+    task_scheduler::task_scheduler(operation_executor& executor, std::function<void(logic_message)> sink, const std::size_t worker_count)
         : executor_ { &executor }
-        , logic_inbox_ { &logic_inbox }
+        , sink_ { std::move(sink) }
     {
         const std::size_t count { worker_count == 0 ? 1 : worker_count };
         // 카드 lane `count`개에 대화형 조회 전용 lane 하나를 마지막 index로 더한다.
@@ -154,15 +154,10 @@ namespace gitman {
 
     void task_scheduler::emit_to_logic(logic_message message)
     {
-        // event는 버리면 안 된다. inbox가 가득 차면 짧게 물러났다 다시 시도하고,
-        // 닫힌 inbox(종료 중)로 가는 event만 조용히 버린다 (ADR-005 7.3).
-        while (true)
-        {
-            logic_message attempt { message };
-            const messaging::post_result result { logic_inbox_->post(std::move(attempt)) };
-            if (result != messaging::post_result::channel_full)
-                return;
-            std::this_thread::sleep_for(std::chrono::milliseconds { 1 });
-        }
+        // event는 버리면 안 된다. sink(relay)의 큐가 정본이라 여기서 재시도하지
+        // 않는다 — relay가 lock 안에서 큐에 넣고 logic thread를 깨우기만 한다 (설계 L3).
+        if (sink_ == nullptr)
+            return;
+        sink_(std::move(message));
     }
 } // namespace gitman

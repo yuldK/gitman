@@ -39,6 +39,9 @@ set(GITMAN_CATCH2_ROOT "${GITMAN_THIRD_PARTY_DIRECTORY}/catch2")
 set(CMAKE_CXX_STANDARD ${GITMAN_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# C++20 module은 쓰지 않는다. 생성기의 module 의존성 스캔(/scanDependencies)을 끄면
+# 빌드가 빨라지고 파일 하나만 골라 컴파일하는 도구 경로가 전체 스캔에 막히지 않는다.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # 기본 솔루션에는 실제 빌드에 필요한 target(gitman, gitman_lib)만 둔다. test와
 # 개발 도구 target은 명시적으로 켤 때만 만들어진다.

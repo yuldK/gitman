@@ -1,13 +1,18 @@
 #include "application/application_options.h"
+#include "platform/win32/gitman_delegate.h"
+#include "platform/win32/gitman_driver.h"
+#include "platform/win32/resources/resource_ids.h"
 #include "platform/win32/utf8.h"
-#include "platform/win32/win32_application.h"
 #include "platform/win32/win32_file_association.h"
+#include "presentation/ui/gitman_caption.h"
+#include "presentation/ui/gitman_policy.h"
 
-#include <shellapi.h>
+#include "luil/text/fonts.h"
+#include "luil/win32/win32_window.h"
+
 #include <windows.h>
 
-#include <objbase.h>
-
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,60 +41,64 @@ namespace {
     }
 } // namespace
 
-int WINAPI wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
+int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 {
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    const HRESULT com_result { CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED) };
-    const bool should_uninitialize_com { SUCCEEDED(com_result) };
+    // DPI 인지는 창을 만들기 전에 한 번 켠다.
+    luil::win32::enable_per_monitor_dpi_awareness();
+    // COM STA는 TSF(텍스트 입력)·파일 dialog·OS 파일 끌기·접근성이 요구한다.
+    const luil::win32::com_sta_scope com {};
 
-    int argument_count { 0 };
-    LPWSTR* wide_arguments { CommandLineToArgvW(GetCommandLineW(), &argument_count) };
-    if (wide_arguments == nullptr)
-    {
-        if (should_uninitialize_com)
-            CoUninitialize();
+    const std::optional<std::vector<std::u8string>> arguments { luil::win32::command_line_arguments() };
+    if (arguments.has_value() == false)
         return 1;
-    }
-
-    std::vector<std::u8string> arguments {};
-    arguments.reserve(static_cast<std::size_t>(argument_count));
-    for (int index = 0; index < argument_count; ++index)
-    {
-        auto conversion { gitman::win32::utf16_to_utf8(wide_arguments[index]) };
-        if (conversion.value.has_value() == false)
-        {
-            LocalFree(wide_arguments);
-            if (should_uninitialize_com)
-                CoUninitialize();
-            return 1;
-        }
-        arguments.push_back(std::move(*conversion.value));
-    }
-    LocalFree(wide_arguments);
 
     const gitman::application_options_result parsed_options {
-        gitman::parse_application_options(arguments),
+        gitman::parse_application_options(*arguments),
     };
-
     if (parsed_options.options.has_value() == false)
     {
         show_argument_error(parsed_options.error);
-        if (should_uninitialize_com)
-            CoUninitialize();
         return 2;
     }
 
+    const gitman::application_options& options { *parsed_options.options };
     // 연결 등록·제거 모드는 창을 만들지 않는다.
-    if (parsed_options.options->register_file_association || parsed_options.options->unregister_file_association)
-    {
-        const int association_result { run_file_association_command(parsed_options.options->register_file_association) };
-        if (should_uninitialize_com)
-            CoUninitialize();
-        return association_result;
-    }
+    if (options.register_file_association || options.unregister_file_association)
+        return run_file_association_command(options.register_file_association);
 
-    const int result { gitman::win32::run_application(instance, *parsed_options.options) };
-    if (should_uninitialize_com)
-        CoUninitialize();
-    return result;
+    // 기본 UI 글꼴 우선순위다 (설계 L3 글꼴). 설치되어 있지 않으면 luil registry가
+    // 내장 기본(Segoe UI)으로 물러서므로 지금의 순서가 그대로 재현된다.
+    luil::set_ui_typeface_families({ u8"Malgun Gothic" });
+
+    // 창의 겉모습과 정책이다. 길이는 전부 논리 96 DPI 기준 px다.
+    luil::win32::window_config config {};
+    config.class_name = L"Gitman.Window";
+    // caption 값은 한곳에서만 만든다. 비클라이언트 hit test와 tree의 caption
+    // element가 같은 값을 읽어야 버튼 자리가 어긋나지 않는다 (설계 L3).
+    config.caption = gitman::ui::gitman_caption();
+    config.initial_width = 1280;
+    config.initial_height = 720;
+    config.minimum_client_width = 480;
+    config.minimum_client_height = 320;
+    config.resize_border_thickness = 4;
+    config.resize_corner_thickness = 10;
+    config.icon_resource = IDI_GITMAN;
+    config.renderer = options.renderer;
+    config.simulate_direct3d_failure = options.simulate_direct3d_failure;
+    config.smoke_test = options.smoke_test;
+    config.accept_file_drop = true;
+
+    // 앱의 세 조각이다. smoke 모드에서도 만들지만 그때는 luil이 host를 조립하지
+    // 않으므로 logic thread도 worker도 서지 않는다.
+    gitman::win32::gitman_driver driver {};
+    gitman::ui::gitman_policy policy {};
+    gitman::win32::gitman_delegate delegate { driver, options.workspace_document_path };
+
+    luil::win32::window_environment environment {};
+    environment.driver = &driver;
+    environment.policy = &policy;
+    environment.delegate = &delegate;
+
+    // 메시지 루프가 끝날 때까지 여기서 돈다. 반환값이 프로세스 종료 코드다.
+    return luil::win32::run_application_window(config, environment);
 }

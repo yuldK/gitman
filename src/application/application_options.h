@@ -1,6 +1,6 @@
 #pragma once
 
-#include "presentation/renderer_policy.h"
+#include "luil/win32/renderer_policy.h"
 
 #include <optional>
 #include <span>
@@ -8,6 +8,19 @@
 #include <string_view>
 
 namespace gitman {
+    // 렌더러 정책은 luil이 소유한다 (설계 L4). 값 타입만 담은 헤더라 application
+    // 계층이 include해도 되며, 기존 호출자가 `gitman::renderer_mode`를 그대로 쓸 수
+    // 있도록 이름만 들여온다.
+    using luil::renderer_backend;
+    using luil::renderer_mode;
+    using luil::renderer_selection;
+    using luil::renderer_selection_status;
+
+    using luil::parse_renderer_mode;
+    using luil::renderer_backend_name;
+    using luil::renderer_mode_name;
+    using luil::select_renderer_backend;
+
     struct application_options
     {
         renderer_mode renderer { renderer_mode::automatic };

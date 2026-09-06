@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/app_messages.h"
+#include "application/cancellation_registry.h"
 #include "application/log_file_sink.h"
 #include "application/process_cancellation.h"
 #include "domain/operation_log.h"
@@ -25,14 +26,20 @@ namespace gitman {
     class logic_controller
     {
     public:
-        explicit logic_controller(operation_submitter& submitter) noexcept;
+        // `registry`는 종료 시 UI thread가 실행 중 작업을 한꺼번에 취소하는 보관소다
+        // (설계 L3). controller보다 오래 살아 있어야 한다.
+        logic_controller(operation_submitter& submitter, cancellation_registry& registry) noexcept;
         // 카드 로그를 파일로도 적재하는 조립이다 (app-shell-design A4). sink는
         // controller보다 오래 살아 있어야 한다.
-        logic_controller(operation_submitter& submitter, log_file_sink& log_sink) noexcept;
+        logic_controller(operation_submitter& submitter, log_file_sink& log_sink, cancellation_registry& registry) noexcept;
+        // 보관소를 스스로 드는 편의 생성자다 (test·단독 조립). 앱은 driver가 보관소를
+        // 소유해 종료 시 UI thread에서 취소를 걸므로 위의 생성자를 쓴다.
+        explicit logic_controller(operation_submitter& submitter);
+        logic_controller(operation_submitter& submitter, log_file_sink& log_sink);
 
         void handle(logic_message message);
 
-        // logic thread가 loop에 들어가기 전에 한 번 호출한다. 앱 단위 설정을 읽는
+        // `startup_intent`를 받으면 한 번 호출한다 (설계 L3). 앱 단위 설정을 읽는
         // 작업을 제출한다 (app-shell-design A1.2).
         void start();
 
@@ -224,6 +231,11 @@ namespace gitman {
 
         operation_submitter* submitter_ { nullptr };
         log_file_sink* log_sink_ { nullptr };
+        // 만든 취소 source를 등록해 두는 보관소다. 종료 취소가 logic thread를 거치지
+        // 않아도 되게 한다 (설계 L3).
+        cancellation_registry* registry_ { nullptr };
+        // 편의 생성자가 만든 보관소다. registry_가 이것을 가리킨다.
+        std::unique_ptr<cancellation_registry> owned_registry_ {};
         process_cancellation_source cancellation_source_ {};
 
         std::u8string document_path_ {};

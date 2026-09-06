@@ -138,14 +138,38 @@ namespace gitman {
         }
     } // namespace
 
-    logic_controller::logic_controller(operation_submitter& submitter) noexcept
+    logic_controller::logic_controller(operation_submitter& submitter, cancellation_registry& registry) noexcept
         : submitter_ { &submitter }
-    {}
+        , registry_ { &registry }
+    {
+        // 종료 시 UI thread가 전역 token까지 함께 취소한다 (설계 L3).
+        registry_->add(cancellation_source_);
+    }
 
-    logic_controller::logic_controller(operation_submitter& submitter, log_file_sink& log_sink) noexcept
+    logic_controller::logic_controller(operation_submitter& submitter, log_file_sink& log_sink, cancellation_registry& registry) noexcept
         : submitter_ { &submitter }
         , log_sink_ { &log_sink }
-    {}
+        , registry_ { &registry }
+    {
+        registry_->add(cancellation_source_);
+    }
+
+    logic_controller::logic_controller(operation_submitter& submitter)
+        : submitter_ { &submitter }
+        , owned_registry_ { std::make_unique<cancellation_registry>() }
+    {
+        registry_ = owned_registry_.get();
+        registry_->add(cancellation_source_);
+    }
+
+    logic_controller::logic_controller(operation_submitter& submitter, log_file_sink& log_sink)
+        : submitter_ { &submitter }
+        , log_sink_ { &log_sink }
+        , owned_registry_ { std::make_unique<cancellation_registry>() }
+    {
+        registry_ = owned_registry_.get();
+        registry_->add(cancellation_source_);
+    }
 
     void logic_controller::handle(logic_message message)
     {
@@ -372,6 +396,13 @@ namespace gitman {
                     handle_window_placement(value);
                 else if constexpr (std::is_same_v<value_type, close_intent> || std::is_same_v<value_type, shutdown_message>)
                     begin_shutdown();
+                else if constexpr (std::is_same_v<value_type, startup_intent>)
+                    start();
+                else if constexpr (std::is_same_v<value_type, relay_drain_intent>)
+                {
+                    // 깨우기 전용 메시지다 (설계 L3). 내용은 driver가 relay 큐에서
+                    // 이미 꺼내 따로 넘겼다.
+                }
                 else if constexpr (std::is_same_v<value_type, document_loaded_event>)
                     handle_document_loaded(std::move(value));
                 else if constexpr (std::is_same_v<value_type, document_generated_event>)
@@ -879,6 +910,8 @@ namespace gitman {
         card.change_started_at = std::chrono::steady_clock::now();
         card.change_elapsed.reset();
         card.change_cancellation = std::move(cancellation);
+        // 종료가 close 메시지 없이 일어나도 실행 중 프로세스가 취소되도록 등록한다.
+        registry_->add(*card.change_cancellation);
         if (is_update)
             append_lifecycle_log(
                 card, diagnostic_severity::information, options.update_submodules ? std::u8string { u8"update를 시작합니다 (submodule 함께 갱신)." } : std::u8string { u8"update를 시작합니다." });
@@ -997,6 +1030,8 @@ namespace gitman {
         dialog.scan_operation_id = operation_id;
         dialog.scan_cancellation = std::move(cancellation);
         discovery_dialog_ = { std::move(dialog) };
+        // 변경 작업과 같은 이유로 등록한다 (설계 L3).
+        registry_->add(*discovery_dialog_->scan_cancellation);
     }
 
     void logic_controller::handle_discovery_completed(discovery_completed_event event)

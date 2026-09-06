@@ -73,8 +73,16 @@ namespace gitman {
         void request_cancellation();
         [[nodiscard]] bool cancellation_requested() const noexcept;
         [[nodiscard]] process_cancellation_token token() const noexcept;
+        // 소유자 밖에서 취소를 걸 수 있는 약한 손잡이다. source의 상태가 이미 사라졌으면
+        // false를 돌려주고 아무 일도 하지 않는다. 여러 스레드에서 안전하다.
+        [[nodiscard]] std::function<bool()> weak_canceller() const;
 
     private:
         std::shared_ptr<detail::process_cancellation_state> state_ {};
     };
+
+    // `weak_canceller()`가 돌려준 손잡이가 가리키는 source가 아직 살아 있는지 본다.
+    // 취소를 걸지 않으므로 보관소가 죽은 항목을 정리하는 데 쓸 수 있다. 다른 곳에서
+    // 만든 함수는 알 수 없으므로 살아 있다고 본다.
+    [[nodiscard]] bool weak_canceller_alive(const std::function<bool()>& canceller) noexcept;
 } // namespace gitman

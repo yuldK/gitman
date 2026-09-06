@@ -73,6 +73,24 @@ namespace gitman {
         };
     } // namespace detail
 
+    namespace {
+        // `weak_canceller`가 돌려주는 호출체다. 이름 있는 타입이라 `std::function`에
+        // 담긴 뒤에도 취소를 걸지 않고 상태가 살아 있는지 물어볼 수 있다.
+        struct weak_cancel_call
+        {
+            std::weak_ptr<detail::process_cancellation_state> state {};
+
+            bool operator()() const
+            {
+                const std::shared_ptr<detail::process_cancellation_state> locked { state.lock() };
+                if (locked == nullptr)
+                    return false;
+                locked->request();
+                return true;
+            }
+        };
+    } // namespace
+
     process_cancellation_registration::process_cancellation_registration(std::shared_ptr<detail::process_cancellation_state> state, const std::uint64_t id) noexcept
         : state_ { std::move(state) }
         , id_ { id }
@@ -149,5 +167,20 @@ namespace gitman {
     process_cancellation_token process_cancellation_source::token() const noexcept
     {
         return process_cancellation_token { state_ };
+    }
+
+    std::function<bool()> process_cancellation_source::weak_canceller() const
+    {
+        // 약한 참조라 손잡이가 source의 수명을 늘리지 않는다. source가 사라진 뒤에
+        // 불러도 안전하다.
+        return std::function<bool()> { weak_cancel_call { state_ } };
+    }
+
+    bool weak_canceller_alive(const std::function<bool()>& canceller) noexcept
+    {
+        const weak_cancel_call* const call { canceller.target<weak_cancel_call>() };
+        if (call == nullptr)
+            return true;
+        return call->state.expired() == false;
     }
 } // namespace gitman

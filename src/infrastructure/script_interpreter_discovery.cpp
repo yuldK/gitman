@@ -41,6 +41,21 @@ namespace gitman {
         }
     } // namespace
 
+    std::u8string find_executable_on_path(const std::u8string_view name, const vcs_tool_environment& environment, const vcs_file_probe& probe)
+    {
+        if (name.empty())
+            return {};
+        if (is_absolute_windows_path(name))
+            return probe.probe(name) == vcs_path_kind::file ? std::u8string { name } : std::u8string {};
+
+        std::vector<std::u8string> directories {};
+        if (environment.system_directory.empty() == false)
+            directories.push_back(environment.system_directory);
+        for (std::u8string& entry : split_search_path(environment.path_environment))
+            directories.push_back(std::move(entry));
+        return find_in_directories(directories, name, probe);
+    }
+
     resolved_script_interpreter resolve_script_interpreter(const std::u8string_view script_path, const vcs_tool_environment& environment, const vcs_file_probe& probe)
     {
         const script_interpreter_spec spec { script_interpreter_for(script_path) };

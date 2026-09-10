@@ -15,6 +15,8 @@
 #include <vector>
 
 namespace gitman {
+    class svn_hook_runner;
+
     // update 전에 작업 복사본 상태만으로 판정할 수 있는 차단 사유다.
     //
     // switched subtree와 mixed revision은 값이 있을 때만 차단한다. `svnversion`이 없는
@@ -30,9 +32,10 @@ namespace gitman {
     class svn_repository_provider final : public repository_provider
     {
     public:
-        svn_repository_provider(
-            vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* log = nullptr, vcs_timeout_overrides timeouts = {},
-            bool ignore_local_changes = false) noexcept;
+        // `hooks`는 update·switch 앞뒤에서 돌릴 훅이다 (REQ-021). 값이 없으면 훅을
+        // 부르지 않는다 — 훅을 모르는 조립(대부분의 test)이 그대로 동작한다.
+        svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* log = nullptr, vcs_timeout_overrides timeouts = {},
+            bool ignore_local_changes = false, svn_hook_runner* hooks = nullptr) noexcept;
 
         [[nodiscard]] const vcs_tool_info& tool() const noexcept;
         void set_tool(vcs_tool_info tool);
@@ -65,6 +68,10 @@ namespace gitman {
         void finish_local_query_impl(repository_query_result& result, const project_definition& project, const process_cancellation_token& token, bool include_revision_scan);
         [[nodiscard]] repository_query_result query_remote_impl(const project_definition& project, const repository_snapshot& local, const process_cancellation_token& token);
         [[nodiscard]] repository_change_result update_impl(const project_definition& project, const process_cancellation_token& token);
+        // 훅 한 단계를 돌린다. 막히면 거짓이며 `result`에 사유와 진단이 담긴다.
+        // pre 계열이 막으면 본 명령을 실행하지 않고, post는 경고만 남긴다 (H1).
+        [[nodiscard]] bool run_hook_phase(const project_definition& project, svn_hook_phase phase, const repository_snapshot& snapshot, bool switching, std::u8string_view target_url,
+            std::u8string_view error_text, repository_change_result& result, const process_cancellation_token& token);
         [[nodiscard]] repository_change_result switch_to_impl(const project_definition& project, const switch_candidate& target, const process_cancellation_token& token);
 
         vcs_tool_info tool_ {};
@@ -78,5 +85,8 @@ namespace gitman {
         // update·switch 직전의 svnversion 검증(mixed revision·switched 차단)은
         // 로컬 변경이 아니라서 이 설정과 무관하게 수행한다.
         bool ignore_local_changes_ { false };
+        // 값이 없으면 훅을 부르지 않는다. 수명은 executor가 가지며 provider보다 오래
+        // 산다 (둘 다 작업 하나 동안의 지역 객체다).
+        svn_hook_runner* hooks_ { nullptr };
     };
 } // namespace gitman

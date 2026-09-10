@@ -14,6 +14,7 @@
 #include "infrastructure/vcs_operation_executor.h"
 #include "platform/win32/operation_result_relay.h"
 #include "platform/win32/project_file_system.h"
+#include "platform/win32/win32_temp_file_writer.h"
 #include "platform/win32/win32_directory_enumerator.h"
 #include "platform/win32/win32_log_file_system.h"
 #include "platform/win32/win32_process_runner.h"
@@ -69,6 +70,8 @@ namespace gitman::win32 {
         std::unique_ptr<process_runner> runner_ { make_process_runner() };
         std::unique_ptr<vcs_file_probe> probe_ { make_vcs_file_probe() };
         std::unique_ptr<directory_enumerator> enumerator_ { make_directory_enumerator() };
+        // TortoiseSVN 훅의 인자 파일을 만드는 구현이다 (REQ-021).
+        std::unique_ptr<temp_file_writer> temp_files_ { make_temp_file_writer() };
         json_project_store store_ { file_system_, *resolver_ };
         json_app_settings_store app_settings_store_ { file_system_ };
         // 카드 로그를 문서 폴더에 적재하는 writer다 (app-shell-design A4). 전용

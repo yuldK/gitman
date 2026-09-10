@@ -3112,6 +3112,8 @@ namespace gitman {
         // worker는 유효 설정(전역 + 문서 override)의 사본을 받는다. 층 구분은
         // logic 안에서 끝난다.
         request.settings = effective_settings();
+        // SVN 훅도 유효 설정과 같은 계층 규칙을 따른다. 층 구분은 logic 안에서 끝난다.
+        request.svn_hooks = effective_commands().svn_hooks;
         request.token = cancellation_source_.token();
         return request;
     }

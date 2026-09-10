@@ -7,7 +7,9 @@
 #include "infrastructure/git_repository_provider.h"
 #include "infrastructure/script_command_builder.h"
 #include "infrastructure/script_interpreter_discovery.h"
+#include "infrastructure/svn_hook_runner.h"
 #include "infrastructure/svn_repository_provider.h"
+#include "infrastructure/tortoise_svn_hooks.h"
 #include "infrastructure/vcs_command_runner.h"
 
 #include <chrono>
@@ -433,6 +435,11 @@ namespace gitman {
         emit(std::move(event));
     }
 
+    void vcs_operation_executor::bind_temp_files(temp_file_writer& writer) noexcept
+    {
+        temp_files_ = &writer;
+    }
+
     void vcs_operation_executor::bind_app_settings(app_settings_store& store, std::u8string path)
     {
         app_settings_store_ = &store;
@@ -492,7 +499,20 @@ namespace gitman {
         repository_change_result result {};
         if (kind == repository_kind::subversion)
         {
-            svn_repository_provider provider { tools.subversion, *runner_, *probe_, &log, vcs_timeouts_from_settings(request.settings), request.settings.ignore_local_changes };
+            // 훅은 SVN에만 건다 (REQ-021). TortoiseSVN 훅 목록은 시작할 때 읽어 둔
+            // 레지스트리 값에서 그때그때 해석한다 — 값이 작고 규칙이 순수 함수라
+            // 캐시할 이유가 없다.
+            svn_hook_runner hooks {
+                request.svn_hooks,
+                parse_tortoise_svn_hooks(environment_.tortoise_svn_hooks),
+                request.document_path,
+                *runner_,
+                *probe_,
+                environment_,
+                temp_files_,
+                &log,
+            };
+            svn_repository_provider provider { tools.subversion, *runner_, *probe_, &log, vcs_timeouts_from_settings(request.settings), request.settings.ignore_local_changes, &hooks };
             result = request.kind == operation_kind::update ? provider.update(request.project, request.options, request.token)
                                                             : provider.switch_to(request.project, *request.switch_target, request.token);
         }

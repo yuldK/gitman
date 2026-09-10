@@ -129,11 +129,13 @@ gitman_add_source_filter(gitman_lib_files "application/discovery"
     application/discovery_service.cpp
     application/discovery_service.h)
 
-# 외부 프로세스 요청과 실행기·출력 transcoder 계약이다.
+# 외부 프로세스 요청과 실행기·출력 transcoder 계약이다. 훅 인자 임시 파일 계약도
+# 프로세스에 딸린 것이라 같은 묶음에 둔다.
 gitman_add_source_filter(gitman_lib_files "application/process"
     application/process_request.cpp
     application/process_request.h
     application/process_runner.h
+    application/temp_file_writer.h
     application/text_transcoder.h)
 
 # 문서 폴더의 파일 로그 계약이다.
@@ -197,7 +199,11 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/scripts"
     infrastructure/script_command_builder.cpp
     infrastructure/script_command_builder.h
     infrastructure/script_interpreter_discovery.cpp
-    infrastructure/script_interpreter_discovery.h)
+    infrastructure/script_interpreter_discovery.h
+    infrastructure/svn_hook_runner.cpp
+    infrastructure/svn_hook_runner.h
+    infrastructure/tortoise_svn_hooks.cpp
+    infrastructure/tortoise_svn_hooks.h)
 
 # 명령줄 조립, 출력 파이프라인, 비밀 마스킹이다.
 gitman_add_source_filter(gitman_lib_files "infrastructure/process"
@@ -319,10 +325,12 @@ gitman_add_source_filter(gitman_lib_files "platform/process"
     platform/win32/win32_text_transcoder.cpp
     platform/win32/win32_text_transcoder.h)
 
-# 파일 연결 레지스트리 쓰기다.
+# 파일 연결 레지스트리 쓰기와 훅 인자 임시 파일이다.
 gitman_add_source_filter(gitman_lib_files "platform/shell"
     platform/win32/win32_file_association.cpp
-    platform/win32/win32_file_association.h)
+    platform/win32/win32_file_association.h
+    platform/win32/win32_temp_file_writer.cpp
+    platform/win32/win32_temp_file_writer.h)
 
 # codicon 이름 표는 파일 하나를 만드는 custom command다. 결과 header를 라이브러리
 # 소스에 넣어 두면 빌드 순서가 저절로 맞으므로 별도 target을 두지 않는다 (luil의

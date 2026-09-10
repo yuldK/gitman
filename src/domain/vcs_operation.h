@@ -90,6 +90,9 @@ namespace gitman {
         submodule_unsafe,
         switched_subtree,
         mixed_revision,
+        // update·switch 앞의 훅이 0이 아닌 코드로 끝났다 (REQ-021). 본 명령을
+        // 실행하지 않는다.
+        hook_rejected,
     };
 
     struct update_options

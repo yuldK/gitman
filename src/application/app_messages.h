@@ -587,6 +587,9 @@ namespace gitman {
         workspace_revision_token revision {};
         // update 전용 option이다 (ADR-003, 기본 off).
         update_options options {};
+        // update·switch 전용: 이 작업에 걸 SVN 훅이다 (REQ-021). 유효 목록(전역 +
+        // 문서)에서 logic이 뽑아 싣는다 — worker는 설정 계층을 모른다.
+        svn_hook_settings svn_hooks {};
         // switch_to 전용: 검증을 통과한 전환 대상이다.
         std::optional<switch_candidate> switch_target {};
         // query_svn_directory 전용: 브라우저 루트와 조회할 노드 URL이다. executor가

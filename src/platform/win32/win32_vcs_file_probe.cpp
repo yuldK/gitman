@@ -119,6 +119,45 @@ namespace gitman::win32 {
     }
 
     namespace {
+        // 이름 있는 REG_SZ 값 하나를 읽는다. 32비트로 빌드해도 64비트 뷰를 보도록
+        // `KEY_WOW64_64KEY`를 준다 — TortoiseSVN은 64비트로 설치된다.
+        std::u8string read_registry_string(const HKEY root, const wchar_t* const subkey, const wchar_t* const name) noexcept
+        {
+            try
+            {
+                HKEY key { nullptr };
+                if (RegOpenKeyExW(root, subkey, 0, KEY_READ | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS)
+                    return {};
+
+                DWORD type { 0 };
+                DWORD size { 0 };
+                if (RegQueryValueExW(key, name, nullptr, &type, nullptr, &size) != ERROR_SUCCESS || type != REG_SZ || size == 0)
+                {
+                    RegCloseKey(key);
+                    return {};
+                }
+
+                std::wstring value(size / sizeof(wchar_t) + 1, L'\0');
+                DWORD read_size { static_cast<DWORD>(value.size() * sizeof(wchar_t)) };
+                const LSTATUS status { RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<BYTE*>(value.data()), &read_size) };
+                RegCloseKey(key);
+                if (status != ERROR_SUCCESS)
+                    return {};
+
+                // 값의 크기는 종결 NUL을 포함할 수도, 안 할 수도 있다.
+                value.resize(read_size / sizeof(wchar_t));
+                while (value.empty() == false && value.back() == L'\0')
+                    value.pop_back();
+
+                const auto converted { utf16_to_utf8(value) };
+                return converted.value.has_value() ? std::move(*converted.value) : std::u8string {};
+            }
+            catch (...)
+            {
+                return {};
+            }
+        }
+
         // `%SystemRoot%\System32`다. 환경 변수 대신 API를 쓰는 것은 `SystemRoot`를
         // 사용자가 바꿔 놓을 수 있고, WOW64에서는 `GetSystemDirectoryW`가 32비트
         // 프로세스에 맞는 자리를 알려 주기 때문이다.
@@ -153,6 +192,11 @@ namespace gitman::win32 {
             vcs_tool_environment environment {};
             environment.path_environment = read_environment_variable(u8"PATH");
             environment.system_directory = read_system_directory();
+            // TortoiseSVN은 클라이언트 훅을 레지스트리에 둔다 (REQ-021). 설치 여부는
+            // HKLM의 설치 폴더로, 훅 목록은 HKCU의 값 하나로 읽는다. 해석은
+            // infrastructure의 순수 함수가 한다.
+            environment.tortoise_svn_directory = read_registry_string(HKEY_LOCAL_MACHINE, L"SOFTWARE\\TortoiseSVN", L"Directory");
+            environment.tortoise_svn_hooks = read_registry_string(HKEY_CURRENT_USER, L"Software\\TortoiseSVN", L"hooks");
             append_program_files_directory(environment.program_files_directories, u8"ProgramFiles");
             append_program_files_directory(environment.program_files_directories, u8"ProgramFiles(x86)");
             append_program_files_directory(environment.program_files_directories, u8"ProgramW6432");

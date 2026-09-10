@@ -26,6 +26,9 @@ namespace gitman::win32 {
         // 앱 단위 설정 파일은 실행 파일 옆에 둔다 (app-shell-design A1.1). 경로는
         // 조립 시 한 번 정해 executor가 들고 있고 logic은 알지 못한다.
         executor_.bind_app_settings(app_settings_store_, app_settings_file_path());
+        // TortoiseSVN 훅은 인자를 임시 파일로 받는다 (REQ-021). 파일을 만드는 일은
+        // platform의 몫이라 조립 시 붙인다.
+        executor_.bind_temp_files(*temp_files_);
         // worker 결과는 relay 큐가 정본이다 (설계 L3). scheduler는 sink만 안다.
         scheduler_ = std::make_unique<task_scheduler>(executor_, [this](logic_message message) { relay_.post(std::move(message)); }, default_worker_count());
         controller_ = std::make_unique<logic_controller>(*scheduler_, log_writer_, registry_);

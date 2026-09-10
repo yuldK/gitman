@@ -36,4 +36,9 @@ namespace gitman {
     // filesystem만 보고 프로세스는 만들지 않는다 (`--version` 확인 없음). 해석기의
     // 판번을 요구하지 않기 때문이며, 실행에 실패하면 그때 진단이 남는다.
     [[nodiscard]] resolved_script_interpreter resolve_script_interpreter(std::u8string_view script_path, const vcs_tool_environment& environment, const vcs_file_probe& probe);
+
+    // 실행 파일 이름 하나를 `PATH`에서 찾는다. TortoiseSVN이 저장한 훅 명령줄은
+    // `python foo.py`처럼 이름만 적을 수 있는데 gitman의 runner는 절대 경로만
+    // 받는다 (H3). 이미 절대 경로면 그대로 돌려주고, 찾지 못하면 빈 값이다.
+    [[nodiscard]] std::u8string find_executable_on_path(std::u8string_view name, const vcs_tool_environment& environment, const vcs_file_probe& probe);
 } // namespace gitman

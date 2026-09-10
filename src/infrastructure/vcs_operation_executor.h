@@ -6,6 +6,7 @@
 #include "application/process_runner.h"
 #include "application/project_path_resolver.h"
 #include "application/project_store.h"
+#include "application/temp_file_writer.h"
 #include "application/vcs_file_probe.h"
 #include "domain/vcs_tool.h"
 #include "infrastructure/vcs_tool_discovery.h"
@@ -28,6 +29,11 @@ namespace gitman {
             vcs_tool_environment environment) noexcept;
 
         void execute(const operation_request& request, const std::function<void(logic_message)>& emit) noexcept override;
+
+        // TortoiseSVN 훅의 인자 파일을 만드는 계약을 붙인다 (REQ-021). 붙이지 않은
+        // 조립(대부분의 test)에서는 TortoiseSVN 훅만 건너뛴다 — gitman 자체 훅은
+        // 인자를 환경 변수로 받아 임시 파일이 필요 없다.
+        void bind_temp_files(temp_file_writer& writer) noexcept;
 
         // 앱 단위 설정 파일의 store와 경로를 붙인다 (app-shell-design A1.2). 경로는
         // 실행 파일 위치라 platform 계층만 알고, 조립 시 한 번 붙인 뒤 바뀌지
@@ -65,6 +71,7 @@ namespace gitman {
         const directory_enumerator* enumerator_ { nullptr };
         project_path_resolver* resolver_ { nullptr };
         app_settings_store* app_settings_store_ { nullptr };
+        temp_file_writer* temp_files_ { nullptr };
         std::u8string app_settings_path_ {};
         vcs_tool_environment environment_ {};
 

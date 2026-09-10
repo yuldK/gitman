@@ -113,6 +113,8 @@ namespace gitman {
             return u8"switched_subtree";
         case update_block_reason::mixed_revision:
             return u8"mixed_revision";
+        case update_block_reason::hook_rejected:
+            return u8"hook_rejected";
         }
         return u8"none";
     }
@@ -149,6 +151,8 @@ namespace gitman {
             return u8"switched된 하위 경로가 있어 갱신하지 않았습니다.";
         case update_block_reason::mixed_revision:
             return u8"작업 복사본의 리비전이 섞여 있어 갱신하지 않았습니다.";
+        case update_block_reason::hook_rejected:
+            return u8"훅이 실패해 작업을 시작하지 않았습니다. 카드 로그에서 훅 출력을 확인하세요.";
         }
         return u8"갱신할 수 없습니다.";
     }

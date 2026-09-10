@@ -1,5 +1,43 @@
 # 변경 이력
 
+## 2026-09-10 - SVN 훅 (4단계 a)
+
+### 사용자 지시
+
+- (2026-09-10 같은 지시의 4단계) SVN 훅을 제공한다. TortoiseSVN이 설치되어 있으면
+  그 훅을 쓰고, 그 외에도 여러 개의 훅을 순차 실행할 수 있게 한다.
+
+### 반영 내용
+
+- `HKCU\Software\TortoiseSVN`의 `hooks` 값을 읽어 update 계열 훅을 그대로
+  실행한다. 레지스트리는 platform/win32만 읽고 값 원문을 `vcs_tool_environment`에
+  실어 넘긴다 — 해석과 선택은 순수 함수라 레지스트리 없이 test한다.
+- record는 방어적으로 읽는다. 현재 판은 여섯 줄, 옛 판은 다섯 줄이며(ticket #482)
+  여섯 번째 토큰이 아는 종류 이름이면 그것을 다음 record의 시작으로 본다.
+- commit·lock 계열 훅과 작업 복사본 속성 훅(`tsvn:preupdatehook`)은 읽지 않는다.
+  앞은 gitman이 하지 않는 작업이고, 뒤는 TortoiseSVN이 승인 대화상자로 막는데
+  gitman에는 승인 개념이 없다.
+- 훅 지점은 update·switch의 `start_update`·`pre_update`·`post_update`다.
+  `start_update`는 사전 검사 **앞**이라 훅이 작업 트리를 건드리면 그 결과가 검사에
+  반영된다. pre 계열이 실패하면 `update_block_reason::hook_rejected`로 본 명령을
+  실행하지 않는다.
+- TortoiseSVN 훅의 인자 파일을 만들려고 `application/temp_file_writer` 계약과
+  Win32 구현을 새로 뒀다. 붙이지 않은 조립에서는 TortoiseSVN 훅만 건너뛴다 —
+  규약을 어긴 채 실행하면 남의 스크립트가 엉뚱한 인자를 받는다.
+- 지킬 수 없는 TortoiseSVN 깃발은 검증 기록에 표로 남겼다 (`show` 콘솔 창,
+  `wait=false`의 종료 코드 무시, `enforce`, RESULTPATH, DEPTH·REVISION).
+
+### 영향 요구사항
+
+- REQ-021 신설.
+
+### 다음 작업 제한
+
+- 4단계 (b) 설정 UI(명령 탭)와 (c) 사용 설명서 갱신이 남았다. 지금은 `.version-list`
+  나 전역 앱 설정 JSON을 직접 고쳐야 명령·훅이 생긴다.
+- 네 단계가 끝나면 Visual Studio 2022·2026 × Debug·Release 전체 matrix와
+  `/analyze`를 한 번 돌린다. 지금까지는 `vs2026-tests-release`만 돌렸다.
+
 ## 2026-09-10 - 커스텀 명령 (3단계)
 
 ### 사용자 지시

@@ -1,5 +1,7 @@
 #include "infrastructure/svn_repository_provider.h"
 
+#include "infrastructure/svn_hook_runner.h"
+
 #include "application/vcs_tool_registry.h"
 #include "domain/path_syntax.h"
 #include "infrastructure/local_change_reader.h"
@@ -80,15 +82,48 @@ namespace gitman {
         }
     } // namespace
 
-    svn_repository_provider::svn_repository_provider(
-        vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log, vcs_timeout_overrides timeouts, const bool ignore_local_changes) noexcept
+    svn_repository_provider::svn_repository_provider(vcs_tool_info tool, process_runner& runner, const vcs_file_probe& probe, process_output_sink* const log, vcs_timeout_overrides timeouts,
+        const bool ignore_local_changes, svn_hook_runner* const hooks) noexcept
         : tool_ { std::move(tool) }
         , runner_ { &runner }
         , probe_ { &probe }
         , log_ { log }
         , timeouts_ { timeouts }
         , ignore_local_changes_ { ignore_local_changes }
+        , hooks_ { hooks }
     {}
+
+    bool svn_repository_provider::run_hook_phase(const project_definition& project, const svn_hook_phase phase, const repository_snapshot& snapshot, const bool switching,
+        const std::u8string_view target_url, const std::u8string_view error_text, repository_change_result& result, const process_cancellation_token& token)
+    {
+        if (hooks_ == nullptr)
+            return true;
+
+        svn_hook_context context {};
+        context.project = project;
+        context.working_copy_path = svn_working_directory(project);
+        context.phase = phase;
+        context.switching = switching;
+        context.target_url = target_url;
+        context.revision = snapshot.local_revision;
+        context.reference = snapshot.current_reference;
+        context.error_text = error_text;
+
+        if (hooks_->empty(context.working_copy_path))
+            return true;
+
+        const svn_hook_run_result run_result { hooks_->run(context, token) };
+        for (const diagnostic& value : run_result.diagnostics)
+            result.diagnostics.push_back(value);
+        if (run_result.blocked == false)
+            return true;
+
+        // 사용자가 pre 계열 훅 실패 시 중단을 골랐다 (2026-09-10). 본 명령을 만들지
+        // 않고 사유를 남긴다.
+        result.blocked_by = update_block_reason::hook_rejected;
+        result.diagnostics.push_back(make_diagnostic(diagnostic_code::update_blocked, diagnostic_severity::warning, std::u8string { update_block_reason_message(result.blocked_by) }, project));
+        return false;
+    }
 
     const vcs_tool_info& svn_repository_provider::tool() const noexcept
     {
@@ -663,6 +698,11 @@ namespace gitman {
             return result;
         }
 
+        // start_update는 사전 검사 **앞**이다. 훅이 작업 트리를 건드리면 그 결과가
+        // 검사에 반영되어야 한다 — TortoiseSVN도 대화상자 전에 부른다 (H1).
+        if (run_hook_phase(project, svn_hook_phase::start_update, {}, false, {}, {}, result, token) == false)
+            return result;
+
         const repository_query_result before { query_local_impl(project, token, true) };
         result.snapshot = before.snapshot;
         for (const diagnostic& value : before.diagnostics)
@@ -675,6 +715,9 @@ namespace gitman {
             return result;
         }
 
+        if (run_hook_phase(project, svn_hook_phase::pre_update, before.snapshot, false, {}, {}, result, token) == false)
+            return result;
+
         const vcs_command_result update_result { run_vcs_command(*runner_, make_svn_update_request(tool_.executable, svn_working_directory(project)), token, log_) };
         result.executed = true;
         result.succeeded = update_result.succeeded();
@@ -683,6 +726,12 @@ namespace gitman {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, update_result) };
             result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, update_result), project));
         }
+
+        // post는 성패와 관계없이 돈다. 실패했으면 그 요약을 훅에 넘긴다 (TortoiseSVN의
+        // ERROR 파일과 같은 자리). 훅이 실패해도 경고만 남긴다 — 이미 실행된 명령을
+        // 되돌릴 수 없다.
+        const std::u8string update_error { result.succeeded ? std::u8string {} : update_result.standard_error_text() };
+        static_cast<void>(run_hook_phase(project, svn_hook_phase::post_update, before.snapshot, false, {}, update_error, result, token));
 
         if (ignore_local_changes_)
             append_ignore_local_notice(result, update_result, project);
@@ -728,6 +777,12 @@ namespace gitman {
             reject(switch_rejection::tool_unavailable);
             return result;
         }
+
+        // update와 같은 자리다 — 사전 조회 앞이라 훅이 작업 트리를 건드리면 그
+        // 결과가 검증에 반영된다. 대상이 나중에 거부되어도 도는 것은 TortoiseSVN의
+        // start 훅과 같다 (대화상자 전에 돈다).
+        if (run_hook_phase(project, svn_hook_phase::start_update, {}, true, target.target, {}, result, token) == false)
+            return result;
 
         const repository_query_result before { query_local_impl(project, token, true) };
         result.snapshot = before.snapshot;
@@ -801,6 +856,12 @@ namespace gitman {
             return result;
         }
 
+        // TortoiseSVN은 switch에도 update 훅을 쓴다. 단계 이름이 같고 작업 종류는
+        // 환경 변수 `GITMAN_HOOK_OPERATION`으로 갈린다 (H1). start_update는 위쪽
+        // 사전 조회 앞에서 이미 돌았다.
+        if (run_hook_phase(project, svn_hook_phase::pre_update, before.snapshot, true, target.target, {}, result, token) == false)
+            return result;
+
         const vcs_command_result switch_result { run_vcs_command(*runner_, make_svn_switch_request(tool_.executable, working_directory, target.target), token, log_) };
         result.executed = true;
         result.succeeded = switch_result.succeeded();
@@ -809,6 +870,9 @@ namespace gitman {
             const vcs_failure_kind failure { classify_vcs_failure(repository_kind::subversion, switch_result) };
             result.diagnostics.push_back(make_diagnostic(diagnostic_code_for_failure(failure), diagnostic_severity::error, describe_failure(failure, switch_result), project));
         }
+
+        const std::u8string switch_error { result.succeeded ? std::u8string {} : switch_result.standard_error_text() };
+        static_cast<void>(run_hook_phase(project, svn_hook_phase::post_update, before.snapshot, true, target.target, switch_error, result, token));
 
         if (ignore_local_changes_)
             append_ignore_local_notice(result, switch_result, project);

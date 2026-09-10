@@ -24,6 +24,13 @@ namespace gitman {
         // `%SystemRoot%\System32`다. `cmd.exe`·`powershell.exe`를 PATH보다 먼저
         // 여기서 찾는다 — PATH 앞에 놓인 동명 파일이 셸을 가로채지 못하게 한다.
         std::u8string system_directory {};
+        // TortoiseSVN 설치 폴더다 (`HKLM\SOFTWARE\TortoiseSVN`의 `Directory`).
+        // 비어 있으면 설치되어 있지 않다고 본다 (REQ-021).
+        std::u8string tortoise_svn_directory {};
+        // `HKCU\Software\TortoiseSVN`의 `hooks` 값 원문이다. 해석은
+        // `infrastructure/tortoise_svn_hooks`가 한다 — 그래야 레지스트리 없이 규칙을
+        // test할 수 있다.
+        std::u8string tortoise_svn_hooks {};
     };
 
     struct vcs_tool_candidate

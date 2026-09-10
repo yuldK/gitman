@@ -80,6 +80,7 @@ gitman_add_source_filter(gitman_test_files "infrastructure/git"
 
 gitman_add_source_filter(gitman_test_files "infrastructure/svn"
     svn_command_builder_tests.cpp
+    svn_hook_tests.cpp
     svn_integration_tests.cpp
     svn_output_parser_tests.cpp
     svn_repository_provider_tests.cpp)

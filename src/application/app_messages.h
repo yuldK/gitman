@@ -93,6 +93,15 @@ namespace gitman {
     };
 
     // 진행 중인 변경 작업(update·switch)의 취소 요청이다. 조회는 취소 대상이 아니다.
+    // 카드의 사용자 명령을 실행한다 (REQ-020). 컨텍스트 메뉴 항목과 카드 표면
+    // 버튼이 모두 이 intent를 낸다. handler가 필터와 busy를 다시 판정하므로 늦은
+    // 클릭이 준비되지 않은 카드에서 실행되지 않는다.
+    struct run_custom_command_intent
+    {
+        project_id id {};
+        std::u8string command_id {};
+    };
+
     struct cancel_operation_intent
     {
         project_id id {};
@@ -556,6 +565,10 @@ namespace gitman {
         // executor가 알고 있어 요청에는 담지 않는다. 문서 lane에서 직렬화된다.
         load_app_settings,
         save_app_settings,
+        // 사용자가 정의한 스크립트 실행이다 (REQ-020,
+        // custom-commands-and-svn-hooks-design C). 카드 lane에서 직렬화되어 같은
+        // 카드의 update·switch와 섞이지 않는다.
+        run_custom_command,
     };
 
     struct operation_request
@@ -585,6 +598,9 @@ namespace gitman {
         // register_projects 전용: 사용자가 선택한 탐색 후보다. 문서와 revision은
         // save처럼 `document`·`revision` 필드에 실린다.
         std::vector<discovery_candidate> discovery_selection {};
+        // run_custom_command 전용: 실행할 명령 정의다. 스크립트 경로 풀이와 작업
+        // 폴더 결정은 저장소 경로와 문서 경로를 모두 아는 executor가 한다.
+        std::optional<custom_command> command {};
         // save_app_settings 전용: 저장할 앱 설정과 마지막으로 읽은 원본 JSON이다.
         // 원본은 알 수 없는 키를 보존하는 데 쓴다.
         std::optional<app_settings> app_settings_payload {};
@@ -649,6 +665,28 @@ namespace gitman {
         project_id id {};
         operation_kind kind { operation_kind::update };
         repository_change_result result {};
+    };
+
+    // 사용자 명령 실행의 최종 결과다 (REQ-020). update·switch와 달리 저장소를
+    // 어떻게 바꾸는지 앱이 알 수 없어 snapshot을 담지 않는다 — 명령의
+    // `refresh_after`가 참이면 logic이 조회를 이어 낸다.
+    struct custom_command_completed_event
+    {
+        std::uint64_t operation_id { 0 };
+        project_id id {};
+        std::u8string command_id {};
+        std::u8string command_label {};
+        // 프로세스를 실제로 시작했다. 해석기를 찾지 못하면 거짓이다.
+        bool executed { false };
+        // 정상 종료했고 종료 코드가 0이다.
+        bool succeeded { false };
+        // 사용자 취소나 제한 시간으로 끝났다.
+        bool cancelled { false };
+        // `exited`로 끝났을 때만 값이 있다.
+        std::optional<std::int32_t> exit_code {};
+        // 끝난 뒤 카드 상태를 다시 조회할지다. 정의를 그대로 옮긴다.
+        bool refresh_after { true };
+        std::vector<diagnostic> diagnostics {};
     };
 
     // Git 후보 또는 SVN repo-browser 초기 정보 조회 결과다.
@@ -732,7 +770,8 @@ namespace gitman {
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, update_all_intent, cancel_all_operations_intent, refresh_card_intent, select_card_intent,
-        set_filter_intent, toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent,
+        set_filter_intent, toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, run_custom_command_intent, cancel_operation_intent, clear_log_intent,
+        set_log_filter_intent,
         set_log_auto_scroll_intent, log_scroll_intent, begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent,
         cancel_switch_dialog_intent, switch_dialog_scroll_intent, edit_text_input_intent, set_text_composition_intent, submit_switch_query_intent, clear_switch_query_intent,
         refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent, confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event,
@@ -744,7 +783,8 @@ namespace gitman {
         close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent, remove_recent_document_intent, toggle_recent_document_pin_intent,
         close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
-        local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
+        local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, custom_command_completed_event,
+        shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

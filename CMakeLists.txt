@@ -28,6 +28,11 @@ set(GITMAN_GENERATED_RESOURCE "${GITMAN_GENERATED_DIRECTORY}/gitman.rc")
 set(GITMAN_GENERATED_LUIL_RESOURCE "${GITMAN_GENERATED_DIRECTORY}/luil_resources.rc")
 set(GITMAN_THIRD_PARTY_NOTICES
     "${GITMAN_GENERATED_DIRECTORY}/third_party_notices.txt")
+# 사용자가 설정에 적은 codicon 이름을 실행 중에 찾는 표다
+# (custom-commands-and-svn-hooks-design C1). luil이 만드는 `icon_<name>` 상수는
+# 컴파일 시점에 이름을 아는 코드용이라 이 쓰임에는 맞지 않는다.
+set(GITMAN_GENERATED_CODICON_NAMES
+    "${GITMAN_GENERATED_DIRECTORY}/generated/codicon_names.h")
 set(GITMAN_SOURCE_STYLE_SCRIPT "${PROJECT_SOURCE_DIR}/scripts/check_source_style.ps1")
 set(GITMAN_SOURCE_STYLE_CMAKE_SCRIPT "${GITMAN_CMAKE_DIRECTORY}/run_style_check.cmake")
 

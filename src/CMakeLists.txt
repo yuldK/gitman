@@ -324,10 +324,28 @@ gitman_add_source_filter(gitman_lib_files "platform/shell"
     platform/win32/win32_file_association.cpp
     platform/win32/win32_file_association.h)
 
+# codicon 이름 표는 파일 하나를 만드는 custom command다. 결과 header를 라이브러리
+# 소스에 넣어 두면 빌드 순서가 저절로 맞으므로 별도 target을 두지 않는다 (luil의
+# 코디콘 생성과 같은 방식).
+add_custom_command(
+    OUTPUT "${GITMAN_GENERATED_CODICON_NAMES}"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DINPUT_FILE=${LUIL_ASSET_DIRECTORY}/mapping.json"
+        "-DOUTPUT_FILE=${GITMAN_GENERATED_CODICON_NAMES}"
+        -P "${GITMAN_CMAKE_DIRECTORY}/generate_codicon_names.cmake"
+    DEPENDS
+        "${LUIL_ASSET_DIRECTORY}/mapping.json"
+        "${GITMAN_CMAKE_DIRECTORY}/generate_codicon_names.cmake"
+    COMMENT "Generating the Codicon name lookup table"
+    VERBATIM)
+gitman_add_source_filter(gitman_lib_files "generated"
+    "${GITMAN_GENERATED_CODICON_NAMES}")
+
 add_library(gitman_lib STATIC ${gitman_lib_files})
 target_include_directories(gitman_lib
     PUBLIC
-        "${GITMAN_SOURCE_DIRECTORY}")
+        "${GITMAN_SOURCE_DIRECTORY}"
+        "${GITMAN_GENERATED_DIRECTORY}")
 # luil이 Skia·nlohmann(single_include)·WebView2 로더·Windows 시스템 라이브러리를
 # PUBLIC으로 나른다. `advapi32`는 win32_file_association.cpp의 `Reg*` 때문에
 # 명시한다.

@@ -21,6 +21,29 @@
 #include <vector>
 
 namespace gitman {
+    // 카드 하나에 걸린 사용자 명령이다 (REQ-020). 필터(VCS 종류·카드 지정·경로
+    // 패턴)를 통과한 것만 담긴다. 컨텍스트 메뉴와 카드 표면 버튼이 같은 목록을
+    // 쓰므로 어느 쪽에 낼지는 `show_on_card`가 정한다.
+    struct card_command_view
+    {
+        std::u8string id {};
+        std::u8string label {};
+        // codicon 이름이다. 글리프로 옮기는 것은 표시 계층의 몫이라 logic은 이름만
+        // 나른다 — 모르는 이름이면 표시 계층이 기본 글리프로 물러선다.
+        std::u8string icon {};
+        // 카드 표면에도 버튼으로 낸다. 컨텍스트 메뉴에는 이 값과 무관하게 나온다.
+        bool show_on_card { false };
+        // 지금 실행할 수 있다. 카드가 이미 바쁘면 거짓이다.
+        bool enabled { true };
+
+        [[nodiscard]] bool operator==(const card_command_view&) const noexcept = default;
+    };
+
+    // 카드 하나에 붙는 사용자 명령의 상한이다 (설계 C3·C4). 컨텍스트 메뉴 팝업은
+    // 폭이 고정이고 스크롤이 없으며, 카드 표면 버튼은 글자 자리를 먹는다. 넘치는
+    // 것은 버리고 카드 로그로 알린다.
+    inline constexpr std::size_t maximum_card_commands { 12 };
+
     // 렌더러가 그대로 그리는 카드 하나의 불변 표시 모델이다 (REQ-005).
     struct card_view_model
     {
@@ -55,6 +78,9 @@ namespace gitman {
         // `3분 전` 같은 상대 시각으로 그린다. 실패해도 남는다 — "언제 마지막으로
         // 뭔가 했는지"가 알고 싶은 것이라서다.
         std::optional<std::chrono::system_clock::time_point> last_finished_at {};
+        // 이 카드에 걸린 사용자 명령이다 (REQ-020). 필터를 통과한 것만, 정의 순서
+        // 그대로다.
+        std::vector<card_command_view> commands {};
     };
 
     enum class view_empty_state
@@ -264,6 +290,10 @@ namespace gitman {
         // 상태로 두거나, 그 폴더를 VSCode workspace로 연다.
         open_document_folder,
         open_document_in_vscode,
+        // 사용자가 정의한 명령이다 (REQ-020). 하나의 enum 값이 여러 항목을 뜻하므로
+        // 무엇을 실행할지는 항목의 `command_id`가 가른다 — 내장 항목과 달리 종류가
+        // 정체성이 아니다.
+        custom_command,
     };
 
     struct context_menu_item_view
@@ -277,6 +307,11 @@ namespace gitman {
         // VSCode 항목은 문서가 있는 폴더를 받는다. Windows 원형 그대로이며 표시용
         // 변환(`/`)을 적용하지 않는다. 외부 열기가 아닌 항목은 비어 있다.
         std::u8string target_path {};
+        // `custom_command` 항목에서만 채운다. 메뉴 key와 실행 intent의 열쇠다.
+        std::u8string command_id {};
+        // `custom_command` 항목의 codicon 이름이다. 내장 항목은 비어 있고 표시
+        // 계층의 표가 종류로 글리프를 정한다.
+        std::u8string icon {};
     };
 
     // 카드 body 또는 배너 우클릭이 여는 컨텍스트 메뉴의 불변 표시 모델이다 (3장,

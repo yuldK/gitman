@@ -1,6 +1,10 @@
 #include "presentation/ui/status_glyphs.h"
 
+#include "generated/codicon_names.h"
+
 #include "luil/generated/codicons.h"
+
+#include <algorithm>
 
 namespace gitman::ui {
     char32_t codicon_for_name(const std::u8string_view name) noexcept
@@ -26,5 +30,25 @@ namespace gitman::ui {
         if (name == u8"circle-slash")
             return luil::codicons::icon_circle_slash;
         return luil::codicons::icon_question;
+    }
+
+    char32_t codicon_for_configured_name(const std::u8string_view name, const char32_t fallback) noexcept
+    {
+        if (name.empty())
+            return fallback;
+
+        // 표는 만들 때 이름 순으로 정렬된다 (cmake/generate_codicon_names.cmake).
+        // 그 순서가 `std::u8string_view`의 사전식 비교와 같아야 이분 탐색이 성립하며,
+        // 실제로 그런지는 test가 확인한다.
+        const auto entry { std::ranges::lower_bound(generated::codicon_names, name, {}, &generated::codicon_name_entry::name) };
+        if (entry == generated::codicon_names.end() || entry->name != name)
+            return fallback;
+        return entry->codepoint;
+    }
+
+    char32_t default_command_codicon() noexcept
+    {
+        // 사용자 명령은 "무언가를 실행한다"가 전부라 재생 글리프가 가장 덜 틀린다.
+        return luil::codicons::icon_play;
     }
 } // namespace gitman::ui

@@ -103,6 +103,14 @@ namespace gitman {
         void handle_document_saved(document_saved_event event);
         void handle_request_update(const request_update_intent& intent);
         void handle_request_switch(const request_switch_intent& intent);
+        // 카드의 사용자 명령을 실행한다 (REQ-020). 늦은 클릭 방어를 위해 필터와
+        // busy를 view 구성과 같은 규칙으로 다시 판정한다.
+        void handle_run_custom_command(const run_custom_command_intent& intent);
+        void handle_custom_command_completed(custom_command_completed_event event);
+        // 이 카드에서 쓸 수 있는 명령이다. 유효 목록에서 필터를 통과한 것만 정의
+        // 순서대로 담고 상한(`maximum_card_commands`)에서 자른다. catalog를 인자로
+        // 받는 것은 카드마다 유효 목록을 다시 만들지 않기 위해서다.
+        [[nodiscard]] std::vector<custom_command> matching_commands(const command_catalog& catalog, const card_state& card) const;
         // 도구 막대의 일괄 업데이트다 (REQ-018). 활성 카드를 순서대로 시작하고,
         // 시작하지 못한 카드 수를 배너로 요약한다.
         void handle_update_all();
@@ -215,7 +223,8 @@ namespace gitman {
         void request_save();
         // 변경 작업(update·switch)을 시작한다. busy 카드는 거부하고 사유를 로그에
         // 남긴다.
-        void begin_change(card_state& card, operation_kind kind, const update_options& options, const switch_candidate* target);
+        // `command`는 `run_custom_command`에서만 값이 있다.
+        void begin_change(card_state& card, operation_kind kind, const update_options& options, const switch_candidate* target, const custom_command* command = nullptr);
         void append_lifecycle_log(card_state& card, diagnostic_severity severity, std::u8string text);
         // 카드 buffer와 파일 sink에 같은 항목을 넣는다. sink가 알린 실패는 카드
         // 로그에 한 번만 남긴다 (A4.4).

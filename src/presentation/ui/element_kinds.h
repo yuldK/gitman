@@ -107,6 +107,7 @@ namespace gitman::ui {
             discovery_dialog_confirm,
             discovery_dialog_cancel,
             toolbar_update_all,
+            card_custom_command,
             count,
         };
 
@@ -134,6 +135,9 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_card_refresh { detail::application_kind(detail::application_kind_index::card_refresh) };
     inline constexpr luil::ui_element_kind kind_card_update { detail::application_kind(detail::application_kind_index::card_update) };
     inline constexpr luil::ui_element_kind kind_card_switch { detail::application_kind(detail::application_kind_index::card_switch) };
+    // 카드 표면에 나온 사용자 명령 버튼이다 (REQ-020). owner가 카드 id와 명령 id를
+    // 함께 담는다 (`card_command_owner`).
+    inline constexpr luil::ui_element_kind kind_card_custom_command { detail::application_kind(detail::application_kind_index::card_custom_command) };
     inline constexpr luil::ui_element_kind kind_empty_state { detail::application_kind(detail::application_kind_index::empty_state) };
     inline constexpr luil::ui_element_kind kind_start_page { detail::application_kind(detail::application_kind_index::start_page) };
     inline constexpr luil::ui_element_kind kind_start_page_open_document { detail::application_kind(detail::application_kind_index::start_page_open_document) };
@@ -301,6 +305,7 @@ namespace gitman::ui {
         kind_discovery_dialog_confirm,
         kind_discovery_dialog_cancel,
         kind_toolbar_update_all,
+        kind_card_custom_command,
     };
 
     static_assert(application_kinds.size() == application_kind_count);

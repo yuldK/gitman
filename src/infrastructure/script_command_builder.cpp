@@ -1,5 +1,6 @@
 #include "infrastructure/script_command_builder.h"
 
+#include "domain/path_syntax.h"
 #include "infrastructure/vcs_execution_policy.h"
 
 #include <algorithm>
@@ -67,6 +68,47 @@ namespace gitman {
             return;
         }
         values_.push_back({ std::u8string { name }, std::u8string { value } });
+    }
+
+    std::u8string resolve_script_path(const std::u8string_view script, const std::u8string_view document_path)
+    {
+        if (script.empty() || is_absolute_windows_path(script))
+            return std::u8string { script };
+
+        const std::u8string_view base { windows_parent_directory(document_path) };
+        if (base.empty())
+            return std::u8string { script };
+
+        std::u8string result { base };
+        if (result.back() != u8'\\' && result.back() != u8'/')
+            result.push_back(u8'\\');
+        result.append(script);
+        return result;
+    }
+
+    std::u8string resolve_script_working_directory(
+        const command_working_directory kind, const std::u8string_view repository_path, const std::u8string_view document_path, const std::u8string_view script_path)
+    {
+        std::u8string chosen {};
+        switch (kind)
+        {
+        case command_working_directory::document:
+            chosen = windows_parent_directory(document_path);
+            break;
+        case command_working_directory::script:
+            chosen = windows_parent_directory(script_path);
+            break;
+        case command_working_directory::repository:
+        default:
+            chosen = repository_path;
+            break;
+        }
+
+        if (chosen.empty())
+            chosen = repository_path;
+        if (chosen.empty())
+            chosen = windows_parent_directory(document_path);
+        return chosen;
     }
 
     process_request make_script_process_request(const resolved_script_interpreter& interpreter, const script_command& command)

@@ -119,6 +119,22 @@ namespace gitman {
             return u8"제한 시간은 10~3600초 사이여야 합니다.";
         }
 
+        // 명령 필터가 쓰는 카드 종류다. 아직 조회가 끝나지 않은 카드는 `any`이며,
+        // 그때 VCS를 지정한 명령은 보이지 않는다 (command_matches의 규칙).
+        command_target_vcs target_vcs_of(const repository_kind kind) noexcept
+        {
+            switch (kind)
+            {
+            case repository_kind::git:
+                return command_target_vcs::git;
+            case repository_kind::subversion:
+                return command_target_vcs::subversion;
+            case repository_kind::unknown:
+            default:
+                return command_target_vcs::any;
+            }
+        }
+
         card_view_state derive_card_state(const card_view_inputs& inputs) noexcept
         {
             if (inputs.enabled == false)
@@ -209,6 +225,10 @@ namespace gitman {
                     handle_reorder_card(value);
                 else if constexpr (std::is_same_v<value_type, request_update_intent>)
                     handle_request_update(value);
+                else if constexpr (std::is_same_v<value_type, run_custom_command_intent>)
+                    handle_run_custom_command(value);
+                else if constexpr (std::is_same_v<value_type, custom_command_completed_event>)
+                    handle_custom_command_completed(std::move(value));
                 else if constexpr (std::is_same_v<value_type, request_switch_intent>)
                     handle_request_switch(value);
                 else if constexpr (std::is_same_v<value_type, cancel_operation_intent>)
@@ -605,6 +625,30 @@ namespace gitman {
         // 로그 파일 적재 대상도 문서 단위로 다시 정해진다 (A4.1).
         publish_log_targets();
 
+        // 카드에 붙는 사용자 명령이 상한을 넘으면 뒤엣것이 조용히 사라진다. 문서를
+        // 열 때 한 번 알린다 — 매 프레임 판정하는 view 구성에서는 알릴 곳이 없다.
+        {
+            const command_catalog catalog { effective_commands() };
+            for (card_state& card : cards_)
+            {
+                command_match_context context {};
+                context.project_id = card.project.id.value;
+                context.repository_path = card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized;
+                context.display_name = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
+                // 문서를 막 연 시점이라 카드 종류를 아직 모른다. VCS를 지정한 명령은
+                // 조회가 끝난 뒤에야 붙으므로 여기서는 상한을 넘길 수 있는 최대치를 센다.
+                std::size_t candidates { 0 };
+                for (const custom_command& command : catalog.custom)
+                {
+                    context.vcs = command.vcs;
+                    if (command_matches(command, context))
+                        ++candidates;
+                }
+                if (candidates > maximum_card_commands)
+                    append_lifecycle_log(card, diagnostic_severity::warning, u8"이 카드에 걸린 사용자 명령이 12개를 넘어 뒤엣것은 표시하지 않습니다.");
+            }
+        }
+
         // 시작 시 로컬 상태를 먼저 표시한다 (plan 5.1). 원격 판정은 명시적 refresh다.
         for (card_state& card : cards_)
         {
@@ -884,15 +928,21 @@ namespace gitman {
         begin_change(*card, operation_kind::switch_to, {}, &intent.target);
     }
 
-    void logic_controller::begin_change(card_state& card, const operation_kind kind, const update_options& options, const switch_candidate* const target)
+    void logic_controller::begin_change(card_state& card, const operation_kind kind, const update_options& options, const switch_candidate* const target, const custom_command* const command)
     {
         const bool is_update { kind == operation_kind::update };
+        const bool is_command { kind == operation_kind::run_custom_command };
         if (card.busy)
         {
             // lane 직렬화와 별개로 대기열 폭주를 막는다 (stage-7-plan 4.4). 사유는
             // 로그로 남겨 사용자가 클릭이 무시된 이유를 알 수 있다.
-            append_lifecycle_log(card, diagnostic_severity::warning,
-                is_update ? std::u8string { u8"이미 작업이 진행 중이라 update를 시작하지 않습니다." } : std::u8string { u8"이미 작업이 진행 중이라 switch를 시작하지 않습니다." });
+            std::u8string reason { u8"이미 작업이 진행 중이라 " };
+            if (is_command)
+                reason.append(u8"사용자 명령을");
+            else
+                reason.append(is_update ? u8"update를" : u8"switch를");
+            reason.append(u8" 시작하지 않습니다.");
+            append_lifecycle_log(card, diagnostic_severity::warning, std::move(reason));
             return;
         }
 
@@ -901,6 +951,8 @@ namespace gitman {
         request.options = options;
         if (target != nullptr)
             request.switch_target = *target;
+        if (command != nullptr)
+            request.command = *command;
         // 변경 작업은 카드 단위 취소가 가능해야 하므로 전역 token 대신 작업별
         // token을 싣는다. 종료 시에는 cancel_running_changes가 함께 취소한다.
         request.token = cancellation.token();
@@ -923,11 +975,110 @@ namespace gitman {
         card.change_cancellation = std::move(cancellation);
         // 종료가 close 메시지 없이 일어나도 실행 중 프로세스가 취소되도록 등록한다.
         registry_->add(*card.change_cancellation);
-        if (is_update)
+        if (is_command)
+            append_lifecycle_log(card, diagnostic_severity::information, std::u8string { u8"사용자 명령을 시작합니다: " } + (command != nullptr ? command->label : std::u8string {}));
+        else if (is_update)
             append_lifecycle_log(
                 card, diagnostic_severity::information, options.update_submodules ? std::u8string { u8"update를 시작합니다 (submodule 함께 갱신)." } : std::u8string { u8"update를 시작합니다." });
         else
             append_lifecycle_log(card, diagnostic_severity::information, std::u8string { u8"switch를 시작합니다: " } + (target != nullptr ? target->display_name : std::u8string {}));
+    }
+
+    std::vector<custom_command> logic_controller::matching_commands(const command_catalog& catalog, const card_state& card) const
+    {
+        command_match_context context {};
+        context.project_id = card.project.id.value;
+        context.repository_path = card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized;
+        context.display_name = card.project.display_name.empty() ? card.project.id.value : card.project.display_name;
+        context.vcs = target_vcs_of(card.snapshot.kind);
+
+        std::vector<custom_command> matched {};
+        for (const custom_command& command : catalog.custom)
+        {
+            if (command_matches(command, context) == false)
+                continue;
+            if (matched.size() >= maximum_card_commands)
+                break;
+            matched.push_back(command);
+        }
+        return matched;
+    }
+
+    void logic_controller::handle_run_custom_command(const run_custom_command_intent& intent)
+    {
+        // 메뉴에서 왔으면 닫는다. 카드 표면 버튼에서 왔으면 열린 메뉴가 없어 무해하다.
+        context_menu_.reset();
+        if (shutting_down_)
+            return;
+
+        card_state* const card { find_card(intent.id) };
+        if (card == nullptr || card->project.enabled == false)
+            return;
+
+        // 늦은 클릭 방어다. 메뉴를 띄운 뒤 문서가 바뀌었거나 카드 종류가 확정되어
+        // 필터에서 빠졌을 수 있다 (컨텍스트 메뉴의 can_change 재판정과 같은 규칙).
+        const std::vector<custom_command> commands { matching_commands(effective_commands(), *card) };
+        const auto found { std::ranges::find_if(commands, [&intent](const custom_command& value) { return value.id == intent.command_id; }) };
+        if (found == commands.end())
+        {
+            append_lifecycle_log(*card, diagnostic_severity::warning, u8"이 카드에서 쓸 수 없는 사용자 명령입니다.");
+            return;
+        }
+
+        begin_change(*card, operation_kind::run_custom_command, {}, nullptr, &*found);
+    }
+
+    void logic_controller::handle_custom_command_completed(custom_command_completed_event event)
+    {
+        card_state* const card { find_card(event.id) };
+        if (card == nullptr || event.operation_id != card->change_operation_id)
+            return;
+
+        card->change_elapsed = { std::chrono::steady_clock::now() - card->change_started_at };
+        card->change_operation_id = 0;
+        card->change_cancellation.reset();
+        card->busy = false;
+        batch_notice_.clear();
+        card->operation_started_at.reset();
+        card->last_finished_at = { std::chrono::system_clock::now() };
+
+        std::u8string label { u8"사용자 명령 \"" };
+        label.append(event.command_label.empty() ? event.command_id : event.command_label);
+        label.append(u8"\"");
+
+        if (event.cancelled)
+            append_lifecycle_log(*card, diagnostic_severity::warning, label + u8"을 취소했습니다.");
+        else if (event.executed == false)
+            append_lifecycle_log(*card, diagnostic_severity::error, label + u8"을 실행하지 못했습니다.");
+        else if (event.succeeded)
+            append_lifecycle_log(*card, diagnostic_severity::information, label + u8"이 끝났습니다.");
+        else
+        {
+            // 종료 코드는 스크립트가 남기는 유일한 기계 판독 신호다. git·svn 어휘의
+            // 오류 분류를 쓰지 않으므로(ADR-003) 코드를 그대로 보여 준다.
+            std::u8string message { label + u8"이 실패했습니다" };
+            if (event.exit_code.has_value())
+            {
+                const std::string digits { std::to_string(*event.exit_code) };
+                message.append(u8" (종료 코드 ");
+                message.append(digits.begin(), digits.end());
+                message.append(u8")");
+            }
+            message.append(u8".");
+            append_lifecycle_log(*card, diagnostic_severity::error, std::move(message));
+        }
+
+        for (const diagnostic& value : event.diagnostics)
+            if (value.severity != diagnostic_severity::information)
+                append_lifecycle_log(*card, value.severity, value.message);
+
+        // 저장소를 어떻게 바꿨는지 앱이 알 수 없으므로 조회는 명령이 요청할 때만
+        // 잇는다. 매번 원격까지 다시 보는 것은 비싸다.
+        if (event.refresh_after && shutting_down_ == false && card->project.enabled)
+        {
+            card->refresh_queued = false;
+            request_refresh(*card);
+        }
     }
 
     void logic_controller::handle_update_all()
@@ -3031,6 +3182,8 @@ namespace gitman {
 
     std::vector<card_view_model> logic_controller::build_ordered_cards() const
     {
+        // 유효 목록은 카드마다 같다. 프레임마다 카드 수만큼 다시 만들지 않는다.
+        const command_catalog catalog { effective_commands() };
         std::vector<card_view_model> ordered {};
         for (const card_state& card : cards_)
         {
@@ -3057,6 +3210,18 @@ namespace gitman {
             model.change_running = card.change_operation_id != 0;
             model.operation_started_at = card.operation_started_at;
             model.last_finished_at = card.last_finished_at;
+            for (const custom_command& command : matching_commands(catalog, card))
+            {
+                card_command_view view {};
+                view.id = command.id;
+                view.label = command.label;
+                view.icon = command.icon;
+                view.show_on_card = command.show_on_card;
+                // 실행 조건은 update보다 느슨하다. 스크립트가 저장소를 읽는지 쓰는지
+                // 앱이 모르므로 조회 완료를 요구하지 않고 바쁘지만 않으면 허용한다.
+                view.enabled = card.project.enabled && card.busy == false;
+                model.commands.push_back(std::move(view));
+            }
 
             card_view_inputs inputs {};
             inputs.enabled = card.project.enabled;
@@ -3444,6 +3609,19 @@ namespace gitman {
                 menu.items.push_back({ context_menu_entry::refresh, u8"상태 갱신", true });
                 menu.items.push_back({ context_menu_entry::update, u8"업데이트", can_change && change_running == false });
                 menu.items.push_back({ context_menu_entry::switch_to, u8"전환…", can_change });
+
+                // 사용자 명령은 내장 항목 뒤에 이어 붙인다 (REQ-020). `show_on_card`와
+                // 무관하게 전부 나온다 — 카드 표면은 자주 쓰는 것만 꺼내 두는 자리다.
+                for (const custom_command& command : matching_commands(effective_commands(), card))
+                {
+                    context_menu_item_view item {};
+                    item.entry = context_menu_entry::custom_command;
+                    item.label = command.label;
+                    item.enabled = card.project.enabled && card.busy == false;
+                    item.command_id = command.id;
+                    item.icon = command.icon;
+                    menu.items.push_back(std::move(item));
+                }
                 snapshot->context_menu = { std::move(menu) };
                 break;
             }

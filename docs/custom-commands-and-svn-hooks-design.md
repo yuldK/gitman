@@ -199,11 +199,16 @@ git·svn 공통 인자를 붙이지 않는 것이 유일한 차이다.
 | `GITMAN_REPOSITORY_PATH` | 저장소 작업 트리 경로 (Windows 원형) |
 | `GITMAN_DOCUMENT_PATH` | 열린 `.version-list` 절대 경로 |
 | `GITMAN_VCS` | `git` 또는 `subversion` |
-| `GITMAN_REFERENCE` | 현재 branch 또는 URL |
-| `GITMAN_REVISION` | 현재 리비전 |
+| `GITMAN_REFERENCE` | 현재 branch 또는 URL (**훅만**) |
+| `GITMAN_REVISION` | 현재 리비전 (**훅만**) |
 
 `process_request`가 이름 중복(대소문자 무시)을 오류로 보므로 만드는 쪽에서 한 번
 정리한다.
+
+마지막 둘은 훅에만 넣는다 (2026-09-10 3단계 구현 결정). 커스텀 명령은 조회 없이 그
+값을 알 수 없고, 명령마다 조회를 앞세우면 비싸다. 스크립트는 저장소 폴더에서
+실행되므로 필요하면 직접 물어보면 된다. 훅은 provider가 사전 검사에서 이미 snapshot을
+들고 있어 값이 공짜다.
 
 ### X6. 로그
 

@@ -13,9 +13,17 @@ namespace gitman::ui {
     // popup 창이고(설계 D3-A), 본체는 luil `menu_element`다. 바깥 클릭·휠·Esc·활성
     // 전환의 닫기는 UI thread가 계기를 감지해 `ui_popup::dismiss`로 알린다.
 
+    // 사용자 명령 항목의 키 앞머리다. 내장 항목의 이름과 섞이지 않게 한다.
+    inline constexpr std::u8string_view custom_command_key_prefix { u8"custom:" };
+
     // 항목 하나를 가리키는 키다 (`menu_item_config::key`와 select factory의 인자).
     // entry 이름을 그대로 쓴다.
     [[nodiscard]] std::u8string_view context_menu_entry_key(context_menu_entry entry) noexcept;
+
+    // 항목 하나의 실제 키다. 사용자 명령은 종류가 정체성이 아니라 하나의 entry 값이
+    // 여러 항목을 뜻하므로 `custom:<id>`로 항목마다 다른 키를 만든다 (REQ-020).
+    // luil의 select factory는 키 하나만 받으므로 이 키가 유일해야 항목이 구분된다.
+    [[nodiscard]] std::u8string context_menu_item_key(const context_menu_item_view& item);
 
     // 키를 entry로 되돌린다. 모르는 키면 비어 있다.
     [[nodiscard]] std::optional<context_menu_entry> parse_context_menu_entry(std::u8string_view key) noexcept;

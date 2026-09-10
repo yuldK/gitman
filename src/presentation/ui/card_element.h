@@ -6,8 +6,15 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace gitman::ui {
+    // 카드 표면 사용자 명령 버튼의 element id owner다 (REQ-020). 카드 하나에 명령이
+    // 여럿이라 owner가 둘을 함께 담아야 한다. 카드 id는 사용자가 JSON에 쓴 문자열이라
+    // 흔한 구분자는 충돌할 수 있어, JSON 문자열에 그대로 들어갈 수 없는 제어 문자
+    // U+001F를 쓴다 — 명령 id의 제어 문자는 문서 파서가 이미 거른다.
+    [[nodiscard]] std::u8string card_command_owner(std::u8string_view card_id, std::u8string_view command_id);
     // 카드 한 장이다. 상태 아이콘과 텍스트를 직접 그리고 refresh/update/switch
     // 버튼 3개를 자식으로 담는다. update와 switch는 단계 7 전까지 비활성이며
     // tooltip으로 사유를 안내한다. 버튼만 luil `button_element`이고 본문 그리기와
@@ -37,6 +44,9 @@ namespace gitman::ui {
         ui_element* refresh_ { nullptr };
         ui_element* update_ { nullptr };
         ui_element* switch_ { nullptr };
+        // `show_on_card`인 사용자 명령의 버튼이다. 정의 순서 그대로이며, 자리가
+        // 모자라면 기본 버튼보다 먼저 숨는다 (설계 C4).
+        std::vector<ui_element*> command_buttons_ {};
         // 이름·경로·상태 줄이 쓸 수 있는 오른쪽 한계다. arrange가 버튼 배치 뒤에
         // 정한다. 창이 좁아 버튼이 숨겨지면 그만큼 넓어진다.
         float text_limit_ { 0.0f };

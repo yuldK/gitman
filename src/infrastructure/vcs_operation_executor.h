@@ -51,6 +51,10 @@ namespace gitman {
         // service를 그대로 조립한다.
         void execute_discover_projects(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_register_projects(const operation_request& request, const std::function<void(logic_message)>& emit);
+        // 사용자가 정의한 스크립트 실행이다 (REQ-020,
+        // custom-commands-and-svn-hooks-design C). 프로세스 출력을 카드 로그로
+        // 흘리고 마지막에 custom_command_completed_event를 보낸다.
+        void execute_custom_command(const operation_request& request, const std::function<void(logic_message)>& emit);
         // 앱 단위 설정 파일의 읽기·쓰기다 (app-shell-design A1.2).
         void execute_load_app_settings(const operation_request& request, const std::function<void(logic_message)>& emit);
         void execute_save_app_settings(const operation_request& request, const std::function<void(logic_message)>& emit);

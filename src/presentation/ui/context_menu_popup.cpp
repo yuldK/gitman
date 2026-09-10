@@ -1,6 +1,7 @@
 #include "presentation/ui/context_menu_popup.h"
 
 #include "presentation/list_metrics.h"
+#include "presentation/ui/status_glyphs.h"
 #include "presentation/ui/ui_actions.h"
 
 #include "luil/generated/codicons.h"
@@ -35,8 +36,19 @@ namespace gitman::ui {
                 return luil::codicons::icon_folder_opened;
             case context_menu_entry::open_document_in_vscode:
                 return luil::codicons::icon_vscode;
+            case context_menu_entry::custom_command:
+                // 여기 오지 않는다 — 사용자 명령은 `item_glyph`가 먼저 가른다.
+                break;
             }
             return luil::codicons::icon_question;
+        }
+
+        // 사용자 명령은 설정에 적힌 codicon 이름을 따르므로 종류가 아니라 항목을 본다.
+        char32_t item_glyph(const context_menu_item_view& item) noexcept
+        {
+            if (item.entry == context_menu_entry::custom_command)
+                return codicon_for_configured_name(item.icon, default_command_codicon());
+            return entry_glyph(item.entry);
         }
 
         // 항목 하나를 고른 결과다. 외부 열기 3종은 UI thread가 셸을 부르는 앱
@@ -60,9 +72,19 @@ namespace gitman::ui {
             case context_menu_entry::refresh:
             case context_menu_entry::update:
             case context_menu_entry::switch_to:
+            case context_menu_entry::custom_command:
                 break;
             }
             return make_logic_action(select_context_menu_item_intent { entry });
+        }
+
+        luil::input_action item_action(const project_id& owner, const context_menu_item_view& item)
+        {
+            // 사용자 명령은 카드와 명령 id를 함께 실어 logic으로 간다. 메뉴 닫기는
+            // handler가 함께 한다 (내장 logic 항목과 같은 규칙).
+            if (item.entry == context_menu_entry::custom_command)
+                return make_logic_action(run_custom_command_intent { owner, item.command_id });
+            return entry_action(item.entry, item.target_path);
         }
     } // namespace
 
@@ -86,14 +108,28 @@ namespace gitman::ui {
             return u8"open_document_folder";
         case context_menu_entry::open_document_in_vscode:
             return u8"open_document_in_vscode";
+        case context_menu_entry::custom_command:
+            // 실제 키는 `context_menu_item_key`가 항목마다 만든다. 이 이름은 표의
+            // 자리를 채워 종류 전수를 유지하기 위한 것이다.
+            return u8"custom_command";
         }
         return u8"";
+    }
+
+    std::u8string context_menu_item_key(const context_menu_item_view& item)
+    {
+        if (item.entry != context_menu_entry::custom_command)
+            return std::u8string { context_menu_entry_key(item.entry) };
+
+        std::u8string key { custom_command_key_prefix };
+        key.append(item.command_id);
+        return key;
     }
 
     std::optional<context_menu_entry> parse_context_menu_entry(const std::u8string_view key) noexcept
     {
         // 표는 `context_menu_entry_key` 한 곳뿐이다 — 되돌리기는 그 표를 훑는다.
-        constexpr std::array<context_menu_entry, 8> entries {
+        constexpr std::array<context_menu_entry, 9> entries {
             context_menu_entry::open_repository,
             context_menu_entry::open_in_vscode,
             context_menu_entry::show_local_changes,
@@ -102,6 +138,7 @@ namespace gitman::ui {
             context_menu_entry::switch_to,
             context_menu_entry::open_document_folder,
             context_menu_entry::open_document_in_vscode,
+            context_menu_entry::custom_command,
         };
         for (const context_menu_entry entry : entries)
             if (context_menu_entry_key(entry) == key)
@@ -122,21 +159,20 @@ namespace gitman::ui {
         for (const context_menu_item_view& item : menu.items)
         {
             luil::menu_item_config row {};
-            row.key = std::u8string { context_menu_entry_key(item.entry) };
+            row.key = context_menu_item_key(item);
             row.label = item.label;
-            row.icon = entry_glyph(item.entry);
+            row.icon = item_glyph(item);
             row.enabled = item.enabled;
             config.items.push_back(std::move(row));
         }
         // factory는 키 하나만 받으므로 항목을 값으로 들고 있다가 키로 찾는다 —
-        // 외부 열기 항목의 `target_path`가 항목마다 다르기 때문이다.
-        config.select = [items = menu.items](const std::u8string& key) -> luil::input_action {
-            const std::optional<context_menu_entry> entry { parse_context_menu_entry(key) };
-            if (entry.has_value() == false)
-                return {};
+        // 외부 열기 항목의 `target_path`와 사용자 명령의 id가 항목마다 다르기
+        // 때문이다. 종류가 아니라 **키**로 찾는 것이 핵심이다: 사용자 명령은 여럿이
+        // 같은 entry 값을 쓰므로 종류로 찾으면 전부 첫 항목으로 몰린다.
+        config.select = [items = menu.items, owner = menu.owner](const std::u8string& key) -> luil::input_action {
             for (const context_menu_item_view& item : items)
-                if (item.entry == *entry)
-                    return entry_action(item.entry, item.target_path);
+                if (context_menu_item_key(item) == key)
+                    return item_action(owner, item);
             return {};
         };
 

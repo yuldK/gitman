@@ -5,7 +5,10 @@
 #include "application/version_list_generation_service.h"
 #include "domain/discovery.h"
 #include "infrastructure/git_repository_provider.h"
+#include "infrastructure/script_command_builder.h"
+#include "infrastructure/script_interpreter_discovery.h"
 #include "infrastructure/svn_repository_provider.h"
+#include "infrastructure/vcs_command_runner.h"
 
 #include <chrono>
 #include <cstddef>
@@ -52,6 +55,18 @@ namespace gitman {
                 entries_.push_back(std::move(entry));
                 if (entries_.size() >= operation_log_flush_count)
                     flush();
+            }
+
+            // 앱이 만든 안내를 프로세스 출력과 같은 흐름에 넣는다. 실행할 명령줄을
+            // 출력보다 먼저 남기려면 같은 sink를 지나야 순서가 보장된다 (X6).
+            void append_lifecycle(const diagnostic_severity severity, std::u8string text)
+            {
+                operation_log_entry entry {};
+                entry.kind = log_entry_kind::lifecycle;
+                entry.severity = severity;
+                entry.text = std::move(text);
+                entry.time = std::chrono::system_clock::now();
+                entries_.push_back(std::move(entry));
             }
 
             void flush()
@@ -176,6 +191,12 @@ namespace gitman {
                 return;
             }
 
+            if (request.kind == operation_kind::run_custom_command)
+            {
+                execute_custom_command(request, emit);
+                return;
+            }
+
             if (request.kind == operation_kind::query_switch_candidates)
             {
                 execute_switch_candidates(request, emit);
@@ -268,6 +289,20 @@ namespace gitman {
                     failure.result.diagnostics.push_back(std::move(value));
                     emit(std::move(failure));
                 }
+                else if (request.kind == operation_kind::run_custom_command)
+                {
+                    custom_command_completed_event failure {};
+                    failure.operation_id = request.operation_id;
+                    failure.id = request.project.id;
+                    if (request.command.has_value())
+                    {
+                        failure.command_id = request.command->id;
+                        failure.command_label = request.command->label;
+                        failure.refresh_after = request.command->refresh_after;
+                    }
+                    failure.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
                 else if (request.kind == operation_kind::query_switch_candidates)
                 {
                     switch_candidates_event failure {};
@@ -312,6 +347,90 @@ namespace gitman {
             catch (...)
             {}
         }
+    }
+
+    void vcs_operation_executor::execute_custom_command(const operation_request& request, const std::function<void(logic_message)>& emit)
+    {
+        custom_command_completed_event event {};
+        event.operation_id = request.operation_id;
+        event.id = request.project.id;
+
+        const auto fail = [&event, &emit](const diagnostic_code code, std::u8string message) {
+            diagnostic value {};
+            value.code = code;
+            value.severity = diagnostic_severity::error;
+            value.message = std::move(message);
+            event.diagnostics.push_back(std::move(value));
+            emit(std::move(event));
+        };
+
+        if (request.command.has_value() == false)
+        {
+            fail(diagnostic_code::invalid_command_definition, u8"실행할 사용자 명령이 요청에 없습니다.");
+            return;
+        }
+
+        const custom_command& command { *request.command };
+        event.command_id = command.id;
+        event.command_label = command.label;
+        event.refresh_after = command.refresh_after;
+
+        // 로그 sink는 여기서부터 만든다. 아래의 어떤 경로로 빠져나가든 flush 뒤에
+        // 완료 event를 보내야 마지막 record가 버려지지 않는다.
+        operation_log_forwarder log { request, emit };
+
+        const std::u8string script { resolve_script_path(command.script, request.document_path) };
+        const resolved_script_interpreter interpreter { resolve_script_interpreter(script, environment_, *probe_) };
+        if (interpreter.usable() == false)
+        {
+            event.diagnostics = interpreter.diagnostics;
+            log.flush();
+            emit(std::move(event));
+            return;
+        }
+
+        const std::u8string repository_path { request.project.path.normalized.empty() ? request.project.path.original : request.project.path.normalized };
+
+        script_environment_builder environment {};
+        environment.set(script_environment_project_id, request.project.id.value);
+        environment.set(script_environment_project_name, request.project.display_name);
+        environment.set(script_environment_repository_path, repository_path);
+        environment.set(script_environment_document_path, request.document_path);
+        // 현재 branch·리비전은 넣지 않는다. 조회 없이 알 수 없고, 명령마다 조회를
+        // 앞세우면 비싸다. 스크립트는 저장소 폴더에서 실행되므로 직접 물어보면 된다.
+        environment.set(script_environment_vcs, repository_kind_name(decide_kind(request.project)));
+
+        script_command script_request {};
+        script_request.script = script;
+        script_request.arguments = command.arguments;
+        script_request.working_directory = resolve_script_working_directory(command.working_directory, repository_path, request.document_path, script);
+        script_request.environment = environment.values();
+        script_request.timeout_seconds = command.timeout_seconds;
+
+        const process_request process { make_script_process_request(interpreter, script_request) };
+        if (std::vector<diagnostic> invalid { validate_process_request(process) }; invalid.empty() == false)
+        {
+            event.diagnostics = std::move(invalid);
+            log.flush();
+            emit(std::move(event));
+            return;
+        }
+
+        // 무엇이 실행되는지 남긴다. 문서가 정의한 명령을 신뢰 게이트 없이 실행하기로
+        // 한 결정(2026-09-10)의 대응이다 (설계 0장, X6).
+        log.append_lifecycle(diagnostic_severity::information, std::u8string { u8"실행: " } + describe_process_command(process));
+
+        const vcs_command_result result { run_vcs_command(*runner_, process, request.token, &log) };
+        event.executed = result.process.completion != process_completion::start_failed && result.process.completion != process_completion::invalid_request;
+        event.succeeded = result.succeeded();
+        event.cancelled = result.process.completion == process_completion::cancelled || result.process.completion == process_completion::timed_out;
+        event.exit_code = result.process.exit_code;
+        for (const diagnostic& value : result.process.diagnostics)
+            event.diagnostics.push_back(value);
+
+        // 로그가 완료 event보다 먼저 도착해야 logic이 버리지 않는다 (같은 producer FIFO).
+        log.flush();
+        emit(std::move(event));
     }
 
     void vcs_operation_executor::bind_app_settings(app_settings_store& store, std::u8string path)

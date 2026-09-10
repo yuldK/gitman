@@ -52,6 +52,14 @@ namespace gitman::ui {
         }
     } // namespace
 
+    std::u8string card_command_owner(const std::u8string_view card_id, const std::u8string_view command_id)
+    {
+        std::u8string owner { card_id };
+        owner.push_back(u8'\x1f');
+        owner.append(command_id);
+        return owner;
+    }
+
     card_element::card_element(card_view_model card)
         : ui_element { ui_element_id { kind_card_body, card.id.value } }
         , card_ { std::move(card) }
@@ -137,6 +145,30 @@ namespace gitman::ui {
         }
         switch_ = switch_button.get();
         add_child(std::move(switch_button));
+
+        // 카드 표면에 꺼내 둔 사용자 명령이다 (REQ-020). 컨텍스트 메뉴에는 전부
+        // 나오고, 여기에는 자주 쓰는 것만 나온다.
+        for (const card_command_view& command : card_.commands)
+        {
+            if (command.show_on_card == false)
+                continue;
+
+            luil::button_config config {};
+            config.glyph = codicon_for_configured_name(command.icon, default_command_codicon());
+            auto button { std::make_unique<luil::button_element>(ui_element_id { kind_card_custom_command, card_command_owner(card_.id.value, command.id) }, config) };
+            if (command.enabled)
+            {
+                button->set_tooltip(command.label);
+                button->set_action(ui_trigger::left_click, make_logic_click(run_custom_command_intent { card_.id, command.id }));
+            }
+            else
+            {
+                button->set_tooltip(command.label + std::u8string { u8" (작업이 끝난 뒤 실행할 수 있습니다)" });
+                button->set_enabled(false);
+            }
+            command_buttons_.push_back(button.get());
+            add_child(std::move(button));
+        }
     }
 
     void card_element::arrange(const arrange_context& context)
@@ -167,6 +199,10 @@ namespace gitman::ui {
         place(switch_);
         place(update_);
         place(refresh_);
+        // 사용자 명령은 기본 버튼 왼쪽이다. `place`는 자리가 없으면 그 뒤를 모두
+        // 숨기므로 좁은 창에서 새로 고침·업데이트·전환이 먼저 살아남는다 (설계 C4).
+        for (ui_element* const command_button : command_buttons_)
+            place(command_button);
         text_limit_ = next_x + button;
 
         // 시간 표시는 상태 조각보다 **먼저** 자리를 잡는다 (REQ-019). 조각은 왼쪽부터

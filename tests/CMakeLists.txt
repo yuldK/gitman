@@ -85,6 +85,7 @@ gitman_add_source_filter(gitman_test_files "infrastructure/svn"
     svn_repository_provider_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "infrastructure/scripts"
+    custom_command_tests.cpp
     script_command_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "infrastructure/vcs"

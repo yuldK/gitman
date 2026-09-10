@@ -713,3 +713,77 @@ TEST_CASE("The banner opens the document menu on right click only while a docume
         REQUIRE(click_point(harness, x, y, luil::pointer_button::right).empty());
     }
 }
+
+TEST_CASE("Custom commands follow the built in items and keep separate keys", "[ui][context-menu][commands]")
+{
+    // 하나의 entry 값이 여러 항목을 뜻하므로 키가 항목마다 달라야 한다. 종류로
+    // 찾으면 사용자 명령이 전부 첫 항목으로 몰린다 (설계 C3).
+    gitman::context_menu_view menu { make_card_menu(100.0f, 100.0f, { true, true, true, true, true, true }) };
+    for (const std::u8string_view id : { std::u8string_view { u8"build" }, std::u8string_view { u8"clean" } })
+    {
+        gitman::context_menu_item_view item {};
+        item.entry = gitman::context_menu_entry::custom_command;
+        item.label = std::u8string { id };
+        item.command_id = id;
+        item.icon = u8"run-all";
+        menu.items.push_back(std::move(item));
+    }
+
+    REQUIRE(ui::context_menu_item_key(menu.items[6]) == std::u8string { u8"custom:build" });
+    REQUIRE(ui::context_menu_item_key(menu.items[7]) == std::u8string { u8"custom:clean" });
+    REQUIRE(ui::context_menu_item_key(menu.items[3]) == std::u8string { u8"refresh" });
+
+    const luil::win32::ui_popup popup { ui::build_context_menu_popup(menu, 1.0f) };
+    REQUIRE(popup.height == expected_menu_height(8u));
+
+    const auto tree { make_tree(1) };
+    interaction_harness harness { tree };
+    install_popup(harness, popup);
+
+    const luil::ui_element* const second { popup.tree->find({ luil::ui_element_kind::menu_item, std::u8string { u8"custom:clean" } }) };
+    REQUIRE(second != nullptr);
+    const luil::rect_f box { second->bounds() };
+    const float x { box.x + box.width / 2.0f };
+    const float y { box.y + box.height / 2.0f };
+    REQUIRE(harness.controller.process(luil::pointer_pressed_event { x, y, luil::pointer_button::left, at(0), false, popup.id }).empty());
+    const auto actions { harness.controller.process(luil::pointer_released_event { x, y, luil::pointer_button::left, at(0), popup.id }) };
+
+    const auto* const intent { as_intent<gitman::run_custom_command_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    // 두 번째 항목을 눌렀는데 첫 항목이 실행되면 안 된다.
+    REQUIRE(intent->command_id == u8"clean");
+    REQUIRE(intent->id.value == u8"card-0");
+}
+
+TEST_CASE("The card menu lists the commands that match the card", "[logic][context-menu][commands]")
+{
+    menu_fixture fixture {};
+    gitman::document_loaded_event loaded {};
+    gitman::workspace_document document {};
+    document.document_path = u8"C:\\work\\p.version-list";
+    gitman::custom_command command {};
+    command.id = u8"build";
+    command.label = u8"빌드 테스트";
+    command.script = u8"scripts/build.py";
+    document.commands.custom = { std::vector<gitman::custom_command> { command } };
+    gitman::project_definition project {};
+    project.id.value = u8"alpha";
+    project.display_name = u8"alpha";
+    project.path.original = u8"C:\\work\\alpha";
+    project.path.normalized = project.path.original;
+    document.projects.push_back(std::move(project));
+    loaded.document = { std::move(document) };
+    fixture.controller.handle(std::move(loaded));
+
+    fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"alpha" }, 40.0f, 120.0f });
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->context_menu.has_value());
+
+    const gitman::context_menu_item_view* const item { find_item(*view->context_menu, gitman::context_menu_entry::custom_command) };
+    REQUIRE(item != nullptr);
+    REQUIRE(item->command_id == u8"build");
+    REQUIRE(item->label == u8"빌드 테스트");
+    // 내장 여섯 항목 뒤에 붙는다.
+    REQUIRE(view->context_menu->items.size() == 7u);
+    REQUIRE(view->context_menu->items.back().entry == gitman::context_menu_entry::custom_command);
+}

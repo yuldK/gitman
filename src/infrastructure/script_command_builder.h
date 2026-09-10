@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/process_request.h"
+#include "domain/command_definition.h"
 #include "infrastructure/script_interpreter_discovery.h"
 
 #include <cstdint>
@@ -58,6 +59,17 @@ namespace gitman {
     // 해석기가 `usable()`이 아니면 빈 요청을 돌려준다 — 부르는 쪽이 진단을 보고
     // 실행하지 않는다.
     [[nodiscard]] process_request make_script_process_request(const resolved_script_interpreter& interpreter, const script_command& command);
+
+    // 문서가 있는 폴더를 기준으로 상대 경로를 푼다. 이미 절대 경로면 그대로다.
+    // 문서가 없거나(전역 설정만 있는 상태) 기준이 없으면 원본을 돌려주고, 절대
+    // 경로가 아닌 채로 남으면 프로세스 요청 검증이 걸러 사유를 남긴다.
+    [[nodiscard]] std::u8string resolve_script_path(std::u8string_view script, std::u8string_view document_path);
+
+    // 스크립트를 어느 폴더에서 실행할지 정한다. 고른 자리가 비어 있으면 저장소
+    // 경로로, 그것도 없으면 문서 폴더로 물러선다 — 작업 폴더가 비면 프로세스를
+    // 만들 수 없다.
+    [[nodiscard]] std::u8string resolve_script_working_directory(
+        command_working_directory kind, std::u8string_view repository_path, std::u8string_view document_path, std::u8string_view script_path);
 
     // 카드 로그에 남길 사람이 읽는 명령줄이다 (X6). 무엇이 실행되는지 사후에
     // 추적할 수 있어야 해서 실행 파일과 인자를 모두 담는다. 공백이나 따옴표가 있는

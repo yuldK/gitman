@@ -29,6 +29,8 @@ namespace gitman {
             case operation_kind::query_svn_directory:
             case operation_kind::query_local_changes:
             case operation_kind::query_file_diff:
+            // 사용자 명령은 카드 lane이다. 같은 카드의 update·switch와 섞이면 안 된다.
+            case operation_kind::run_custom_command:
                 break;
             }
             return false;
@@ -59,6 +61,9 @@ namespace gitman {
             case operation_kind::update:
             case operation_kind::switch_to:
             case operation_kind::query_switch_candidates:
+            // 사용자 스크립트는 무엇을 하는지 앱이 모른다. 저장소를 고칠 수 있으므로
+            // 읽기 전용 lane에 넣지 않는다.
+            case operation_kind::run_custom_command:
                 break;
             }
             return false;

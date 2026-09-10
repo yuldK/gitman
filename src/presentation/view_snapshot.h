@@ -395,6 +395,8 @@ namespace gitman {
     {
         tools,
         operations,
+        // 사용자 명령과 SVN 훅 목록이다 (REQ-020·REQ-021).
+        commands,
         appearance,
         system,
     };
@@ -406,6 +408,8 @@ namespace gitman {
         {
         case settings_tab::operations:
             return u8"operations";
+        case settings_tab::commands:
+            return u8"commands";
         case settings_tab::appearance:
             return u8"appearance";
         case settings_tab::system:
@@ -415,6 +419,20 @@ namespace gitman {
             return u8"tools";
         }
     }
+
+    // 명령 탭의 목록 한 행이다 (REQ-020). 편집은 별도 dialog가 하고 이 행은 무엇이
+    // 있는지 보여 주며 순서·삭제만 담당한다.
+    struct settings_command_row_view
+    {
+        // 명령은 이름, 훅은 단계 이름이다.
+        std::u8string label {};
+        // 스크립트와 필터를 한 줄로 요약한 것이다.
+        std::u8string detail {};
+        // 명령의 codicon 이름이다. 훅 행은 비어 있다.
+        std::u8string icon {};
+        bool can_move_up { false };
+        bool can_move_down { false };
+    };
 
     struct settings_dialog_view
     {
@@ -462,12 +480,55 @@ namespace gitman {
         // (`accent_catalog`).
         theme_preference theme { theme_preference::system };
         std::u8string accent_id {};
+        // 명령 탭의 목록이다 (REQ-020). 초안 위의 값이라 `저장`을 눌러야 남는다.
+        std::vector<settings_command_row_view> commands {};
+        std::vector<settings_command_row_view> hooks {};
+        bool use_tortoise_svn { true };
+        bool commands_follows_app { false };
+        bool hooks_follows_app { false };
         // 검증 오류다. 비어 있으면 표시하지 않는다.
         std::u8string message {};
         bool can_confirm { true };
         // 항목 열의 스크롤 위치다 (논리 픽셀, 이미 고정됨). 창이 낮아 항목이 다
         // 들어가지 않을 때만 0이 아니다 (E1).
         float scroll_offset { 0.0f };
+    };
+
+    // 명령·훅 하나를 고치는 dialog다 (REQ-020). 환경설정 위에 뜨며 `확인`이 초안
+    // 목록을 고치고, 그 초안은 환경설정의 `저장`에서 문서·앱 설정으로 간다.
+    //
+    // 스크립트 **내용**은 다루지 않는다. 외부 편집기가 할 일이라는 사용자 결정
+    // (2026-09-10)에 따라 경로를 고르고 편집기로 여는 것까지만 제공한다.
+    struct command_editor_dialog_view
+    {
+        std::u8string title {};
+        // 참이면 SVN 훅을 고치는 중이다. 이름·아이콘·표면 표시 줄이 빠지고 단계
+        // 줄이 생긴다.
+        bool hook { false };
+        text_input_view name {};
+        text_input_view script {};
+        text_input_view arguments {};
+        text_input_view icon {};
+        text_input_view path_pattern {};
+        text_input_view projects {};
+        text_input_view timeout {};
+        // 아이콘 칸 옆에 그릴 미리 보기의 codicon 이름이다. 표시 계층이 글리프로
+        // 옮기며 모르는 이름이면 기본 글리프다.
+        std::u8string icon_preview {};
+        // 값이 몇 개뿐이라 누를 때마다 도는 항목들의 현재 표시 글이다.
+        std::u8string working_directory_label {};
+        std::u8string vcs_label {};
+        std::u8string phase_label {};
+        bool show_on_card { false };
+        bool refresh_after { true };
+        bool enabled { true };
+        // 편집기로 열 스크립트의 절대 경로다. 비어 있으면 그 버튼이 비활성이다.
+        std::u8string script_open_path {};
+        // 파일 선택 dialog가 시작할 폴더다 (문서가 있는 폴더).
+        std::u8string script_browse_folder {};
+        // 검증 실패 사유다. 비어 있으면 표시하지 않는다.
+        std::u8string message {};
+        bool can_confirm { false };
     };
 
     // logic thread가 게시하고 UI thread가 그대로 그리는 불변 snapshot이다 (ADR-004).
@@ -522,6 +583,8 @@ namespace gitman {
         std::optional<generate_document_dialog_view> generate_dialog {};
         // 값이 있으면 환경설정 dialog가 화면을 덮는다.
         std::optional<settings_dialog_view> settings_dialog {};
+        // 값이 있으면 명령·훅 편집 dialog가 환경설정 위에 뜬다 (REQ-020).
+        std::optional<command_editor_dialog_view> command_editor {};
         // 값이 있으면 로컬 변경 확인 dialog가 화면을 덮는다 (2.3).
         std::optional<local_changes_dialog_view> local_changes_dialog {};
         // 열린 문서가 없을 때의 시작 페이지다 (A1.3). 값이 있으면 카드 목록 자리를

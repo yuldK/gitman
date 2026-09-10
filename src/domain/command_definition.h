@@ -137,6 +137,23 @@ namespace gitman {
 
     [[nodiscard]] command_catalog apply_overrides(const command_catalog& base, const command_catalog_overrides& overrides);
 
+    // 편집 화면이 한 줄로 보여 주는 인자 목록을 서로 옮긴다. 공백과 탭이 구분자이고,
+    // 그것이나 따옴표가 든 조각은 따옴표로 감싼다. 따옴표 구간 **안**의 `""`는
+    // 따옴표 글자 하나다 (Windows 명령줄 관례) — 여는 따옴표 바로 뒤의 `""`는 빈
+    // 인자다. 두 규칙 덕에 `split(join(x)) == x`가 어떤 값에서도 성립한다.
+    [[nodiscard]] std::vector<std::u8string> split_command_arguments(std::u8string_view text);
+    [[nodiscard]] std::u8string join_command_arguments(const std::vector<std::u8string>& arguments);
+
+    // 카드 id 목록도 한 줄로 편집한다. 이쪽은 쉼표가 구분자다 — 카드 id에는 공백이
+    // 들어갈 수 있어서다.
+    [[nodiscard]] std::vector<std::u8string> split_command_projects(std::u8string_view text);
+    [[nodiscard]] std::u8string join_command_projects(const std::vector<std::u8string>& projects);
+
+    // 이름에서 명령 id를 만든다. 사용자에게 보이지 않는 값이라 화면에서 고치지 않고
+    // 만들어 준다. 소문자 영숫자와 `-`만 남기며, 남는 것이 없으면 `command`다.
+    // `taken`에 이미 있는 id면 뒤에 번호를 붙인다.
+    [[nodiscard]] std::u8string make_command_id(std::u8string_view label, const std::vector<std::u8string>& taken);
+
     // `*`(0자 이상)와 `?`(1자)만 있는 glob이다. ASCII 대소문자를 무시하고 경로
     // 구분자는 `/`로 통일해서 비교한다. 빈 패턴은 무엇에나 맞는다.
     [[nodiscard]] bool command_pattern_matches(std::u8string_view pattern, std::u8string_view text);

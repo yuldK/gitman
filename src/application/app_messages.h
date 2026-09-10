@@ -296,6 +296,10 @@ namespace gitman {
         // 따른다.
         ui_font,
         code_font,
+        // 사용자 명령과 SVN 훅이다 (REQ-020·REQ-021). 목록이라 항목이 아니라 묶음
+        // 단위로 문서가 덮어쓴다 — 배지도 묶음마다 하나다.
+        custom_commands,
+        svn_hooks,
     };
 
     // 환경설정 dialog의 탭을 바꾼다 (settings-tabs-and-appearance-scope-design
@@ -336,6 +340,15 @@ namespace gitman {
         font_filter,
         // 새 문서 dialog의 문서 이름 칸이다 (F3).
         generate_document_name,
+        // 명령·훅 편집 dialog의 칸들이다 (REQ-020). 스크립트 **내용**은 외부
+        // 편집기가 고치고 (2026-09-10 지시), 여기서는 정의만 다룬다.
+        command_name,
+        command_script,
+        command_arguments,
+        command_icon,
+        command_path_pattern,
+        command_projects,
+        command_timeout,
     };
 
     // 편집 명령의 어휘는 luil의 것이다 (`domain/text_edit.h`가 전달한다). 적용은
@@ -383,6 +396,81 @@ namespace gitman {
     // 환경설정의 "로그를 문서 폴더에 파일로 남김" 토글이다 (app-shell-design A4.5).
     struct toggle_settings_log_files_intent
     {};
+
+    // 명령·훅 목록을 고치는 자리다 (REQ-020). 전부 환경설정 초안 위에서 일어나고
+    // `저장`을 눌러야 문서·앱 설정에 남는다.
+
+    // 편집 dialog를 연다.
+    struct open_command_editor_intent
+    {
+        // 참이면 SVN 훅, 거짓이면 사용자 명령이다.
+        bool hook { false };
+        // 고칠 줄이다. `creating`이 참이면 보지 않는다.
+        std::size_t index { 0 };
+        // 참이면 목록 끝에 새 항목을 만든다. 자리 번호로 "끝을 가리키면 새 항목"을
+        // 뜻하게 하면, 한 프레임 안에서 앞줄이 지워졌을 때 편집 클릭이 조용히
+        // 추가로 바뀐다 — 뜻을 값으로 나른다.
+        bool creating { false };
+    };
+
+    struct close_command_editor_intent
+    {};
+
+    struct confirm_command_editor_intent
+    {};
+
+    // 목록에서 자리를 옮긴다. `delta`는 -1(위) 또는 1(아래)이며 범위를 벗어나면
+    // 아무 일도 하지 않는다. 순서가 곧 메뉴·버튼의 순서다.
+    struct move_command_intent
+    {
+        bool hook { false };
+        std::size_t index { 0 };
+        std::int32_t delta { 0 };
+    };
+
+    struct remove_command_intent
+    {
+        bool hook { false };
+        std::size_t index { 0 };
+    };
+
+    // 편집 dialog와 명령 탭의 켬·끔 항목이다. 어느 값인지는 `flag`가 가른다.
+    enum class command_flag
+    {
+        // 명령 편집: 카드 표면에 버튼으로 낸다.
+        show_on_card,
+        // 명령 편집: 끝난 뒤 카드 상태를 다시 조회한다.
+        refresh_after,
+        // 훅 편집: 이 훅을 쓴다.
+        hook_enabled,
+        // 명령 탭: TortoiseSVN 훅을 함께 실행한다.
+        use_tortoise_svn,
+    };
+
+    struct toggle_command_flag_intent
+    {
+        command_flag flag { command_flag::show_on_card };
+    };
+
+    // 값이 몇 개뿐인 항목은 누를 때마다 다음 값으로 돈다. 목록을 따로 띄우기에는
+    // 선택지가 적다.
+    enum class command_choice
+    {
+        working_directory,
+        target_vcs,
+        hook_phase,
+    };
+
+    struct cycle_command_choice_intent
+    {
+        command_choice choice { command_choice::working_directory };
+    };
+
+    // UI thread의 파일 선택이 고른 스크립트 경로다.
+    struct set_command_script_intent
+    {
+        std::u8string path {};
+    };
 
     struct confirm_settings_intent
     {};
@@ -781,7 +869,9 @@ namespace gitman {
         open_generate_document_intent, set_generate_scan_root_intent, set_generate_location_intent, toggle_generate_same_folder_intent, confirm_generate_document_intent,
         cancel_generate_document_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
         open_settings_intent, select_settings_tab_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent,
-        toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent,
+        toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, open_command_editor_intent, close_command_editor_intent, confirm_command_editor_intent, move_command_intent,
+        remove_command_intent, toggle_command_flag_intent, cycle_command_choice_intent, set_command_script_intent, confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent,
+        open_local_changes_intent,
         select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent,
         close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent, remove_recent_document_intent, toggle_recent_document_pin_intent,
         close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, startup_intent, relay_drain_intent,

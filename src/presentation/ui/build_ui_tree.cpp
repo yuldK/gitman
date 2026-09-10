@@ -8,6 +8,7 @@
 #include "presentation/ui/font_dialog_element.h"
 #include "presentation/ui/generate_document_dialog_element.h"
 #include "presentation/ui/gitman_caption.h"
+#include "presentation/ui/command_editor_dialog_element.h"
 #include "presentation/ui/local_changes_dialog_element.h"
 #include "presentation/ui/log_view_element.h"
 #include "presentation/ui/notice_dialog_element.h"
@@ -154,6 +155,14 @@ namespace gitman::ui {
                     settings_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
+                // 명령·훅 편집 dialog도 환경설정 위다 (REQ-020). Esc가 편집만 닫고
+                // 환경설정 초안은 그대로 남아야 한다.
+                if (view.command_editor.has_value())
+                {
+                    auto dialog { make_command_editor_dialog(*view.command_editor, logical_width, logical_height) };
+                    command_editor_ = dialog.get();
+                    add_child(std::move(dialog));
+                }
                 // 글꼴 선택 dialog는 환경설정 위에 뜬다 (F2.5).
                 if (view.font_dialog.has_value())
                 {
@@ -215,6 +224,8 @@ namespace gitman::ui {
                     switch_dialog_->arrange({ context.slot, scale });
                 if (settings_dialog_ != nullptr)
                     settings_dialog_->arrange({ context.slot, scale });
+                if (command_editor_ != nullptr)
+                    command_editor_->arrange({ context.slot, scale });
                 if (font_dialog_ != nullptr)
                     font_dialog_->arrange({ context.slot, scale });
                 if (generate_dialog_ != nullptr)
@@ -251,6 +262,7 @@ namespace gitman::ui {
             ui_element* log_pane_ { nullptr };
             ui_element* switch_dialog_ { nullptr };
             ui_element* settings_dialog_ { nullptr };
+            ui_element* command_editor_ { nullptr };
             ui_element* font_dialog_ { nullptr };
             ui_element* generate_dialog_ { nullptr };
             ui_element* discovery_dialog_ { nullptr };

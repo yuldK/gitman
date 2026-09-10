@@ -716,6 +716,7 @@ TEST_CASE("Every settings control stays inside the panel on all tabs", "[ui][set
     const std::vector<gitman::settings_tab> tabs {
         gitman::settings_tab::tools,
         gitman::settings_tab::operations,
+        gitman::settings_tab::commands,
         gitman::settings_tab::appearance,
         gitman::settings_tab::system,
     };

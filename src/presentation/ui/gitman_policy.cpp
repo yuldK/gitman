@@ -37,6 +37,20 @@ namespace gitman::ui {
             return text_input_target::font_filter;
         case text_input_target::generate_document_name:
             return text_input_target::generate_document_name;
+        case text_input_target::command_name:
+            return text_input_target::command_name;
+        case text_input_target::command_script:
+            return text_input_target::command_script;
+        case text_input_target::command_arguments:
+            return text_input_target::command_arguments;
+        case text_input_target::command_icon:
+            return text_input_target::command_icon;
+        case text_input_target::command_path_pattern:
+            return text_input_target::command_path_pattern;
+        case text_input_target::command_projects:
+            return text_input_target::command_projects;
+        case text_input_target::command_timeout:
+            return text_input_target::command_timeout;
         case text_input_target::none:
             break;
         }
@@ -55,6 +69,20 @@ namespace gitman::ui {
             return to_luil_target(text_input_target::font_filter);
         if (kind == kind_generate_dialog_name_input)
             return to_luil_target(text_input_target::generate_document_name);
+        if (kind == kind_command_editor_name_input)
+            return to_luil_target(text_input_target::command_name);
+        if (kind == kind_command_editor_script_input)
+            return to_luil_target(text_input_target::command_script);
+        if (kind == kind_command_editor_arguments_input)
+            return to_luil_target(text_input_target::command_arguments);
+        if (kind == kind_command_editor_icon_input)
+            return to_luil_target(text_input_target::command_icon);
+        if (kind == kind_command_editor_path_pattern_input)
+            return to_luil_target(text_input_target::command_path_pattern);
+        if (kind == kind_command_editor_projects_input)
+            return to_luil_target(text_input_target::command_projects);
+        if (kind == kind_command_editor_timeout_input)
+            return to_luil_target(text_input_target::command_timeout);
         return std::nullopt;
     }
 
@@ -111,6 +139,11 @@ namespace gitman::ui {
                 return { make_logic_action(local_changes_diff_scroll_intent { scroll_delta }) };
             return { make_logic_action(local_changes_scroll_intent { scroll_delta }) };
         }
+
+        // 명령·훅 편집 dialog는 환경설정 위에 뜬다. 안에 스크롤할 것이 없으므로
+        // 휠을 그냥 삼킨다 — 뒤의 환경설정 목록이 밀리면 초점을 잃는다.
+        if (tree_has(tree, kind_command_editor_dialog))
+            return {};
 
         // 글꼴 선택 dialog는 환경설정 위에 뜨므로 휠을 먼저 가져간다.
         if (tree_has(tree, kind_font_dialog))

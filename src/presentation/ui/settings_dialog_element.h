@@ -7,10 +7,15 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace gitman::ui {
+    // 명령 탭 목록 행 버튼의 element id owner다 (REQ-020). 명령과 훅이 같은 kind를
+    // 쓰므로 어느 목록의 몇 번째인지를 owner가 담는다 (`command-0`·`hook-1`).
+    [[nodiscard]] std::u8string settings_command_row_owner(bool hook, std::size_t index);
+
     // 환경설정 항목 열의 스크롤 치수다 (text-input-and-font-fallback-design E1.3).
     // 값은 모두 **논리 픽셀**이다. logic의 스크롤 한계와 element의 배치가 이 함수
     // 하나를 함께 써야 휠이 헛돌거나 마지막 항목이 잘리지 않는다.

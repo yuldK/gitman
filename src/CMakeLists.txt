@@ -268,8 +268,10 @@ gitman_add_source_filter(gitman_lib_files "presentation/ui/workspace"
     presentation/ui/toolbar_element.cpp
     presentation/ui/toolbar_element.h)
 
-# in-app dialog 본체 7종이다 (luil modal_host의 content).
+# in-app dialog 본체 8종이다 (luil modal_host의 content).
 gitman_add_source_filter(gitman_lib_files "presentation/ui/dialogs"
+    presentation/ui/command_editor_dialog_element.cpp
+    presentation/ui/command_editor_dialog_element.h
     presentation/ui/discovery_dialog_element.cpp
     presentation/ui/discovery_dialog_element.h
     presentation/ui/font_dialog_element.cpp

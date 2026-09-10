@@ -119,6 +119,85 @@ namespace gitman {
             return u8"제한 시간은 10~3600초 사이여야 합니다.";
         }
 
+        std::u8string_view working_directory_label(const command_working_directory value) noexcept
+        {
+            switch (value)
+            {
+            case command_working_directory::document:
+                return u8"문서 폴더";
+            case command_working_directory::script:
+                return u8"스크립트 폴더";
+            case command_working_directory::repository:
+            default:
+                return u8"저장소 폴더";
+            }
+        }
+
+        std::u8string_view target_vcs_label(const command_target_vcs value) noexcept
+        {
+            switch (value)
+            {
+            case command_target_vcs::git:
+                return u8"Git 카드에만";
+            case command_target_vcs::subversion:
+                return u8"SVN 카드에만";
+            case command_target_vcs::any:
+            default:
+                return u8"모든 카드";
+            }
+        }
+
+        std::u8string_view hook_phase_label(const svn_hook_phase value) noexcept
+        {
+            switch (value)
+            {
+            case svn_hook_phase::start_update:
+                return u8"시작 전 (사전 검사보다 먼저)";
+            case svn_hook_phase::post_update:
+                return u8"실행 뒤";
+            case svn_hook_phase::pre_update:
+            default:
+                return u8"실행 직전";
+            }
+        }
+
+        // 목록 행에 한 줄로 보여 줄 요약이다. 스크립트가 먼저이고 걸린 필터가 뒤에 붙는다.
+        std::u8string command_detail(const custom_command& command)
+        {
+            std::u8string detail { command.script };
+            if (command.vcs != command_target_vcs::any)
+            {
+                detail.append(u8" · ");
+                detail.append(target_vcs_label(command.vcs));
+            }
+            if (command.path_pattern.empty() == false)
+            {
+                detail.append(u8" · 경로 ");
+                detail.append(command.path_pattern);
+            }
+            if (command.projects.empty() == false)
+            {
+                detail.append(u8" · 카드 ");
+                detail.append(join_command_projects(command.projects));
+            }
+            if (command.show_on_card)
+                detail.append(u8" · 카드 표면");
+            return detail;
+        }
+
+        std::u8string hook_detail(const svn_hook& hook)
+        {
+            std::u8string detail { hook.script };
+            if (hook.path_pattern.empty() == false)
+            {
+                detail.append(u8" · 경로 ");
+                detail.append(hook.path_pattern);
+            }
+            if (hook.enabled == false)
+                detail.append(u8" · 꺼짐");
+            return detail;
+        }
+
         // 명령 필터가 쓰는 카드 종류다. 아직 조회가 끝나지 않은 카드는 `any`이며,
         // 그때 VCS를 지정한 명령은 보이지 않는다 (command_matches의 규칙).
         command_target_vcs target_vcs_of(const repository_kind kind) noexcept
@@ -368,6 +447,22 @@ namespace gitman {
                     handle_set_settings_executable(std::move(value));
                 else if constexpr (std::is_same_v<value_type, clear_settings_executable_intent>)
                     handle_clear_settings_executable(value);
+                else if constexpr (std::is_same_v<value_type, open_command_editor_intent>)
+                    handle_open_command_editor(value);
+                else if constexpr (std::is_same_v<value_type, close_command_editor_intent>)
+                    handle_close_command_editor();
+                else if constexpr (std::is_same_v<value_type, confirm_command_editor_intent>)
+                    handle_confirm_command_editor();
+                else if constexpr (std::is_same_v<value_type, move_command_intent>)
+                    handle_move_command(value);
+                else if constexpr (std::is_same_v<value_type, remove_command_intent>)
+                    handle_remove_command(value);
+                else if constexpr (std::is_same_v<value_type, toggle_command_flag_intent>)
+                    handle_toggle_command_flag(value);
+                else if constexpr (std::is_same_v<value_type, cycle_command_choice_intent>)
+                    handle_cycle_command_choice(value);
+                else if constexpr (std::is_same_v<value_type, set_command_script_intent>)
+                    handle_set_command_script(std::move(value));
                 else if constexpr (std::is_same_v<value_type, clear_settings_override_intent>)
                     handle_clear_settings_override(value);
                 else if constexpr (std::is_same_v<value_type, select_settings_tab_intent>)
@@ -403,7 +498,12 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
                     handle_confirm_settings();
                 else if constexpr (std::is_same_v<value_type, cancel_settings_dialog_intent>)
+                {
+                    // 위에 떠 있던 편집 dialog도 함께 사라진다. 부모 초안이 없으면
+                    // 확인해도 넣을 곳이 없다.
+                    command_editor_.reset();
                     settings_dialog_.reset();
+                }
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -495,6 +595,8 @@ namespace gitman {
         document_path_ = intent.path;
         document_.reset();
         revision_ = {};
+        // 이전 문서의 목록에 매인 편집 초안이다. 문서를 바꾸는 순간 버린다.
+        command_editor_.reset();
         cards_.clear();
         notices_.clear();
         save_notice_.clear();
@@ -598,6 +700,9 @@ namespace gitman {
         // 탐색을 취소하고 닫는다.
         switch_dialog_.reset();
         settings_dialog_.reset();
+        // 명령 편집 초안은 환경설정 초안의 목록에 자리 번호로 매여 있다. 부모를
+        // 버리고 남겨 두면 다음에 환경설정을 열 때 다른 문서의 목록 위로 되살아난다.
+        command_editor_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
@@ -1410,6 +1515,7 @@ namespace gitman {
         // 이전 문서를 가리키던 dialog와 메뉴는 의미가 없다.
         switch_dialog_.reset();
         settings_dialog_.reset();
+        command_editor_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
@@ -1766,8 +1872,13 @@ namespace gitman {
         const font_settings fonts { effective_fonts() };
         dialog.ui_font_family = fonts.ui_family;
         dialog.code_font_family = fonts.code_family;
+        // 명령·훅도 유효 목록에서 시작한다 (REQ-020). 목록이라 항목이 아니라 묶음
+        // 단위로 문서가 덮어쓴다.
+        dialog.commands = effective_commands();
         if (dialog.document_mode)
         {
+            dialog.commands_defined = document_->commands.custom.has_value();
+            dialog.hooks_defined = document_->commands.svn_hooks.has_value();
             dialog.git_defined = document_->settings.git_executable.has_value();
             dialog.svn_defined = document_->settings.svn_executable.has_value();
             dialog.timeout_defined = document_->settings.query_timeout_seconds.has_value();
@@ -1780,6 +1891,9 @@ namespace gitman {
             dialog.code_font_defined = document_->fonts.code_family.has_value();
         }
         settings_dialog_ = { std::move(dialog) };
+        // 새 초안이므로 이전 초안을 고치던 편집도 버린다. 자리 번호만 남아 엉뚱한
+        // 항목을 덮어쓸 수 있다.
+        command_editor_.reset();
     }
 
     void logic_controller::handle_set_settings_executable(set_settings_executable_intent intent)
@@ -1868,6 +1982,32 @@ namespace gitman {
             dialog.ui_font_follows_app = settings_dialog_->ui_font_defined == false;
             dialog.code_font_follows_app = settings_dialog_->code_font_defined == false;
         }
+        // 명령 탭의 목록이다 (REQ-020). 순서가 곧 메뉴와 카드 표면의 순서다.
+        const std::vector<custom_command>& commands { settings_dialog_->commands.custom };
+        for (std::size_t index = 0; index < commands.size(); ++index)
+        {
+            settings_command_row_view row {};
+            row.label = commands[index].label;
+            row.detail = command_detail(commands[index]);
+            row.icon = commands[index].icon;
+            row.can_move_up = index > 0;
+            row.can_move_down = index + 1 < commands.size();
+            dialog.commands.push_back(std::move(row));
+        }
+        const std::vector<svn_hook>& hooks { settings_dialog_->commands.svn_hooks.hooks };
+        for (std::size_t index = 0; index < hooks.size(); ++index)
+        {
+            settings_command_row_view row {};
+            row.label = hook_phase_label(hooks[index].phase);
+            row.detail = hook_detail(hooks[index]);
+            row.can_move_up = index > 0;
+            row.can_move_down = index + 1 < hooks.size();
+            dialog.hooks.push_back(std::move(row));
+        }
+        dialog.use_tortoise_svn = settings_dialog_->commands.svn_hooks.use_tortoise_svn;
+        dialog.commands_follows_app = settings_dialog_->document_mode && settings_dialog_->commands_defined == false;
+        dialog.hooks_follows_app = settings_dialog_->document_mode && settings_dialog_->hooks_defined == false;
+
         // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
         // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
         const std::u8string_view git_error { settings_executable_error(settings_dialog_->git_path) };
@@ -1937,6 +2077,19 @@ namespace gitman {
             settings_dialog_->write_log_files = app_settings_.settings.write_log_files;
             settings_dialog_->log_files_defined = false;
             break;
+        case settings_override_field::custom_commands:
+            settings_dialog_->commands.custom = app_settings_.commands.custom;
+            settings_dialog_->commands_defined = false;
+            // 목록이 바뀌었으므로 그 목록을 고치던 편집도 닫는다.
+            if (command_editor_.has_value() && command_editor_->hook == false)
+                command_editor_.reset();
+            break;
+        case settings_override_field::svn_hooks:
+            settings_dialog_->commands.svn_hooks = app_settings_.commands.svn_hooks;
+            settings_dialog_->hooks_defined = false;
+            if (command_editor_.has_value() && command_editor_->hook)
+                command_editor_.reset();
+            break;
         case settings_override_field::theme:
             settings_dialog_->theme = app_settings_.appearance.theme;
             settings_dialog_->theme_defined = false;
@@ -1954,6 +2107,351 @@ namespace gitman {
             settings_dialog_->code_font_defined = false;
             break;
         }
+    }
+
+    namespace {
+        // 편집 칸을 값으로 채우고 커서를 끝에 둔다. 열자마자 이어 쓰는 것이 흔한
+        // 편집이라 전체 선택보다 낫다.
+        void seed_text(text_edit_state& state, std::u8string text)
+        {
+            state = {};
+            state.text = std::move(text);
+            state.caret = state.text.size();
+            state.anchor = state.caret;
+        }
+
+        std::u8string seconds_text(const std::int32_t seconds)
+        {
+            if (seconds <= 0)
+                return {};
+            const std::string digits { std::to_string(seconds) };
+            std::u8string text {};
+            text.append(digits.begin(), digits.end());
+            return text;
+        }
+
+        // 숫자만 남긴 초안을 초로 읽는다. 빈 값은 "제한 없음"이라 0이다.
+        std::int32_t parse_seconds(const std::u8string_view text) noexcept
+        {
+            std::int64_t value { 0 };
+            for (const char8_t digit : text)
+            {
+                if (digit < u8'0' || digit > u8'9')
+                    return 0;
+                value = value * 10 + (digit - u8'0');
+                if (value > 24 * 60 * 60)
+                    return 24 * 60 * 60;
+            }
+            return static_cast<std::int32_t>(value);
+        }
+
+    } // namespace
+
+    void logic_controller::mark_commands_defined(const bool hook)
+    {
+        if (settings_dialog_.has_value() == false)
+            return;
+        if (hook)
+            settings_dialog_->hooks_defined = true;
+        else
+            settings_dialog_->commands_defined = true;
+    }
+
+    void logic_controller::handle_open_command_editor(const open_command_editor_intent& intent)
+    {
+        if (settings_dialog_.has_value() == false || shutting_down_)
+            return;
+
+        // 목록이 이미 바뀌었을 수 있다. 없는 줄을 고치겠다는 클릭은 엉뚱한 항목을
+        // 열지 않도록 버린다 (지우기와 편집이 같은 프레임에 들어온 경우).
+        const std::size_t count { intent.hook ? settings_dialog_->commands.svn_hooks.hooks.size() : settings_dialog_->commands.custom.size() };
+        if (intent.creating == false && intent.index >= count)
+            return;
+
+        command_editor_state editor {};
+        editor.hook = intent.hook;
+        if (intent.hook)
+        {
+            const std::vector<svn_hook>& hooks { settings_dialog_->commands.svn_hooks.hooks };
+            editor.index = intent.creating ? hooks.size() : intent.index;
+            if (editor.index < hooks.size())
+                editor.hook_value = hooks[editor.index];
+            seed_text(editor.script, editor.hook_value.script);
+            seed_text(editor.arguments, join_command_arguments(editor.hook_value.arguments));
+            seed_text(editor.path_pattern, editor.hook_value.path_pattern);
+            seed_text(editor.timeout, seconds_text(editor.hook_value.timeout_seconds));
+        }
+        else
+        {
+            const std::vector<custom_command>& commands { settings_dialog_->commands.custom };
+            editor.index = intent.creating ? commands.size() : intent.index;
+            if (editor.index < commands.size())
+                editor.command = commands[editor.index];
+            seed_text(editor.name, editor.command.label);
+            seed_text(editor.script, editor.command.script);
+            seed_text(editor.arguments, join_command_arguments(editor.command.arguments));
+            seed_text(editor.icon, editor.command.icon);
+            seed_text(editor.path_pattern, editor.command.path_pattern);
+            seed_text(editor.projects, join_command_projects(editor.command.projects));
+            seed_text(editor.timeout, seconds_text(editor.command.timeout_seconds));
+        }
+        command_editor_ = { std::move(editor) };
+    }
+
+    void logic_controller::handle_close_command_editor()
+    {
+        command_editor_.reset();
+    }
+
+    custom_command logic_controller::command_editor_command() const
+    {
+        custom_command command {};
+        if (command_editor_.has_value() == false)
+            return command;
+
+        command = command_editor_->command;
+        command.label = command_editor_->name.text;
+        command.script = command_editor_->script.text;
+        command.arguments = split_command_arguments(command_editor_->arguments.text);
+        command.icon = command_editor_->icon.text;
+        command.path_pattern = command_editor_->path_pattern.text;
+        command.projects = split_command_projects(command_editor_->projects.text);
+        command.timeout_seconds = parse_seconds(command_editor_->timeout.text);
+        // id는 화면에 없다. 새 항목이면 이름에서 만들고, 이미 있던 항목은 그대로
+        // 둔다 — 카드의 `projects` 필터가 id를 가리키고 있을 수 있다.
+        if (command.id.empty() && settings_dialog_.has_value())
+        {
+            std::vector<std::u8string> taken {};
+            for (const custom_command& existing : settings_dialog_->commands.custom)
+                taken.push_back(existing.id);
+            command.id = make_command_id(command.label, taken);
+        }
+        return command;
+    }
+
+    svn_hook logic_controller::command_editor_hook() const
+    {
+        svn_hook hook {};
+        if (command_editor_.has_value() == false)
+            return hook;
+
+        hook = command_editor_->hook_value;
+        hook.script = command_editor_->script.text;
+        hook.arguments = split_command_arguments(command_editor_->arguments.text);
+        hook.path_pattern = command_editor_->path_pattern.text;
+        hook.timeout_seconds = parse_seconds(command_editor_->timeout.text);
+        return hook;
+    }
+
+    void logic_controller::handle_confirm_command_editor()
+    {
+        if (command_editor_.has_value() == false || settings_dialog_.has_value() == false)
+            return;
+
+        const bool hook { command_editor_->hook };
+        const std::size_t index { command_editor_->index };
+        if (hook)
+        {
+            const svn_hook value { command_editor_hook() };
+            if (svn_hook_error(value).empty() == false)
+                return;
+
+            std::vector<svn_hook>& hooks { settings_dialog_->commands.svn_hooks.hooks };
+            if (index < hooks.size())
+                hooks[index] = value;
+            else
+                hooks.push_back(value);
+        }
+        else
+        {
+            const custom_command value { command_editor_command() };
+            if (custom_command_error(value).empty() == false)
+                return;
+
+            std::vector<custom_command>& commands { settings_dialog_->commands.custom };
+            if (index < commands.size())
+                commands[index] = value;
+            else
+                commands.push_back(value);
+        }
+        mark_commands_defined(hook);
+        command_editor_.reset();
+    }
+
+    void logic_controller::handle_move_command(const move_command_intent& intent)
+    {
+        if (settings_dialog_.has_value() == false || intent.delta == 0)
+            return;
+
+        const auto move = [&intent](auto& list) {
+            if (intent.index >= list.size())
+                return false;
+            const std::size_t target { intent.delta < 0 ? intent.index - 1 : intent.index + 1 };
+            // 첫 항목의 위, 마지막 항목의 아래는 아무 일도 하지 않는다.
+            if (intent.delta < 0 && intent.index == 0)
+                return false;
+            if (target >= list.size())
+                return false;
+            std::swap(list[intent.index], list[target]);
+            return true;
+        };
+
+        const bool moved { intent.hook ? move(settings_dialog_->commands.svn_hooks.hooks) : move(settings_dialog_->commands.custom) };
+        if (moved == false)
+            return;
+        mark_commands_defined(intent.hook);
+        // 지우기와 같은 이유로 편집도 닫는다. 자리 번호가 다른 항목을 가리키게 된다.
+        // 지금은 편집 dialog가 목록을 덮고 있어 닿지 않지만, 규칙을 목록 조작 전체에
+        // 걸어 두어야 나중에 길이 생겨도 어긋나지 않는다.
+        if (command_editor_.has_value() && command_editor_->hook == intent.hook)
+            command_editor_.reset();
+    }
+
+    void logic_controller::handle_remove_command(const remove_command_intent& intent)
+    {
+        if (settings_dialog_.has_value() == false)
+            return;
+
+        const auto erase = [&intent](auto& list) {
+            if (intent.index >= list.size())
+                return false;
+            list.erase(list.begin() + static_cast<std::ptrdiff_t>(intent.index));
+            return true;
+        };
+
+        const bool removed { intent.hook ? erase(settings_dialog_->commands.svn_hooks.hooks) : erase(settings_dialog_->commands.custom) };
+        if (removed == false)
+            return;
+        mark_commands_defined(intent.hook);
+        // 지운 항목을 고치고 있었다면 편집도 닫는다. 자리 번호가 밀려 다른 항목을
+        // 덮어쓸 수 있다.
+        if (command_editor_.has_value() && command_editor_->hook == intent.hook)
+            command_editor_.reset();
+    }
+
+    void logic_controller::handle_toggle_command_flag(const toggle_command_flag_intent& intent)
+    {
+        if (settings_dialog_.has_value() == false)
+            return;
+
+        switch (intent.flag)
+        {
+        case command_flag::use_tortoise_svn:
+            settings_dialog_->commands.svn_hooks.use_tortoise_svn = settings_dialog_->commands.svn_hooks.use_tortoise_svn == false;
+            mark_commands_defined(true);
+            return;
+        case command_flag::show_on_card:
+            if (command_editor_.has_value())
+                command_editor_->command.show_on_card = command_editor_->command.show_on_card == false;
+            return;
+        case command_flag::refresh_after:
+            if (command_editor_.has_value())
+                command_editor_->command.refresh_after = command_editor_->command.refresh_after == false;
+            return;
+        case command_flag::hook_enabled:
+            if (command_editor_.has_value())
+                command_editor_->hook_value.enabled = command_editor_->hook_value.enabled == false;
+            return;
+        }
+    }
+
+    void logic_controller::handle_cycle_command_choice(const cycle_command_choice_intent& intent)
+    {
+        if (command_editor_.has_value() == false)
+            return;
+
+        switch (intent.choice)
+        {
+        case command_choice::working_directory: {
+            const command_working_directory current { command_editor_->command.working_directory };
+            command_editor_->command.working_directory = current == command_working_directory::repository ? command_working_directory::document
+                : current == command_working_directory::document                                          ? command_working_directory::script
+                                                                                                          : command_working_directory::repository;
+            return;
+        }
+        case command_choice::target_vcs: {
+            const command_target_vcs current { command_editor_->command.vcs };
+            command_editor_->command.vcs = current == command_target_vcs::any ? command_target_vcs::git : current == command_target_vcs::git ? command_target_vcs::subversion : command_target_vcs::any;
+            return;
+        }
+        case command_choice::hook_phase: {
+            const svn_hook_phase current { command_editor_->hook_value.phase };
+            command_editor_->hook_value.phase = current == svn_hook_phase::start_update ? svn_hook_phase::pre_update
+                : current == svn_hook_phase::pre_update                                 ? svn_hook_phase::post_update
+                                                                                        : svn_hook_phase::start_update;
+            return;
+        }
+        }
+    }
+
+    void logic_controller::handle_set_command_script(set_command_script_intent intent)
+    {
+        // 파일 선택이 끝나기 전에 dialog가 닫혔을 수 있다.
+        if (command_editor_.has_value() == false || intent.path.empty())
+            return;
+        seed_text(command_editor_->script, std::move(intent.path));
+    }
+
+    command_editor_dialog_view logic_controller::build_command_editor_view() const
+    {
+        command_editor_dialog_view view {};
+        if (command_editor_.has_value() == false)
+            return view;
+
+        view.hook = command_editor_->hook;
+        const std::size_t count { settings_dialog_.has_value() ? (view.hook ? settings_dialog_->commands.svn_hooks.hooks.size() : settings_dialog_->commands.custom.size()) : 0u };
+        const bool creating { command_editor_->index >= count };
+        if (view.hook)
+            view.title = creating ? u8"훅 추가" : u8"훅 편집";
+        else
+            view.title = creating ? u8"명령 추가" : u8"명령 편집";
+
+        const auto fill = [](const text_edit_state& state) { return text_input_view { state.text, state.caret, state.anchor }; };
+        view.name = fill(command_editor_->name);
+        view.script = fill(command_editor_->script);
+        view.arguments = fill(command_editor_->arguments);
+        view.icon = fill(command_editor_->icon);
+        view.path_pattern = fill(command_editor_->path_pattern);
+        view.projects = fill(command_editor_->projects);
+        view.timeout = fill(command_editor_->timeout);
+        // 조합 중인 칸은 조합 글이 섞인 표시 글을 쓴다 (E2.6).
+        apply_composition(text_input_target::command_name, view.name);
+        apply_composition(text_input_target::command_script, view.script);
+        apply_composition(text_input_target::command_arguments, view.arguments);
+        apply_composition(text_input_target::command_icon, view.icon);
+        apply_composition(text_input_target::command_path_pattern, view.path_pattern);
+        apply_composition(text_input_target::command_projects, view.projects);
+        apply_composition(text_input_target::command_timeout, view.timeout);
+
+        view.icon_preview = command_editor_->icon.text;
+        view.working_directory_label = working_directory_label(command_editor_->command.working_directory);
+        view.vcs_label = target_vcs_label(command_editor_->command.vcs);
+        view.phase_label = hook_phase_label(command_editor_->hook_value.phase);
+        view.show_on_card = command_editor_->command.show_on_card;
+        view.refresh_after = command_editor_->command.refresh_after;
+        view.enabled = command_editor_->hook_value.enabled;
+
+        // 편집기로 열기는 절대 경로일 때만 뜻이 있다. 상대 경로는 문서 폴더 기준이라
+        // 문서가 열려 있어야 풀 수 있다.
+        const std::u8string_view document_folder { windows_parent_directory(document_path_) };
+        view.script_browse_folder = document_folder;
+        if (const std::u8string& script { command_editor_->script.text }; script.empty() == false)
+        {
+            if (is_absolute_windows_path(script))
+                view.script_open_path = script;
+            else if (document_folder.empty() == false)
+            {
+                std::u8string absolute { document_folder };
+                absolute.push_back(u8'\\');
+                absolute.append(script);
+                view.script_open_path = std::move(absolute);
+            }
+        }
+
+        const std::u8string_view error { view.hook ? svn_hook_error(command_editor_hook()) : custom_command_error(command_editor_command()) };
+        view.message = error;
+        view.can_confirm = error.empty();
+        return view;
     }
 
     void logic_controller::handle_confirm_settings()
@@ -1996,16 +2494,24 @@ namespace gitman {
             fonts.ui_family = settings_dialog_->ui_font_defined ? std::optional<std::u8string> { settings_dialog_->ui_font_family } : std::nullopt;
             fonts.code_family = settings_dialog_->code_font_defined ? std::optional<std::u8string> { settings_dialog_->code_font_family } : std::nullopt;
 
+            // 명령·훅은 묶음 단위다. 건드리지 않은 묶음은 정의를 만들지 않는다.
+            command_catalog_overrides commands { document_->commands };
+            commands.custom = settings_dialog_->commands_defined ? std::optional<std::vector<custom_command>> { settings_dialog_->commands.custom } : std::nullopt;
+            commands.svn_hooks = settings_dialog_->hooks_defined ? std::optional<svn_hook_settings> { settings_dialog_->commands.svn_hooks } : std::nullopt;
+
             const bool settings_changed { (overrides == document_->settings) == false };
             const bool appearance_changed { (appearance == document_->appearance) == false };
             const bool fonts_changed { (fonts == document_->fonts) == false };
+            const bool commands_changed { (commands == document_->commands) == false };
             if (settings_changed)
                 document_->settings = std::move(overrides);
             if (appearance_changed)
                 document_->appearance = std::move(appearance);
             if (fonts_changed)
                 document_->fonts = std::move(fonts);
-            if (settings_changed || appearance_changed || fonts_changed)
+            if (commands_changed)
+                document_->commands = std::move(commands);
+            if (settings_changed || appearance_changed || fonts_changed || commands_changed)
                 request_save();
         }
         else
@@ -2033,13 +2539,16 @@ namespace gitman {
             const bool settings_changed { (global == app_settings_.settings) == false };
             const bool appearance_changed { (appearance == app_settings_.appearance) == false };
             const bool fonts_changed { (fonts == app_settings_.fonts) == false };
+            const bool commands_changed { (settings_dialog_->commands == app_settings_.commands) == false };
             if (settings_changed)
                 app_settings_.settings = std::move(global);
             if (appearance_changed)
                 app_settings_.appearance = std::move(appearance);
             if (fonts_changed)
                 app_settings_.fonts = std::move(fonts);
-            if (settings_changed || appearance_changed || fonts_changed)
+            if (commands_changed)
+                app_settings_.commands = settings_dialog_->commands;
+            if (settings_changed || appearance_changed || fonts_changed || commands_changed)
                 request_app_settings_save();
         }
 
@@ -2054,6 +2563,7 @@ namespace gitman {
                 if (card.project.enabled)
                     request_refresh(card);
         }
+        command_editor_.reset();
         settings_dialog_.reset();
     }
 
@@ -2406,6 +2916,35 @@ namespace gitman {
             state = &font_dialog_->query;
         else if (intent.target == text_input_target::generate_document_name && generate_dialog_.has_value() && generate_dialog_->executing == false)
             state = &generate_dialog_->name;
+        else if (command_editor_.has_value())
+        {
+            switch (intent.target)
+            {
+            case text_input_target::command_name:
+                state = &command_editor_->name;
+                break;
+            case text_input_target::command_script:
+                state = &command_editor_->script;
+                break;
+            case text_input_target::command_arguments:
+                state = &command_editor_->arguments;
+                break;
+            case text_input_target::command_icon:
+                state = &command_editor_->icon;
+                break;
+            case text_input_target::command_path_pattern:
+                state = &command_editor_->path_pattern;
+                break;
+            case text_input_target::command_projects:
+                state = &command_editor_->projects;
+                break;
+            case text_input_target::command_timeout:
+                state = &command_editor_->timeout;
+                break;
+            default:
+                break;
+            }
+        }
         if (state == nullptr)
             return;
 
@@ -2503,6 +3042,34 @@ namespace gitman {
             if (state->text != before)
                 settings_dialog_->timeout_defined = true;
             return;
+        }
+        // 제한 시간은 숫자만 받는다. 다른 글자가 섞이면 `parse_seconds`가 통째로
+        // 0(제한 없음)으로 읽는데, 검증이 그것을 오류로 보지 않아 원래 값이 조용히
+        // 사라진다. 환경설정의 제한 시간 칸과 같은 규칙이다.
+        if (intent.target == text_input_target::command_timeout)
+        {
+            std::u8string digits {};
+            for (const char8_t value : state->text)
+                if (value >= u8'0' && value <= u8'9' && digits.size() < 5)
+                    digits.push_back(value);
+            if (digits != state->text)
+                text_edit_set_text(*state, digits, true);
+            return;
+        }
+        // 나머지 명령·훅 편집 칸은 뒤처리가 없다. 검증은 snapshot을 지을 때 다시
+        // 하며, 남은 아래 갈래는 switch dialog의 것이라 여기서 끊지 않으면 없는
+        // 초안을 건드린다 (REQ-020).
+        switch (intent.target)
+        {
+        case text_input_target::command_name:
+        case text_input_target::command_script:
+        case text_input_target::command_arguments:
+        case text_input_target::command_icon:
+        case text_input_target::command_path_pattern:
+        case text_input_target::command_projects:
+            return;
+        default:
+            break;
         }
 
         if (state->text == before)
@@ -3529,6 +4096,10 @@ namespace gitman {
             const float maximum { ui::settings_dialog_metrics(dialog, window_height_ / scale_).maximum_scroll };
             dialog.scroll_offset = settings_dialog_->scroll_offset > maximum ? maximum : settings_dialog_->scroll_offset;
             snapshot->settings_dialog = { std::move(dialog) };
+            // 편집 dialog는 환경설정 **위에** 뜬다. 부모 초안 없이 혼자 뜨는 일이
+            // 없도록 같은 조건 안에서 게시한다.
+            if (command_editor_.has_value())
+                snapshot->command_editor = { build_command_editor_view() };
         }
 
         if (local_changes_dialog_.has_value())

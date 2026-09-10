@@ -114,6 +114,41 @@ namespace gitman::win32 {
             return chosen;
         }
 
+        // 사용자 명령·SVN 훅이 실행할 스크립트를 고르는 Win32 파일 dialog다
+        // (REQ-020). 확장자가 해석기를 정하므로 지원하는 것만 걸러 보여 준다.
+        [[nodiscard]] std::optional<std::u8string> choose_script_file(const HWND owner, const std::u8string& initial)
+        {
+            IFileOpenDialog* dialog { nullptr };
+            if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))) || dialog == nullptr)
+                return std::nullopt;
+
+            std::optional<std::u8string> chosen {};
+            const COMDLG_FILTERSPEC filters[] {
+                { L"스크립트 (*.py; *.js; *.mjs; *.cjs; *.ps1; *.bat; *.cmd; *.exe)", L"*.py;*.js;*.mjs;*.cjs;*.ps1;*.bat;*.cmd;*.exe" },
+                { L"모든 파일 (*.*)", L"*.*" },
+            };
+            static_cast<void>(dialog->SetFileTypes(2, filters));
+            static_cast<void>(dialog->SetTitle(L"실행할 스크립트 선택"));
+            if (initial.empty() == false)
+            {
+                // 시작 폴더 지정 실패는 무해하다. 문서 폴더를 못 열면 dialog가
+                // 마지막 자리에서 열릴 뿐이다.
+                if (auto converted { utf8_to_utf16(initial) }; converted.value.has_value())
+                {
+                    IShellItem* start { nullptr };
+                    if (SUCCEEDED(SHCreateItemFromParsingName(converted.value->c_str(), nullptr, IID_PPV_ARGS(&start))) && start != nullptr)
+                    {
+                        static_cast<void>(dialog->SetFolder(start));
+                        start->Release();
+                    }
+                }
+            }
+            if (SUCCEEDED(dialog->Show(owner)))
+                chosen = selected_path(*dialog);
+            dialog->Release();
+            return chosen;
+        }
+
         // 환경설정 dialog의 연결 등록·해제다 (REQ-016). registry 작업은 짧은
         // 로컬 I/O라 UI thread에서 곧바로 수행하고, 결과는 logic을 거쳐 앱 스타일
         // 알림 dialog로 알린다 (app-shell-design A3.2).
@@ -254,6 +289,11 @@ namespace gitman::win32 {
         case app_command::show_svn_executable_picker:
             if (std::optional<std::u8string> path { choose_executable_file(owner, L"SVN 실행 파일 선택") }; path.has_value())
                 post_intent(host, set_settings_executable_intent { repository_kind::subversion, std::move(*path) });
+            return;
+        case app_command::show_command_script_picker:
+            // 시작 폴더는 편집 dialog가 실어 보낸 문서 폴더다.
+            if (std::optional<std::u8string> path { choose_script_file(owner, command.argument) }; path.has_value())
+                post_intent(host, set_command_script_intent { std::move(*path) });
             return;
         case app_command::register_file_association:
         case app_command::unregister_file_association:

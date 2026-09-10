@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <string>
 
 namespace gitman {
     namespace {
@@ -16,6 +17,157 @@ namespace gitman {
             return value;
         }
     } // namespace
+
+    std::vector<std::u8string> split_command_arguments(const std::u8string_view text)
+    {
+        std::vector<std::u8string> arguments {};
+        std::u8string token {};
+        bool quoted { false };
+        bool has_token { false };
+
+        for (std::size_t index = 0; index < text.size(); ++index)
+        {
+            const char8_t value { text[index] };
+            if (value == u8'"')
+            {
+                // 따옴표 구간 **안**의 `""`는 따옴표 글자 하나다 (Windows 명령줄
+                // 관례). 이것이 없으면 인자에 든 따옴표를 적을 방법이 없어
+                // `join_command_arguments`가 글자를 잃는다.
+                //
+                // 여는 따옴표 바로 뒤의 `""`는 이 갈래에 들어오지 않는다 — 그때는
+                // 아직 `quoted`가 켜지기 **전**이라, `""`가 빈 인자를 뜻하는 규칙이
+                // 그대로 남는다.
+                if (quoted && index + 1 < text.size() && text[index + 1] == u8'"')
+                {
+                    token.push_back(u8'"');
+                    has_token = true;
+                    ++index;
+                    continue;
+                }
+                quoted = quoted == false;
+                // 빈 따옴표 조각(`""`)도 인자 하나다. 스크립트에 빈 인자를 넘기는
+                // 유일한 방법이라 삼키지 않는다.
+                has_token = true;
+                continue;
+            }
+            if (quoted == false && (value == u8' ' || value == u8'\t'))
+            {
+                if (has_token)
+                    arguments.push_back(std::move(token));
+                token.clear();
+                has_token = false;
+                continue;
+            }
+            token.push_back(value);
+            has_token = true;
+        }
+        if (has_token)
+            arguments.push_back(std::move(token));
+        return arguments;
+    }
+
+    std::u8string join_command_arguments(const std::vector<std::u8string>& arguments)
+    {
+        std::u8string text {};
+        for (const std::u8string& argument : arguments)
+        {
+            if (text.empty() == false)
+                text.push_back(u8' ');
+
+            // 탭도 split이 나누는 글자다. 빠뜨리면 탭이 든 인자가 왕복에서 둘로 갈린다.
+            const bool needs_quotes { argument.empty() || argument.find_first_of(u8" \t\"") != std::u8string::npos };
+            if (needs_quotes == false)
+            {
+                text.append(argument);
+                continue;
+            }
+            text.push_back(u8'"');
+            for (const char8_t value : argument)
+            {
+                // 따옴표는 둘로 적는다. split이 구간 안의 `""`를 글자 하나로 읽는다.
+                if (value == u8'"')
+                    text.push_back(u8'"');
+                text.push_back(value);
+            }
+            text.push_back(u8'"');
+        }
+        return text;
+    }
+
+    std::vector<std::u8string> split_command_projects(const std::u8string_view text)
+    {
+        std::vector<std::u8string> projects {};
+        std::size_t begin { 0 };
+        for (std::size_t index = 0; index <= text.size(); ++index)
+        {
+            if (index != text.size() && text[index] != u8',')
+                continue;
+
+            std::u8string_view piece { text.substr(begin, index - begin) };
+            while (piece.empty() == false && (piece.front() == u8' ' || piece.front() == u8'\t'))
+                piece.remove_prefix(1);
+            while (piece.empty() == false && (piece.back() == u8' ' || piece.back() == u8'\t'))
+                piece.remove_suffix(1);
+            if (piece.empty() == false)
+                projects.emplace_back(piece);
+            begin = index + 1;
+        }
+        return projects;
+    }
+
+    std::u8string join_command_projects(const std::vector<std::u8string>& projects)
+    {
+        std::u8string text {};
+        for (const std::u8string& project : projects)
+        {
+            if (text.empty() == false)
+                text.append(u8", ");
+            text.append(project);
+        }
+        return text;
+    }
+
+    std::u8string make_command_id(const std::u8string_view label, const std::vector<std::u8string>& taken)
+    {
+        std::u8string base {};
+        bool pending_separator { false };
+        for (const char8_t value : label)
+        {
+            if (value >= u8'A' && value <= u8'Z')
+            {
+                if (pending_separator && base.empty() == false)
+                    base.push_back(u8'-');
+                pending_separator = false;
+                base.push_back(static_cast<char8_t>(value - u8'A' + u8'a'));
+                continue;
+            }
+            if ((value >= u8'a' && value <= u8'z') || (value >= u8'0' && value <= u8'9'))
+            {
+                if (pending_separator && base.empty() == false)
+                    base.push_back(u8'-');
+                pending_separator = false;
+                base.push_back(value);
+                continue;
+            }
+            // 한글 이름은 남는 글자가 없다. 그때는 아래에서 기본 이름을 쓴다.
+            pending_separator = true;
+        }
+        if (base.empty())
+            base = u8"command";
+
+        std::u8string candidate { base };
+        std::size_t suffix { 1 };
+        const auto is_taken = [&taken](const std::u8string& value) { return std::ranges::find(taken, value) != taken.end(); };
+        while (is_taken(candidate))
+        {
+            ++suffix;
+            const std::string digits { std::to_string(suffix) };
+            candidate = base;
+            candidate.push_back(u8'-');
+            candidate.append(digits.begin(), digits.end());
+        }
+        return candidate;
+    }
 
     bool svn_hook_settings::is_default() const noexcept
     {

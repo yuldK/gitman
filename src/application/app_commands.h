@@ -32,9 +32,12 @@ namespace gitman {
         open_in_explorer_select,
         // 탐색기로 폴더 자체를 연다 (컨텍스트 메뉴의 "저장소 열기").
         open_in_explorer_folder,
+        // 명령 편집의 스크립트 파일 선택 → `set_command_script_intent`. `argument`는
+        // 시작 폴더(문서 폴더)다.
+        show_command_script_picker,
     };
 
-    inline constexpr std::uint32_t last_app_command { static_cast<std::uint32_t>(app_command::open_in_explorer_folder) };
+    inline constexpr std::uint32_t last_app_command { static_cast<std::uint32_t>(app_command::show_command_script_picker) };
 
     // luil이 나른 값을 되돌린다. 모르는 값(0 포함)은 nullopt다.
     [[nodiscard]] constexpr std::optional<app_command> parse_app_command(const std::uint32_t value) noexcept

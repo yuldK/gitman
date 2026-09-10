@@ -146,6 +146,12 @@ namespace gitman {
     inline constexpr float layout_generate_dialog_row_height { 30.0f };
     inline constexpr float layout_generate_dialog_label_width { 76.0f };
 
+    // 명령·훅 편집 dialog의 치수다 (REQ-020). 높이는 줄 수가 명령·훅에서 달라
+    // `make_command_editor_dialog`가 센다.
+    inline constexpr float layout_command_editor_width { 560.0f };
+    inline constexpr float layout_command_editor_row_height { 28.0f };
+    inline constexpr float layout_command_editor_label_width { 84.0f };
+
     // 카드 컨텍스트 메뉴 popup의 너비다 (field-feedback-design 3장). 행 높이·여백은
     // luil `menu_element`의 것(`menu_item_height`·`menu_padding`)을 쓴다.
     inline constexpr float layout_context_menu_width { 190.0f };

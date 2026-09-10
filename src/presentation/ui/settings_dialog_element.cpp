@@ -3,8 +3,10 @@
 #include "presentation/list_metrics.h"
 #include "presentation/ui/dialog_host.h"
 #include "presentation/ui/element_kinds.h"
+#include "presentation/ui/status_glyphs.h"
 #include "presentation/ui/ui_actions.h"
 
+#include "luil/ui/button_element.h"
 #include "luil/ui/dialog_elements.h"
 #include "luil/ui/scrollbar_element.h"
 
@@ -79,6 +81,9 @@ namespace gitman::ui {
         constexpr float swatch_diameter { 24.0f };
         constexpr float swatch_gap { 8.0f };
         constexpr float swatch_top_margin { 6.0f };
+        // 명령 탭 목록 행의 아이콘 버튼이다 (REQ-020). 넷이 제목 줄 오른쪽에 붙는다.
+        constexpr float row_icon_button { 22.0f };
+        constexpr float row_icon_gap { 2.0f };
 
         // 항목 종류다. 값 줄의 뜻과 컨트롤 배치를 이것으로 정한다.
         // 글꼴 항목의 값 줄이다. 빈 이름은 내장 글꼴을 뜻한다.
@@ -100,6 +105,12 @@ namespace gitman::ui {
             ui_font,
             code_font,
             file_association,
+            // 명령 탭이다 (REQ-020). 목록 행 하나와, 목록 끝의 추가 버튼 줄이다.
+            command_row,
+            command_add,
+            tortoise_toggle,
+            hook_row,
+            hook_add,
         };
 
         struct item_model
@@ -114,6 +125,13 @@ namespace gitman::ui {
             // 배지 element의 정체성이다. 항목마다 다르다.
             std::u8string override_owner {};
             bool overridden { false };
+            // 목록 행 항목만 쓴다. 버튼 owner와 intent의 자리 번호다.
+            std::size_t row_index { 0 };
+            bool row_hook { false };
+            bool can_move_up { false };
+            bool can_move_down { false };
+            // 명령 행의 codicon 이름이다. 비어 있으면 기본 글리프다.
+            std::u8string icon {};
         };
 
         struct section_model
@@ -222,7 +240,7 @@ namespace gitman::ui {
                 const float grid { rows == 0 ? 0.0f : static_cast<float>(rows) * swatch_diameter + static_cast<float>(rows - 1) * swatch_gap };
                 return base + swatch_top_margin + grid + item_bottom_margin;
             }
-            if (item.kind == item_kind::file_association)
+            if (item.kind == item_kind::file_association || item.kind == item_kind::command_add || item.kind == item_kind::hook_add)
                 return base + row_button_gap + action_button_height + item_bottom_margin;
             return base + item_bottom_margin;
         }
@@ -319,6 +337,17 @@ namespace gitman::ui {
             return layout;
         }
 
+        // 명령 행의 아이콘 버튼 넷을 한 번에 만든다. 넷 다 같은 자리 번호를 쓰므로
+        // 만드는 곳을 하나로 둔다.
+        struct row_button_spec
+        {
+            luil::ui_element_kind kind {};
+            char32_t glyph { 0 };
+            std::u8string_view tooltip {};
+            bool enabled { true };
+            logic_message message {};
+        };
+
         // 문서가 덮어쓴 항목인지다. 전역 모드에서는 항상 거짓이다.
         bool overridden(const settings_dialog_view& dialog, const bool follows_app)
         {
@@ -382,6 +411,47 @@ namespace gitman::ui {
                 overridden(dialog, dialog.log_files_follows_app)));
             operations.sections.push_back(std::move(logs));
             tabs.push_back(std::move(operations));
+
+            // 사용자 명령과 SVN 훅이다 (REQ-020·REQ-021). 목록이라 항목이 아니라
+            // 묶음 단위로 문서가 덮어쓰며, 배지도 묶음마다 하나씩 추가 줄에 붙는다.
+            tab_model commands { settings_tab::commands, std::u8string { u8"명령" }, codicons::icon_play, {} };
+            section_model custom { std::u8string { u8"사용자 명령" }, {} };
+            for (std::size_t index = 0; index < dialog.commands.size(); ++index)
+            {
+                const settings_command_row_view& row { dialog.commands[index] };
+                item_model item { make_item(item_kind::command_row, row.label, row.detail, u8"실행할 스크립트를 지정하세요", {}, u8"", false) };
+                item.row_index = index;
+                item.can_move_up = row.can_move_up;
+                item.can_move_down = row.can_move_down;
+                item.icon = row.icon;
+                custom.items.push_back(std::move(item));
+            }
+            custom.items.push_back(make_item(item_kind::command_add, u8"명령 추가", u8"카드 우클릭 메뉴와 카드 표면에서 실행합니다", {}, settings_override_field::custom_commands, u8"commands",
+                overridden(dialog, dialog.commands_follows_app)));
+            commands.sections.push_back(std::move(custom));
+
+            section_model hooks { std::u8string { u8"SVN 훅" }, {} };
+            std::u8string tortoise_value { dialog.use_tortoise_svn ? u8"켬 - TortoiseSVN에 등록된 훅을 그대로 실행" : u8"끔 - gitman이 정의한 훅만 실행" };
+            const bool hooks_overridden { overridden(dialog, dialog.hooks_follows_app) };
+            item_model tortoise { make_item(
+                item_kind::tortoise_toggle, u8"TortoiseSVN 훅 함께 실행", std::move(tortoise_value), {}, settings_override_field::svn_hooks, u8"svn-hooks", hooks_overridden)
+            };
+            hooks.items.push_back(std::move(tortoise));
+            for (std::size_t index = 0; index < dialog.hooks.size(); ++index)
+            {
+                const settings_command_row_view& row { dialog.hooks[index] };
+                item_model item { make_item(item_kind::hook_row, row.label, row.detail, u8"실행할 스크립트를 지정하세요", {}, u8"", false) };
+                item.row_index = index;
+                item.row_hook = true;
+                item.can_move_up = row.can_move_up;
+                item.can_move_down = row.can_move_down;
+                hooks.items.push_back(std::move(item));
+            }
+            item_model hook_add { make_item(item_kind::hook_add, u8"훅 추가", u8"SVN 업데이트·전환 앞뒤에 실행합니다", {}, {}, u8"", false) };
+            hook_add.row_hook = true;
+            hooks.items.push_back(std::move(hook_add));
+            commands.sections.push_back(std::move(hooks));
+            tabs.push_back(std::move(commands));
 
             // 탭 이름은 `테마`다 (E1). 열거자 이름(`appearance`)은 저장 값·id로 이미
             // 쓰이고 있어 표시 문자열만 바꾼다.
@@ -819,9 +889,25 @@ namespace gitman::ui {
                     context.canvas.drawRRect(SkRRect::MakeRectXY(block, 4.0f * scale, 4.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.10f)));
                 }
 
+                // 명령 행은 제목 앞에 그 명령의 아이콘을 그린다. 이름만으로는 카드
+                // 표면에 무엇이 뜰지 알 수 없다 (REQ-020).
+                float title_left { bounds.title_line.x };
+                float title_width { bounds.title_line.width };
+                if (item.kind == item_kind::command_row && context.codicon_typeface != nullptr)
+                {
+                    const float box { 16.0f * scale };
+                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 13.0f * scale };
+                    draw_centered_glyph(context.canvas, codicon_for_configured_name(item.icon, default_command_codicon()), { title_left, bounds.title_line.y, box, bounds.title_line.height },
+                        icon_font, solid_paint(context.palette.accent_emphasis_foreground));
+                    title_left += box + 4.0f * scale;
+                    title_width -= box + 4.0f * scale;
+                    if (title_width < 0.0f)
+                        title_width = 0.0f;
+                }
+
                 // 세부 기능 타이틀은 키 컬러 + semi-bold로 강조한다.
-                static_cast<void>(draw_text_within(context.canvas, item.title, bounds.title_line.x, bounds.title_line.y + 15.0f * scale, bounds.title_line.width, title_font,
-                    solid_paint(context.palette.accent_emphasis_foreground)));
+                static_cast<void>(draw_text_within(
+                    context.canvas, item.title, title_left, bounds.title_line.y + 15.0f * scale, title_width, title_font, solid_paint(context.palette.accent_emphasis_foreground)));
 
                 // 타이틀이 아닌 본문은 흐리게 그려 위계를 만든다. 빈 값은 안내 문구다.
                 if (item.value.empty() && item.placeholder.empty())
@@ -1009,6 +1095,40 @@ namespace gitman::ui {
                     pick->set_action(ui_trigger::left_click, make_logic_click(open_font_dialog_intent { code }));
                     break;
                 }
+                case item_kind::command_row:
+                case item_kind::hook_row: {
+                    const std::u8string owner { settings_command_row_owner(item.row_hook, item.row_index) };
+                    const std::vector<row_button_spec> specs {
+                        { kind_settings_command_row_up, codicons::icon_chevron_up, u8"위로", item.can_move_up, logic_message { move_command_intent { item.row_hook, item.row_index, -1 } } },
+                        { kind_settings_command_row_down, codicons::icon_chevron_down, u8"아래로", item.can_move_down, logic_message { move_command_intent { item.row_hook, item.row_index, 1 } } },
+                        { kind_settings_command_row_edit, codicons::icon_edit, u8"편집", true, logic_message { open_command_editor_intent { item.row_hook, item.row_index } } },
+                        { kind_settings_command_row_remove, codicons::icon_trash, u8"삭제", true, logic_message { remove_command_intent { item.row_hook, item.row_index } } },
+                    };
+                    for (const row_button_spec& spec : specs)
+                    {
+                        auto button { std::make_unique<luil::button_element>(ui_element_id { spec.kind, owner }, luil::button_config { .glyph = spec.glyph, .icon_size = 13.0f }) };
+                        button->set_tooltip(std::u8string { spec.tooltip });
+                        button->set_enabled(spec.enabled);
+                        if (spec.enabled)
+                            button->set_action(ui_trigger::left_click, make_logic_click(spec.message));
+                        controls.push_back(button.get());
+                        panel_raw->adopt(std::move(button));
+                    }
+                    break;
+                }
+                case item_kind::command_add:
+                case item_kind::hook_add: {
+                    const bool hook { item.kind == item_kind::hook_add };
+                    luil::text_button_element* const add { add_text_button(hook ? kind_settings_hook_add : kind_settings_command_add, hook ? u8"훅 추가" : u8"명령 추가", controls) };
+                    add->set_tooltip(hook ? u8"SVN 업데이트·전환 앞뒤에 실행할 스크립트를 더합니다" : u8"카드에서 실행할 스크립트를 더합니다");
+                    // 새 항목은 목록 끝에 붙는다. 자리 번호는 logic이 정한다.
+                    add->set_action(ui_trigger::left_click, make_logic_click(open_command_editor_intent { hook, 0u, true }));
+                    break;
+                }
+                case item_kind::tortoise_toggle:
+                    add_toggle(kind_settings_tortoise_toggle, dialog_.use_tortoise_svn, u8"켜면 TortoiseSVN 설정 화면에 등록해 둔 클라이언트 훅을 그대로 실행합니다 (읽기만 합니다)",
+                        logic_message { toggle_command_flag_intent { command_flag::use_tortoise_svn } }, controls);
+                    break;
                 case item_kind::file_association: {
                     // registry 작업은 UI thread의 앱 명령으로 수행되고 결과는 시스템
                     // dialog로 알린다 (REQ-016).
@@ -1173,6 +1293,39 @@ namespace gitman::ui {
                     controls.front()->arrange({ { bounds.controls_right - button, button_top, button, action_button_height * scale }, scale });
                 }
                 break;
+            case item_kind::command_row:
+            case item_kind::hook_row: {
+                if (controls.size() < 4)
+                    break;
+                // 아이콘 넷이 제목 줄 오른쪽 끝에 붙는다. 배지가 있어도 제목 줄
+                // 오른쪽은 컨트롤의 자리라 밀리지 않는다 (E3).
+                const float button { row_icon_button * scale };
+                const float gap { row_icon_gap * scale };
+                const float button_top { bounds.title_line.y + (bounds.title_line.height - button) / 2.0f };
+                float left { bounds.controls_right - button * 4.0f - gap * 3.0f };
+                for (ui_element* const control : controls)
+                {
+                    control->arrange({ { left, button_top, button, button }, scale });
+                    left += button + gap;
+                }
+                break;
+            }
+            case item_kind::command_add:
+            case item_kind::hook_add: {
+                if (controls.empty())
+                    break;
+                const float button { action_button_width * scale };
+                const float button_top { bounds.value_line.y + bounds.value_line.height + row_button_gap * scale };
+                controls.front()->arrange({ { bounds.value_line.x, button_top, button, action_button_height * scale }, scale });
+                break;
+            }
+            case item_kind::tortoise_toggle: {
+                if (controls.empty())
+                    break;
+                const float toggle_top { bounds.title_line.y + (bounds.title_line.height - toggle_height * scale) / 2.0f };
+                controls[0]->arrange({ { bounds.controls_right - toggle_width * scale, toggle_top, toggle_width * scale, toggle_height * scale }, scale });
+                break;
+            }
             case item_kind::file_association: {
                 if (controls.size() < 2)
                     break;
@@ -1221,6 +1374,14 @@ namespace gitman::ui {
     {
         // 화면을 덮는 scrim은 host가 그린다 (설계 D2-A). 본체는 자식만 그린다.
         draw_children(context, interaction);
+    }
+
+    std::u8string settings_command_row_owner(const bool hook, const std::size_t index)
+    {
+        std::u8string owner { hook ? u8"hook-" : u8"command-" };
+        const std::string digits { std::to_string(index) };
+        owner.append(digits.begin(), digits.end());
+        return owner;
     }
 
     std::unique_ptr<luil::modal_host_element> make_settings_dialog(const settings_dialog_view& view, const float window_width, const float window_height)

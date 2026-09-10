@@ -157,6 +157,23 @@ namespace gitman {
         // 값을 봐야 하므로 한곳에서 만든다 (E1.3).
         [[nodiscard]] settings_dialog_view build_settings_dialog_view() const;
         void handle_clear_settings_override(const clear_settings_override_intent& intent);
+        // 명령 탭과 편집 dialog다 (REQ-020). 모두 환경설정 초안 위에서 일어나고
+        // `저장`을 눌러야 문서·앱 설정에 남는다.
+        void handle_open_command_editor(const open_command_editor_intent& intent);
+        void handle_close_command_editor();
+        void handle_confirm_command_editor();
+        void handle_move_command(const move_command_intent& intent);
+        void handle_remove_command(const remove_command_intent& intent);
+        void handle_toggle_command_flag(const toggle_command_flag_intent& intent);
+        void handle_cycle_command_choice(const cycle_command_choice_intent& intent);
+        void handle_set_command_script(set_command_script_intent intent);
+        // 편집 초안에서 값을 조립한다. 검증과 view 구성이 같은 값을 봐야 `확인`
+        // 버튼과 실제 저장이 어긋나지 않는다.
+        [[nodiscard]] custom_command command_editor_command() const;
+        [[nodiscard]] svn_hook command_editor_hook() const;
+        [[nodiscard]] command_editor_dialog_view build_command_editor_view() const;
+        // 그 묶음을 이 문서가 정의한 것으로 표시한다 (G3.2의 암묵 덮어쓰기 규칙).
+        void mark_commands_defined(bool hook);
         void handle_confirm_settings();
         void handle_begin_switch(const begin_switch_intent& intent);
         void handle_select_switch_candidate(std::size_t index);
@@ -425,12 +442,42 @@ namespace gitman {
             bool accent_defined { false };
             bool ui_font_defined { false };
             bool code_font_defined { false };
+            // 명령 탭의 초안이다 (REQ-020). 유효 목록(전역 + 문서)에서 시작하고
+            // `저장`이 문서 override 또는 전역 목록으로 옮긴다.
+            command_catalog commands {};
+            // 문서 모드에서 "이 문서가 정의함" 표시다. 목록이라 항목이 아니라 묶음
+            // 단위이며, 목록을 건드리면 켜진다.
+            bool commands_defined { false };
+            bool hooks_defined { false };
             // 항목 열의 스크롤 위치다 (논리 픽셀). 창이 낮아 항목이 다 들어가지
             // 않을 때만 0이 아니다 (text-input-and-font-fallback-design E1).
             float scroll_offset { 0.0f };
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};
+
+        // 명령·훅 하나를 고치는 dialog의 초안이다 (REQ-020). 환경설정 위에 뜨며
+        // `확인`이 환경설정 초안의 목록을 고친다. 스크립트 **내용**은 다루지 않는다
+        // — 외부 편집기가 할 일이라는 사용자 결정(2026-09-10)이다.
+        struct command_editor_state
+        {
+            bool hook { false };
+            // 목록에서의 자리다. 목록 크기와 같으면 새 항목을 만드는 중이다.
+            std::size_t index { 0 };
+            // 텍스트가 아닌 값(선택지·켬끔·id)을 그대로 든다. 텍스트 칸은 아래의
+            // 편집 상태가 정본이다.
+            custom_command command {};
+            svn_hook hook_value {};
+            text_edit_state name {};
+            text_edit_state script {};
+            text_edit_state arguments {};
+            text_edit_state icon {};
+            text_edit_state path_pattern {};
+            text_edit_state projects {};
+            text_edit_state timeout {};
+        };
+
+        std::optional<command_editor_state> command_editor_ {};
 
         // IME 조합 상태다 (text-input-and-font-fallback-design E2.3). UI thread의
         // 그림자 문서가 보내 주며, 조합이 끝나면 비워진다. 확정 전의 글이라 어느

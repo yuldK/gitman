@@ -108,6 +108,32 @@ namespace gitman::ui {
             discovery_dialog_cancel,
             toolbar_update_all,
             card_custom_command,
+            settings_command_row_up,
+            settings_command_row_down,
+            settings_command_row_edit,
+            settings_command_row_remove,
+            settings_command_add,
+            settings_hook_add,
+            settings_tortoise_toggle,
+            command_editor_dialog,
+            command_editor_panel,
+            command_editor_name_input,
+            command_editor_script_input,
+            command_editor_script_browse,
+            command_editor_script_open,
+            command_editor_arguments_input,
+            command_editor_icon_input,
+            command_editor_path_pattern_input,
+            command_editor_projects_input,
+            command_editor_timeout_input,
+            command_editor_working_directory,
+            command_editor_vcs,
+            command_editor_phase,
+            command_editor_show_on_card,
+            command_editor_refresh_after,
+            command_editor_enabled,
+            command_editor_confirm,
+            command_editor_cancel,
             count,
         };
 
@@ -138,6 +164,34 @@ namespace gitman::ui {
     // 카드 표면에 나온 사용자 명령 버튼이다 (REQ-020). owner가 카드 id와 명령 id를
     // 함께 담는다 (`card_command_owner`).
     inline constexpr luil::ui_element_kind kind_card_custom_command { detail::application_kind(detail::application_kind_index::card_custom_command) };
+    // 환경설정 `명령` 탭과 명령·훅 편집 dialog다 (REQ-020). 목록 행의 버튼은 kind
+    // 하나에 owner(`command-0`·`hook-1`)로 어느 줄인지를 담는다.
+    inline constexpr luil::ui_element_kind kind_settings_command_row_up { detail::application_kind(detail::application_kind_index::settings_command_row_up) };
+    inline constexpr luil::ui_element_kind kind_settings_command_row_down { detail::application_kind(detail::application_kind_index::settings_command_row_down) };
+    inline constexpr luil::ui_element_kind kind_settings_command_row_edit { detail::application_kind(detail::application_kind_index::settings_command_row_edit) };
+    inline constexpr luil::ui_element_kind kind_settings_command_row_remove { detail::application_kind(detail::application_kind_index::settings_command_row_remove) };
+    inline constexpr luil::ui_element_kind kind_settings_command_add { detail::application_kind(detail::application_kind_index::settings_command_add) };
+    inline constexpr luil::ui_element_kind kind_settings_hook_add { detail::application_kind(detail::application_kind_index::settings_hook_add) };
+    inline constexpr luil::ui_element_kind kind_settings_tortoise_toggle { detail::application_kind(detail::application_kind_index::settings_tortoise_toggle) };
+    inline constexpr luil::ui_element_kind kind_command_editor_dialog { detail::application_kind(detail::application_kind_index::command_editor_dialog) };
+    inline constexpr luil::ui_element_kind kind_command_editor_panel { detail::application_kind(detail::application_kind_index::command_editor_panel) };
+    inline constexpr luil::ui_element_kind kind_command_editor_name_input { detail::application_kind(detail::application_kind_index::command_editor_name_input) };
+    inline constexpr luil::ui_element_kind kind_command_editor_script_input { detail::application_kind(detail::application_kind_index::command_editor_script_input) };
+    inline constexpr luil::ui_element_kind kind_command_editor_script_browse { detail::application_kind(detail::application_kind_index::command_editor_script_browse) };
+    inline constexpr luil::ui_element_kind kind_command_editor_script_open { detail::application_kind(detail::application_kind_index::command_editor_script_open) };
+    inline constexpr luil::ui_element_kind kind_command_editor_arguments_input { detail::application_kind(detail::application_kind_index::command_editor_arguments_input) };
+    inline constexpr luil::ui_element_kind kind_command_editor_icon_input { detail::application_kind(detail::application_kind_index::command_editor_icon_input) };
+    inline constexpr luil::ui_element_kind kind_command_editor_path_pattern_input { detail::application_kind(detail::application_kind_index::command_editor_path_pattern_input) };
+    inline constexpr luil::ui_element_kind kind_command_editor_projects_input { detail::application_kind(detail::application_kind_index::command_editor_projects_input) };
+    inline constexpr luil::ui_element_kind kind_command_editor_timeout_input { detail::application_kind(detail::application_kind_index::command_editor_timeout_input) };
+    inline constexpr luil::ui_element_kind kind_command_editor_working_directory { detail::application_kind(detail::application_kind_index::command_editor_working_directory) };
+    inline constexpr luil::ui_element_kind kind_command_editor_vcs { detail::application_kind(detail::application_kind_index::command_editor_vcs) };
+    inline constexpr luil::ui_element_kind kind_command_editor_phase { detail::application_kind(detail::application_kind_index::command_editor_phase) };
+    inline constexpr luil::ui_element_kind kind_command_editor_show_on_card { detail::application_kind(detail::application_kind_index::command_editor_show_on_card) };
+    inline constexpr luil::ui_element_kind kind_command_editor_refresh_after { detail::application_kind(detail::application_kind_index::command_editor_refresh_after) };
+    inline constexpr luil::ui_element_kind kind_command_editor_enabled { detail::application_kind(detail::application_kind_index::command_editor_enabled) };
+    inline constexpr luil::ui_element_kind kind_command_editor_confirm { detail::application_kind(detail::application_kind_index::command_editor_confirm) };
+    inline constexpr luil::ui_element_kind kind_command_editor_cancel { detail::application_kind(detail::application_kind_index::command_editor_cancel) };
     inline constexpr luil::ui_element_kind kind_empty_state { detail::application_kind(detail::application_kind_index::empty_state) };
     inline constexpr luil::ui_element_kind kind_start_page { detail::application_kind(detail::application_kind_index::start_page) };
     inline constexpr luil::ui_element_kind kind_start_page_open_document { detail::application_kind(detail::application_kind_index::start_page_open_document) };
@@ -306,6 +360,32 @@ namespace gitman::ui {
         kind_discovery_dialog_cancel,
         kind_toolbar_update_all,
         kind_card_custom_command,
+        kind_settings_command_row_up,
+        kind_settings_command_row_down,
+        kind_settings_command_row_edit,
+        kind_settings_command_row_remove,
+        kind_settings_command_add,
+        kind_settings_hook_add,
+        kind_settings_tortoise_toggle,
+        kind_command_editor_dialog,
+        kind_command_editor_panel,
+        kind_command_editor_name_input,
+        kind_command_editor_script_input,
+        kind_command_editor_script_browse,
+        kind_command_editor_script_open,
+        kind_command_editor_arguments_input,
+        kind_command_editor_icon_input,
+        kind_command_editor_path_pattern_input,
+        kind_command_editor_projects_input,
+        kind_command_editor_timeout_input,
+        kind_command_editor_working_directory,
+        kind_command_editor_vcs,
+        kind_command_editor_phase,
+        kind_command_editor_show_on_card,
+        kind_command_editor_refresh_after,
+        kind_command_editor_enabled,
+        kind_command_editor_confirm,
+        kind_command_editor_cancel,
     };
 
     static_assert(application_kinds.size() == application_kind_count);
@@ -330,4 +410,5 @@ namespace gitman::ui {
     inline constexpr std::u8string_view dialog_owner_font { u8"font" };
     inline constexpr std::u8string_view dialog_owner_discovery { u8"discovery" };
     inline constexpr std::u8string_view dialog_owner_local_changes { u8"local-changes" };
+    inline constexpr std::u8string_view dialog_owner_command_editor { u8"command-editor" };
 } // namespace gitman::ui

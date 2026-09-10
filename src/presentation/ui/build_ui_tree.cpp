@@ -70,7 +70,10 @@ namespace gitman::ui {
                 // 탐색 등록의 폴더 dialog가 열리는 자리다. UI thread는 view를 읽지
                 // 않으므로 명령 인자로 실어 보낸다 (설계 L7).
                 std::u8string discovery_start_folder { windows_parent_directory(view.document_path) };
-                auto toolbar { std::make_unique<toolbar_element>(std::move(document_text), show_open_button, view.relative_paths, document_open, std::move(discovery_start_folder)) };
+                auto toolbar {
+                    std::make_unique<toolbar_element>(
+                        std::move(document_text), show_open_button, view.relative_paths, document_open, std::move(discovery_start_folder), view.can_update_all, view.any_change_running),
+                };
                 toolbar_ = toolbar.get();
                 add_child(std::move(toolbar));
 

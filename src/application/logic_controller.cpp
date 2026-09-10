@@ -186,6 +186,10 @@ namespace gitman {
                         if (card.project.enabled)
                             request_refresh(card);
                 }
+                else if constexpr (std::is_same_v<value_type, update_all_intent>)
+                    handle_update_all();
+                else if constexpr (std::is_same_v<value_type, cancel_all_operations_intent>)
+                    handle_cancel_all_operations();
                 else if constexpr (std::is_same_v<value_type, refresh_card_intent>)
                 {
                     card_state* const card { find_card(value.id) };
@@ -607,6 +611,7 @@ namespace gitman {
             if (card.project.enabled == false)
                 continue;
             card.busy = true;
+            card.operation_started_at = { std::chrono::steady_clock::now() };
             static_cast<void>(submitter_->submit(make_request(operation_kind::query_local, &card, card.generation)));
         }
     }
@@ -633,6 +638,9 @@ namespace gitman {
         if (event.final_event)
         {
             card->busy = false;
+            // 조회도 "마지막으로 뭔가 한 시각"이다 (REQ-019). 실패해도 남긴다.
+            card->operation_started_at.reset();
+            card->last_finished_at = { std::chrono::system_clock::now() };
             if (card->refresh_queued)
             {
                 // 실행 중 들어온 중복 refresh는 한 번으로 병합해 뒤이어 실행한다
@@ -905,6 +913,7 @@ namespace gitman {
         }
 
         card.busy = true;
+        card.operation_started_at = { std::chrono::steady_clock::now() };
         card.change_operation_id = operation_id;
         card.change_kind = kind;
         // 경과 시간 표시의 기준 시각이다 (로그 헤더의 MM:SS). 새 명령이 시작되면
@@ -919,6 +928,62 @@ namespace gitman {
                 card, diagnostic_severity::information, options.update_submodules ? std::u8string { u8"update를 시작합니다 (submodule 함께 갱신)." } : std::u8string { u8"update를 시작합니다." });
         else
             append_lifecycle_log(card, diagnostic_severity::information, std::u8string { u8"switch를 시작합니다: " } + (target != nullptr ? target->display_name : std::u8string {}));
+    }
+
+    void logic_controller::handle_update_all()
+    {
+        if (shutting_down_)
+            return;
+
+        batch_notice_.clear();
+        std::size_t started { 0 };
+        std::size_t skipped { 0 };
+        const update_options options { .update_submodules = effective_settings().update_submodules };
+        for (card_state& card : cards_)
+        {
+            if (card.project.enabled == false)
+                continue;
+            // `begin_change`가 거부하는 조건을 먼저 세어 둔다. 거부 사유는 그쪽이
+            // 카드 로그에 남기고, 여기서는 몇 개가 못 들어갔는지만 요약한다.
+            const bool ready { card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready };
+            if (ready == false)
+            {
+                ++skipped;
+                continue;
+            }
+
+            const std::uint64_t before { card.change_operation_id };
+            begin_change(card, operation_kind::update, options, nullptr);
+            if (card.change_operation_id != before)
+                ++started;
+            else
+                ++skipped;
+        }
+
+        // 아무것도 건너뛰지 않았으면 알릴 것이 없다 — 카드가 도는 것이 곧 피드백이다.
+        // 건너뛴 것이 있을 때만 배너를 띄운다 (REQ-018).
+        if (skipped == 0)
+            return;
+
+        const auto digits = [](const std::size_t value) {
+            const std::string text { std::to_string(value) };
+            std::u8string result {};
+            result.append(text.begin(), text.end());
+            return result;
+        };
+        batch_notice_ = digits(started) + u8"개 카드의 업데이트를 시작했습니다. " + digits(skipped) + u8"개는 아직 준비되지 않아 건너뛰었습니다.";
+    }
+
+    void logic_controller::handle_cancel_all_operations()
+    {
+        batch_notice_.clear();
+        for (card_state& card : cards_)
+        {
+            if (card.change_operation_id == 0 || card.change_cancellation.has_value() == false)
+                continue;
+            card.change_cancellation->request_cancellation();
+            append_lifecycle_log(card, diagnostic_severity::warning, u8"전체 중지로 취소를 요청했습니다.");
+        }
     }
 
     void logic_controller::handle_cancel_operation(const cancel_operation_intent& intent)
@@ -955,6 +1020,10 @@ namespace gitman {
         card->change_operation_id = 0;
         card->change_cancellation.reset();
         card->busy = false;
+        // 일괄 업데이트 요약은 첫 작업이 끝나는 순간 소임을 다한다 (REQ-018).
+        batch_notice_.clear();
+        card->operation_started_at.reset();
+        card->last_finished_at = { std::chrono::system_clock::now() };
 
         // 실행 직후 재조회한 상태만 반영한다. 도구 부재처럼 조회 없이 차단된 결과의
         // 빈 snapshot으로 카드 상태를 지우지 않는다.
@@ -1152,6 +1221,7 @@ namespace gitman {
             if (added.project.enabled)
             {
                 added.busy = true;
+                added.operation_started_at = { std::chrono::steady_clock::now() };
                 static_cast<void>(submitter_->submit(make_request(operation_kind::query_local, &added, added.generation)));
             }
         }
@@ -2782,6 +2852,7 @@ namespace gitman {
 
         ++card.generation;
         card.busy = true;
+        card.operation_started_at = { std::chrono::steady_clock::now() };
         static_cast<void>(submitter_->submit(make_request(operation_kind::refresh, &card, card.generation)));
     }
 
@@ -2977,6 +3048,8 @@ namespace gitman {
             model.enabled = card.project.enabled;
             model.can_change = card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready;
             model.change_running = card.change_operation_id != 0;
+            model.operation_started_at = card.operation_started_at;
+            model.last_finished_at = card.last_finished_at;
 
             card_view_inputs inputs {};
             inputs.enabled = card.project.enabled;
@@ -3004,9 +3077,22 @@ namespace gitman {
         snapshot->selected = selected_;
         snapshot->filter_text = filter_;
         snapshot->notices = notices_;
+        // 일괄 업데이트가 건너뛴 카드를 알린다 (REQ-018). 저장 실패보다는 덜 급하니
+        // 아래에서 저장 실패가 다시 앞을 차지한다.
+        if (batch_notice_.empty() == false)
+            snapshot->notices.insert(snapshot->notices.begin(), batch_notice_);
         // 저장 실패는 문서 진단보다 먼저 보인다. UI는 첫 notice만 표시한다.
         if (save_notice_.empty() == false)
             snapshot->notices.insert(snapshot->notices.begin(), save_notice_);
+        // 일괄 업데이트 버튼의 두 얼굴을 정한다 (REQ-018). 필터와 무관하게 문서의
+        // 모든 활성 카드를 본다 — 전체 새로 고침과 같은 규칙이다.
+        for (const card_state& card : cards_)
+        {
+            if (card.change_operation_id != 0)
+                snapshot->any_change_running = true;
+            if (card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready)
+                snapshot->can_update_all = true;
+        }
         snapshot->window_width = window_width_;
         snapshot->window_height = window_height_;
         snapshot->scale = scale_;

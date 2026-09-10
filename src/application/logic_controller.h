@@ -79,6 +79,13 @@ namespace gitman {
             bool busy { false };
             bool refresh_queued { false };
             bool has_local_result { false };
+            // 지금 돌고 있는 작업의 시작 시각이다 (REQ-019). `change_started_at`과
+            // 달리 조회(query_local·refresh)도 센다 — 카드만 보고 도는 중인지
+            // 알 수 있어야 한다는 지시(2026-09-10)라 refresh도 표시 대상이다.
+            std::optional<std::chrono::steady_clock::time_point> operation_started_at {};
+            // 마지막으로 끝난 작업의 완료 시각이다 (REQ-019). 성패와 관계없이
+            // 남긴다. 카드가 `3분 전` 같은 상대 시각으로 그린다.
+            std::optional<std::chrono::system_clock::time_point> last_finished_at {};
         };
 
         void handle_open_document(const open_document_intent& intent);
@@ -96,6 +103,12 @@ namespace gitman {
         void handle_document_saved(document_saved_event event);
         void handle_request_update(const request_update_intent& intent);
         void handle_request_switch(const request_switch_intent& intent);
+        // 도구 막대의 일괄 업데이트다 (REQ-018). 활성 카드를 순서대로 시작하고,
+        // 시작하지 못한 카드 수를 배너로 요약한다.
+        void handle_update_all();
+        // 같은 버튼이 실행 중일 때의 동작이다 (REQ-018). 실행 중인 변경 작업을
+        // 전부 취소하고 카드마다 사유를 로그에 남긴다.
+        void handle_cancel_all_operations();
         void handle_cancel_operation(const cancel_operation_intent& intent);
         void handle_operation_log(operation_log_event event);
         void handle_change_completed(change_completed_event event);
@@ -264,6 +277,10 @@ namespace gitman {
         std::vector<std::u8string> notices_ {};
         // 마지막 저장 실패의 요약이다. 성공하면 비워지고 view notices의 맨 앞에 실린다.
         std::u8string save_notice_ {};
+        // 일괄 업데이트가 카드를 건너뛴 것을 알리는 한 줄이다 (REQ-018). 건너뛴
+        // 것이 있을 때만 채우고, 다음 일괄 실행·변경 완료·문서 전환에서 지운다.
+        // 저장 실패보다는 덜 급하므로 `save_notice_`보다 뒤에 놓인다.
+        std::u8string batch_notice_ {};
         std::optional<project_id> selected_ {};
         std::u8string filter_ {};
         // 하단 로그 뷰의 표시 상태다. 선택이 바뀌면 기본값으로 돌아간다.

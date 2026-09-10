@@ -62,6 +62,31 @@ TEST_CASE("Clicks resolve to intents through the tree", "[ui][interaction]")
     }
 }
 
+TEST_CASE("The batch update button starts updates and becomes a stop button", "[ui][interaction]")
+{
+    // 한 자리가 두 몫을 한다 (REQ-018). 카드의 update 버튼이 실행 중에 중지로
+    // 바뀌는 규칙을 전체 단위로 옮긴 것이다.
+    gitman::view_snapshot ready { make_view(2) };
+    ready.can_update_all = true;
+    const auto tree { make_tree(ready) };
+    interaction_harness harness { tree };
+
+    const auto started { click(harness, bounds_of(*tree, ui::kind_toolbar_update_all)) };
+    const gitman::logic_message* const message { as_message(started) };
+    REQUIRE(message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::update_all_intent>(*message));
+
+    gitman::view_snapshot running { make_view(2) };
+    running.any_change_running = true;
+    const auto running_tree { make_tree(running) };
+    interaction_harness running_harness { running_tree };
+
+    const auto stopped { click(running_harness, bounds_of(*running_tree, ui::kind_toolbar_update_all)) };
+    const gitman::logic_message* const stop_message { as_message(stopped) };
+    REQUIRE(stop_message != nullptr);
+    REQUIRE(std::holds_alternative<gitman::cancel_all_operations_intent>(*stop_message));
+}
+
 TEST_CASE("Disabled stage seven buttons produce nothing but still show a tooltip target", "[ui][interaction]")
 {
     const auto tree { make_tree(1) };

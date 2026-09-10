@@ -78,9 +78,12 @@ function(gitman_find_visual_studio_clang_format output_variable)
         message(FATAL_ERROR "An output variable for the clang-format path is required.")
     endif()
 
+    # Visual Studio 2022까지는 `Llvm/bin`에, Visual Studio 2026은 host 구조를 나눈
+    # `Llvm/<host>/bin`에 clang-format을 둔다. 두 배치를 모두 찾는다.
     file(GLOB visual_studio_llvm_directories
         LIST_DIRECTORIES true
-        "$ENV{ProgramFiles}/Microsoft Visual Studio/*/*/VC/Tools/Llvm/bin")
+        "$ENV{ProgramFiles}/Microsoft Visual Studio/*/*/VC/Tools/Llvm/bin"
+        "$ENV{ProgramFiles}/Microsoft Visual Studio/*/*/VC/Tools/Llvm/*/bin")
     find_program(clang_format_executable
         NAMES clang-format
         HINTS ${visual_studio_llvm_directories}

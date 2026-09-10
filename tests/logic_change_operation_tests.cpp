@@ -369,6 +369,83 @@ TEST_CASE("Opening another document cancels running changes of the previous one"
     REQUIRE(request.token.cancelled());
 }
 
+TEST_CASE("Update all starts every ready card and says nothing when none are skipped", "[logic][change][batch]")
+{
+    change_fixture fixture { { u8"alpha", u8"beta" } };
+    fixture.controller.handle(gitman::update_all_intent {});
+
+    REQUIRE(fixture.submitter.requests.size() == 2u);
+    for (const gitman::operation_request& request : fixture.submitter.requests)
+        REQUIRE(request.kind == gitman::operation_kind::update);
+
+    // 전부 시작했으면 알릴 것이 없다 — 카드가 도는 것이 곧 피드백이다 (REQ-018).
+    REQUIRE(fixture.controller.make_view_snapshot()->notices.empty());
+}
+
+TEST_CASE("Update all skips busy cards and reports how many", "[logic][change][batch]")
+{
+    change_fixture fixture { { u8"alpha", u8"beta" } };
+    fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
+    fixture.submitter.requests.clear();
+
+    fixture.controller.handle(gitman::update_all_intent {});
+
+    // alpha는 이미 돌고 있어 건너뛴다. begin_change의 조용한 거부를 그대로 물려받지
+    // 않고 몇 개를 못 넣었는지 배너로 알린다 (REQ-018).
+    REQUIRE(fixture.submitter.requests.size() == 1u);
+    REQUIRE(fixture.submitter.requests.front().project.id.value == u8"beta");
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->notices.empty() == false);
+    REQUIRE(view->notices.front().find(u8"건너뛰었습니다") != std::u8string::npos);
+}
+
+TEST_CASE("Cancel all requests cancellation for every running change", "[logic][change][batch]")
+{
+    change_fixture fixture { { u8"alpha", u8"beta" } };
+    fixture.controller.handle(gitman::update_all_intent {});
+    const std::vector<gitman::operation_request> started { fixture.submitter.requests };
+    REQUIRE(started.size() == 2u);
+
+    fixture.controller.handle(gitman::cancel_all_operations_intent {});
+    for (const gitman::operation_request& request : started)
+        REQUIRE(request.token.cancelled());
+}
+
+TEST_CASE("The snapshot tells the toolbar whether a batch update can start", "[logic][change][batch]")
+{
+    change_fixture fixture {};
+    const auto ready { fixture.controller.make_view_snapshot() };
+    REQUIRE(ready->can_update_all);
+    REQUIRE_FALSE(ready->any_change_running);
+
+    fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"alpha" }, {} });
+    const auto running { fixture.controller.make_view_snapshot() };
+    REQUIRE_FALSE(running->can_update_all);
+    REQUIRE(running->any_change_running);
+}
+
+TEST_CASE("A card carries when its work started and when it last finished", "[logic][change][elapsed]")
+{
+    // 카드만 보고 도는 중인지 멎었는지 알 수 있어야 한다 (REQ-019). 조회도 센다.
+    change_fixture fixture {};
+    const gitman::card_view_model* card { find_card(*fixture.controller.make_view_snapshot(), u8"alpha") };
+    REQUIRE(card != nullptr);
+    REQUIRE_FALSE(card->operation_started_at.has_value());
+    REQUIRE(card->last_finished_at.has_value());
+
+    fixture.controller.handle(gitman::refresh_card_intent { gitman::project_id { u8"alpha" } });
+    card = find_card(*fixture.controller.make_view_snapshot(), u8"alpha");
+    REQUIRE(card->busy);
+    REQUIRE(card->operation_started_at.has_value());
+
+    fixture.controller.handle(make_local_result(u8"alpha", 2u));
+    card = find_card(*fixture.controller.make_view_snapshot(), u8"alpha");
+    REQUIRE_FALSE(card->busy);
+    REQUIRE_FALSE(card->operation_started_at.has_value());
+    REQUIRE(card->last_finished_at.has_value());
+}
+
 TEST_CASE("A rejected submission does not leave the card busy", "[logic][change]")
 {
     change_fixture fixture {};

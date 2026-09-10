@@ -150,6 +150,33 @@ TEST_CASE("Elapsed time formats as minutes and seconds", "[log][presentation]")
     REQUIRE(gitman::format_elapsed_time(-5s) == u8"00:00");
 }
 
+TEST_CASE("Relative time reads as a distance until a day has passed", "[log][presentation]")
+{
+    // 카드의 마지막 완료 시각 표시다 (REQ-019). 가까운 과거는 상대 시각이, 하루가
+    // 넘어가면 절대 시각이 읽기 쉽다.
+    using namespace std::chrono_literals;
+    const std::chrono::system_clock::time_point base { std::chrono::system_clock::time_point {} + 24h * 365 * 40 };
+
+    REQUIRE(gitman::format_relative_time(base, base) == u8"방금 전");
+    REQUIRE(gitman::format_relative_time(base + 9s, base) == u8"방금 전");
+    REQUIRE(gitman::format_relative_time(base + 10s, base) == u8"10초 전");
+    REQUIRE(gitman::format_relative_time(base + 59s, base) == u8"59초 전");
+    REQUIRE(gitman::format_relative_time(base + 60s, base) == u8"1분 전");
+    REQUIRE(gitman::format_relative_time(base + 59min + 59s, base) == u8"59분 전");
+    REQUIRE(gitman::format_relative_time(base + 60min, base) == u8"1시간 전");
+    REQUIRE(gitman::format_relative_time(base + 23h + 59min, base) == u8"23시간 전");
+
+    // 시계가 뒤로 갔으면 음수 초를 그리는 대신 막 끝난 것으로 본다.
+    REQUIRE(gitman::format_relative_time(base - 5s, base) == u8"방금 전");
+
+    // 하루가 넘으면 `MM-DD HH:MM`이라 길이가 정해져 있다. 실제 값은 지역 시간대에
+    // 달려 있어 모양만 확인한다.
+    const std::u8string absolute { gitman::format_relative_time(base + 25h, base) };
+    REQUIRE(absolute.size() == 11u);
+    REQUIRE(absolute.find(u8'-') != std::u8string::npos);
+    REQUIRE(absolute.find(u8':') != std::u8string::npos);
+}
+
 TEST_CASE("The list layout gives the log pane room and shrinks it before the list disappears", "[log][layout]")
 {
     const gitman::list_layout without { gitman::compute_list_layout(600.0f, 1.0f, false, false) };

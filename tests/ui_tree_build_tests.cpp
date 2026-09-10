@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <string>
 #include <variant>
@@ -87,6 +88,61 @@ TEST_CASE("The toolbar keeps refresh at the left end and close at the right end"
     REQUIRE(close.x > settings.x);
     REQUIRE(close.x + close.width <= 800.0f);
     REQUIRE(close.x + close.width > settings.x + settings.width);
+}
+
+TEST_CASE("The toolbar carries a batch update button next to refresh", "[ui][tree]")
+{
+    // 일괄 업데이트는 왼쪽 고정이다 (REQ-018). 오른쪽 묶음은 창이 좁아지면 먼저
+    // 사라지는 자리라 "위쪽에 제공"이라는 지시와 맞지 않는다.
+    const auto tree { make_tree(2) };
+    const luil::ui_element* const update_all { find(*tree, ui::kind_toolbar_update_all) };
+    REQUIRE(update_all != nullptr);
+    REQUIRE(update_all->visible());
+
+    const luil::rect_f refresh { bounds_of(*tree, ui::kind_toolbar_refresh_all) };
+    const luil::rect_f batch { update_all->bounds() };
+    const luil::rect_f label { bounds_of(*tree, ui::kind_toolbar_document_path) };
+    REQUIRE(batch.x >= refresh.x + refresh.width);
+    REQUIRE(label.x >= batch.x + batch.width);
+
+    // 준비된 카드가 없으면 비활성이고 사유를 tooltip으로 알린다.
+    REQUIRE(update_all->enabled() == false);
+    REQUIRE(update_all->tooltip().empty() == false);
+
+    gitman::view_snapshot ready { make_view(2) };
+    ready.can_update_all = true;
+    REQUIRE(find(*make_tree(ready), ui::kind_toolbar_update_all)->enabled());
+}
+
+TEST_CASE("The batch update button is hidden without a document", "[ui][tree]")
+{
+    // 시작 페이지에 비활성 버튼을 남기지 않는다 (REQ-018).
+    const auto tree { make_tree(0, gitman::view_empty_state::no_document) };
+    REQUIRE(find(*tree, ui::kind_toolbar_update_all)->visible() == false);
+}
+
+TEST_CASE("A card asks for repaints while it works and for a slow tick after it stops", "[ui][tree]")
+{
+    // 도는 카드는 회전 아이콘과 경과 시간 때문에 계속 다시 그려야 하지만, 멎은
+    // 카드가 같은 주기를 요구하면 아무것도 안 하는 창이 30fps로 깨어난다 (REQ-019).
+    const luil::update_context context { at(1000) };
+    const luil::interaction_snapshot idle {};
+
+    gitman::view_snapshot working { make_view(1) };
+    working.cards.front().busy = true;
+    working.cards.front().operation_started_at = { at(0) };
+    const auto working_tree { make_tree(working) };
+    const auto working_next { working_tree->next_update(context, idle) };
+    REQUIRE(working_next.has_value());
+    REQUIRE(*working_next == context.now);
+
+    gitman::view_snapshot stopped { make_view(1) };
+    stopped.cards.front().last_finished_at = { std::chrono::system_clock::now() };
+    const auto stopped_tree { make_tree(stopped) };
+    const auto stopped_next { stopped_tree->next_update(context, idle) };
+    REQUIRE(stopped_next.has_value());
+    REQUIRE(*stopped_next > context.now);
+    REQUIRE(*stopped_next <= context.now + std::chrono::seconds { 1 });
 }
 
 TEST_CASE("The toolbar has no generate button and the close button follows the document", "[ui][tree]")
@@ -239,6 +295,7 @@ TEST_CASE("An open dialog keeps the focus order inside itself", "[ui][tree][dial
     {
         REQUIRE(tree->within_focus_trap(id));
         REQUIRE(id.kind != ui::kind_toolbar_refresh_all);
+        REQUIRE(id.kind != ui::kind_toolbar_update_all);
         REQUIRE(id.kind != ui::kind_toolbar_settings);
         REQUIRE(id.kind != ui::kind_card_body);
         REQUIRE(id.kind != ui::kind_card_refresh);

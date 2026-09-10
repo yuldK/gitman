@@ -46,6 +46,15 @@ namespace gitman {
         bool can_change { false };
         // 변경 작업이 실행 중이다. update 버튼이 중지 버튼으로 바뀐다.
         bool change_running { false };
+        // 지금 돌고 있는 작업의 시작 시각이다 (REQ-019). 조회와 변경을 가리지 않고
+        // `busy`인 동안 값이 있으며, 카드가 경과 시간 `MM:SS`를 그린다. 로그 헤더의
+        // `change_started_at`과 달리 refresh도 센다 — 카드만 보고 "도는 중인지
+        // 멎었는지" 알 수 있어야 한다는 지시(2026-09-10)의 핵심이다.
+        std::optional<std::chrono::steady_clock::time_point> operation_started_at {};
+        // 마지막으로 끝난 작업의 완료 시각이다 (REQ-019). 실행 중이 아닐 때 카드가
+        // `3분 전` 같은 상대 시각으로 그린다. 실패해도 남는다 — "언제 마지막으로
+        // 뭔가 했는지"가 알고 싶은 것이라서다.
+        std::optional<std::chrono::system_clock::time_point> last_finished_at {};
     };
 
     enum class view_empty_state
@@ -462,6 +471,12 @@ namespace gitman {
         std::uint64_t window_placement_revision { 0 };
         // `.version-list` 생성이 진행 중이다. toolbar 생성 버튼을 비활성화한다.
         bool document_generating { false };
+        // 일괄 업데이트를 시작할 수 있는 카드가 하나 이상이다 (REQ-018). 도구 막대의
+        // 일괄 업데이트 버튼이 이 값으로 활성 여부를 정한다.
+        bool can_update_all { false };
+        // 변경 작업이 하나 이상 실행 중이다 (REQ-018). 참이면 같은 버튼이 "모두
+        // 중지"로 바뀐다. element는 view를 들지 않으므로 tree를 짓는 쪽이 넘긴다.
+        bool any_change_running { false };
         // 선택 카드가 있으면 그 카드의 로그 뷰다. 없으면 하단 pane을 그리지 않는다.
         std::optional<log_view_model> log {};
         // 값이 있으면 switch dialog가 화면을 덮는다.

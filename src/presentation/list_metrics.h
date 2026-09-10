@@ -24,6 +24,10 @@ namespace gitman {
     inline constexpr float layout_card_minimum_text { 72.0f };
     // 카드 세 번째 줄(상태 조각)의 높이다.
     inline constexpr float layout_card_status_height { 16.0f };
+    // 카드 세 번째 줄 오른쪽 끝에 예약하는 시간 표시 폭이다 (REQ-019). 상태 조각은
+    // 이 자리를 침범하지 않는다. 로그 헤더의 `layout_log_elapsed_width`보다 넓은 것은
+    // `09-08 14:32` 같은 절대 시각까지 들어가기 때문이다.
+    inline constexpr float layout_card_elapsed_width { 64.0f };
     // 상단 막대(도구 막대·배너) 아래에 드리우는 그림자의 높이와 진하기다. 스크롤된
     // 카드가 막대 아래로 지나갈 때만 나타난다.
     inline constexpr float layout_content_shadow_height { 8.0f };

@@ -19,7 +19,10 @@ namespace gitman::ui {
         // `discovery_start_folder`는 탐색 등록 버튼이 여는 폴더 dialog의 시작 자리다
         // (열린 문서가 있는 폴더). UI thread 명령의 인자로 실려 간다 (설계 L7) —
         // element는 view를 들지 않으므로 tree를 짓는 쪽이 넣어 준다.
-        toolbar_element(std::u8string document_text, bool show_open_button, bool relative_paths, bool document_open, std::u8string discovery_start_folder);
+        // `can_update_all`과 `any_change_running`은 일괄 업데이트 버튼이 무엇으로
+        // 보일지를 정한다 (REQ-018). 하나라도 돌고 있으면 같은 자리가 "모두 중지"다.
+        toolbar_element(
+            std::u8string document_text, bool show_open_button, bool relative_paths, bool document_open, std::u8string discovery_start_folder, bool can_update_all, bool any_change_running);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
@@ -27,6 +30,7 @@ namespace gitman::ui {
     private:
         ui_element* document_label_ { nullptr };
         ui_element* refresh_all_ { nullptr };
+        ui_element* update_all_ { nullptr };
         ui_element* open_document_ { nullptr };
         ui_element* close_document_ { nullptr };
         ui_element* toggle_path_display_ { nullptr };

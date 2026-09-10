@@ -1,6 +1,7 @@
 #include "presentation/ui/card_element.h"
 
 #include "presentation/list_metrics.h"
+#include "presentation/log_presentation.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/status_glyphs.h"
 #include "presentation/ui/ui_actions.h"
@@ -14,6 +15,8 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -165,6 +168,14 @@ namespace gitman::ui {
         place(update_);
         place(refresh_);
         text_limit_ = next_x + button;
+
+        // 시간 표시는 상태 조각보다 **먼저** 자리를 잡는다 (REQ-019). 조각은 왼쪽부터
+        // 채우다 넘치면 잘리는데, 카드가 도는 중인지 멎었는지가 조각보다 먼저 보여야
+        // 한다는 것이 이 기능의 취지다 (2026-09-10 지시). 조각이 설 자리조차 없을
+        // 만큼 좁으면 시간을 포기한다.
+        const float text_left { context.slot.x + layout_card_text_left * scale };
+        const float reserved { layout_card_elapsed_width * scale };
+        elapsed_right_ = text_limit_ - text_left > reserved + layout_card_minimum_text * scale ? text_limit_ : 0.0f;
     }
 
     void card_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -221,17 +232,71 @@ namespace gitman::ui {
 
         // 세 번째 줄은 조각(chip)으로 그린다. 브랜치·리비전·상태·작업 트리를 같은
         // 폰트의 한 줄로 이어 붙이면 구분이 되지 않는다는 지적을 반영한 것이다.
-        draw_status_row(context, { text_x, line_3_top, text_width, layout_card_status_height * scale });
+        const float status_width { elapsed_right_ > 0.0f ? text_width - layout_card_elapsed_width * scale : text_width };
+        const rect_f status_row { text_x, line_3_top, status_width, layout_card_status_height * scale };
+        draw_status_row(context, status_row);
+        if (elapsed_right_ > 0.0f)
+            draw_time(context, { text_x, line_3_top, text_width, layout_card_status_height * scale });
 
         draw_children(context, interaction);
+    }
+
+    std::u8string card_element::time_text(const std::chrono::steady_clock::time_point now) const
+    {
+        // 실행 중이면 경과 시간이 곧 "살아 있다"는 신호다. 로그 헤더와 같은 포맷을
+        // 쓰므로 둘을 나란히 봐도 어긋나지 않는다.
+        if (card_.operation_started_at.has_value())
+            return format_elapsed_time(now - *card_.operation_started_at);
+        if (card_.last_finished_at.has_value())
+            return format_relative_time(std::chrono::system_clock::now(), *card_.last_finished_at);
+        // 문서를 열고 아직 아무 작업도 끝나지 않았다. 빈 자리를 남긴다.
+        return {};
+    }
+
+    void card_element::draw_time(draw_context& context, const rect_f& row) const
+    {
+        const std::u8string text { time_text(context.now) };
+        if (text.empty())
+            return;
+
+        const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+        const SkFont font { sk_ref_sp(context.ui_typeface), 10.5f * scale };
+        // 실행 중에는 강조색으로 눈에 띄게 하고, 지난 시각은 경로와 같은 흐린
+        // 전경색으로 물러난다.
+        SkPaint paint { solid_paint(card_.operation_started_at.has_value() ? context.palette.accent : context.palette.primary_foreground) };
+        if (card_.operation_started_at.has_value() == false)
+            paint.setAlphaf(0.55f);
+
+        const float width { measure_text(text, font) };
+        const float left { row.x + row.width - width };
+        if (left < row.x)
+            return;
+        draw_text(context.canvas, text, left, row.y + centered_text_baseline(font, row.height), font, paint);
     }
 
     std::optional<std::chrono::steady_clock::time_point> card_element::next_update(const update_context& context, const interaction_snapshot& interaction) const
     {
         static_cast<void>(interaction);
         // 계속 도는 표시다. 지금 시각을 돌려주면 platform이 짧은 주기로 다시 그린다.
+        // 경과 시간도 이 주기에 얹혀 초가 흐른다.
         if (card_.busy)
             return context.now;
+
+        // 멎은 카드는 마지막 완료 시각의 **글이 바뀔 때만** 깨운다. 여기서
+        // `context.now`를 돌려주면 아무것도 안 하는 카드가 창 전체를 33ms마다 다시
+        // 그리게 만든다 (win32_window의 continuous_repaint_interval).
+        if (card_.last_finished_at.has_value() == false || elapsed_right_ <= 0.0f)
+            return std::nullopt;
+
+        const std::chrono::system_clock::duration age { std::chrono::system_clock::now() - *card_.last_finished_at };
+        const std::int64_t seconds { std::chrono::duration_cast<std::chrono::seconds>(age).count() };
+        if (seconds < 60)
+            return context.now + std::chrono::seconds { 1 };
+        if (seconds < 60 * 60)
+            return context.now + std::chrono::seconds { 15 };
+        if (seconds < 24 * 60 * 60)
+            return context.now + std::chrono::minutes { 1 };
+        // 하루가 지나면 `MM-DD HH:MM`이라 더 바뀌지 않는다.
         return std::nullopt;
     }
 

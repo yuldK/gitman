@@ -36,6 +36,16 @@ namespace gitman {
     struct refresh_all_intent
     {};
 
+    // 도구 막대의 일괄 업데이트다 (REQ-018). 업데이트할 수 있는 카드를 순서대로
+    // 시작하고, 시작하지 못한 카드 수를 배너로 요약한다.
+    struct update_all_intent
+    {};
+
+    // 같은 버튼이 실행 중일 때 내는 intent다 (REQ-018). 실행 중인 변경 작업을
+    // 전부 취소한다. 카드 단위 `cancel_operation_intent`의 전체 판이다.
+    struct cancel_all_operations_intent
+    {};
+
     struct refresh_card_intent
     {
         project_id id {};
@@ -721,18 +731,18 @@ namespace gitman {
 
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
-    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
-        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
-        begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
-        switch_dialog_scroll_intent, edit_text_input_intent, set_text_composition_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent,
-        confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event, open_generate_document_intent, set_generate_scan_root_intent,
-        set_generate_location_intent, toggle_generate_same_folder_intent, confirm_generate_document_intent, cancel_generate_document_intent, begin_discovery_intent, toggle_discovery_candidate_intent,
-        confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
-        clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
-        confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
-        local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
-        remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
-        startup_intent, relay_drain_intent,
+    using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, update_all_intent, cancel_all_operations_intent, refresh_card_intent, select_card_intent,
+        set_filter_intent, toggle_path_display_intent, reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent,
+        set_log_auto_scroll_intent, log_scroll_intent, begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent,
+        cancel_switch_dialog_intent, switch_dialog_scroll_intent, edit_text_input_intent, set_text_composition_intent, submit_switch_query_intent, clear_switch_query_intent,
+        refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent, confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event,
+        open_generate_document_intent, set_generate_scan_root_intent, set_generate_location_intent, toggle_generate_same_folder_intent, confirm_generate_document_intent,
+        cancel_generate_document_intent, begin_discovery_intent, toggle_discovery_candidate_intent, confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent,
+        open_settings_intent, select_settings_tab_intent, set_settings_executable_intent, clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent,
+        toggle_settings_ignore_local_intent, toggle_settings_log_files_intent, confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent,
+        select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent, local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent,
+        close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent, remove_recent_document_intent, toggle_recent_document_pin_intent,
+        close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent, startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
         local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
 

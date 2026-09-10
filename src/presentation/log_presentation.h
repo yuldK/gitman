@@ -27,6 +27,13 @@ namespace gitman {
     // 60분을 넘으면 분 자리가 그대로 늘어난다 (예: `125:07`).
     [[nodiscard]] std::u8string format_elapsed_time(std::chrono::steady_clock::duration elapsed);
 
+    // 카드가 그리는 마지막 완료 시각이다 (REQ-019). 가까운 과거는 상대 시각이 읽기
+    // 쉽고, 하루가 넘어가면 상대 시각이 오히려 모호해져 절대 시각으로 바뀐다.
+    //  - 10초 미만 `방금 전` · 60초 미만 `N초 전` · 60분 미만 `N분 전`
+    //  - 24시간 미만 `N시간 전` · 그 이상 `MM-DD HH:MM` (지역 시각)
+    // `then`이 `now`보다 뒤면(시계가 뒤로 간 경우) `방금 전`이다.
+    [[nodiscard]] std::u8string format_relative_time(std::chrono::system_clock::time_point now, std::chrono::system_clock::time_point then);
+
     // 클립보드 복사용 텍스트다. 현재 뷰에 표시 중인(필터 적용 후) record를 CRLF로
     // 잇는다. UI thread는 이 결과를 그대로 클립보드에 넣는다. progress 접기는
     // 표시 전용이라 복사에는 적용하지 않는다 (stage-8-plan 5.3).

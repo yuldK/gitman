@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <optional>
+#include <string>
 
 namespace gitman::ui {
     // 카드 한 장이다. 상태 아이콘과 텍스트를 직접 그리고 refresh/update/switch
@@ -25,6 +26,12 @@ namespace gitman::ui {
     private:
         // 세 번째 줄(브랜치·리비전·상태·작업 트리)을 색이 있는 조각으로 그린다.
         void draw_status_row(draw_context& context, const rect_f& row) const;
+        // 세 번째 줄 오른쪽 끝의 시간 표시다 (REQ-019). 실행 중이면 경과 `MM:SS`,
+        // 아니면 마지막 완료 시각의 상대 표현이다.
+        void draw_time(draw_context& context, const rect_f& row) const;
+        // 지금 그릴 시간 글이다. 그릴 것이 없으면 비어 있다. draw와 next_update가
+        // 같은 판정을 써야 "글은 있는데 갱신이 안 되는" 상태가 생기지 않는다.
+        [[nodiscard]] std::u8string time_text(std::chrono::steady_clock::time_point now) const;
 
         card_view_model card_ {};
         ui_element* refresh_ { nullptr };
@@ -33,5 +40,8 @@ namespace gitman::ui {
         // 이름·경로·상태 줄이 쓸 수 있는 오른쪽 한계다. arrange가 버튼 배치 뒤에
         // 정한다. 창이 좁아 버튼이 숨겨지면 그만큼 넓어진다.
         float text_limit_ { 0.0f };
+        // 시간 표시가 오른쪽 정렬될 x다. 0이면 자리가 없어 그리지 않는다 — 로그
+        // 헤더의 `elapsed_right_`와 같은 관용구다 (log_view_element.h).
+        float elapsed_right_ { 0.0f };
     };
 } // namespace gitman::ui

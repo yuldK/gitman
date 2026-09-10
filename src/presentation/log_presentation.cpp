@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <string>
 
 namespace gitman {
     bool log_entry_matches_filter(const operation_log_entry& entry, const log_stream_filter filter) noexcept
@@ -74,6 +75,43 @@ namespace gitman {
         if (written < 5)
             return std::u8string { u8"00:00" };
         return std::u8string { reinterpret_cast<const char8_t*>(text), static_cast<std::size_t>(written) };
+    }
+
+    std::u8string format_relative_time(const std::chrono::system_clock::time_point now, const std::chrono::system_clock::time_point then)
+    {
+        const std::int64_t seconds { std::chrono::duration_cast<std::chrono::seconds>(now - then).count() };
+        // 시계가 뒤로 갔거나 같은 순간이면 "막 끝났다"로 본다. 음수 초를 그리면
+        // 사용자가 고칠 수 없는 값이 화면에 남는다.
+        if (seconds < 10)
+            return std::u8string { u8"방금 전" };
+
+        const auto with_suffix = [](const std::int64_t value, const std::u8string_view suffix) {
+            const std::string digits { std::to_string(value) };
+            std::u8string text {};
+            text.append(digits.begin(), digits.end());
+            text.append(suffix);
+            return text;
+        };
+
+        if (seconds < 60)
+            return with_suffix(seconds, u8"초 전");
+        if (seconds < 60 * 60)
+            return with_suffix(seconds / 60, u8"분 전");
+        if (seconds < 24 * 60 * 60)
+            return with_suffix(seconds / (60 * 60), u8"시간 전");
+
+        // 하루가 넘으면 "31시간 전"보다 날짜와 시각이 읽기 쉽다. 연도는 넣지 않는다
+        // — 카드 한 줄에 들어가야 하고, 그만큼 오래된 값은 정밀도가 의미 없다.
+        const std::time_t point { std::chrono::system_clock::to_time_t(then) };
+        std::tm parts {};
+        if (localtime_s(&parts, &point) != 0)
+            return std::u8string { u8"오래 전" };
+
+        char text[24] {};
+        const int written { std::snprintf(text, sizeof(text), "%02d-%02d %02d:%02d", parts.tm_mon + 1, parts.tm_mday, parts.tm_hour, parts.tm_min) };
+        if (written != 11)
+            return std::u8string { u8"오래 전" };
+        return std::u8string { reinterpret_cast<const char8_t*>(text), 11 };
     }
 
     std::vector<log_display_line> build_log_display_lines(const std::deque<operation_log_record>& records, const log_stream_filter filter)

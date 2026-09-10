@@ -106,6 +106,7 @@ namespace gitman::ui {
             discovery_dialog_item,
             discovery_dialog_confirm,
             discovery_dialog_cancel,
+            toolbar_update_all,
             count,
         };
 
@@ -118,6 +119,9 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_toolbar { detail::application_kind(detail::application_kind_index::toolbar) };
     inline constexpr luil::ui_element_kind kind_toolbar_document_path { detail::application_kind(detail::application_kind_index::toolbar_document_path) };
     inline constexpr luil::ui_element_kind kind_toolbar_refresh_all { detail::application_kind(detail::application_kind_index::toolbar_refresh_all) };
+    // 일괄 업데이트다 (REQ-018). index는 표 끝에 더해야 하므로 enum 자리와 다르지만,
+    // 읽는 사람에게는 새로 고침 옆이 제자리다.
+    inline constexpr luil::ui_element_kind kind_toolbar_update_all { detail::application_kind(detail::application_kind_index::toolbar_update_all) };
     inline constexpr luil::ui_element_kind kind_toolbar_open_document { detail::application_kind(detail::application_kind_index::toolbar_open_document) };
     inline constexpr luil::ui_element_kind kind_toolbar_toggle_path_display { detail::application_kind(detail::application_kind_index::toolbar_toggle_path_display) };
     inline constexpr luil::ui_element_kind kind_toolbar_close_document { detail::application_kind(detail::application_kind_index::toolbar_close_document) };
@@ -296,6 +300,7 @@ namespace gitman::ui {
         kind_discovery_dialog_item,
         kind_discovery_dialog_confirm,
         kind_discovery_dialog_cancel,
+        kind_toolbar_update_all,
     };
 
     static_assert(application_kinds.size() == application_kind_count);

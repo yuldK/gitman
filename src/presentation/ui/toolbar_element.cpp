@@ -16,8 +16,8 @@
 #include <utility>
 
 namespace gitman::ui {
-    toolbar_element::toolbar_element(
-        std::u8string document_text, const bool show_open_button, const bool relative_paths, const bool document_open, std::u8string discovery_start_folder)
+    toolbar_element::toolbar_element(std::u8string document_text, const bool show_open_button, const bool relative_paths, const bool document_open, std::u8string discovery_start_folder,
+        const bool can_update_all, const bool any_change_running)
         : ui_element { ui_element_id { kind_toolbar } }
         , show_open_button_ { show_open_button }
         , document_open_ { document_open }
@@ -47,6 +47,34 @@ namespace gitman::ui {
         refresh_all->set_action(ui_trigger::left_click, make_logic_click(refresh_all_intent {}));
         refresh_all_ = refresh_all.get();
         add_child(std::move(refresh_all));
+
+        // 일괄 업데이트다 (REQ-018). 새로 고침 바로 오른쪽에 왼쪽 고정으로 둔다 —
+        // 오른쪽 묶음은 창이 좁아질 때 먼저 사라지는 자리라 "위쪽에 제공"이라는
+        // 지시(2026-09-10)와 어긋난다. 새로 고침보다 **뒤에** 만드는 것은 Tab 첫
+        // 자리가 새로 고침이라는 기존 계약을 지키기 위해서다.
+        //
+        // 실행 중에는 같은 버튼이 "모두 중지"다. 카드의 update 버튼이 실행 중에
+        // 중지로 바뀌는 규칙(stage-7-plan 4.4)을 전체 단위로 옮긴 것이다.
+        luil::button_config update_all_config {};
+        update_all_config.glyph = any_change_running ? codicons::icon_stop_circle : codicons::icon_cloud_download;
+        auto update_all { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_update_all }, update_all_config) };
+        if (any_change_running)
+        {
+            update_all->set_tooltip(u8"실행 중인 작업 모두 중지");
+            update_all->set_action(ui_trigger::left_click, make_logic_click(cancel_all_operations_intent {}));
+        }
+        else if (can_update_all)
+        {
+            update_all->set_tooltip(u8"모든 카드 업데이트");
+            update_all->set_action(ui_trigger::left_click, make_logic_click(update_all_intent {}));
+        }
+        else
+        {
+            update_all->set_tooltip(document_open ? std::u8string { u8"지금 업데이트할 수 있는 카드가 없습니다" } : std::u8string { u8"문서를 먼저 여세요" });
+            update_all->set_enabled(false);
+        }
+        update_all_ = update_all.get();
+        add_child(std::move(update_all));
 
         auto open_document { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_open_document }, luil::button_config { .glyph = codicons::icon_folder_opened }) };
         open_document->set_tooltip(u8".version-list 문서 열기");
@@ -101,7 +129,15 @@ namespace gitman::ui {
         // 오른쪽에서 시작한다.
         refresh_all_->set_visible(true);
         refresh_all_->arrange({ { context.slot.x + margin, button_y, button, button }, scale });
-        const float label_left { context.slot.x + margin + button + margin };
+        // 일괄 업데이트도 왼쪽 고정이다 (REQ-018). 문서가 없으면 누를 대상이 없어
+        // 자리를 비운다 — 시작 페이지에 비활성 버튼을 남기지 않는다.
+        float label_left { context.slot.x + margin + button + margin };
+        update_all_->set_visible(document_open_);
+        if (document_open_)
+        {
+            update_all_->arrange({ { label_left, button_y, button, button }, scale });
+            label_left += button + margin;
+        }
         // 창이 좁으면 오른쪽부터 들어가고 자리가 없는 버튼은 숨긴다. 남은 버튼과
         // 문서 경로가 서로 겹치는 것보다 낫다.
         float next_x { context.slot.x + context.slot.width - margin - button };

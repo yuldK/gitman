@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/appearance.h"
+#include "domain/command_definition.h"
 
 #include <cstdint>
 #include <optional>
@@ -149,6 +150,10 @@ namespace gitman {
         // 값이 없으면 문서에 배치가 없거나 읽을 수 없었다는 뜻이다. 저장 시 기존
         // 문서의 `window` 필드를 지우지 않는다.
         std::optional<window_placement> window {};
+        // 문서가 덮어쓴 사용자 명령과 SVN 훅이다 (custom-commands-and-svn-hooks-design
+        // C2). 목록이라 `settings`의 스칼라 override와 달리 통째로 대체한다. 스키마
+        // 판번은 올리지 않는다 — 이 키를 모르는 예전 gitman도 문서를 그대로 연다.
+        command_catalog_overrides commands {};
         std::vector<project_definition> projects {};
     };
 

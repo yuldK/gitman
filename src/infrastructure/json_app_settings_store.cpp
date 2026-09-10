@@ -2,6 +2,8 @@
 
 #include "domain/path_syntax.h"
 
+#include "infrastructure/json_command_catalog.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -238,6 +240,22 @@ namespace gitman {
             return fonts;
         }
 
+        // 사용자 명령과 SVN 훅의 기본 목록이다 (custom-commands-and-svn-hooks-design
+        // C2). 앱 설정 파일은 어떤 값도 시작을 막지 않는다는 규칙에 따라 진단은
+        // 전부 경고이며, 성립하지 않는 항목만 목록에서 빠진다.
+        command_catalog parse_commands(const json& root, app_settings_load_result& result, const std::u8string_view path)
+        {
+            const auto source { root.find("commands") };
+            if (source == root.end() || source->is_null())
+                return {};
+
+            command_catalog_parse_result parsed { parse_command_catalog(*source, path, u8"/commands", diagnostic_severity::warning) };
+            for (diagnostic& value : parsed.diagnostics)
+                result.diagnostics.push_back(std::move(value));
+            // 전역 설정은 구체 값이라 "따름"이 없다. 정의되지 않은 항목은 기본값이다.
+            return apply_overrides(command_catalog {}, parsed.overrides);
+        }
+
         appearance_settings parse_appearance(const json& root, app_settings_load_result& result, const std::u8string_view path)
         {
             appearance_settings appearance {};
@@ -329,6 +347,15 @@ namespace gitman {
             root["fonts"] = std::move(value);
         }
 
+        // 명령과 훅은 전역이 기본 목록이라 늘 기록한다. 빈 목록이라도 파일에 두어
+        // 사용자가 어디에 무엇을 쓰는지 파일만 보고 알 수 있게 한다.
+        {
+            const auto existing { root.find("commands") };
+            json value { existing != root.end() && existing->is_object() ? *existing : json::object() };
+            write_command_catalog(value, settings.commands);
+            root["commands"] = std::move(value);
+        }
+
         // 값이 없으면 필드를 만들지 않고, 파일에 이미 있던 `window`는 지우지
         // 않는다 (문서 저장의 window 규칙과 동일).
         if (settings.window.has_value())
@@ -363,6 +390,7 @@ namespace gitman {
             result.settings.schema_version = version->get<std::int32_t>();
 
         result.settings.window = parse_window(root, result, path);
+        result.settings.commands = parse_commands(root, result, path);
         result.settings.settings = parse_global_settings(root, result, path);
         result.settings.appearance = parse_appearance(root, result, path);
         result.settings.fonts = parse_fonts(root, result, path);

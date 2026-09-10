@@ -3,6 +3,8 @@
 #include "infrastructure/json_workspace_document.h"
 #include "infrastructure/workspace_document_paths.h"
 
+#include "infrastructure/json_command_catalog.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -179,6 +181,26 @@ namespace gitman {
                 root["fonts"] = std::move(value);
         }
 
+        // 명령·훅도 `settings`와 같은 규칙이다 — 정의된 것만 남기고, 정의를 거둔
+        // 것은 지우며, 알 수 없는 키는 template으로 보존한다.
+        void write_commands(json& root, const command_catalog_overrides& overrides)
+        {
+            const auto existing { root.find("commands") };
+            const bool had_commands { existing != root.end() && existing->is_object() };
+            if (had_commands == false && overrides.empty())
+            {
+                if (existing != root.end())
+                    root.erase("commands");
+                return;
+            }
+
+            json value { had_commands ? *existing : json::object() };
+            if (write_command_catalog_overrides(value, overrides))
+                root["commands"] = std::move(value);
+            else
+                root.erase("commands");
+        }
+
         // 창 배치는 표시 상태라 문서에 없던 값을 새로 만들지 않고, 문서에 있던 값을
         // 지우지도 않는다. 배치를 아는 경우에만 기존 object를 template으로 갱신한다.
         void write_window(json& root, const std::optional<window_placement>& placement)
@@ -272,6 +294,7 @@ namespace gitman {
             write_settings(root, document.settings);
             write_appearance(root, document.appearance);
             write_fonts(root, document.fonts);
+            write_commands(root, document.commands);
             write_window(root, document.window);
             root["projects"] = std::move(projects);
 

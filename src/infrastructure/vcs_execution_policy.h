@@ -26,6 +26,11 @@ namespace gitman {
         // pull, submodule update, svn update다.
         update,
         switch_target,
+        // 사용자가 정의한 스크립트와 SVN 훅이다
+        // (custom-commands-and-svn-hooks-design X4). 무엇을 하는 스크립트인지 앱이
+        // 알 수 없으므로 update와 같이 제한 시간을 두지 않는다. 명령·훅마다
+        // `timeout_seconds`로 덮어쓸 수 있다.
+        user_script,
     };
 
     struct vcs_command_limits

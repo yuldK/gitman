@@ -51,6 +51,10 @@ namespace gitman {
             return { std::nullopt, 32u * mebibyte };
         case vcs_command_class::switch_target:
             return { std::chrono::milliseconds { 300000 }, 8u * mebibyte };
+        case vcs_command_class::user_script:
+            // 빌드 스크립트가 update보다 오래 걸릴 수 있다. 앱이 무엇을 하는
+            // 스크립트인지 모르므로 자르지 않고 취소에 맡긴다.
+            return { std::nullopt, 32u * mebibyte };
         }
         return { std::chrono::milliseconds { 600000 }, 8u * mebibyte };
     }

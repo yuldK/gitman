@@ -12,13 +12,18 @@
 #include <vector>
 
 namespace gitman {
-    // 탐색에 필요한 호스트 정보다. 값으로 받아 두면 탐색 규칙 자체를 프로세스나
-    // 환경 변수 없이 test할 수 있다. 실제 값은 Win32 adapter가 채운다.
+    // 시작할 때 한 번 모으는 호스트 정보다. 값으로 받아 두면 탐색 규칙 자체를
+    // 프로세스나 환경 변수 없이 test할 수 있다. 실제 값은 Win32 adapter가 채운다.
+    // VCS 도구 발견에서 출발했지만 지금은 스크립트 해석기 발견도 같은 값을 쓴다
+    // (custom-commands-and-svn-hooks-design X3).
     struct vcs_tool_environment
     {
         std::u8string path_environment {};
         // `ProgramFiles`와 `ProgramFiles(x86)`처럼 알려진 기본 설치 위치의 부모다.
         std::vector<std::u8string> program_files_directories {};
+        // `%SystemRoot%\System32`다. `cmd.exe`·`powershell.exe`를 PATH보다 먼저
+        // 여기서 찾는다 — PATH 앞에 놓인 동명 파일이 셸을 가로채지 못하게 한다.
+        std::u8string system_directory {};
     };
 
     struct vcs_tool_candidate

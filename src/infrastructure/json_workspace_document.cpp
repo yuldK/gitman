@@ -2,6 +2,8 @@
 
 #include "domain/path_syntax.h"
 
+#include "infrastructure/json_command_catalog.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -102,7 +104,29 @@ namespace gitman {
 
         bool is_known_top_level_field(const std::string_view field) noexcept
         {
-            return field == "schema_version" || field == "settings" || field == "window" || field == "appearance" || field == "fonts" || field == "projects";
+            return field == "schema_version" || field == "settings" || field == "window" || field == "appearance" || field == "fonts" || field == "commands" || field == "projects";
+        }
+
+        // 사용자 명령과 SVN 훅이다 (custom-commands-and-svn-hooks-design C2).
+        //
+        // 성립하지 않는 항목은 목록에서 빠지되 진단은 **경고**다. 오타 하나가 문서
+        // 저장 전체를 막는 것(오류 진단이 있으면 save가 commit하지 않는다)이 잘못된
+        // 명령 하나를 못 쓰는 것보다 나쁘다.
+        command_catalog_overrides parse_commands(const json& root, workspace_document_parse_result& result, const std::u8string_view document_path)
+        {
+            const auto source { root.find("commands") };
+            if (source == root.end() || source->is_null())
+                return {};
+
+            // codec은 저장소가 쓰는 `ordered_json`을 받는다. 이 구역만 옮겨 담아
+            // 파싱 규칙이 두 벌이 되지 않게 한다. 사본은 명령 목록 크기라 싸다.
+            nlohmann::ordered_json converted {};
+            converted = *source;
+
+            command_catalog_parse_result parsed { parse_command_catalog(converted, document_path, u8"/commands", diagnostic_severity::warning) };
+            for (diagnostic& value : parsed.diagnostics)
+                result.diagnostics.push_back(std::move(value));
+            return std::move(parsed.overrides);
         }
 
         // 외양은 표시 설정이라 어떤 오류도 문서 열기를 막지 않는다. 읽을 수 없는
@@ -697,6 +721,7 @@ namespace gitman {
         document.window = parse_window(root, result, document_path);
         document.appearance = parse_appearance(root, result, document_path);
         document.fonts = parse_fonts(root, result, document_path);
+        document.commands = parse_commands(root, result, document_path);
         std::unordered_set<std::u8string> project_ids {};
         for (std::size_t project_index = 0; project_index < projects->size(); ++project_index)
         {

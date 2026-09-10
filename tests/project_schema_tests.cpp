@@ -454,3 +454,114 @@ TEST_CASE("Schema parser reads the document font override", "[workspace][schema]
     REQUIRE(without_result.document.has_value());
     REQUIRE(without_result.document->fonts.empty());
 }
+
+TEST_CASE("The document reads user commands and SVN hooks", "[workspace][schema][commands]")
+{
+    // 목록은 스칼라 override와 달리 통째로 대체한다. 키가 있으면 빈 배열이라도
+    // 정의다 (custom-commands-and-svn-hooks-design C2).
+    constexpr std::u8string_view source {
+        u8R"({
+    "schema_version": 1,
+    "commands": {
+        "custom": [
+            {
+                "id": "build-test",
+                "label": "빌드 테스트",
+                "script": "scripts/build.py",
+                "arguments": ["--config", "Release"],
+                "working_directory": "document",
+                "icon": "run-all",
+                "show_on_card": true,
+                "vcs": "subversion",
+                "path_pattern": "C:/work/*",
+                "projects": ["alpha"],
+                "timeout_seconds": 120,
+                "refresh_after": false
+            }
+        ],
+        "svn_hooks": {
+            "use_tortoise_svn": false,
+            "hooks": [
+                { "phase": "post_update", "script": "hooks/after.ps1" }
+            ]
+        }
+    },
+    "projects": []
+})",
+    };
+
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+    REQUIRE(result.document.has_value());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE_FALSE(result.has_warnings());
+
+    const gitman::command_catalog_overrides& commands { result.document->commands };
+    REQUIRE(commands.custom.has_value());
+    REQUIRE(commands.custom->size() == 1u);
+
+    const gitman::custom_command& command { commands.custom->front() };
+    REQUIRE(u8_equal(command.id, u8"build-test"));
+    REQUIRE(u8_equal(command.label, u8"빌드 테스트"));
+    REQUIRE(u8_equal(command.script, u8"scripts/build.py"));
+    REQUIRE(command.arguments.size() == 2u);
+    REQUIRE(command.working_directory == gitman::command_working_directory::document);
+    REQUIRE(u8_equal(command.icon, u8"run-all"));
+    REQUIRE(command.show_on_card);
+    REQUIRE(command.vcs == gitman::command_target_vcs::subversion);
+    REQUIRE(u8_equal(command.path_pattern, u8"C:/work/*"));
+    REQUIRE(command.projects.size() == 1u);
+    REQUIRE(command.timeout_seconds == 120);
+    REQUIRE_FALSE(command.refresh_after);
+
+    REQUIRE(commands.svn_hooks.has_value());
+    REQUIRE_FALSE(commands.svn_hooks->use_tortoise_svn);
+    REQUIRE(commands.svn_hooks->hooks.size() == 1u);
+    REQUIRE(commands.svn_hooks->hooks.front().phase == gitman::svn_hook_phase::post_update);
+}
+
+TEST_CASE("A document without commands follows the global list", "[workspace][schema][commands]")
+{
+    // 키가 없으면 "전역을 따름"이다. 스키마 판번은 그대로 1이라 이 키를 모르는
+    // 예전 gitman도 문서를 연다.
+    constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+    REQUIRE(result.document.has_value());
+    REQUIRE(result.document->commands.empty());
+    REQUIRE_FALSE(result.has_warnings());
+}
+
+TEST_CASE("A malformed command is dropped with a warning and the document still opens", "[workspace][schema][commands]")
+{
+    // 오타 하나가 문서 저장 전체를 막는 것(오류 진단이 있으면 save가 commit하지
+    // 않는다)이 잘못된 명령 하나를 못 쓰는 것보다 나쁘다.
+    constexpr std::u8string_view source {
+        u8R"({
+    "schema_version": 1,
+    "commands": {
+        "custom": [
+            { "id": "ok", "label": "정상", "script": "a.py" },
+            { "id": "broken", "label": "이름은 있는데" },
+            { "id": "ok", "label": "중복 id", "script": "b.py" },
+            { "id": "bad-vcs", "label": "잘못된 vcs", "script": "c.py", "vcs": "mercurial" }
+        ]
+    },
+    "projects": []
+})",
+    };
+
+    const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, test_document_path) };
+    REQUIRE(result.document.has_value());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE(result.has_warnings());
+
+    // 스크립트가 없는 정의와 id가 겹치는 정의는 빠지고, vcs만 잘못된 것은 기본값으로
+    // 살아남는다 — 실행에 필요한 것이 다 있기 때문이다.
+    REQUIRE(result.document->commands.custom.has_value());
+    REQUIRE(result.document->commands.custom->size() == 2u);
+    REQUIRE(u8_equal(result.document->commands.custom->front().id, u8"ok"));
+    REQUIRE(result.document->commands.custom->back().vcs == gitman::command_target_vcs::any);
+
+    REQUIRE(find_diagnostic(result, gitman::diagnostic_code::invalid_command_definition, u8"/commands/custom/1") != nullptr);
+    REQUIRE(find_diagnostic(result, gitman::diagnostic_code::invalid_command_definition, u8"/commands/custom/2") != nullptr);
+    REQUIRE(find_diagnostic(result, gitman::diagnostic_code::invalid_command_definition, u8"/commands/custom/3/vcs") != nullptr);
+}

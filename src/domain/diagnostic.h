@@ -73,6 +73,13 @@ namespace gitman {
         app_settings_read_failed,
         app_settings_invalid,
         app_settings_write_failed,
+        // 사용자 명령·SVN 훅 (custom-commands-and-svn-hooks-design).
+        // 확장자에 맞는 해석기를 찾지 못했다.
+        script_interpreter_unavailable,
+        // 명령·훅 정의가 성립하지 않는다 (id·이름·스크립트 누락 등).
+        invalid_command_definition,
+        // 스크립트가 0이 아닌 코드로 끝났거나 시작하지 못했다.
+        script_command_failed,
     };
 
     struct diagnostic_source

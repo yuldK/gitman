@@ -68,6 +68,14 @@ gitman_add_source_filter(gitman_lib_files "domain/settings"
     domain/app_settings.h
     domain/appearance.h)
 
+# 사용자 명령과 SVN 훅의 값과 규칙이다 (custom-commands-and-svn-hooks-design).
+# 확장자에서 해석기를 정하는 표도 여기 있다 — OS를 모르는 순수 함수라 도메인이다.
+gitman_add_source_filter(gitman_lib_files "domain/commands"
+    domain/command_definition.cpp
+    domain/command_definition.h
+    domain/script_interpreter.cpp
+    domain/script_interpreter.h)
+
 # 텍스트 편집 상태와 UTF-8 도우미의 전달 헤더다 (luil의 값 타입).
 gitman_add_source_filter(gitman_lib_files "domain/text"
     domain/text_edit.h
@@ -140,6 +148,8 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/documents"
     infrastructure/json_app_settings_store.h
     infrastructure/json_project_store.cpp
     infrastructure/json_project_store.h
+    infrastructure/json_command_catalog.cpp
+    infrastructure/json_command_catalog.h
     infrastructure/json_workspace_document.cpp
     infrastructure/json_workspace_document.h
     infrastructure/workspace_document_paths.cpp
@@ -180,6 +190,14 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/vcs"
     infrastructure/vcs_tool_discovery.h
     infrastructure/vcs_version.cpp
     infrastructure/vcs_version.h)
+
+# 사용자 스크립트 실행이다 (custom-commands-and-svn-hooks-design X). 해석기를 찾고
+# git·svn 공통 인자 없이 process_request를 만든다.
+gitman_add_source_filter(gitman_lib_files "infrastructure/scripts"
+    infrastructure/script_command_builder.cpp
+    infrastructure/script_command_builder.h
+    infrastructure/script_interpreter_discovery.cpp
+    infrastructure/script_interpreter_discovery.h)
 
 # 명령줄 조립, 출력 파이프라인, 비밀 마스킹이다.
 gitman_add_source_filter(gitman_lib_files "infrastructure/process"

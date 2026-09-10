@@ -118,12 +118,41 @@ namespace gitman::win32 {
         }
     }
 
+    namespace {
+        // `%SystemRoot%\System32`다. 환경 변수 대신 API를 쓰는 것은 `SystemRoot`를
+        // 사용자가 바꿔 놓을 수 있고, WOW64에서는 `GetSystemDirectoryW`가 32비트
+        // 프로세스에 맞는 자리를 알려 주기 때문이다.
+        std::u8string read_system_directory() noexcept
+        {
+            try
+            {
+                const UINT length { GetSystemDirectoryW(nullptr, 0) };
+                if (length == 0)
+                    return {};
+
+                std::wstring buffer(static_cast<std::size_t>(length), L'\0');
+                const UINT written { GetSystemDirectoryW(buffer.data(), length) };
+                if (written == 0 || written >= length)
+                    return {};
+
+                buffer.resize(static_cast<std::size_t>(written));
+                const auto value { utf16_to_utf8(buffer) };
+                return value.value.has_value() ? std::move(*value.value) : std::u8string {};
+            }
+            catch (...)
+            {
+                return {};
+            }
+        }
+    } // namespace
+
     vcs_tool_environment current_vcs_tool_environment() noexcept
     {
         try
         {
             vcs_tool_environment environment {};
             environment.path_environment = read_environment_variable(u8"PATH");
+            environment.system_directory = read_system_directory();
             append_program_files_directory(environment.program_files_directories, u8"ProgramFiles");
             append_program_files_directory(environment.program_files_directories, u8"ProgramFiles(x86)");
             append_program_files_directory(environment.program_files_directories, u8"ProgramW6432");

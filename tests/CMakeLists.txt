@@ -30,6 +30,7 @@ gitman_add_source_filter(gitman_test_files "helpers"
     helpers/vcs_test_doubles.h)
 
 gitman_add_source_filter(gitman_test_files "domain"
+    command_definition_tests.cpp
     dependency_versions_tests.cpp
     discovery_domain_tests.cpp
     domain_model_tests.cpp
@@ -82,6 +83,9 @@ gitman_add_source_filter(gitman_test_files "infrastructure/svn"
     svn_integration_tests.cpp
     svn_output_parser_tests.cpp
     svn_repository_provider_tests.cpp)
+
+gitman_add_source_filter(gitman_test_files "infrastructure/scripts"
+    script_command_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "infrastructure/vcs"
     vcs_error_classifier_tests.cpp

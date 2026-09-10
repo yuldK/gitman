@@ -801,3 +801,41 @@ TEST_CASE("A failing app settings save is reported once", "[logic][app-settings]
     view = controller.make_view_snapshot();
     REQUIRE(view->notices.size() == 1);
 }
+
+TEST_CASE("App settings round-trip the global command catalog", "[app-settings][json][commands]")
+{
+    // 전역은 구체 값이라 늘 기록한다. 파일만 봐도 어디에 무엇을 쓰는지 보인다.
+    gitman::app_settings settings {};
+    gitman::custom_command command {};
+    command.id = u8"build";
+    command.label = u8"빌드";
+    command.script = u8"C:/scripts/build.py";
+    command.arguments = { std::u8string { u8"--release" } };
+    command.icon = u8"run-all";
+    command.show_on_card = true;
+    command.vcs = gitman::command_target_vcs::git;
+    command.timeout_seconds = 30;
+    settings.commands.custom.push_back(command);
+
+    gitman::svn_hook hook {};
+    hook.phase = gitman::svn_hook_phase::pre_update;
+    hook.script = u8"C:/hooks/check.cmd";
+    settings.commands.svn_hooks.hooks.push_back(hook);
+    settings.commands.svn_hooks.use_tortoise_svn = false;
+
+    const std::u8string serialized { gitman::serialize_app_settings_json(settings, {}) };
+    REQUIRE(serialized.find(u8"\"commands\"") != std::u8string::npos);
+    REQUIRE(serialized.find(u8"\"use_tortoise_svn\": false") != std::u8string::npos);
+
+    const gitman::app_settings_load_result reparsed { gitman::parse_app_settings_json(serialized, u8"C:/app/gitman.app-settings.json") };
+    REQUIRE(reparsed.settings.commands == settings.commands);
+    for (const gitman::diagnostic& value : reparsed.diagnostics)
+        REQUIRE(value.severity == gitman::diagnostic_severity::warning);
+}
+
+TEST_CASE("App settings without a command catalog keep the defaults", "[app-settings][json][commands]")
+{
+    const gitman::app_settings_load_result parsed { gitman::parse_app_settings_json(u8"{\"schema_version\":1}", u8"C:/app/gitman.app-settings.json") };
+    REQUIRE(parsed.settings.commands.is_default());
+    REQUIRE(parsed.settings.commands.svn_hooks.use_tortoise_svn);
+}

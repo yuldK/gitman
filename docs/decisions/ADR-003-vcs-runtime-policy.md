@@ -2,7 +2,7 @@
 
 ## 상태
 
-승인됨 - 2026-08-14 사용자 검수 반영
+승인됨 - 2026-08-14 사용자 검수 반영 · 2026-09-10 사용자 스크립트 실행 절 추가
 
 ## 배경
 
@@ -73,8 +73,38 @@ Git과 SVN은 외부 실행 파일이며 설치 버전, 인증, 저장소 상태
 - SVN은 기존 사용자 config와 인증 cache에만 위임한다.
 - `GIT_TERMINAL_PROMPT=0`, SVN `--non-interactive` 등 비대화형 설정을 강제한다.
 - 앱은 비밀번호, token, SSH key를 저장하거나 입력받지 않는다.
-- 실행 파일과 인자 배열을 Win32 process API에 전달하고 shell을 사용하지 않는다.
+- 실행 파일과 인자 배열을 Win32 process API에 전달한다. gitman은 명령줄 문자열을
+  조립하지 않으며 자신이 셸을 거쳐 명령을 해석하지 않는다 (2026-09-10 개정: 이전
+  문구는 "shell을 사용하지 않는다"였다. 아래 사용자 스크립트 절을 함께 읽는다).
 - stdout과 stderr를 비동기로 수집하고 timeout 및 취소를 제공한다.
+
+### 사용자 스크립트 실행 (2026-09-10 추가)
+
+사용자 명령과 SVN 훅은 사용자가 지정한 스크립트를 실행한다
+(`docs/custom-commands-and-svn-hooks-design.md` X). Git·SVN 실행과 같은 프로세스
+계층을 쓰되 아래를 더한다.
+
+- **해석기는 확장자가 정한다.** `win32_process_runner`가 `CreateProcessW`에
+  `lpApplicationName`을 넘기므로 `.py`·`.bat` 같은 파일은 직접 실행할 수 없다.
+  `.py`는 `python.exe`, `.js`는 `node.exe`, `.ps1`은 `pwsh.exe`(없으면
+  `powershell.exe`), `.bat`·`.cmd`는 `cmd.exe`, `.exe`·`.com`은 그 파일 자신이다.
+  해석기 경로는 `PATH`에서 찾아 **절대 경로**로 넘긴다.
+- **셸이 관여하는 경우를 명시한다.** `.bat`은 `cmd.exe`가, `.ps1`은 PowerShell이
+  해석한다. gitman이 셸을 부르는 것이 아니라 사용자가 셸 스크립트를 고른 것이며,
+  gitman은 그때도 해석기 실행 파일과 인자 배열만 넘긴다. `cmd.exe`에는 `/d`를 주어
+  AutoRun 레지스트리 명령이 앞에 끼어들지 못하게 한다.
+- **비대화형은 그대로다.** stdin은 NUL이고 창을 만들지 않는다. PowerShell에는
+  `-NonInteractive`와 `-NoProfile`을 명시한다.
+- **취소와 종료도 그대로다.** 스크립트는 카드 단위 취소 대상이며
+  `cancellation_registry`에 등록되어 앱 종료 시 함께 취소된다. job object가
+  `cmd.exe`·`powershell`이 만든 손자 프로세스까지 끝낸다.
+- **제한 시간은 기본이 없다.** 무엇을 하는 스크립트인지 앱이 알 수 없어 update와
+  같이 취소로만 끝낸다. 명령·훅마다 `timeout_seconds`로 덮어쓸 수 있다.
+- **실행할 명령줄 전체를 카드 로그에 남긴다.** 문서가 정의한 명령·훅을 신뢰
+  게이트 없이 실행하기로 한 사용자 결정(2026-09-10)의 대응이다. 무엇이 실행되었는지
+  사후에 추적할 수 있어야 한다.
+- **오류 분류는 하지 않는다.** `classify_vcs_failure`는 git·svn 어휘라 스크립트에
+  쓰지 않는다. 판정은 프로세스 종료 방식과 종료 코드만 본다.
 
 ## 고려한 대안
 

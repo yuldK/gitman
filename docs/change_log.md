@@ -1,5 +1,50 @@
 # 변경 이력
 
+## 2026-09-10 - 스크립트 실행 기반과 명령·훅 설정 스키마 (2단계)
+
+### 사용자 지시
+
+- (2026-09-10 같은 지시의 2단계) 커스텀 명령은 스크립트 파일을 실행하는 형태이고
+  지원 언어는 스크립트 파일의 확장자를 따른다.
+- 설정 계층은 전역 앱 설정 + 문서 override로 한다.
+
+### 반영 내용
+
+- `domain/script_interpreter`: 확장자에서 해석기를 정하는 순수 표를 만들었다.
+  `.py`·`.pyw` → `python.exe`, `.js`·`.mjs`·`.cjs` → `node.exe`, `.ps1` →
+  `pwsh.exe`(없으면 `powershell.exe`), `.bat`·`.cmd` → `cmd.exe`, `.exe`·`.com`은
+  그 파일 자신이다.
+- `infrastructure/script_interpreter_discovery`: 해석기 실행 파일을 찾는다. 셸은
+  `PATH`보다 `%SystemRoot%\System32`를 먼저 본다 — PATH 앞에 놓인 동명 파일이
+  셸을 가로채지 못하게 한다. 이를 위해 `vcs_tool_environment`에
+  `system_directory`를 더했다.
+- `infrastructure/script_command_builder`: `make_vcs_process_request`의 형제로
+  git·svn 공통 인자 없이 요청을 만든다. 스크립트 맥락을 담는 `GITMAN_*` 환경
+  변수 builder와, 카드 로그에 남길 명령줄 설명 함수도 함께 둔다.
+- `domain/command_definition`: 사용자 명령·SVN 훅의 값 타입과 필터 규칙(VCS 종류·
+  카드 지정·경로 glob의 AND)이다. 목록이라 문서 override는 항목별 병합이 아니라
+  묶음 단위 대체다 — "전역의 이 항목만 지우기"를 표현할 방법이 없기 때문이다.
+- `.version-list`와 전역 앱 설정에 `commands` 구역을 더했다. **스키마 판번은 1
+  그대로**다. `settings`·`appearance`·`fonts`가 그랬듯 optional 키로 더해, 이 키를
+  모르는 예전 gitman도 문서를 그대로 연다.
+- 성립하지 않는 명령·훅 정의는 목록에서 빠지되 진단은 경고다. 오타 하나가 문서
+  저장 전체를 막는 것(오류 진단이 있으면 save가 commit하지 않는다)이 잘못된 명령
+  하나를 못 쓰는 것보다 나쁘다.
+- ADR-003에 "사용자 스크립트 실행" 절을 더하고 "shell을 사용하지 않는다" 문구를
+  "gitman이 명령줄 문자열을 조립하지 않는다"로 고쳤다. `.bat`·`.ps1`은 셸이
+  해석하지만 그것은 사용자가 셸 스크립트를 고른 결과이며, gitman은 그때도 해석기
+  실행 파일과 인자 배열만 넘긴다.
+
+### 영향 요구사항
+
+- REQ-020·REQ-021의 기반이다. 두 요구사항 자체는 3·4단계에서 더한다.
+- NFR-007("shell 미사용")의 해석을 ADR-003이 정정했다.
+
+### 다음 작업 제한
+
+- 3단계(커스텀 명령의 컨텍스트 메뉴·카드 표면·실행 배선)는 2단계 검수 뒤에
+  시작한다. 이 단계까지는 설정을 읽고 쓸 뿐 아무것도 실행하지 않는다.
+
 ## 2026-09-10 - 일괄 업데이트와 카드 진행 표시 (1단계)
 
 ### 사용자 지시

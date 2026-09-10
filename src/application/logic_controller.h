@@ -238,6 +238,10 @@ namespace gitman {
         [[nodiscard]] workspace_settings effective_settings() const;
         // 앱 외양 위에 문서 override를 얹은 유효 값이다 (S2.2).
         [[nodiscard]] appearance_settings effective_appearance() const;
+        // 전역 목록 위에 문서 정의를 얹은 유효 명령·훅이다
+        // (custom-commands-and-svn-hooks-design C2). 목록이라 스칼라와 달리
+        // 문서가 정의하면 통째로 갈린다.
+        [[nodiscard]] command_catalog effective_commands() const;
         // 앱 글꼴 위에 문서 override를 얹은 유효 값이다 (2026-08-23 지시).
         [[nodiscard]] font_settings effective_fonts() const;
         // 선택 카드가 있어 하단 로그 pane이 보이는 상태다. layout 계산과 view 구성이

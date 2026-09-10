@@ -796,3 +796,76 @@ TEST_CASE("Project store round-trips the document fonts", "[workspace][store][sa
     REQUIRE(reloaded.document->fonts.ui_family == std::optional<std::u8string> { u8"" });
     REQUIRE_FALSE(reloaded.document->fonts.code_family.has_value());
 }
+
+TEST_CASE("Project store round-trips the document commands", "[workspace][store][save][commands]")
+{
+    // `settings`와 같은 규칙이다 — 정의된 묶음만 남기고, 정의를 거둔 묶음은 지우며,
+    // 알 수 없는 키는 보존한다.
+    constexpr std::u8string_view source {
+        u8R"({
+    "schema_version": 1,
+    "commands": {
+        "custom": [
+            { "id": "build", "label": "빌드", "script": "b.py", "show_on_card": true }
+        ],
+        "svn_hooks": { "use_tortoise_svn": false, "hooks": [] },
+        "future_commands": 1
+    },
+    "projects": []
+})",
+    };
+
+    fake_workspace_document_file_system file_system {};
+    file_system.set_file(fake_document_path, source);
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE(loaded.document.has_value());
+    REQUIRE(loaded.document->commands.custom.has_value());
+    REQUIRE(loaded.document->commands.custom->front().show_on_card);
+
+    // 훅 정의를 거두고 명령은 하나 더한다.
+    loaded.document->commands.svn_hooks.reset();
+    loaded.document->commands.custom->push_back(loaded.document->commands.custom->front());
+    loaded.document->commands.custom->back().id = u8"clean";
+    loaded.document->commands.custom->back().show_on_card = false;
+
+    const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+
+    const std::u8string* output { file_system.file_bytes(fake_document_path) };
+    REQUIRE(output != nullptr);
+    REQUIRE(output->find(u8"\"clean\"") != std::u8string::npos);
+    // 정의를 거둔 묶음은 남지 않는다 — 남기면 다음 열기에서 override로 되살아난다.
+    REQUIRE(output->find(u8"\"svn_hooks\"") == std::u8string::npos);
+    // 알 수 없는 키는 보존한다.
+    REQUIRE(output->find(u8"\"future_commands\"") != std::u8string::npos);
+    // 기본값인 항목은 파일을 어지럽히지 않는다.
+    REQUIRE(output->find(u8"\"refresh_after\"") == std::u8string::npos);
+
+    const gitman::project_store_load_result reloaded { store.load(fake_document_path) };
+    REQUIRE(reloaded.document.has_value());
+    REQUIRE(reloaded.document->commands.custom.has_value());
+    REQUIRE(reloaded.document->commands.custom->size() == 2u);
+    REQUIRE_FALSE(reloaded.document->commands.svn_hooks.has_value());
+}
+
+TEST_CASE("A document that defines no commands writes no commands object", "[workspace][store][save][commands]")
+{
+    constexpr std::u8string_view source { u8"{\"schema_version\":1,\"projects\":[]}" };
+
+    fake_workspace_document_file_system file_system {};
+    file_system.set_file(fake_document_path, source);
+    fake_project_path_resolver path_resolver {};
+    gitman::json_project_store store { file_system, path_resolver };
+
+    const gitman::project_store_load_result loaded { store.load(fake_document_path) };
+    REQUIRE(loaded.document.has_value());
+    const gitman::project_store_save_result saved { store.save(fake_document_path, *loaded.document, loaded.revision) };
+    REQUIRE(saved.succeeded());
+
+    const std::u8string* output { file_system.file_bytes(fake_document_path) };
+    REQUIRE(output != nullptr);
+    REQUIRE(output->find(u8"\"commands\"") == std::u8string::npos);
+}

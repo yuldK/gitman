@@ -57,6 +57,10 @@ namespace gitman {
         appearance_settings appearance {};
         // UI·코드 글꼴이다 (F1). `appearance`와 같이 문서가 덮어쓸 수 있다.
         font_settings fonts {};
+        // 사용자 명령과 SVN 훅의 기본 목록이다
+        // (custom-commands-and-svn-hooks-design C2). 문서가 정의하면 그 문서에서는
+        // 문서의 것으로 갈린다.
+        command_catalog commands {};
 
         [[nodiscard]] bool operator==(const app_settings&) const noexcept = default;
     };

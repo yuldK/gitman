@@ -2982,6 +2982,13 @@ namespace gitman {
         return app_settings_.settings;
     }
 
+    command_catalog logic_controller::effective_commands() const
+    {
+        if (document_.has_value())
+            return apply_overrides(app_settings_.commands, document_->commands);
+        return app_settings_.commands;
+    }
+
     appearance_settings logic_controller::effective_appearance() const
     {
         // 외양도 다른 설정과 같은 계층이다 (settings-tabs-and-appearance-scope-

@@ -56,6 +56,8 @@ namespace gitman::ui {
                 , glyph_ { glyph }
                 , label_ { std::move(label) }
             {
+                // 툴팁이 없어 이름이 비면 접근 tree에서 접힌다. 그린 라벨이 이름이다.
+                set_access_name(label_);
                 set_action(ui_trigger::left_click, [action = std::move(action)](const ui_action_context&) -> std::vector<input_action> { return { action }; });
             }
 
@@ -139,6 +141,8 @@ namespace gitman::ui {
                 , recent_ { recent }
             {
                 set_tooltip(recent.path);
+                // 이름은 화면에 보이는 순서(문서 이름, 폴더)다. 전체 경로는 툴팁에 남는다.
+                set_access_name(recent.display_name + u8" (" + recent.folder + u8")");
                 set_action(ui_trigger::left_click,
                     [path = recent.path](const ui_action_context&) -> std::vector<input_action> { return { make_logic_action(open_document_intent { path }) }; });
                 // 최근 항목 행은 Tab 자리가 아니다 (설계 D1-B). Tab은 시작 열의

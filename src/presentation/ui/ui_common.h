@@ -20,6 +20,8 @@ namespace gitman::ui {
     namespace codicons = luil::codicons;
 
     // element 계약.
+    using luil::access_info;
+    using luil::access_role;
     using luil::arrange_context;
     using luil::draw_context;
     using luil::drag_payload;

@@ -254,3 +254,37 @@ TEST_CASE("An open dialog keeps the focus order inside itself", "[ui][tree][dial
             has_toolbar = true;
     REQUIRE(has_toolbar);
 }
+
+TEST_CASE("Cards read as selectable list items named by their visible lines", "[ui][tree][accessibility]")
+{
+    gitman::view_snapshot view { make_view(2) };
+    view.cards[0].display_name = u8"alpha";
+    view.cards[0].path = u8"D:/work/alpha";
+    view.cards[0].reference = u8"main";
+    view.cards[0].status.tooltip = u8"최신 상태";
+    view.cards[0].selected = true;
+    view.cards[1].display_name = u8"beta";
+    view.cards[1].enabled = false;
+    const auto tree { make_tree(view) };
+
+    // 목록은 문서 전체의 카드 수로 읽힌다.
+    const luil::access_info list { find(*tree, ui::kind_card_list)->accessibility() };
+    REQUIRE(list.role == luil::access_role::list);
+    REQUIRE(list.name == u8"저장소 카드 2개");
+
+    // 카드는 화면의 세 줄을 이은 이름과 선택 상태를 낸다. 툴팁이 없어도 접히지 않는다.
+    const luil::access_info first { find(*tree, ui::kind_card_body, u8"card-0")->accessibility() };
+    REQUIRE(first.role == luil::access_role::list_item);
+    REQUIRE(first.name == u8"alpha, D:/work/alpha, main, 최신 상태");
+    REQUIRE(first.selected == true);
+
+    const luil::access_info second { find(*tree, ui::kind_card_body, u8"card-1")->accessibility() };
+    REQUIRE(second.name == u8"beta, 제외됨");
+    REQUIRE(second.selected == false);
+}
+
+TEST_CASE("An empty card list is not read aloud", "[ui][tree][accessibility]")
+{
+    const auto tree { make_tree(0, gitman::view_empty_state::no_projects) };
+    REQUIRE(find(*tree, ui::kind_card_list)->accessibility().role == luil::access_role::none);
+}

@@ -24,6 +24,7 @@ namespace gitman::ui {
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;
+        [[nodiscard]] access_info accessibility() const override;
 
         // 배치된 목록 내용의 전체 높이다 (물리 픽셀).
         [[nodiscard]] float content_height() const noexcept;

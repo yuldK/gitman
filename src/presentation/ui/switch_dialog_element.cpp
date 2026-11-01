@@ -129,6 +129,16 @@ namespace gitman::ui {
                 set_bounds(context.slot);
             }
 
+            // 목록 행이다. 이름은 화면의 글과 같고, 툴팁은 이름이 아니다 — 툴팁이
+            // 있는 행만 보조 기술에 서고 그 이름이 안내 문구로 읽혔다.
+            [[nodiscard]] access_info accessibility() const override
+            {
+                std::u8string name { candidate_.display_name };
+                if (candidate_.stale)
+                    name += u8" (미갱신)";
+                return { .role = access_role::list_item, .name = std::move(name), .selected = selected_ };
+            }
+
             void draw(draw_context& context, const interaction_snapshot& interaction) const override
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
@@ -224,6 +234,18 @@ namespace gitman::ui {
                     add_child(std::make_unique<svn_expand_element>(row_.url, row_.expanded));
                 }
                 set_tooltip(row_.url);
+            }
+
+            // 저장소 browser의 한 줄이다. 툴팁(URL) 대신 화면의 글을 이름으로 읽힌다.
+            [[nodiscard]] access_info accessibility() const override
+            {
+                std::u8string name { row_.text };
+                if (row_.current)
+                    name.append(u8" (현재 위치)");
+                access_info info { .role = access_role::tree_item, .name = std::move(name), .selected = row_.selected };
+                if (row_.can_expand)
+                    info.expanded = row_.expanded;
+                return info;
             }
 
             void arrange(const arrange_context& context) override

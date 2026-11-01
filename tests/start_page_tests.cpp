@@ -264,3 +264,21 @@ TEST_CASE("A short window draws only the rows that fit and reports the rest", "[
     REQUIRE(visible > 0);
     REQUIRE(visible < 5);
 }
+
+TEST_CASE("Start page rows are named by what they show", "[ui][start-page][accessibility]")
+{
+    start_page_fixture fixture { { u8"D:\\workspaces\\team.version-list" } };
+    const std::shared_ptr<const luil::ui_tree> tree { make_tree(*fixture.view()) };
+
+    // 시작 열의 두 줄은 툴팁이 없어 접근 tree에서 접혔었다. 라벨이 이름이다.
+    const luil::access_info open { find(*tree, gitman::ui::kind_start_page_open_document)->accessibility() };
+    REQUIRE(open.role == luil::access_role::button);
+    REQUIRE(open.name == u8"문서 열기…");
+    REQUIRE(find(*tree, gitman::ui::kind_start_page_generate_document)->accessibility().name == u8"새 문서 만들기…");
+
+    // 최근 항목은 전체 경로 대신 화면처럼 이름과 폴더로 읽힌다.
+    const luil::ui_element* const recent { tree->find(gitman::ui::start_page_recent_item_id(0)) };
+    REQUIRE(recent != nullptr);
+    REQUIRE(recent->accessibility().name == u8"team (D:/workspaces)");
+    REQUIRE(recent->tooltip() == u8"D:\\workspaces\\team.version-list");
+}

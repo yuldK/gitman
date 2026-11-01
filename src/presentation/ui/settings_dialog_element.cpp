@@ -432,6 +432,12 @@ namespace gitman::ui {
                 set_bounds(context.slot);
             }
 
+            // 켬·끔을 보조 기술이 읽는다. 이름은 항목 제목이다 (`set_access_name`).
+            [[nodiscard]] access_info accessibility() const override
+            {
+                return { .role = access_role::toggle_switch, .name = access_name(), .checked = on_ };
+            }
+
             void draw(draw_context& context, const interaction_snapshot& interaction) const override
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
@@ -471,6 +477,12 @@ namespace gitman::ui {
             void arrange(const arrange_context& context) override
             {
                 set_bounds(context.slot);
+            }
+
+            // 툴팁이 없어 기본 구현으로는 접근 tree에서 접혔다. 라벨이 이름이다.
+            [[nodiscard]] access_info accessibility() const override
+            {
+                return { .role = access_role::tab, .name = label_, .selected = selected_ };
             }
 
             void draw(draw_context& context, const interaction_snapshot& interaction) const override
@@ -531,6 +543,11 @@ namespace gitman::ui {
                 set_bounds(context.slot);
             }
 
+            [[nodiscard]] access_info accessibility() const override
+            {
+                return { .role = access_role::radio_button, .name = access_name(), .selected = selected_ };
+            }
+
             void draw(draw_context& context, const interaction_snapshot& interaction) const override
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
@@ -576,6 +593,11 @@ namespace gitman::ui {
             void arrange(const arrange_context& context) override
             {
                 set_bounds(context.slot);
+            }
+
+            [[nodiscard]] access_info accessibility() const override
+            {
+                return { .role = access_role::radio_button, .name = access_name(), .selected = selected_ };
             }
 
             void draw(draw_context& context, const interaction_snapshot& interaction) const override
@@ -914,8 +936,12 @@ namespace gitman::ui {
 
         // 활성 탭의 항목만 컨트롤을 만든다. 다른 탭의 값은 dialog 초안에 그대로 남아
         // 있고, 탭을 옮기면 그 탭의 컨트롤이 만들어진다 (S1.2).
-        const auto add_toggle = [panel_raw](const ui_element_kind kind, const bool on, const char8_t* const tooltip, logic_message message, std::vector<ui_element*>& controls) {
+        // 컨트롤의 접근 이름은 항목 제목이다. 툴팁은 설명이라 이름으로 읽히면 길고, 같은
+        // 글의 단추(찾아보기·지우기)가 어느 항목의 것인지 갈리지 않는다.
+        const auto add_toggle = [panel_raw](const ui_element_kind kind, const bool on, const char8_t* const tooltip, logic_message message, std::vector<ui_element*>& controls,
+                                    const std::u8string& title) {
             auto toggle { std::make_unique<toggle_element>(ui_element_id { kind }, on, std::u8string { tooltip }, std::move(message)) };
+            toggle->set_access_name(title);
             controls.push_back(toggle.get());
             panel_raw->adopt(std::move(toggle));
         };
@@ -941,12 +967,14 @@ namespace gitman::ui {
                     // 찾아보기는 UI thread의 파일 선택으로, 지우기는 intent로 처리한다.
                     luil::text_button_element* const browse { add_text_button(git ? kind_settings_git_browse : kind_settings_svn_browse, u8"찾아보기", controls) };
                     const app_command picker { git ? app_command::show_git_executable_picker : app_command::show_svn_executable_picker };
+                    browse->set_access_name(item.title + u8" 찾아보기");
                     browse->set_action(ui_trigger::left_click, make_app_command_click(picker));
 
                     // 지우기는 두 모드 모두 빈 값(자동 탐색)이다. 문서 정의 삭제는
                     // `덮어씀` 배지의 몫이다 (S4.2).
                     luil::text_button_element* const clear { add_text_button(git ? kind_settings_git_clear : kind_settings_svn_clear, u8"지우기", controls) };
                     clear->set_tooltip(u8"지우면 자동 탐색을 사용합니다");
+                    clear->set_access_name(item.title + u8" 지우기");
                     clear->set_enabled(item.value.empty() == false);
                     const repository_kind tool { git ? repository_kind::git : repository_kind::subversion };
                     clear->set_action(ui_trigger::left_click, make_logic_click(clear_settings_executable_intent { tool }));
@@ -959,6 +987,7 @@ namespace gitman::ui {
                             ui_element_id { kind_settings_timeout_input }, dialog_.timeout, luil::text_input_config { .placeholder = std::u8string { u8"600 (기본값)" } }),
                     };
                     input->set_tooltip(u8"숫자만 입력합니다 (10~3600초). 비우면 기본값 600초입니다.");
+                    input->set_access_name(item.title);
                     controls.push_back(input.get());
                     panel_raw->adopt(std::move(input));
                     break;
@@ -966,28 +995,29 @@ namespace gitman::ui {
                 case item_kind::update_submodules:
                     // 업데이트 실행 overlay 대신 이 토글이 값을 정한다 (2026-08-20 검수).
                     add_toggle(kind_settings_submodules_toggle, dialog_.update_submodules, u8"업데이트 실행 시 submodule을 함께 갱신할지 정합니다",
-                        logic_message { toggle_settings_submodules_intent {} }, controls);
+                        logic_message { toggle_settings_submodules_intent {} }, controls, item.title);
                     break;
                 case item_kind::ignore_local_changes:
                     add_toggle(kind_settings_ignore_local_toggle, dialog_.ignore_local_changes,
                         u8"켜면 SVN 저장소에서 로컬 변경 확인(status)을 건너뛰고 깨끗하다고 믿은 채 조회·업데이트·스위치를 진행합니다 (git에는 적용되지 않음)",
-                        logic_message { toggle_settings_ignore_local_intent {} }, controls);
+                        logic_message { toggle_settings_ignore_local_intent {} }, controls, item.title);
                     break;
                 case item_kind::write_log_files:
                     add_toggle(kind_settings_log_files_toggle, dialog_.write_log_files, u8"켜면 문서 폴더에 .<문서>.version-list.log 폴더를 만들고 저장소별로 로그 파일을 남깁니다",
-                        logic_message { toggle_settings_log_files_intent {} }, controls);
+                        logic_message { toggle_settings_log_files_intent {} }, controls, item.title);
                     break;
                 case item_kind::theme: {
-                    const auto add_theme = [this, panel_raw](const theme_preference value, const char32_t glyph, const char8_t* const tooltip) {
+                    const auto add_theme = [this, panel_raw](const theme_preference value, const char32_t glyph, const char8_t* const tooltip, const char8_t* const name) {
                         auto option { std::make_unique<theme_option_element>(value, dialog_.theme == value, glyph, std::u8string { tooltip }) };
+                        option->set_access_name(name);
                         theme_options_.push_back(option.get());
                         panel_raw->adopt(std::move(option));
                     };
                     // codicon에는 sun/moon이 없어 의미가 가장 가까운 3종을 골랐다
                     // (theme-and-banner-menu-design 검수 결정).
-                    add_theme(theme_preference::light, codicons::icon_lightbulb, u8"밝은 화면을 씁니다");
-                    add_theme(theme_preference::system, codicons::icon_device_desktop, u8"Windows의 앱 모드를 따릅니다");
-                    add_theme(theme_preference::dark, codicons::icon_color_mode, u8"어두운 화면을 씁니다");
+                    add_theme(theme_preference::light, codicons::icon_lightbulb, u8"밝은 화면을 씁니다", u8"밝게");
+                    add_theme(theme_preference::system, codicons::icon_device_desktop, u8"Windows의 앱 모드를 따릅니다", u8"시스템 설정 따르기");
+                    add_theme(theme_preference::dark, codicons::icon_color_mode, u8"어두운 화면을 씁니다", u8"어둡게");
                     break;
                 }
                 case item_kind::accent: {
@@ -1006,6 +1036,7 @@ namespace gitman::ui {
                         add_text_button(code ? kind_settings_code_font_pick : kind_settings_ui_font_pick, u8"선택…", controls),
                     };
                     pick->set_tooltip(code ? u8"로그와 diff 본문에 쓸 글꼴을 고릅니다" : u8"창 전체에 쓸 글꼴을 고릅니다");
+                    pick->set_access_name(item.title + u8" 선택");
                     pick->set_action(ui_trigger::left_click, make_logic_click(open_font_dialog_intent { code }));
                     break;
                 }
@@ -1029,6 +1060,7 @@ namespace gitman::ui {
                 if (dialog_.document_mode && item.override_field.has_value())
                 {
                     auto badge { std::make_unique<override_badge_element>(item.override_owner, *item.override_field, item.overridden) };
+                    badge->set_access_name(item.title + u8" 문서 설정 지우기");
                     badges_.push_back({ index, badge.get() });
                     panel_raw->adopt(std::move(badge));
                 }

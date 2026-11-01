@@ -21,6 +21,8 @@ namespace gitman::ui {
         // 진행 중인 카드의 sync 아이콘이 돈다 (2026-08-23 지시). 도는 동안은 지금
         // 시각을 돌려주어 platform이 계속 다시 그리게 한다 (설계 L8).
         [[nodiscard]] std::optional<std::chrono::steady_clock::time_point> next_update(const update_context& context, const interaction_snapshot& interaction) const override;
+        // 목록의 항목 하나로 읽힌다. 이름은 화면의 세 줄(이름·경로·상태 조각)을 잇는다.
+        [[nodiscard]] access_info accessibility() const override;
 
     private:
         // 세 번째 줄(브랜치·리비전·상태·작업 트리)을 색이 있는 조각으로 그린다.

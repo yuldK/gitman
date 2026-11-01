@@ -235,6 +235,29 @@ namespace gitman::ui {
         return std::nullopt;
     }
 
+    access_info card_element::accessibility() const
+    {
+        // 상태 조각과 같은 순서로 잇는다. 진행 중이면 상태 글보다 그 사실이 먼저다.
+        std::u8string name { card_.display_name };
+        const auto append = [&name](const std::u8string_view part) {
+            if (part.empty())
+                return;
+            name += u8", ";
+            name += part;
+        };
+        append(card_.path);
+        if (card_.busy)
+            append(u8"진행 중");
+        append(card_.reference);
+        if (card_.revision.empty() == false)
+            append(revision_display_text(card_.kind, card_.revision));
+        append(card_.status.tooltip);
+        append(card_.working_tree_text);
+        if (card_.enabled == false)
+            append(u8"제외됨");
+        return { .role = access_role::list_item, .name = std::move(name), .selected = card_.selected };
+    }
+
     void card_element::draw_status_row(draw_context& context, const rect_f& row) const
     {
         if (row.width <= 0.0f || row.height <= 0.0f)

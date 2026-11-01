@@ -214,6 +214,25 @@ namespace gitman::ui {
             draw_lifted_card(context, interaction, *drag);
     }
 
+    access_info card_list_element::accessibility() const
+    {
+        // 빈 목록은 시작 페이지나 안내 문구가 그 자리를 대신하므로 읽히지 않게 접는다.
+        if (total_card_count_ == 0)
+            return {};
+        // 카드가 화면 밖에 있어도 개수는 문서 전체의 것이다.
+        std::u8string name { u8"저장소 카드 " };
+        std::size_t remaining { total_card_count_ };
+        std::u8string digits {};
+        do
+        {
+            digits.insert(digits.begin(), static_cast<char8_t>(u8'0' + remaining % 10));
+            remaining /= 10;
+        } while (remaining > 0);
+        name += digits;
+        name += u8"개";
+        return { .role = access_role::list, .name = std::move(name) };
+    }
+
     std::optional<card_list_element::drag_view> card_list_element::derive_drag_view(const interaction_snapshot& interaction) const
     {
         if (interaction.drag.has_value() == false || interaction.drag->payload.source.kind != kind_card_body)

@@ -191,11 +191,11 @@ namespace gitman::ui {
         if (elapsed_right_ > 0.0f)
         {
             const std::u8string text { format_elapsed_time(log_.change_started_at.has_value() ? context.now - *log_.change_started_at : *log_.change_elapsed) };
-            const SkFont font { ui_font(context, 10.5f) };
             SkPaint paint { solid_paint(context.palette.primary_foreground) };
             paint.setAlphaf(0.6f);
-            const float header_height { layout_log_header_height() * scale };
-            draw_text(context.canvas, text, elapsed_right_ - measure_text(text, font), box.y + centered_text_baseline(font, header_height), font, paint);
+            // 예약한 칸(`layout_log_elapsed_width`)의 오른쪽 끝에 맞춘다.
+            const float width { layout_log_elapsed_width * scale };
+            draw_text_line(context, text, { elapsed_right_ - width, box.y, width, layout_log_header_height() * scale }, paint, { .size = 10.5f, .align = luil::text_align::end });
         }
 
         draw_records(context, body_);
@@ -224,7 +224,7 @@ namespace gitman::ui {
         context.canvas.clipRect(SkRect::MakeXYWH(body.x, body.y, body.width, body.height));
 
         // 본문은 외부 명령의 출력이라 코드 글꼴을 쓴다 (fonts-and-in-app-dialogs-design F1).
-        const SkFont font { code_font(context, 10.5f) };
+        const text_line_style code { .size = 10.5f, .face = luil::text_layout_face::code };
         const float inset { layout_log_text_inset * scale };
 
         if (log_.records.empty())
@@ -239,14 +239,14 @@ namespace gitman::ui {
             // 안내는 본문 위쪽 첫 줄 자리다. 세로 가운데에 두면 높은 pane에서 글이
             // 아래로 떠 보였다.
             const float line_height { layout_log_line_height() * scale };
-            draw_text(context.canvas, hint, body.x + inset, body.y + inset + centered_text_baseline(font, line_height), font, dim);
+            draw_text_line(context, hint, { body.x + inset, body.y + inset, body.width - inset * 2.0f, line_height }, dim, code);
             context.canvas.restore();
             return;
         }
 
         const float line_height { layout_log_line_height() * scale };
         // 시각 열의 폭은 고정 형식(HH:MM:SS)이라 한 번만 잰다.
-        const float time_width { measure_text(u8"00:00:00", font) + inset };
+        const float time_width { measure_text(u8"00:00:00", code_font(context, code.size)) + inset };
         const float top { body.y + inset - log_.scroll_offset * scale };
         // 막대가 보이면 글자가 그 아래로 지나가지 않게 폭을 줄인다.
         const float text_limit { body.x + body.width - inset - scrollbar_reserved_ };
@@ -258,10 +258,9 @@ namespace gitman::ui {
                 continue;
 
             const log_display_line& line { log_.lines[index] };
-            const float baseline { line_top + centered_text_baseline(font, line_height) };
             SkPaint time_paint { solid_paint(context.palette.primary_foreground) };
             time_paint.setAlphaf(0.45f);
-            draw_text(context.canvas, format_log_timestamp(line.record.entry.time), body.x + inset, baseline, font, time_paint);
+            draw_text_line(context, format_log_timestamp(line.record.entry.time), { body.x + inset, line_top, time_width, line_height }, time_paint, code);
 
             const SkPaint text_paint { solid_paint(record_color(context.palette, line.record.entry)) };
             const float text_left { body.x + inset + time_width };
@@ -281,7 +280,7 @@ namespace gitman::ui {
                 text += digits;
                 text += u8"줄 접힘)";
             }
-            static_cast<void>(draw_text_within(context.canvas, text, text_left, baseline, text_limit - text_left, font, text_paint));
+            draw_text_line(context, text, { text_left, line_top, text_limit - text_left, line_height }, text_paint, code);
         }
         context.canvas.restore();
     }

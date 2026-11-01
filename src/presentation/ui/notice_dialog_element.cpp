@@ -75,8 +75,7 @@ namespace gitman::ui {
                     text_left += 24.0f * scale;
                 }
 
-                SkFont title_font { ui_font(context, 13.0f) };
-                title_font.setEmbolden(true);
+                const SkFont title_font { ui_font(context, 13.0f, luil::font_weight::bold) };
                 static_cast<void>(draw_text_within(context.canvas, dialog_.title, text_left, box.y + padding + centered_text_baseline(title_font, title_height * scale),
                     box.x + box.width - padding - text_left, title_font, solid_paint(accent)));
 

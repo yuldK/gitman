@@ -509,9 +509,7 @@ namespace gitman::ui {
                     text_left += 22.0f * scale;
                 }
 
-                SkFont font { ui_font(context, 12.0f) };
-                if (selected_)
-                    font.setEmbolden(true);
+                const SkFont font { ui_font(context, 12.0f, selected_ ? luil::font_weight::bold : luil::font_weight::regular) };
                 SkPaint text { solid_paint(foreground) };
                 if (selected_ == false)
                     text.setAlphaf(hovered ? 0.95f : 0.75f);
@@ -664,9 +662,7 @@ namespace gitman::ui {
                 border.setStrokeWidth(1.0f * scale);
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
-                SkFont font { ui_font(context, 10.0f) };
-                if (defined_)
-                    font.setEmbolden(true);
+                const SkFont font { ui_font(context, 10.0f, defined_ ? luil::font_weight::bold : luil::font_weight::regular) };
                 // 전역을 따르는 항목은 비활성 색이라 배지가 앞으로 나오지 않는다.
                 SkPaint text_paint { solid_paint(defined_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (defined_ == false)
@@ -784,8 +780,7 @@ namespace gitman::ui {
                         solid_paint(context.palette.primary_foreground));
                     title_left += 19.0f * scale;
                 }
-                SkFont title_font { ui_font(context, 13.0f) };
-                title_font.setEmbolden(true);
+                const SkFont title_font { ui_font(context, 13.0f, luil::font_weight::bold) };
                 static_cast<void>(draw_text_within(
                     context.canvas, title_, title_left, box.y + padding + 11.0f * scale, box.x + box.width - padding - title_left, title_font, solid_paint(context.palette.primary_foreground)));
             }
@@ -802,10 +797,8 @@ namespace gitman::ui {
 
             void draw_sections(draw_context& context, const float scale) const
             {
-                SkFont header_font { ui_font(context, 11.0f) };
-                header_font.setEmbolden(true);
-                SkFont title_font { ui_font(context, 12.0f) };
-                title_font.setEmbolden(true);
+                const SkFont header_font { ui_font(context, 11.0f, luil::font_weight::bold) };
+                const SkFont title_font { ui_font(context, 12.0f, luil::font_weight::bold) };
                 const SkFont value_font { ui_font(context, 11.0f) };
 
                 std::size_t item_index { 0 };

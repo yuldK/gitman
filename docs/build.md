@@ -19,23 +19,24 @@ Ninja와 GN은 필요하지 않다. Skia는 직접 빌드하지 않고 luil의 �
 
 ### 2.1 submodule과 luil 패키지
 
-UI 프레임워크 luil은 `third_party/luil` submodule이다. luil이 쓰는 Skia 패키지와
-WebView2 SDK는 luil의 스크립트가 준비한다. 두 스크립트는 사람이 실행하며 핀 파일
-(`third_party/luil/third_party/{skia-prep,webview2-prep}.json`)의 SHA-256과 맞는
-아카이브만 설치한다.
+UI 프레임워크 luil은 `third_party/luil` submodule이다. luil이 쓰는 Skia 패키지는
+luil의 스크립트가 준비한다. 스크립트는 사람이 실행하며 핀 파일
+(`third_party/luil/third_party/skia-prep.json`)의 SHA-256과 맞는 아카이브만 설치한다.
+gitman은 luil을 `LUIL_ENABLE_WEBVIEW=OFF`로 구성하므로 WebView2 SDK는 준비하지
+않는다.
 
 ```powershell
 git submodule update --init third_party/nlohmann-json
 git submodule update --init third_party/luil
 git -C third_party/luil submodule update --init third_party/nlohmann_json
 third_party\luil\scripts\fetch_skia.ps1 -Configuration Debug,Release
-third_party\luil\scripts\fetch_webview2.ps1
 ```
 
 제한된 환경에서는 브라우저로 아카이브를 받아
-`third_party/luil/third_party/skia-prep-archives/`와 `webview2-prep-archives/`에
-두고 같은 스크립트를 실행한다. 해시가 맞는 아카이브가 있으면 스크립트는 네트워크를
-쓰지 않는다. 접근 대상은 `github.com/yuldK/skia-prep` 릴리스와 `api.nuget.org`다.
+`third_party/luil/third_party/skia-prep-archives/`에 두고 같은 스크립트를
+`-Offline`으로 실행한다. 해시가 맞는 아카이브가 있으면 스크립트는 네트워크를 쓰지
+않으며, `-Offline`이면 아카이브가 없을 때도 받으러 가지 않고 실패한다. 접근 대상은
+`github.com/yuldK/skia-prep` 릴리스다.
 
 Catch2는 test를 빌드할 때만 필요하다. 앱만 빌드한다면 초기화하지 않아도 configure와
 빌드가 성립한다.
@@ -125,7 +126,7 @@ cmake --install build\vs2022 --config Release
 bin/gitman.exe
 ```
 
-luil(Skia·WebView2 로더 포함)과 C/C++ runtime은 정적으로 연결되고 Codicons font, Codicons license, 앱 아이콘과 제3자 고지문은 실행 파일 resource에 들어간다. 코디콘 폰트·라이선스·고지문은 luil의 `.rc` 조각(ID 101~104)이 싣고, 고지문은 luil의 생성기가 Skia 패키지의 `NOTICE.md`, WebView2 SDK, nlohmann/json, Codicons 라이선스 원문에서 만든다. gitman의 `.rc`는 manifest·아이콘(ID 105)·버전 정보만 담는다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
+luil(Skia 포함)과 C/C++ runtime은 정적으로 연결되고 Codicons font, Codicons license, 앱 아이콘과 제3자 고지문은 실행 파일 resource에 들어간다. 코디콘 폰트·라이선스·고지문은 luil의 `.rc` 조각(ID 101~104)이 싣고, 고지문은 luil의 생성기가 Skia 패키지의 `NOTICE.md`, nlohmann/json, Codicons 라이선스 원문에서 만든다. gitman의 `.rc`는 manifest·아이콘(ID 105)·버전 정보만 담는다. Windows 시스템 DLL과 향후 단계에서 사용할 외부 Git/SVN CLI는 단일 파일 범위에서 제외한다.
 
 앱 아이콘은 현재 custom caption에서 사용하는 `source-control` Codicon을 기준으로 생성한다. Codicons 자산은 luil의 것(`third_party/luil/assets/codicons/`)을 쓰며, 그 자산이 갱신된 뒤 아이콘도 다시 만들려면 저장소 루트에서 다음을 실행한다 (Python 3.9 이상과 Pillow).
 
@@ -154,6 +155,6 @@ bin\gitman.exe --renderer=cpu
 
 Codicons 자산(font·mapping·license)은 luil의 것이다 (`third_party/luil/assets/codicons/`,
 현재 `v0.0.46-24`). gitman은 자산을 따로 두지 않으며 갱신은 luil 저장소에서 한다.
-luil을 올릴 때는 submodule 핀을 새 커밋으로 옮기고, Skia·WebView2 패키지 핀이 바뀌었으면
+luil을 올릴 때는 submodule 핀을 새 커밋으로 옮기고, Skia 패키지 핀이 바뀌었으면
 2.1의 스크립트를 다시 실행하며, `tests/dependency_versions_tests.cpp`의 Skia milestone과
 [ADR-007](decisions/ADR-007-luil-ui-framework-adoption.md)의 핀 기록을 함께 맞춘다.

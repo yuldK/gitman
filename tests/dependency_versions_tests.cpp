@@ -4,7 +4,7 @@
 #include <catch2/catch_version_macros.hpp>
 #include <nlohmann/json.hpp>
 
-static_assert(SK_MILESTONE == 152);
+static_assert(SK_MILESTONE == 157);
 static_assert(NLOHMANN_JSON_VERSION_MAJOR == 3);
 static_assert(NLOHMANN_JSON_VERSION_MINOR == 12);
 static_assert(NLOHMANN_JSON_VERSION_PATCH == 0);
@@ -19,5 +19,5 @@ TEST_CASE("Build uses pinned dependency versions", "[dependencies]")
         { "nlohmann_json", NLOHMANN_JSON_VERSION_MAJOR },
         { "catch2", CATCH_VERSION_MAJOR },
     };
-    REQUIRE(version.at("skia") == 152);
+    REQUIRE(version.at("skia") == 157);
 }

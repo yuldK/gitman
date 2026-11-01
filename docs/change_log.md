@@ -1,5 +1,24 @@
 # 변경 이력
 
+## 2026-11-02 - luil 최신판 채택과 UI/UX 점검 (feature/luil-latest-ui)
+
+### 사용자 지시
+
+- gitman이 최신 luil을 쓰도록 개선하고 전반적인 UI/UX를 확인해 고친다. 같은 luil을
+  쓰는 cyella를 전반적으로 참고한다.
+
+### luil 갱신
+
+- 핀 `c971f32` → `d87096b` (291 커밋). Skia 패키지가 152 → 157(clang-cl 빌드)로 바뀌어
+  `dependency_versions_tests`의 milestone을 157로 맞췄다. 앱 코드는 고칠 곳 없이
+  빌드됐다.
+- 스타일 검사 test가 구성 시점의 PowerShell 절대 경로를 build 디렉터리에 굳혀, PowerShell이
+  자리를 옮기자 늘 실패했다. luil `c97ed6e`처럼 `run_style_check.cmake`가 돌 때마다 PATH에서
+  찾게 했다.
+- 지난 이식에서 luil에 요청한 것 중 들어온 셋을 채택했다: `LUIL_ENABLE_WEBVIEW=OFF`
+  (WebView2 SDK 준비와 고지가 빠짐), `fetch_skia.ps1 -Offline`, 한국어 시작 오류 상자.
+  ADR-007에 갱신 절을 더했다.
+
 ## 2026-09-06 - luil 채택 구현 시작 (feature/luil-migration)
 
 ### 사용자 지시

@@ -48,17 +48,16 @@ Git과 SVN 실행 파일은 `PATH`에서 자동 탐색합니다. 열린 `.versio
   - Windows SDK 10.0.22621.0 이상
 - Python 3.9 이상과 Pillow (앱 아이콘을 다시 만들 때만)
 
-CMake가 의존성을 자동으로 내려받지는 않습니다. submodule과 luil의 패키지 스크립트로 준비합니다. UI 프레임워크 luil은 `third_party/luil` submodule이며, luil이 쓰는 Skia 패키지(미리 빌드된 정적 라이브러리)와 WebView2 SDK는 luil의 스크립트가 해시를 확인하며 설치합니다. Skia를 직접 빌드하지 않으며 GN·Ninja도 필요하지 않습니다.
+CMake가 의존성을 자동으로 내려받지는 않습니다. submodule과 luil의 패키지 스크립트로 준비합니다. UI 프레임워크 luil은 `third_party/luil` submodule이며, luil이 쓰는 Skia 패키지(미리 빌드된 정적 라이브러리)는 luil의 스크립트가 해시를 확인하며 설치합니다. Skia를 직접 빌드하지 않으며 GN·Ninja도 필요하지 않습니다.
 
 ```powershell
 git submodule update --init third_party/nlohmann-json
 git submodule update --init third_party/luil
 git -C third_party/luil submodule update --init third_party/nlohmann_json
 third_party\luil\scripts\fetch_skia.ps1 -Configuration Debug,Release
-third_party\luil\scripts\fetch_webview2.ps1
 ```
 
-제한된 환경에서는 아카이브를 브라우저로 받아 `third_party/luil/third_party/skia-prep-archives/`와 `webview2-prep-archives/`에 두고 같은 스크립트를 실행합니다. 절차의 근거는 [ADR-007](docs/decisions/ADR-007-luil-ui-framework-adoption.md)에 있습니다.
+제한된 환경에서는 아카이브를 브라우저로 받아 `third_party/luil/third_party/skia-prep-archives/`에 두고 같은 스크립트를 `-Offline`으로 실행합니다. 절차의 근거는 [ADR-007](docs/decisions/ADR-007-luil-ui-framework-adoption.md)에 있습니다.
 
 테스트까지 빌드하려면 Catch2 submodule도 초기화합니다.
 
@@ -246,7 +245,7 @@ ctest --preset vs2022-tests-debug -R Git
 
 ## 배포와 데이터
 
-Gitman은 installer나 MSIX 없이 `bin\gitman.exe`를 원하는 위치에 복사해 배포합니다. luil(Skia·WebView2 로더 포함)과 C/C++ runtime은 정적으로 연결되고, Codicons·앱 아이콘·제3자 라이선스 고지문은 실행 파일 resource에 포함됩니다. Git/SVN CLI는 외부 prerequisite입니다.
+Gitman은 installer나 MSIX 없이 `bin\gitman.exe`를 원하는 위치에 복사해 배포합니다. luil(Skia 포함)과 C/C++ runtime은 정적으로 연결되고, Codicons·앱 아이콘·제3자 라이선스 고지문은 실행 파일 resource에 포함됩니다. Git/SVN CLI는 외부 prerequisite입니다.
 
 사용자 데이터는 다음 위치에 저장됩니다.
 

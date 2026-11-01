@@ -154,9 +154,9 @@ gitman_disable_automatic_windows_manifest(gitman_tests)
 # timeout을 부여한다. 가장 긴 통합 test 기준으로 여유를 둔 값이다.
 catch_discover_tests(gitman_tests PROPERTIES TIMEOUT 120)
 
+# PowerShell은 script가 돌 때 PATH에서 찾는다 (run_style_check.cmake에 이유가 있다).
 add_test(NAME gitman_source_style
     COMMAND "${CMAKE_COMMAND}"
-        "-DPOWERSHELL_EXECUTABLE=${GITMAN_POWERSHELL_EXECUTABLE}"
         "-DROOT_DIRECTORY=${PROJECT_SOURCE_DIR}"
         -P "${GITMAN_SOURCE_STYLE_CMAKE_SCRIPT}")
 add_test(NAME gitman_smoke_cpu

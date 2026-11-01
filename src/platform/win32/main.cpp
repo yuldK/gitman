@@ -87,6 +87,9 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
     config.simulate_direct3d_failure = options.simulate_direct3d_failure;
     config.smoke_test = options.smoke_test;
     config.accept_file_drop = true;
+    // 시작 실패(리소스 검증·창 생성) 상자다. 진단 글은 luil이 그대로 뒤에 붙인다.
+    config.startup_error.title = u8"Gitman 시작 오류";
+    config.startup_error.preface = u8"Gitman을 시작할 수 없습니다.";
 
     // 앱의 세 조각이다. smoke 모드에서도 만든다 — luil이 host를 조립하지 않아 logic
     // thread는 서지 않지만, driver가 드는 worker pool과 로그 writer thread는 잠깐 섰다가

@@ -20,7 +20,7 @@ Git/SVN CLI는 단일 파일 범위에서 제외된 유일한 외부 prerequisit
 
 ## 2. 설치
 
-배포 산출물은 `bin/gitman.exe` 파일 하나다 (luil·Skia·WebView2 로더·C/C++ runtime
+배포 산출물은 `bin/gitman.exe` 파일 하나다 (luil·Skia·C/C++ runtime
 정적 연결, Codicons font·앱 아이콘·제3자 고지문 resource embed). 설치는 이 파일을 원하는
 위치에 복사하는 것으로 끝난다. installer, MSIX, 레지스트리 필수 항목이 없다.
 
@@ -91,7 +91,7 @@ bin\gitman.exe --register-file-association
 
 ## 8. 제3자 고지
 
-Skia와 그 번들 구성 요소(luil 패키지의 `NOTICE.md`), WebView2 SDK, nlohmann/json,
+Skia와 그 번들 구성 요소(luil 패키지의 `NOTICE.md`), nlohmann/json,
 VS Code Codicons(font·mapping)의 라이선스 고지문이 실행 파일 resource
 (`IDR_THIRD_PARTY_NOTICES`, `IDR_CODICONS_LICENSE*`, luil의 `.rc` 조각 ID 101~104)에
 embed된다. 고지문은 luil의 생성기가 빌드 시 라이선스 원문에서 만들며, 의존성

@@ -28,7 +28,6 @@ set(GITMAN_GENERATED_RESOURCE "${GITMAN_GENERATED_DIRECTORY}/gitman.rc")
 set(GITMAN_GENERATED_LUIL_RESOURCE "${GITMAN_GENERATED_DIRECTORY}/luil_resources.rc")
 set(GITMAN_THIRD_PARTY_NOTICES
     "${GITMAN_GENERATED_DIRECTORY}/third_party_notices.txt")
-set(GITMAN_SOURCE_STYLE_SCRIPT "${PROJECT_SOURCE_DIR}/scripts/check_source_style.ps1")
 set(GITMAN_SOURCE_STYLE_CMAKE_SCRIPT "${GITMAN_CMAKE_DIRECTORY}/run_style_check.cmake")
 
 # 의존성 위치. 전부 submodule이다. Skia·WebView2 SDK는 luil의 패키지 스크립트가
@@ -71,23 +70,24 @@ gitman_apply_msvc_options(
     ENABLE_ANALYZE "${GITMAN_ENABLE_MSVC_ANALYZE}"
 )
 
-find_program(GITMAN_POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
-
 # 의존성은 submodule과 luil이 준비한 패키지로만 구성한다 (ADR-006·ADR-007). 취득을
 # 자동화하지 않으므로 configure는 네트워크를 전혀 쓰지 않는다.
 include("${GITMAN_CMAKE_DIRECTORY}/dependencies.cmake")
 gitman_find_dependencies(BUILD_TESTS ${GITMAN_BUILD_TESTS})
 
-# UI 프레임워크 luil (ADR-007). submodule 안의 Skia 패키지·WebView2 SDK는 luil의
-# 스크립트가 준비하며 configure는 존재만 검사한다. Skia·nlohmann(single_include)·
-# WebView2 로더는 luil::luil이 PUBLIC으로 나른다.
+# UI 프레임워크 luil (ADR-007). submodule 안의 Skia 패키지는 luil의 스크립트가
+# 준비하며 configure는 존재만 검사한다. Skia·nlohmann(single_include)은
+# luil::luil이 PUBLIC으로 나른다.
 #  - LUIL_BUILD_TESTS는 반드시 OFF다. 켜면 luil이 자기 Catch2를 같은 바이너리
 #    디렉터리(third_party/catch2)에 add_subdirectory해 gitman의 것과 충돌한다.
+#  - LUIL_ENABLE_WEBVIEW는 OFF다. gitman은 웹 내용을 띄우지 않으므로 WebView2
+#    SDK 준비·정적 로더·고지 항목을 지지 않는다 (ADR-007 결정 3).
 #  - SYSTEM: luil 공개 헤더를 gitman의 /W4·/analyze 밖에 둔다.
 #  - 정적 CRT 설정은 project() 앞의 것을 luil이 그대로 따른다.
 set(LUIL_BUILD_TESTS OFF)
 set(LUIL_BUILD_EXAMPLES OFF)
 set(LUIL_BUILD_TOOLING OFF)
+set(LUIL_ENABLE_WEBVIEW OFF)
 add_subdirectory(third_party/luil SYSTEM)
 # luil의 고지·resource 함수는 호출 scope의 세 변수를 읽는다. 하위 디렉터리의
 # 일반 변수는 부모로 올라오지 않으므로 여기서 다시 정한다.
@@ -119,12 +119,11 @@ if(GITMAN_BUILD_TOOLING)
             "${GITMAN_SOURCE_DIRECTORY}"
             "${GITMAN_TEST_DIRECTORY}"
         FILE_EXTENSIONS cpp h
+        # 스타일 검사는 PowerShell을 돌 때 PATH에서 찾는 script로 부른다 (run_style_check.cmake).
         CHECK_COMMAND
-            "${GITMAN_POWERSHELL_EXECUTABLE}"
-            -NoProfile
-            -ExecutionPolicy Bypass
-            -File "${GITMAN_SOURCE_STYLE_SCRIPT}"
-            -root "${PROJECT_SOURCE_DIR}"
+            "${CMAKE_COMMAND}"
+            "-DROOT_DIRECTORY=${PROJECT_SOURCE_DIR}"
+            -P "${GITMAN_SOURCE_STYLE_CMAKE_SCRIPT}"
     )
     gitman_set_ide_folder("Tooling"
         gitman_format

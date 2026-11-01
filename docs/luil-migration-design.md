@@ -777,6 +777,11 @@ L3 신설 파일, L5 표의 element 28개 파일, L9 표의 test.
 - `plan_drag_overlay` 강조 opt-out — `drag_payload::suppress_drop_highlight`.
 - `LUIL_DEFAULT_ACCENT_ID` (gitman은 기본값 `mint`를 그대로 쓴다).
 
+반영됨 (luil `d87096b`, 2026-11-02 확인): 아래 요청 중 `LUIL_ENABLE_WEBVIEW`,
+fetch `-Offline`, 시작 오류 상자(`window_config::startup_error`),
+`LUIL_WARNINGS_AS_ERRORS`, 고지 머리글의 `;`(`string(CONCAT …)`). gitman은 앞의 셋을
+채택했다 (ADR-007 갱신). 지우기 버튼 글리프는 아직 형제 구조로 둔다.
+
 luil에 추가로 요청하는 것 (2026-09-06, 이번 이식은 없어도 진행한다):
 
 - `LUIL_ENABLE_WEBVIEW=OFF` 옵션 (WebView2 SDK 준비·정적 로더 링크·고지 항목을

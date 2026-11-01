@@ -10,6 +10,13 @@
 - 삭제한 Skia 작업 트리(빌드 산출물 포함)는 `E:\Programming\Lusain\gitman-skia-backup\`에 옮겨 두었다. 저장소 밖이라 필요 없으면 지운다.
 - luil에 요청해 둔 후속(없어도 동작): `LUIL_ENABLE_WEBVIEW=OFF`, fetch 스크립트 `-Offline`, 시작 오류 상자 훅, `LUIL_WARNINGS_AS_ERRORS`, 텍스트 칸 지우기 글리프, 고지 생성기의 `;` 잔재. 목록은 설계 문서 부록 B.
 
+## 0.1 2026-11-02 추가 — luil 최신판과 UI/UX 점검
+
+- luil 핀을 `d87096b`(Skia 157 패키지)로 올렸다. WebView2는 `LUIL_ENABLE_WEBVIEW=OFF`로
+  빼서 준비 절차는 `fetch_skia.ps1` 하나다. 근거는 ADR-007의 "갱신 (2026-11-02)" 절이다.
+- 같은 브랜치(`feature/luil-latest-ui`)에서 UI/UX 점검 결과를 고쳤다. 내용은
+  `change_log.md`의 2026-11-02 항목이다.
+
 ## 1. 현재 상태
 
 - 기준일: 2026-08-19

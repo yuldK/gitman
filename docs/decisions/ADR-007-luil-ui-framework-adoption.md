@@ -106,6 +106,19 @@ Skia 취득 측면에서 ADR-006의 구성은 submodule 10개(그중 ICU는
 - 실행 파일 고지에 Skia·WebView2·nlohmann/json·Codicons 항목이 모두 있다.
 - 전체 CTest(Debug·Release)와 smoke test 4종이 통과한다.
 
+## 갱신 (2026-11-02)
+
+- 핀을 `d87096b9…`(luil main, 2026-11-02)로 옮긴다. 이 판의 skia-prep 패키지는
+  Skia milestone 157, commit `b94213a11b3a…`, package revision 1이며 clang-cl로
+  빌드되어 있다. 결정 2의 "152, `0873ec164a06…`"은 이 값으로 읽는다.
+- 결정 3을 바꾼다. luil에 `LUIL_ENABLE_WEBVIEW` 옵션이 생겨 gitman은 이를 OFF로
+  구성한다. WebView2 SDK 준비(`fetch_webview2.ps1`)·정적 로더·고지 항목이 빠지고,
+  결과의 "실행 파일 크기" 항목과 검증 방법의 WebView2 고지 항목은 더 해당하지 않는다.
+- 결정 4의 오프라인 경로는 `fetch_skia.ps1 -Offline`으로 네트워크 시도 없이 실패할
+  수 있게 되었다.
+- 시작 실패 메시지 상자의 제목·첫 문단을 `window_config::startup_error`로 한국어로
+  정한다 (설계 2.4의 "한국어 브랜딩 메시지가 사라진다"를 되돌린다).
+
 ## 근거 자료
 
 - luil `docs/concepts/consumer-contract.md`, `docs/concepts/build-system.md`,

@@ -102,6 +102,31 @@ namespace gitman::ui {
         return luil::make_text_font(context, { .size = size, .face = luil::text_layout_face::code });
     }
 
+    // 한 줄 글의 규칙이다 (text-font-migration-design 6.2). 크기는 논리 픽셀이다.
+    struct text_line_style
+    {
+        float size { 12.0f };
+        luil::font_weight weight { luil::font_weight::regular };
+        luil::text_layout_face face { luil::text_layout_face::ui };
+        // 넘치면 줄이는 자리다. 경로는 `start`라 폴더 이름(끝)이 남는다.
+        luil::text_elide elide { luil::text_elide::end };
+        luil::text_align align { luil::text_align::start };
+        // 있으면 `face` 대신 이 글꼴이다 (글꼴 선택 dialog의 미리 보기).
+        sk_sp<SkTypeface> typeface {};
+    };
+
+    // 한 줄 글을 `box`(물리 픽셀)에 세로 가운데로 놓아 그린다. 기준선은 지금까지 손으로
+    // 셈하던 `box.y + centered_text_baseline(font, box.height)`와 같다. 그린 자리를 돌려준다.
+    inline rect_f draw_text_line(draw_context& context, const std::u8string_view text, const rect_f& box, const SkPaint& paint, const text_line_style& line)
+    {
+        luil::text_block_style style {};
+        style.font = { .size = line.size, .face = line.face, .weight = line.weight, .typeface = line.typeface };
+        style.align = line.align;
+        style.vertical = luil::text_vertical_align::center;
+        style.elide = line.elide;
+        return luil::draw_text_block(context, text, box, style, paint);
+    }
+
     // codicon 글리프다. 아이콘은 글자 크기 규칙을 따르지 않고 화면 배율만 곱한다
     // (luil `font_scale.h`, luil 단추도 같다).
     [[nodiscard]] inline SkFont icon_font(const draw_context& context, const float size)

@@ -277,9 +277,9 @@ namespace gitman::ui {
             outline.setStyle(SkPaint::kStroke_Style);
             outline.setStrokeWidth(1.0f * scale);
             context.canvas.drawRRect(SkRRect::MakeRectXY(ghost, 3.0f * scale, 3.0f * scale), outline);
-            const SkFont font { ui_font(context, 11.0f) };
             const std::u8string& text { visual.payload.label.empty() ? visual.payload.dragged_owner : visual.payload.label };
-            draw_text(context.canvas, text, ghost.left() + 7.0f * scale, ghost.top() + centered_text_baseline(font, ghost.height()), font, solid_paint(context.palette.primary_foreground));
+            const rect_f label_box { ghost.left() + 7.0f * scale, ghost.top(), ghost.width() - 14.0f * scale, ghost.height() };
+            draw_text_line(context, text, label_box, solid_paint(context.palette.primary_foreground), { .size = 11.0f });
             return;
         }
 

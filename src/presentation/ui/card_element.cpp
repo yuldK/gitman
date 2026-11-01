@@ -185,17 +185,20 @@ namespace gitman::ui {
             context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), border);
         }
 
-        const SkFont title_font { ui_font(context, 14.0f) };
-        const SkFont body_font { ui_font(context, 11.0f) };
         const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
         SkPaint dim_foreground { solid_paint(context.palette.primary_foreground) };
         dim_foreground.setAlphaf(0.6f);
 
+        // 세 줄의 상자다. 100%에서 기준선이 예전 손 계산(위 8 + 11, 그 아래 16)과 같은
+        // 자리에 서도록 잡았고, 줄마다 그 글이 시스템 글자 크기로 자란 만큼 커진다.
+        // 합은 `layout_card_height()`와 같다.
         const float padding { 8.0f * scale };
         const float text_x { box.x + layout_card_text_left * scale };
-        const float line_1 { box.y + padding + 11.0f * scale };
-        const float line_2 { line_1 + 16.0f * scale };
-        const float line_3_top { line_2 + 5.0f * scale };
+        const float title_top { box.y + 4.0f * scale };
+        const float title_height { (19.0f + text_growth(14.0f)) * scale };
+        const float path_top { title_top + title_height };
+        const float path_height { (15.0f + text_growth(11.0f)) * scale };
+        const float line_3_top { path_top + path_height + 2.0f * scale };
 
         // 상태 아이콘: 진행 중이면 sync, 아니면 상태 글리프다. 확인되지 않은
         // 상태(`?`)는 강조색 대신 비활성 계열로 흐리게 그려 정상처럼 보이지
@@ -216,8 +219,9 @@ namespace gitman::ui {
 
         // 글자가 버튼을 침범하지 않도록 arrange가 정한 한계 안에서만 그린다.
         const float text_width { text_limit_ - text_x };
-        static_cast<void>(draw_text_within(context.canvas, card_.display_name, text_x, line_1, text_width, title_font, foreground));
-        static_cast<void>(draw_text_within(context.canvas, card_.path, text_x, line_2, text_width, body_font, dim_foreground));
+        draw_text_line(context, card_.display_name, { text_x, title_top, text_width, title_height }, foreground, { .size = 14.0f });
+        // 경로는 앞을 줄여 저장소 폴더 이름(끝)을 남긴다 (설계 D6).
+        draw_text_line(context, card_.path, { text_x, path_top, text_width, path_height }, dim_foreground, { .size = 11.0f, .elide = luil::text_elide::start });
 
         // 세 번째 줄은 조각(chip)으로 그린다. 브랜치·리비전·상태·작업 트리를 같은
         // 폰트의 한 줄로 이어 붙이면 구분이 되지 않는다는 지적을 반영한 것이다.
@@ -323,7 +327,7 @@ namespace gitman::ui {
                 draw_centered_glyph(context.canvas, chip.glyph, icon_slot, glyph_font, foreground);
                 text_left += icon_width + gap * 0.5f;
             }
-            draw_text(context.canvas, text, text_left, row.y + centered_text_baseline(chip_font, row.height), chip_font, foreground);
+            draw_text_line(context, text, { text_left, row.y, limit - text_left, row.height }, foreground, { .size = 10.5f });
 
             left += width + gap;
             if (left >= limit)

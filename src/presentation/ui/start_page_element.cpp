@@ -85,8 +85,7 @@ namespace gitman::ui {
                 }
                 text_left += 22.0f * scale;
 
-                const SkFont font { ui_font(context, 13.0f) };
-                static_cast<void>(draw_text_within(context.canvas, label_, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - text_left, font, foreground));
+                draw_text_line(context, label_, { text_left, box.y, box.x + box.width - text_left, box.height }, foreground, { .size = 13.0f });
             }
 
         private:
@@ -188,11 +187,9 @@ namespace gitman::ui {
 
                 // 글은 양끝의 아이콘 버튼 사이에만 그린다.
                 const float right { box.x + box.width - (recent_icon_width + 4.0f) * scale };
-                const SkFont name_font { ui_font(context, 13.0f) };
-                const float baseline { box.y + centered_text_baseline(name_font, box.height) };
                 const float text_left { box.x + (recent_icon_width + 4.0f) * scale };
                 const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
-                const float name_width { draw_text_within(context.canvas, recent_.display_name, text_left, baseline, right - text_left, name_font, foreground) };
+                const float name_width { draw_text_line(context, recent_.display_name, { text_left, box.y, right - text_left, box.height }, foreground, { .size = 13.0f }).width };
 
                 // 폴더는 이름 뒤에 흐리게 붙는다. 남은 폭이 없으면 그리지 않는다.
                 const float folder_left { text_left + name_width + 8.0f * scale };
@@ -200,8 +197,10 @@ namespace gitman::ui {
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.55f);
-                    const SkFont folder_font { ui_font(context, 11.0f) };
-                    static_cast<void>(draw_text_within(context.canvas, recent_.folder, folder_left, baseline, right - folder_left, folder_font, dim));
+                    // 작은 폴더 글이 이름과 같은 기준선에 서도록 상자를 두 글꼴의 기준선 차만큼
+                    // 내린다. 넘치면 앞을 줄여 폴더 이름(끝)을 남긴다 (설계 D6).
+                    const float shift { centered_text_baseline(ui_font(context, 13.0f), box.height) - centered_text_baseline(ui_font(context, 11.0f), box.height) };
+                    draw_text_line(context, recent_.folder, { folder_left, box.y + shift, right - folder_left, box.height }, dim, { .size = 11.0f, .elide = luil::text_elide::start });
                 }
 
                 // 아이콘 버튼은 자식이다. 이 호출을 빠뜨려 삭제 버튼이 한 번도 그려지지
@@ -356,21 +355,16 @@ namespace gitman::ui {
         SkPaint dim { solid_paint(context.palette.primary_foreground) };
         dim.setAlphaf(0.55f);
 
-        const SkFont title_font { ui_font(context, 26.0f) };
-        static_cast<void>(draw_text_within(context.canvas, u8"Gitman", title_.x, title_.y + centered_text_baseline(title_font, title_.height), title_.width, title_font, foreground));
+        draw_text_line(context, u8"Gitman", title_, foreground, { .size = 26.0f });
+        draw_text_line(context, u8".version-list 작업공간을 열어 여러 저장소의 상태를 한 화면에서 관리합니다.", subtitle_, dim, { .size = 12.0f });
 
-        const SkFont body_font { ui_font(context, 12.0f) };
-        static_cast<void>(draw_text_within(context.canvas, u8".version-list 작업공간을 열어 여러 저장소의 상태를 한 화면에서 관리합니다.", subtitle_.x,
-            subtitle_.y + centered_text_baseline(body_font, subtitle_.height), subtitle_.width, body_font, dim));
-
-        const SkFont section_font { ui_font(context, 13.0f) };
-        static_cast<void>(draw_text_within(context.canvas, u8"시작", action_section_.x + 4.0f * scale,
-            action_section_.y + centered_text_baseline(section_font, layout_start_page_section_height() * scale), action_section_.width, section_font, dim));
+        // 머리글은 줄 왼쪽에서 4만큼 들어간다. 폭은 예전처럼 줄 폭 그대로다.
+        const float header_inset { 4.0f * scale };
+        const text_line_style section { .size = 13.0f };
+        draw_text_line(context, u8"시작", { action_section_.x + header_inset, action_section_.y, action_section_.width, layout_start_page_section_height() * scale }, dim, section);
         if (pinned_header_.width > 0.0f)
-            static_cast<void>(draw_text_within(context.canvas, u8"고정됨", pinned_header_.x + 4.0f * scale,
-                pinned_header_.y + centered_text_baseline(section_font, pinned_header_.height), pinned_header_.width, section_font, dim));
-        static_cast<void>(draw_text_within(context.canvas, u8"최근 항목", recent_header_.x + 4.0f * scale,
-            recent_header_.y + centered_text_baseline(section_font, recent_header_.height), recent_header_.width, section_font, dim));
+            draw_text_line(context, u8"고정됨", { pinned_header_.x + header_inset, pinned_header_.y, pinned_header_.width, pinned_header_.height }, dim, section);
+        draw_text_line(context, u8"최근 항목", { recent_header_.x + header_inset, recent_header_.y, recent_header_.width, recent_header_.height }, dim, section);
 
         draw_children(context, interaction);
 
@@ -386,7 +380,6 @@ namespace gitman::ui {
         if (notice.empty())
             return;
 
-        static_cast<void>(
-            draw_text_within(context.canvas, notice, recent_empty_.x + 4.0f * scale, recent_empty_.y + centered_text_baseline(body_font, recent_empty_.height), recent_empty_.width, body_font, dim));
+        draw_text_line(context, notice, { recent_empty_.x + header_inset, recent_empty_.y, recent_empty_.width, recent_empty_.height }, dim, { .size = 12.0f });
     }
 } // namespace gitman::ui

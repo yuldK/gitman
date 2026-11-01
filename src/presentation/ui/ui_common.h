@@ -6,14 +6,19 @@
 // platform/win32의 창 조립)만 include한다 — application·domain은 luil UI 헤더를
 // 들이지 않는다 (설계 1장).
 #include "luil/generated/codicons.h"
+#include "luil/text/font_style.h"
 #include "luil/theme/ui_theme.h"
 #include "luil/ui/draw_primitives.h"
 #include "luil/ui/layout_metrics.h"
+#include "luil/ui/text_block.h"
 #include "luil/ui/text_input_state.h"
 #include "luil/ui/ui_element.h"
 #include "luil/ui/ui_element_id.h"
 #include "luil/ui/ui_events.h"
 #include "luil/ui/ui_tree.h"
+
+#include "include/core/SkFont.h"
+#include "include/core/SkTypeface.h"
 
 namespace gitman::ui {
     // 코디콘 코드포인트 표다. 자산은 luil의 것과 byte 단위로 같다 (D7).
@@ -78,4 +83,29 @@ namespace gitman::ui {
     // 배치 상수·함수.
     using luil::clamp_scroll;
     using luil::tooltip_delay;
+
+    // ─── 직접 그리는 글의 글꼴 (text-font-migration-design 3.1) ────────────────
+    //
+    // 크기는 논리 픽셀이다. 배율과 시스템 글자 크기는 luil `make_text_font`가 곱하고,
+    // 굵기는 그 굵기의 진짜 face로 건다. element가 `SkFont { typeface, size * scale }`를
+    // 손으로 짓지 않는다 — 크기 규칙이 바뀔 때 그 자리만 따라오지 못한다.
+
+    // UI 글꼴이다.
+    [[nodiscard]] inline SkFont ui_font(const draw_context& context, const float size, const luil::font_weight weight = luil::font_weight::regular)
+    {
+        return luil::make_text_font(context, { .size = size, .weight = weight });
+    }
+
+    // 로그·diff 본문의 코드 글꼴이다. 문맥에 코드 글꼴이 없으면 luil이 UI 글꼴로 물러선다.
+    [[nodiscard]] inline SkFont code_font(const draw_context& context, const float size)
+    {
+        return luil::make_text_font(context, { .size = size, .face = luil::text_layout_face::code });
+    }
+
+    // codicon 글리프다. 아이콘은 글자 크기 규칙을 따르지 않고 화면 배율만 곱한다
+    // (luil `font_scale.h`, luil 단추도 같다).
+    [[nodiscard]] inline SkFont icon_font(const draw_context& context, const float size)
+    {
+        return SkFont { sk_ref_sp(context.codicon_typeface), size * (context.scale > 0.0f ? context.scale : 1.0f) };
+    }
 } // namespace gitman::ui

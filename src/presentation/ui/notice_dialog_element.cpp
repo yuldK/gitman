@@ -75,18 +75,15 @@ namespace gitman::ui {
                     text_left += 24.0f * scale;
                 }
 
-                const SkFont title_font { ui_font(context, 13.0f, luil::font_weight::bold) };
-                static_cast<void>(draw_text_within(context.canvas, dialog_.title, text_left, box.y + padding + centered_text_baseline(title_font, title_height * scale),
-                    box.x + box.width - padding - text_left, title_font, solid_paint(accent)));
+                draw_text_line(context, dialog_.title, { text_left, box.y + padding, box.x + box.width - padding - text_left, title_height * scale }, solid_paint(accent),
+                    { .size = 13.0f, .weight = luil::font_weight::bold });
 
-                const SkFont line_font { ui_font(context, 12.0f) };
                 SkPaint line_paint { solid_paint(context.palette.primary_foreground) };
                 line_paint.setAlphaf(0.85f);
                 float line_top { box.y + padding + title_height * scale };
                 for (const std::u8string& line : dialog_.lines)
                 {
-                    static_cast<void>(
-                        draw_text_within(context.canvas, line, box.x + padding, line_top + centered_text_baseline(line_font, line_height * scale), box.width - padding * 2.0f, line_font, line_paint));
+                    draw_text_line(context, line, { box.x + padding, line_top, box.width - padding * 2.0f, line_height * scale }, line_paint, { .size = 12.0f });
                     line_top += line_height * scale;
                 }
             }

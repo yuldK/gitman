@@ -46,15 +46,15 @@ namespace gitman::ui {
             border.setStrokeWidth(1.0f * scale);
             context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
-            const SkFont font { ui_font(context, 11.0f) };
             const float inset { 7.0f * scale };
             SkPaint foreground { solid_paint(context.palette.primary_foreground) };
             if (path.empty())
                 foreground.setAlphaf(0.5f);
             else if (enabled == false)
                 foreground.setAlphaf(0.45f);
-            static_cast<void>(
-                draw_text_within(context.canvas, path.empty() ? placeholder : path, box.x + inset, box.y + centered_text_baseline(font, box.height), box.width - inset * 2.0f, font, foreground));
+            // 폴더 경로는 앞을 줄여 끝의 폴더 이름을 남긴다 (설계 D6). 안내 글은 끝을 줄인다.
+            const luil::text_elide elide { path.empty() ? luil::text_elide::end : luil::text_elide::start };
+            draw_text_line(context, path.empty() ? placeholder : path, { box.x + inset, box.y, box.width - inset * 2.0f, box.height }, foreground, { .size = 11.0f, .elide = elide });
         }
 
         class generate_panel_element final : public ui_element
@@ -85,11 +85,10 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { ui_font(context, 13.0f) };
-                static_cast<void>(draw_text_within(context.canvas, std::u8string_view { u8"새 문서 만들기" }, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font,
-                    solid_paint(context.palette.primary_foreground)));
+                draw_text_line(context, u8"새 문서 만들기", text_box_at_baseline(context, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, { .size = 13.0f }),
+                    solid_paint(context.palette.primary_foreground), { .size = 13.0f });
 
-                const SkFont label_font { ui_font(context, 11.0f) };
+                const float row_height { layout_generate_dialog_row_height() * scale };
                 const float label_left { box.x + padding };
                 const float field_left { label_left + layout_generate_dialog_label_width * scale };
                 const float field_right { box.x + box.width - padding };
@@ -98,7 +97,7 @@ namespace gitman::ui {
                     const float top { box.y + row_top(index) * scale };
                     SkPaint paint { solid_paint(context.palette.primary_foreground) };
                     paint.setAlphaf(enabled ? 0.8f : 0.4f);
-                    draw_text(context.canvas, text, label_left, top + centered_text_baseline(label_font, layout_generate_dialog_row_height() * scale), label_font, paint);
+                    draw_text_line(context, text, { label_left, top, field_left - label_left, row_height }, paint, { .size = 11.0f });
                 };
 
                 label_at(0, u8"이름", true);
@@ -122,15 +121,14 @@ namespace gitman::ui {
                 SkPaint preview_paint { solid_paint(context.palette.primary_foreground) };
                 preview_paint.setAlphaf(0.6f);
                 const std::u8string_view preview { dialog_.document_path.empty() ? std::u8string_view { u8"만들 경로: —" } : std::u8string_view { dialog_.document_path } };
-                static_cast<void>(draw_text_within(context.canvas, preview, label_left, preview_top + centered_text_baseline(label_font, layout_generate_dialog_row_height() * scale),
-                    box.width - padding * 2.0f, label_font, preview_paint));
+                // 만들 경로도 앞을 줄여 문서 이름(끝)을 남긴다 (설계 D6).
+                draw_text_line(context, preview, { label_left, preview_top, box.width - padding * 2.0f, row_height }, preview_paint, { .size = 11.0f, .elide = luil::text_elide::start });
 
                 if (dialog_.message.empty() == false)
                 {
                     const float message_top { box.y + row_top(5) * scale };
                     const ui_color color { dialog_.executing ? context.palette.primary_foreground : context.palette.warning_accent };
-                    static_cast<void>(draw_text_within(context.canvas, dialog_.message, label_left, message_top + centered_text_baseline(label_font, layout_generate_dialog_row_height() * scale),
-                        box.width - padding * 2.0f, label_font, solid_paint(color)));
+                    draw_text_line(context, dialog_.message, { label_left, message_top, box.width - padding * 2.0f, row_height }, solid_paint(color), { .size = 11.0f });
                 }
 
                 draw_children(context, interaction);

@@ -127,6 +127,17 @@ namespace gitman::ui {
         return luil::draw_text_block(context, text, box, style, paint);
     }
 
+    // 기준선 `baseline`(물리 픽셀)에 글이 서는 한 줄 상자다. dialog 제목·안내처럼 자리를
+    // 기준선으로 정해 둔 글을 `draw_text_line`으로 옮길 때 쓴다 — 같은 글꼴의 지표로
+    // 상자 위쪽을 되짚으므로 기준선이 그대로다. 상자 높이는 그 글의 한 줄 높이라
+    // 글자 크기를 따라 자란다.
+    [[nodiscard]] inline rect_f text_box_at_baseline(const draw_context& context, const float x, const float baseline, const float width, const text_line_style& line)
+    {
+        const float height { luil::text_line_height(line.size, 7.0f) * (context.scale > 0.0f ? context.scale : 1.0f) };
+        const SkFont font { luil::make_text_font(context, { .size = line.size, .face = line.face, .weight = line.weight, .typeface = line.typeface }) };
+        return { x, baseline - luil::centered_text_baseline(font, height), width, height };
+    }
+
     // codicon 글리프다. 아이콘은 글자 크기 규칙을 따르지 않고 화면 배율만 곱한다
     // (luil `font_scale.h`, luil 단추도 같다).
     [[nodiscard]] inline SkFont icon_font(const draw_context& context, const float size)

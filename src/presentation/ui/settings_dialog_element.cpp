@@ -509,11 +509,11 @@ namespace gitman::ui {
                     text_left += 22.0f * scale;
                 }
 
-                const SkFont font { ui_font(context, 12.0f, selected_ ? luil::font_weight::bold : luil::font_weight::regular) };
                 SkPaint text { solid_paint(foreground) };
                 if (selected_ == false)
                     text.setAlphaf(hovered ? 0.95f : 0.75f);
-                static_cast<void>(draw_text_within(context.canvas, label_, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - text_left - 6.0f * scale, font, text));
+                draw_text_line(context, label_, { text_left, box.y, box.x + box.width - text_left - 6.0f * scale, box.height }, text,
+                    { .size = 12.0f, .weight = selected_ ? luil::font_weight::bold : luil::font_weight::regular });
             }
 
         private:
@@ -662,14 +662,13 @@ namespace gitman::ui {
                 border.setStrokeWidth(1.0f * scale);
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
-                const SkFont font { ui_font(context, 10.0f, defined_ ? luil::font_weight::bold : luil::font_weight::regular) };
                 // 전역을 따르는 항목은 비활성 색이라 배지가 앞으로 나오지 않는다.
                 SkPaint text_paint { solid_paint(defined_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (defined_ == false)
                     text_paint.setAlphaf(0.45f);
                 const std::u8string_view text { defined_ ? u8"문서 설정" : u8"전역 설정" };
-                const float width { measure_text(text, font) };
-                draw_text(context.canvas, text, box.x + (box.width - width) / 2.0f, box.y + centered_text_baseline(font, box.height), font, text_paint);
+                draw_text_line(context, text, box, text_paint,
+                    { .size = 10.0f, .weight = defined_ ? luil::font_weight::bold : luil::font_weight::regular, .align = luil::text_align::center });
             }
 
         private:
@@ -780,9 +779,9 @@ namespace gitman::ui {
                         solid_paint(context.palette.primary_foreground));
                     title_left += 19.0f * scale;
                 }
-                const SkFont title_font { ui_font(context, 13.0f, luil::font_weight::bold) };
-                static_cast<void>(draw_text_within(
-                    context.canvas, title_, title_left, box.y + padding + 11.0f * scale, box.x + box.width - padding - title_left, title_font, solid_paint(context.palette.primary_foreground)));
+                const text_line_style title { .size = 13.0f, .weight = luil::font_weight::bold };
+                draw_text_line(context, title_, text_box_at_baseline(context, title_left, box.y + padding + 11.0f * scale, box.x + box.width - padding - title_left, title),
+                    solid_paint(context.palette.primary_foreground), title);
             }
 
             void draw_rail_separator(draw_context& context, const rect_f& box, const float scale) const
@@ -797,9 +796,7 @@ namespace gitman::ui {
 
             void draw_sections(draw_context& context, const float scale) const
             {
-                const SkFont header_font { ui_font(context, 11.0f, luil::font_weight::bold) };
-                const SkFont title_font { ui_font(context, 12.0f, luil::font_weight::bold) };
-                const SkFont value_font { ui_font(context, 11.0f) };
+                const text_line_style header_style { .size = 11.0f, .weight = luil::font_weight::bold };
 
                 std::size_t item_index { 0 };
                 for (std::size_t section = 0; section < active_.sections.size(); ++section)
@@ -809,7 +806,8 @@ namespace gitman::ui {
                     const rect_f header { layout_.section_headers[section] };
                     SkPaint header_paint { solid_paint(context.palette.primary_foreground) };
                     header_paint.setAlphaf(0.55f);
-                    static_cast<void>(draw_text_within(context.canvas, active_.sections[section].title, header.x, header.y + 13.0f * scale, header.width, header_font, header_paint));
+                    draw_text_line(context, active_.sections[section].title, text_box_at_baseline(context, header.x, header.y + 13.0f * scale, header.width, header_style), header_paint,
+                        header_style);
                     // 섹션 제목 아래 실선이 항목 묶음의 경계를 만든다.
                     context.canvas.drawRect(
                         SkRect::MakeXYWH(header.x, header.y + header.height - 6.0f * scale, header.width, 1.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.12f)));
@@ -818,13 +816,13 @@ namespace gitman::ui {
                     {
                         if (item_index >= layout_.items.size())
                             break;
-                        draw_item(context, scale, item, layout_.items[item_index], title_font, value_font);
+                        draw_item(context, scale, item, layout_.items[item_index]);
                         ++item_index;
                     }
                 }
             }
 
-            void draw_item(draw_context& context, const float scale, const item_model& item, const item_bounds& bounds, const SkFont& title_font, const SkFont& value_font) const
+            void draw_item(draw_context& context, const float scale, const item_model& item, const item_bounds& bounds) const
             {
                 // 덮어쓴 항목은 블록 자체에 옅은 강조 바탕을 깔아 배지와 이어 보인다
                 // (S4.2).
@@ -835,8 +833,9 @@ namespace gitman::ui {
                 }
 
                 // 세부 기능 타이틀은 키 컬러 + semi-bold로 강조한다.
-                static_cast<void>(draw_text_within(context.canvas, item.title, bounds.title_line.x, bounds.title_line.y + 15.0f * scale, bounds.title_line.width, title_font,
-                    solid_paint(context.palette.accent_emphasis_foreground)));
+                const text_line_style title { .size = 12.0f, .weight = luil::font_weight::bold };
+                draw_text_line(context, item.title, text_box_at_baseline(context, bounds.title_line.x, bounds.title_line.y + 15.0f * scale, bounds.title_line.width, title),
+                    solid_paint(context.palette.accent_emphasis_foreground), title);
 
                 // 타이틀이 아닌 본문은 흐리게 그려 위계를 만든다. 빈 값은 안내 문구다.
                 if (item.value.empty() && item.placeholder.empty())
@@ -844,17 +843,19 @@ namespace gitman::ui {
                 SkPaint value_paint { solid_paint(context.palette.primary_foreground) };
                 value_paint.setAlphaf(item.value.empty() ? 0.45f : 0.65f);
                 const std::u8string& shown { item.value.empty() ? item.placeholder : item.value };
-                static_cast<void>(draw_text_within(context.canvas, shown, bounds.value_line.x, bounds.value_line.y + 13.0f * scale, bounds.value_line.width, value_font, value_paint));
+                // 실행 파일 경로는 앞을 줄여 끝의 파일 이름을 남긴다 (설계 D6). 설명 글은 끝을 줄인다.
+                const bool path { item.value.empty() == false && (item.kind == item_kind::git_executable || item.kind == item_kind::svn_executable) };
+                const text_line_style value { .size = 11.0f, .elide = path ? luil::text_elide::start : luil::text_elide::end };
+                draw_text_line(context, shown, text_box_at_baseline(context, bounds.value_line.x, bounds.value_line.y + 13.0f * scale, bounds.value_line.width, value), value_paint, value);
             }
 
             void draw_message(draw_context& context, const rect_f& box, const float scale) const
             {
                 if (message_.empty())
                     return;
-                const SkFont body_font { ui_font(context, 11.0f) };
                 const float top { box.y + box.height - (panel_padding + action_button_height + message_height) * scale };
-                static_cast<void>(draw_text_within(
-                    context.canvas, message_, box.x + panel_padding * scale, top + 12.0f * scale, box.width - panel_padding * 2.0f * scale, body_font, solid_paint(context.palette.warning_accent)));
+                draw_text_line(context, message_, text_box_at_baseline(context, box.x + panel_padding * scale, top + 12.0f * scale, box.width - panel_padding * 2.0f * scale, { .size = 11.0f }),
+                    solid_paint(context.palette.warning_accent), { .size = 11.0f });
             }
 
             std::u8string title_ {};

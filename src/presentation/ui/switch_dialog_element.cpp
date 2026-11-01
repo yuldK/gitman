@@ -172,7 +172,6 @@ namespace gitman::ui {
                     text_left += 18.0f * scale;
                 }
 
-                const SkFont font { ui_font(context, 11.5f) };
                 SkPaint foreground { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (candidate_.stale)
                     foreground.setAlphaf(0.6f);
@@ -181,7 +180,7 @@ namespace gitman::ui {
                     text += u8" (현재 브랜치)";
                 if (candidate_.stale)
                     text += u8" (미갱신)";
-                static_cast<void>(draw_text_within(context.canvas, text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - inset - text_left, font, foreground));
+                draw_text_line(context, text, { text_left, box.y, box.x + box.width - inset - text_left, box.height }, foreground, { .size = 11.5f });
             }
 
         private:
@@ -219,9 +218,7 @@ namespace gitman::ui {
                     return;
                 }
 
-                const SkFont font { ui_font(context, 11.0f) };
-                draw_text(context.canvas, expanded_ ? std::u8string_view { u8"▾" } : std::u8string_view { u8"▸" }, box.x, box.y + centered_text_baseline(font, box.height), font,
-                    solid_paint(context.palette.primary_foreground));
+                draw_text_line(context, expanded_ ? std::u8string_view { u8"▾" } : std::u8string_view { u8"▸" }, box, solid_paint(context.palette.primary_foreground), { .size = 11.0f });
             }
 
         private:
@@ -307,9 +304,8 @@ namespace gitman::ui {
                 std::u8string text { row_.text };
                 if (row_.current)
                     text.append(u8" (현재 위치)");
-                const SkFont font { ui_font(context, 11.5f) };
                 const SkPaint foreground { solid_paint(row_.current ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
-                static_cast<void>(draw_text_within(context.canvas, text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - inset - text_left, font, foreground));
+                draw_text_line(context, text, { text_left, box.y, box.x + box.width - inset - text_left, box.height }, foreground, { .size = 11.5f });
                 draw_children(context, interaction);
             }
 
@@ -359,12 +355,10 @@ namespace gitman::ui {
                         draw_spinning_glyph(context.canvas, codicons::icon_loading, icon_box, glyph_font, icon_paint, context.now);
                     text_left += 18.0f * scale;
                 }
-                const SkFont font { ui_font(context, 11.0f) };
                 SkPaint foreground { solid_paint(color) };
                 if (failed == false)
                     foreground.setAlphaf(0.6f);
-                static_cast<void>(
-                    draw_text_within(context.canvas, row_.text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - 6.0f * scale - text_left, font, foreground));
+                draw_text_line(context, row_.text, { text_left, box.y, box.x + box.width - 6.0f * scale - text_left, box.height }, foreground, { .size = 11.0f });
             }
 
         private:
@@ -414,22 +408,20 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { ui_font(context, 13.0f) };
                 std::u8string heading { svn_browser_ ? std::u8string { u8"SVN 저장소 전환 - " } : std::u8string { u8"전환 - " } };
                 heading += title_;
                 if (stale_ && svn_browser_ == false)
                     heading += u8" (일부 후보 미갱신)";
-                static_cast<void>(draw_text_within(
-                    context.canvas, heading, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
+                draw_text_line(context, heading, text_box_at_baseline(context, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, { .size = 13.0f }),
+                    solid_paint(context.palette.primary_foreground), { .size = 13.0f });
 
-                const SkFont body_font { ui_font(context, 11.0f) };
                 // 목록이 비었을 때의 안내 문구는 logic이 정한다 (필터 결과 없음과
                 // 후보 없음이 다른 말이다).
                 if (list_note_.empty() == false)
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.6f);
-                    static_cast<void>(draw_text_within(context.canvas, list_note_, list_area.x + 4.0f * scale, list_area.y + 16.0f * scale, list_area.width - 8.0f * scale, body_font, dim));
+                    draw_text_line(context, list_note_, text_box_at_baseline(context, list_area.x + 4.0f * scale, list_area.y + 16.0f * scale, list_area.width - 8.0f * scale, { .size = 11.0f }), dim, { .size = 11.0f });
                 }
 
                 context.canvas.save();
@@ -448,8 +440,8 @@ namespace gitman::ui {
                 if (message_.empty() == false)
                 {
                     const float message_top { list_area.y + list_area.height + 6.0f * scale };
-                    static_cast<void>(
-                        draw_text_within(context.canvas, message_, box.x + padding, message_top + 10.0f * scale, box.width - padding * 2.0f, body_font, solid_paint(context.palette.warning_accent)));
+                    draw_text_line(context, message_, text_box_at_baseline(context, box.x + padding, message_top + 10.0f * scale, box.width - padding * 2.0f, { .size = 11.0f }),
+                        solid_paint(context.palette.warning_accent), { .size = 11.0f });
                 }
             }
 

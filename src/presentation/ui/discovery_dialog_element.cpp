@@ -165,14 +165,13 @@ namespace gitman::ui {
                     text_left += 18.0f * scale;
                 }
 
-                const SkFont font { ui_font(context, 11.5f) };
                 SkPaint foreground { solid_paint(row_.checked ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (row_.candidate.selectable() == false)
                     foreground.setAlphaf(0.45f);
                 std::u8string text { row_.candidate.directory_name };
                 if (row_.candidate.exclusion != discovery_exclusion::none)
                     text += std::u8string { u8" (" } + std::u8string { exclusion_text(row_.candidate.exclusion) } + u8")";
-                static_cast<void>(draw_text_within(context.canvas, text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - inset - text_left, font, foreground));
+                draw_text_line(context, text, { text_left, box.y, box.x + box.width - inset - text_left, box.height }, foreground, { .size = 11.5f });
             }
 
         private:
@@ -216,19 +215,19 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { ui_font(context, 13.0f) };
-                static_cast<void>(draw_text_within(context.canvas, u8"하위 저장소 탐색·등록", box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font,
-                    solid_paint(context.palette.primary_foreground)));
+                draw_text_line(context, u8"하위 저장소 탐색·등록", text_box_at_baseline(context, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, { .size = 13.0f }),
+                    solid_paint(context.palette.primary_foreground), { .size = 13.0f });
 
-                const SkFont body_font { ui_font(context, 11.0f) };
                 SkPaint dim { solid_paint(context.palette.primary_foreground) };
                 dim.setAlphaf(0.65f);
-                static_cast<void>(draw_text_within(context.canvas, scan_root_, box.x + padding, box.y + padding + 30.0f * scale, box.width - padding * 2.0f, body_font, dim));
+                // 탐색한 폴더는 앞을 줄여 끝의 폴더 이름을 남긴다 (설계 D6).
+                draw_text_line(context, scan_root_, text_box_at_baseline(context, box.x + padding, box.y + padding + 30.0f * scale, box.width - padding * 2.0f, { .size = 11.0f }), dim,
+                    { .size = 11.0f, .elide = luil::text_elide::start });
 
                 if (loading_ || empty_)
                 {
                     const std::u8string_view note { loading_ ? std::u8string_view { u8"하위 폴더를 탐색하는 중입니다..." } : std::u8string_view { u8"깊이 1에서 발견된 후보가 없습니다." } };
-                    draw_text(context.canvas, note, list_area.x, list_area.y + 16.0f * scale, body_font, dim);
+                    draw_text_line(context, note, text_box_at_baseline(context, list_area.x, list_area.y + 16.0f * scale, list_area.width, { .size = 11.0f }), dim, { .size = 11.0f });
                 }
 
                 // 목록 행을 자기 영역으로 잘라 그린다. 행은 자식이라 함께 그려진다.
@@ -252,8 +251,8 @@ namespace gitman::ui {
                 if (footer.empty() == false)
                 {
                     const float footer_top { list_area.y + list_area.height + 6.0f * scale };
-                    static_cast<void>(
-                        draw_text_within(context.canvas, footer, box.x + padding, footer_top + 10.0f * scale, box.width - padding * 2.0f, body_font, solid_paint(context.palette.warning_accent)));
+                    draw_text_line(context, footer, text_box_at_baseline(context, box.x + padding, footer_top + 10.0f * scale, box.width - padding * 2.0f, { .size = 11.0f }),
+                        solid_paint(context.palette.warning_accent), { .size = 11.0f });
                 }
             }
 

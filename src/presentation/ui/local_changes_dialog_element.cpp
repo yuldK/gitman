@@ -125,8 +125,6 @@ namespace gitman::ui {
                 // 미추적 항목은 아직 저장소 밖의 파일이라 흐리게(비활성 느낌) 그린다.
                 const float dim { row_.untracked ? 0.55f : 1.0f };
                 const float inset { 6.0f * scale };
-                const SkFont badge_font { ui_font(context, 10.0f) };
-                const SkFont path_font { ui_font(context, 11.5f) };
 
                 // 배지는 고정 폭 상자로 그려 경로 시작 위치를 맞춘다. 미추적은 강조색
                 // 대신 중립색이고, 파일/폴더 codicon을 배지 라벨 안(글자 앞)에 그린다.
@@ -143,17 +141,14 @@ namespace gitman::ui {
                     draw_centered_glyph(context.canvas, row_.directory ? codicons::icon_folder : codicons::icon_file, { badge_text_left, box.y, 12.0f * scale, box.height }, glyph_font, badge_paint);
                     badge_text_left += 15.0f * scale;
                 }
-                static_cast<void>(draw_text_within(
-                    context.canvas, row_.badge, badge_text_left, box.y + centered_text_baseline(badge_font, box.height), badge_box.right() - 5.0f * scale - badge_text_left, badge_font, badge_paint));
+                draw_text_line(context, row_.badge, { badge_text_left, box.y, badge_box.right() - 5.0f * scale - badge_text_left, box.height }, badge_paint, { .size = 10.0f });
 
                 const float path_left { box.x + inset + badge_width + 8.0f * scale };
 
                 SkPaint foreground { solid_paint(row_.selected ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 foreground.setAlphaf(dim);
-                // 경로가 열기 아이콘과 겹치면 `...`으로 줄이고 아이콘은 유지한다.
-                const float available { text_limit_ - path_left };
-                const std::u8string shown { elide_text(row_.path, available, path_font) };
-                draw_text(context.canvas, shown, path_left, box.y + centered_text_baseline(path_font, box.height), path_font, foreground);
+                // 경로가 열기 아이콘과 겹치면 앞을 줄여 파일 이름(끝)을 남기고 아이콘은 유지한다 (설계 D6).
+                draw_text_line(context, row_.path, { path_left, box.y, text_limit_ - path_left, box.height }, foreground, { .size = 11.5f, .elide = luil::text_elide::start });
 
                 draw_children(context, interaction);
             }
@@ -192,7 +187,7 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.05f)));
 
                 // diff는 열이 맞아야 읽히므로 코드 글꼴을 쓴다 (F1).
-                const SkFont font { code_font(context, 11.0f) };
+                const text_line_style code { .size = 11.0f, .face = luil::text_layout_face::code };
                 const float inset { 7.0f * scale };
                 const float line_height { layout_local_changes_diff_line_height() * scale };
                 const float scroll { dialog_->diff_scroll * scale };
@@ -204,7 +199,7 @@ namespace gitman::ui {
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.6f);
-                    draw_text(context.canvas, u8"diff를 조회하는 중입니다...", box.x + inset, box.y + 16.0f * scale, font, dim);
+                    draw_text_line(context, u8"diff를 조회하는 중입니다...", text_box_at_baseline(context, box.x + inset, box.y + 16.0f * scale, box.width - inset * 2.0f, code), dim, code);
                 }
                 else
                 {
@@ -222,13 +217,12 @@ namespace gitman::ui {
                     {
                         const two_way_diff_row& row { dialog_->diff_rows[index] };
                         const float top { box.y + 4.0f * scale + static_cast<float>(index) * line_height - scroll };
-                        const float baseline { top + centered_text_baseline(font, line_height) };
 
                         if (row.heading)
                         {
                             SkPaint heading_paint { solid_paint(context.palette.primary_foreground) };
                             heading_paint.setAlphaf(0.55f);
-                            static_cast<void>(draw_text_within(context.canvas, row.left, left_text, baseline, box.width - inset * 2.0f, font, heading_paint));
+                            draw_text_line(context, row.left, { left_text, top, box.width - inset * 2.0f, line_height }, heading_paint, code);
                             continue;
                         }
 
@@ -246,14 +240,14 @@ namespace gitman::ui {
                             SkPaint left_paint { row.changed ? solid_paint(context.palette.error_accent) : solid_paint(context.palette.primary_foreground) };
                             if (row.changed == false)
                                 left_paint.setAlphaf(0.85f);
-                            static_cast<void>(draw_text_within(context.canvas, row.left, left_text, baseline, left_width, font, left_paint));
+                            draw_text_line(context, row.left, { left_text, top, left_width, line_height }, left_paint, code);
                         }
                         if (row.has_right)
                         {
                             SkPaint right_paint { row.changed ? solid_paint(context.palette.accent_emphasis_foreground) : solid_paint(context.palette.primary_foreground) };
                             if (row.changed == false)
                                 right_paint.setAlphaf(0.85f);
-                            static_cast<void>(draw_text_within(context.canvas, row.right, right_text, baseline, right_width, font, right_paint));
+                            draw_text_line(context, row.right, { right_text, top, right_width, line_height }, right_paint, code);
                         }
                     }
 
@@ -266,8 +260,7 @@ namespace gitman::ui {
                         // 안내는 pane 아래쪽에 고정해 스크롤과 무관하게 보인다.
                         const SkRect notice_box { SkRect::MakeXYWH(box.x, box.y + box.height - 20.0f * scale, box.width, 20.0f * scale) };
                         context.canvas.drawRect(notice_box, solid_paint(with_alpha(context.palette.warning_accent, 0.15f)));
-                        static_cast<void>(draw_text_within(context.canvas, dialog_->diff_notice, box.x + inset, notice_box.top() + centered_text_baseline(font, 20.0f * scale),
-                            box.width - inset * 2.0f, font, solid_paint(context.palette.warning_accent)));
+                        draw_text_line(context, dialog_->diff_notice, { box.x + inset, notice_box.top(), box.width - inset * 2.0f, notice_box.height() }, solid_paint(context.palette.warning_accent), code);
                     }
                 }
                 context.canvas.restore();
@@ -323,18 +316,16 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { ui_font(context, 13.0f) };
                 const std::u8string heading { std::u8string { u8"로컬 변경 - " } + title_ };
-                static_cast<void>(draw_text_within(
-                    context.canvas, heading, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
+                draw_text_line(context, heading, text_box_at_baseline(context, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, { .size = 13.0f }),
+                    solid_paint(context.palette.primary_foreground), { .size = 13.0f });
 
-                const SkFont body_font { ui_font(context, 11.0f) };
                 if (loading_ || empty_)
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.6f);
                     const std::u8string_view note { loading_ ? std::u8string_view { u8"로컬 변경을 조회하는 중입니다..." } : std::u8string_view { u8"표시할 로컬 변경이 없습니다." } };
-                    draw_text(context.canvas, note, list_area.x, list_area.y + 16.0f * scale, body_font, dim);
+                    draw_text_line(context, note, text_box_at_baseline(context, list_area.x, list_area.y + 16.0f * scale, list_area.width, { .size = 11.0f }), dim, { .size = 11.0f });
                 }
 
                 // 목록 행을 자기 영역으로 잘라 그린다. 행은 자식이라 함께 그려진다.
@@ -347,8 +338,8 @@ namespace gitman::ui {
                 {
                     // 목록 바로 아래 한 줄이다. 빈 목록 안내와 겹치지 않는 위치다.
                     const float message_top { list_area.y + list_area.height + 2.0f * scale };
-                    static_cast<void>(
-                        draw_text_within(context.canvas, message_, box.x + padding, message_top - 14.0f * scale, box.width - padding * 2.0f, body_font, solid_paint(context.palette.warning_accent)));
+                    draw_text_line(context, message_, text_box_at_baseline(context, box.x + padding, message_top - 14.0f * scale, box.width - padding * 2.0f, { .size = 11.0f }),
+                        solid_paint(context.palette.warning_accent), { .size = 11.0f });
                 }
             }
 

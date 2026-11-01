@@ -101,9 +101,9 @@ namespace gitman::ui {
                     draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
 
                 const float inset { 8.0f * scale };
-                const SkFont font { luil::make_text_font(context, { .size = 12.5f, .typeface = sk_ref_sp(family_or_ui(context, family_)) }) };
                 const SkPaint foreground { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
-                static_cast<void>(draw_text_within(context.canvas, name_, box.x + inset, box.y + centered_text_baseline(font, box.height), box.width - inset * 2.0f, font, foreground));
+                draw_text_line(context, name_, { box.x + inset, box.y, box.width - inset * 2.0f, box.height }, foreground,
+                    { .size = 12.5f, .typeface = sk_ref_sp(family_or_ui(context, family_)) });
             }
 
         private:
@@ -151,16 +151,15 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { ui_font(context, 13.0f) };
-                static_cast<void>(draw_text_within(
-                    context.canvas, title_, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
+                draw_text_line(context, title_, text_box_at_baseline(context, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, { .size = 13.0f }),
+                    solid_paint(context.palette.primary_foreground), { .size = 13.0f });
 
                 if (list_note_.empty() == false)
                 {
-                    const SkFont body_font { ui_font(context, 11.0f) };
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.6f);
-                    static_cast<void>(draw_text_within(context.canvas, list_note_, list_area.x + 4.0f * scale, list_area.y + 16.0f * scale, list_area.width - 8.0f * scale, body_font, dim));
+                    draw_text_line(context, list_note_, text_box_at_baseline(context, list_area.x + 4.0f * scale, list_area.y + 16.0f * scale, list_area.width - 8.0f * scale, { .size = 11.0f }),
+                        dim, { .size = 11.0f });
                 }
 
                 context.canvas.save();
@@ -176,9 +175,8 @@ namespace gitman::ui {
                 // 미리 보기는 고른 글꼴로 예문 한 줄이다. 목록 행보다 크게 그려
                 // 자획을 확인할 수 있다.
                 context.canvas.drawRect(SkRect::MakeXYWH(preview_area.x, preview_area.y, preview_area.width, preview_area.height), outline);
-                const SkFont preview_font { luil::make_text_font(context, { .size = 14.0f, .typeface = sk_ref_sp(family_or_ui(context, preview_family_)) }) };
-                static_cast<void>(draw_text_within(context.canvas, preview_, preview_area.x + 8.0f * scale, preview_area.y + centered_text_baseline(preview_font, preview_area.height),
-                    preview_area.width - 16.0f * scale, preview_font, solid_paint(context.palette.primary_foreground)));
+                draw_text_line(context, preview_, { preview_area.x + 8.0f * scale, preview_area.y, preview_area.width - 16.0f * scale, preview_area.height },
+                    solid_paint(context.palette.primary_foreground), { .size = 14.0f, .typeface = sk_ref_sp(family_or_ui(context, preview_family_)) });
             }
 
             // 목록 영역 밖에 걸친 행은 눌리지 않는다. 자르는 경계가 panel bounds가

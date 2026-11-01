@@ -504,12 +504,12 @@ namespace gitman::ui {
                     SkPaint icon { solid_paint(foreground) };
                     if (selected_ == false)
                         icon.setAlphaf(hovered ? 0.9f : 0.7f);
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 13.0f * scale };
-                    draw_centered_glyph(context.canvas, glyph_, { text_left, box.y, 16.0f * scale, box.height }, icon_font, icon);
+                    const SkFont glyph_font { icon_font(context, 13.0f) };
+                    draw_centered_glyph(context.canvas, glyph_, { text_left, box.y, 16.0f * scale, box.height }, glyph_font, icon);
                     text_left += 22.0f * scale;
                 }
 
-                SkFont font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+                SkFont font { ui_font(context, 12.0f) };
                 if (selected_)
                     font.setEmbolden(true);
                 SkPaint text { solid_paint(foreground) };
@@ -568,8 +568,8 @@ namespace gitman::ui {
                 SkPaint icon { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (selected_ == false)
                     icon.setAlphaf(hovered ? 0.85f : 0.6f);
-                const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 13.0f * scale };
-                draw_centered_glyph(context.canvas, glyph_, box, icon_font, icon);
+                const SkFont glyph_font { icon_font(context, 13.0f) };
+                draw_centered_glyph(context.canvas, glyph_, box, glyph_font, icon);
             }
 
         private:
@@ -664,7 +664,7 @@ namespace gitman::ui {
                 border.setStrokeWidth(1.0f * scale);
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
-                SkFont font { sk_ref_sp(context.ui_typeface), 10.0f * scale };
+                SkFont font { ui_font(context, 10.0f) };
                 if (defined_)
                     font.setEmbolden(true);
                 // 전역을 따르는 항목은 비활성 색이라 배지가 앞으로 나오지 않는다.
@@ -779,12 +779,12 @@ namespace gitman::ui {
                 float title_left { box.x + padding };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 13.0f * scale };
-                    draw_centered_glyph(context.canvas, codicons::icon_settings_gear, { title_left, box.y + padding - 2.0f * scale, 15.0f * scale, 17.0f * scale }, icon_font,
+                    const SkFont glyph_font { icon_font(context, 13.0f) };
+                    draw_centered_glyph(context.canvas, codicons::icon_settings_gear, { title_left, box.y + padding - 2.0f * scale, 15.0f * scale, 17.0f * scale }, glyph_font,
                         solid_paint(context.palette.primary_foreground));
                     title_left += 19.0f * scale;
                 }
-                SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                SkFont title_font { ui_font(context, 13.0f) };
                 title_font.setEmbolden(true);
                 static_cast<void>(draw_text_within(
                     context.canvas, title_, title_left, box.y + padding + 11.0f * scale, box.x + box.width - padding - title_left, title_font, solid_paint(context.palette.primary_foreground)));
@@ -802,11 +802,11 @@ namespace gitman::ui {
 
             void draw_sections(draw_context& context, const float scale) const
             {
-                SkFont header_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                SkFont header_font { ui_font(context, 11.0f) };
                 header_font.setEmbolden(true);
-                SkFont title_font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+                SkFont title_font { ui_font(context, 12.0f) };
                 title_font.setEmbolden(true);
-                const SkFont value_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont value_font { ui_font(context, 11.0f) };
 
                 std::size_t item_index { 0 };
                 for (std::size_t section = 0; section < active_.sections.size(); ++section)
@@ -858,7 +858,7 @@ namespace gitman::ui {
             {
                 if (message_.empty())
                     return;
-                const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont body_font { ui_font(context, 11.0f) };
                 const float top { box.y + box.height - (panel_padding + action_button_height + message_height) * scale };
                 static_cast<void>(draw_text_within(
                     context.canvas, message_, box.x + panel_padding * scale, top + 12.0f * scale, box.width - panel_padding * 2.0f * scale, body_font, solid_paint(context.palette.warning_accent)));

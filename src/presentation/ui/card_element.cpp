@@ -185,8 +185,8 @@ namespace gitman::ui {
             context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), border);
         }
 
-        const SkFont title_font { sk_ref_sp(context.ui_typeface), 14.0f * scale };
-        const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+        const SkFont title_font { ui_font(context, 14.0f) };
+        const SkFont body_font { ui_font(context, 11.0f) };
         const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
         SkPaint dim_foreground { solid_paint(context.palette.primary_foreground) };
         dim_foreground.setAlphaf(0.6f);
@@ -203,15 +203,15 @@ namespace gitman::ui {
         if (context.codicon_typeface != nullptr)
         {
             const rect_f icon_slot { box.x + padding, box.y + padding, 16.0f * scale, 16.0f * scale };
-            const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 14.0f * scale };
+            const SkFont glyph_font { icon_font(context, 14.0f) };
             const bool undetermined { card_.busy == false && card_.status.undetermined };
             SkPaint icon_paint { solid_paint(undetermined ? context.palette.primary_foreground : state_accent(context.palette, card_.state)) };
             if (undetermined)
                 icon_paint.setAlphaf(0.45f);
             if (card_.busy)
-                draw_spinning_glyph(context.canvas, codicons::icon_sync, icon_slot, icon_font, icon_paint, context.now);
+                draw_spinning_glyph(context.canvas, codicons::icon_sync, icon_slot, glyph_font, icon_paint, context.now);
             else
-                draw_centered_glyph(context.canvas, codicon_for_name(card_.status.codicon), icon_slot, icon_font, icon_paint);
+                draw_centered_glyph(context.canvas, codicon_for_name(card_.status.codicon), icon_slot, glyph_font, icon_paint);
         }
 
         // 글자가 버튼을 침범하지 않도록 arrange가 정한 한계 안에서만 그린다.
@@ -291,8 +291,8 @@ namespace gitman::ui {
             chips.push_back({ codicons::icon_edit, card_.working_tree_text, with_alpha(tree_color, 0.18f), tree_color });
         }
 
-        const SkFont chip_font { sk_ref_sp(context.ui_typeface), 10.5f * scale };
-        const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 10.0f * scale };
+        const SkFont chip_font { ui_font(context, 10.5f) };
+        const SkFont glyph_font { icon_font(context, 10.0f) };
         const float padding { 5.0f * scale };
         const float icon_width { context.codicon_typeface != nullptr ? 11.0f * scale : 0.0f };
         const float gap { 4.0f * scale };
@@ -320,7 +320,7 @@ namespace gitman::ui {
             if (icon_width > 0.0f && chip.glyph != 0)
             {
                 const rect_f icon_slot { left + padding, row.y, icon_width, row.height };
-                draw_centered_glyph(context.canvas, chip.glyph, icon_slot, icon_font, foreground);
+                draw_centered_glyph(context.canvas, chip.glyph, icon_slot, glyph_font, foreground);
                 text_left += icon_width + gap * 0.5f;
             }
             draw_text(context.canvas, text, text_left, row.y + centered_text_baseline(chip_font, row.height), chip_font, foreground);

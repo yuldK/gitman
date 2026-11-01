@@ -165,14 +165,14 @@ namespace gitman::ui {
                 float text_left { box.x + inset };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
+                    const SkFont glyph_font { icon_font(context, 11.0f) };
                     SkPaint icon_paint { solid_paint(context.palette.primary_foreground) };
                     icon_paint.setAlphaf(0.75f);
-                    draw_centered_glyph(context.canvas, candidate_glyph(candidate_.kind), { text_left, box.y, 14.0f * scale, box.height }, icon_font, icon_paint);
+                    draw_centered_glyph(context.canvas, candidate_glyph(candidate_.kind), { text_left, box.y, 14.0f * scale, box.height }, glyph_font, icon_paint);
                     text_left += 18.0f * scale;
                 }
 
-                const SkFont font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
+                const SkFont font { ui_font(context, 11.5f) };
                 SkPaint foreground { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (candidate_.stale)
                     foreground.setAlphaf(0.6f);
@@ -210,17 +210,16 @@ namespace gitman::ui {
 
             void draw(draw_context& context, const interaction_snapshot&) const override
             {
-                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
                 const rect_f box { bounds() };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
+                    const SkFont font { icon_font(context, 11.0f) };
                     const char32_t glyph { expanded_ ? codicons::icon_chevron_down : codicons::icon_chevron_right };
                     draw_centered_glyph(context.canvas, glyph, box, font, solid_paint(context.palette.primary_foreground));
                     return;
                 }
 
-                const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont font { ui_font(context, 11.0f) };
                 draw_text(context.canvas, expanded_ ? std::u8string_view { u8"▾" } : std::u8string_view { u8"▸" }, box.x, box.y + centered_text_baseline(font, box.height), font,
                     solid_paint(context.palette.primary_foreground));
             }
@@ -297,18 +296,18 @@ namespace gitman::ui {
                 float text_left { box.x + inset + (indent + tree_glyph_width) * scale };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.5f * scale };
+                    const SkFont glyph_font { icon_font(context, 11.5f) };
                     SkPaint icon_paint { solid_paint(row_.current ? context.palette.accent : context.palette.primary_foreground) };
                     icon_paint.setAlphaf(row_.current ? 1.0f : 0.72f);
                     const char32_t glyph { row_.depth == 0 ? codicons::icon_repo : (row_.expanded ? codicons::icon_folder_opened : codicons::icon_folder) };
-                    draw_centered_glyph(context.canvas, glyph, { text_left, box.y, 14.0f * scale, box.height }, icon_font, icon_paint);
+                    draw_centered_glyph(context.canvas, glyph, { text_left, box.y, 14.0f * scale, box.height }, glyph_font, icon_paint);
                     text_left += 18.0f * scale;
                 }
 
                 std::u8string text { row_.text };
                 if (row_.current)
                     text.append(u8" (현재 위치)");
-                const SkFont font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
+                const SkFont font { ui_font(context, 11.5f) };
                 const SkPaint foreground { solid_paint(row_.current ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 static_cast<void>(draw_text_within(context.canvas, text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - inset - text_left, font, foreground));
                 draw_children(context, interaction);
@@ -349,18 +348,18 @@ namespace gitman::ui {
                 const ui_color color { failed ? context.palette.warning_accent : context.palette.primary_foreground };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
+                    const SkFont glyph_font { icon_font(context, 11.0f) };
                     SkPaint icon_paint { solid_paint(color) };
                     if (failed == false)
                         icon_paint.setAlphaf(0.6f);
                     const rect_f icon_box { text_left, box.y, 14.0f * scale, box.height };
                     if (failed)
-                        draw_centered_glyph(context.canvas, codicons::icon_warning, icon_box, icon_font, icon_paint);
+                        draw_centered_glyph(context.canvas, codicons::icon_warning, icon_box, glyph_font, icon_paint);
                     else
-                        draw_spinning_glyph(context.canvas, codicons::icon_loading, icon_box, icon_font, icon_paint, context.now);
+                        draw_spinning_glyph(context.canvas, codicons::icon_loading, icon_box, glyph_font, icon_paint, context.now);
                     text_left += 18.0f * scale;
                 }
-                const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont font { ui_font(context, 11.0f) };
                 SkPaint foreground { solid_paint(color) };
                 if (failed == false)
                     foreground.setAlphaf(0.6f);
@@ -415,7 +414,7 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                const SkFont title_font { ui_font(context, 13.0f) };
                 std::u8string heading { svn_browser_ ? std::u8string { u8"SVN 저장소 전환 - " } : std::u8string { u8"전환 - " } };
                 heading += title_;
                 if (stale_ && svn_browser_ == false)
@@ -423,7 +422,7 @@ namespace gitman::ui {
                 static_cast<void>(draw_text_within(
                     context.canvas, heading, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
 
-                const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont body_font { ui_font(context, 11.0f) };
                 // 목록이 비었을 때의 안내 문구는 logic이 정한다 (필터 결과 없음과
                 // 후보 없음이 다른 말이다).
                 if (list_note_.empty() == false)

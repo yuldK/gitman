@@ -151,13 +151,13 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                const SkFont title_font { ui_font(context, 13.0f) };
                 static_cast<void>(draw_text_within(
                     context.canvas, title_, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
 
                 if (list_note_.empty() == false)
                 {
-                    const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                    const SkFont body_font { ui_font(context, 11.0f) };
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.6f);
                     static_cast<void>(draw_text_within(context.canvas, list_note_, list_area.x + 4.0f * scale, list_area.y + 16.0f * scale, list_area.width - 8.0f * scale, body_font, dim));

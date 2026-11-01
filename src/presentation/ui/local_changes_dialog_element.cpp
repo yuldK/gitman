@@ -125,8 +125,8 @@ namespace gitman::ui {
                 // 미추적 항목은 아직 저장소 밖의 파일이라 흐리게(비활성 느낌) 그린다.
                 const float dim { row_.untracked ? 0.55f : 1.0f };
                 const float inset { 6.0f * scale };
-                const SkFont badge_font { sk_ref_sp(context.ui_typeface), 10.0f * scale };
-                const SkFont path_font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
+                const SkFont badge_font { ui_font(context, 10.0f) };
+                const SkFont path_font { ui_font(context, 11.5f) };
 
                 // 배지는 고정 폭 상자로 그려 경로 시작 위치를 맞춘다. 미추적은 강조색
                 // 대신 중립색이고, 파일/폴더 codicon을 배지 라벨 안(글자 앞)에 그린다.
@@ -139,8 +139,8 @@ namespace gitman::ui {
                 float badge_text_left { badge_box.left() + 5.0f * scale };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 10.0f * scale };
-                    draw_centered_glyph(context.canvas, row_.directory ? codicons::icon_folder : codicons::icon_file, { badge_text_left, box.y, 12.0f * scale, box.height }, icon_font, badge_paint);
+                    const SkFont glyph_font { icon_font(context, 10.0f) };
+                    draw_centered_glyph(context.canvas, row_.directory ? codicons::icon_folder : codicons::icon_file, { badge_text_left, box.y, 12.0f * scale, box.height }, glyph_font, badge_paint);
                     badge_text_left += 15.0f * scale;
                 }
                 static_cast<void>(draw_text_within(
@@ -192,7 +192,7 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.primary_foreground, 0.05f)));
 
                 // diff는 열이 맞아야 읽히므로 코드 글꼴을 쓴다 (F1).
-                const SkFont font { sk_ref_sp(context.code_typeface != nullptr ? context.code_typeface : context.ui_typeface), 11.0f * scale };
+                const SkFont font { code_font(context, 11.0f) };
                 const float inset { 7.0f * scale };
                 const float line_height { layout_local_changes_diff_line_height * scale };
                 const float scroll { dialog_->diff_scroll * scale };
@@ -323,12 +323,12 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                const SkFont title_font { ui_font(context, 13.0f) };
                 const std::u8string heading { std::u8string { u8"로컬 변경 - " } + title_ };
                 static_cast<void>(draw_text_within(
                     context.canvas, heading, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font, solid_paint(context.palette.primary_foreground)));
 
-                const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont body_font { ui_font(context, 11.0f) };
                 if (loading_ || empty_)
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };

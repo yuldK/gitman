@@ -46,7 +46,7 @@ namespace gitman::ui {
             border.setStrokeWidth(1.0f * scale);
             context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
-            const SkFont font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+            const SkFont font { ui_font(context, 11.0f) };
             const float inset { 7.0f * scale };
             SkPaint foreground { solid_paint(context.palette.primary_foreground) };
             if (path.empty())
@@ -85,11 +85,11 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                const SkFont title_font { ui_font(context, 13.0f) };
                 static_cast<void>(draw_text_within(context.canvas, std::u8string_view { u8"새 문서 만들기" }, box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font,
                     solid_paint(context.palette.primary_foreground)));
 
-                const SkFont label_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont label_font { ui_font(context, 11.0f) };
                 const float label_left { box.x + padding };
                 const float field_left { label_left + layout_generate_dialog_label_width * scale };
                 const float field_right { box.x + box.width - padding };

@@ -80,12 +80,12 @@ namespace gitman::ui {
                 float text_left { box.x + 4.0f * scale };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 13.0f * scale };
-                    draw_centered_glyph(context.canvas, glyph_, { text_left, box.y, 16.0f * scale, box.height }, icon_font, foreground);
+                    const SkFont glyph_font { icon_font(context, 13.0f) };
+                    draw_centered_glyph(context.canvas, glyph_, { text_left, box.y, 16.0f * scale, box.height }, glyph_font, foreground);
                 }
                 text_left += 22.0f * scale;
 
-                const SkFont font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                const SkFont font { ui_font(context, 13.0f) };
                 static_cast<void>(draw_text_within(context.canvas, label_, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - text_left, font, foreground));
             }
 
@@ -121,10 +121,9 @@ namespace gitman::ui {
                 if (context.codicon_typeface == nullptr)
                     return;
 
-                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
                 const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
-                const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 12.0f * scale };
-                draw_centered_glyph(context.canvas, glyph_, bounds(), icon_font, foreground);
+                const SkFont glyph_font { icon_font(context, 12.0f) };
+                draw_centered_glyph(context.canvas, glyph_, bounds(), glyph_font, foreground);
             }
 
         private:
@@ -189,7 +188,7 @@ namespace gitman::ui {
 
                 // 글은 양끝의 아이콘 버튼 사이에만 그린다.
                 const float right { box.x + box.width - (recent_icon_width + 4.0f) * scale };
-                const SkFont name_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                const SkFont name_font { ui_font(context, 13.0f) };
                 const float baseline { box.y + centered_text_baseline(name_font, box.height) };
                 const float text_left { box.x + (recent_icon_width + 4.0f) * scale };
                 const SkPaint foreground { solid_paint(context.palette.primary_foreground) };
@@ -201,7 +200,7 @@ namespace gitman::ui {
                 {
                     SkPaint dim { solid_paint(context.palette.primary_foreground) };
                     dim.setAlphaf(0.55f);
-                    const SkFont folder_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                    const SkFont folder_font { ui_font(context, 11.0f) };
                     static_cast<void>(draw_text_within(context.canvas, recent_.folder, folder_left, baseline, right - folder_left, folder_font, dim));
                 }
 
@@ -357,14 +356,14 @@ namespace gitman::ui {
         SkPaint dim { solid_paint(context.palette.primary_foreground) };
         dim.setAlphaf(0.55f);
 
-        const SkFont title_font { sk_ref_sp(context.ui_typeface), 26.0f * scale };
+        const SkFont title_font { ui_font(context, 26.0f) };
         static_cast<void>(draw_text_within(context.canvas, u8"Gitman", title_.x, title_.y + centered_text_baseline(title_font, title_.height), title_.width, title_font, foreground));
 
-        const SkFont body_font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+        const SkFont body_font { ui_font(context, 12.0f) };
         static_cast<void>(draw_text_within(context.canvas, u8".version-list 작업공간을 열어 여러 저장소의 상태를 한 화면에서 관리합니다.", subtitle_.x,
             subtitle_.y + centered_text_baseline(body_font, subtitle_.height), subtitle_.width, body_font, dim));
 
-        const SkFont section_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+        const SkFont section_font { ui_font(context, 13.0f) };
         static_cast<void>(draw_text_within(context.canvas, u8"시작", action_section_.x + 4.0f * scale,
             action_section_.y + centered_text_baseline(section_font, layout_start_page_section_height * scale), action_section_.width, section_font, dim));
         if (pinned_header_.width > 0.0f)

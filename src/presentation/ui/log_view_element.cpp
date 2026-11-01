@@ -191,7 +191,7 @@ namespace gitman::ui {
         if (elapsed_right_ > 0.0f)
         {
             const std::u8string text { format_elapsed_time(log_.change_started_at.has_value() ? context.now - *log_.change_started_at : *log_.change_elapsed) };
-            const SkFont font { sk_ref_sp(context.ui_typeface), 10.5f * scale };
+            const SkFont font { ui_font(context, 10.5f) };
             SkPaint paint { solid_paint(context.palette.primary_foreground) };
             paint.setAlphaf(0.6f);
             const float header_height { layout_log_header_height * scale };
@@ -224,7 +224,7 @@ namespace gitman::ui {
         context.canvas.clipRect(SkRect::MakeXYWH(body.x, body.y, body.width, body.height));
 
         // 본문은 외부 명령의 출력이라 코드 글꼴을 쓴다 (fonts-and-in-app-dialogs-design F1).
-        const SkFont font { sk_ref_sp(context.code_typeface != nullptr ? context.code_typeface : context.ui_typeface), 10.5f * scale };
+        const SkFont font { code_font(context, 10.5f) };
         const float inset { layout_log_text_inset * scale };
 
         if (log_.records.empty())

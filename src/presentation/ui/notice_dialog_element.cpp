@@ -69,18 +69,18 @@ namespace gitman::ui {
                 float text_left { box.x + padding };
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 14.0f * scale };
+                    const SkFont glyph_font { icon_font(context, 14.0f) };
                     const char32_t glyph { dialog_.error ? codicons::icon_error : codicons::icon_check };
-                    draw_centered_glyph(context.canvas, glyph, { text_left, box.y + padding, 18.0f * scale, title_height * scale }, icon_font, solid_paint(accent));
+                    draw_centered_glyph(context.canvas, glyph, { text_left, box.y + padding, 18.0f * scale, title_height * scale }, glyph_font, solid_paint(accent));
                     text_left += 24.0f * scale;
                 }
 
-                SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                SkFont title_font { ui_font(context, 13.0f) };
                 title_font.setEmbolden(true);
                 static_cast<void>(draw_text_within(context.canvas, dialog_.title, text_left, box.y + padding + centered_text_baseline(title_font, title_height * scale),
                     box.x + box.width - padding - text_left, title_font, solid_paint(accent)));
 
-                const SkFont line_font { sk_ref_sp(context.ui_typeface), 12.0f * scale };
+                const SkFont line_font { ui_font(context, 12.0f) };
                 SkPaint line_paint { solid_paint(context.palette.primary_foreground) };
                 line_paint.setAlphaf(0.85f);
                 float line_top { box.y + padding + title_height * scale };

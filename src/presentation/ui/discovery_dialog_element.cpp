@@ -150,22 +150,22 @@ namespace gitman::ui {
                     context.canvas.drawRRect(SkRRect::MakeRectXY(check_box, 2.0f * scale, 2.0f * scale), border);
                     if (row_.checked && context.codicon_typeface != nullptr)
                     {
-                        const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
-                        draw_centered_glyph(context.canvas, codicons::icon_check, { text_left, check_top, check_size, check_size }, icon_font, solid_paint(context.palette.accent));
+                        const SkFont glyph_font { icon_font(context, 11.0f) };
+                        draw_centered_glyph(context.canvas, codicons::icon_check, { text_left, check_top, check_size, check_size }, glyph_font, solid_paint(context.palette.accent));
                     }
                 }
                 text_left += check_size + 8.0f * scale;
 
                 if (context.codicon_typeface != nullptr)
                 {
-                    const SkFont icon_font { sk_ref_sp(context.codicon_typeface), 11.0f * scale };
+                    const SkFont glyph_font { icon_font(context, 11.0f) };
                     SkPaint icon_paint { solid_paint(context.palette.primary_foreground) };
                     icon_paint.setAlphaf(row_.candidate.selectable() ? 0.75f : 0.4f);
-                    draw_centered_glyph(context.canvas, candidate_glyph(row_.candidate.kind), { text_left, box.y, 14.0f * scale, box.height }, icon_font, icon_paint);
+                    draw_centered_glyph(context.canvas, candidate_glyph(row_.candidate.kind), { text_left, box.y, 14.0f * scale, box.height }, glyph_font, icon_paint);
                     text_left += 18.0f * scale;
                 }
 
-                const SkFont font { sk_ref_sp(context.ui_typeface), 11.5f * scale };
+                const SkFont font { ui_font(context, 11.5f) };
                 SkPaint foreground { solid_paint(row_.checked ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 if (row_.candidate.selectable() == false)
                     foreground.setAlphaf(0.45f);
@@ -216,11 +216,11 @@ namespace gitman::ui {
                 context.canvas.drawRRect(SkRRect::MakeRectXY(body, radius, radius), border);
 
                 const float padding { dialog_padding * scale };
-                const SkFont title_font { sk_ref_sp(context.ui_typeface), 13.0f * scale };
+                const SkFont title_font { ui_font(context, 13.0f) };
                 static_cast<void>(draw_text_within(context.canvas, u8"하위 저장소 탐색·등록", box.x + padding, box.y + padding + 11.0f * scale, box.width - padding * 2.0f, title_font,
                     solid_paint(context.palette.primary_foreground)));
 
-                const SkFont body_font { sk_ref_sp(context.ui_typeface), 11.0f * scale };
+                const SkFont body_font { ui_font(context, 11.0f) };
                 SkPaint dim { solid_paint(context.palette.primary_foreground) };
                 dim.setAlphaf(0.65f);
                 static_cast<void>(draw_text_within(context.canvas, scan_root_, box.x + padding, box.y + padding + 30.0f * scale, box.width - padding * 2.0f, body_font, dim));

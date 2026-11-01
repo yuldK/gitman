@@ -250,6 +250,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_generate };
+        spec.name = std::u8string { u8"새 문서 만들기" };
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭과 Esc가 모두 취소다.

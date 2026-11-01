@@ -661,6 +661,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_switch };
+        spec.name = (dialog.svn_browser ? std::u8string { u8"SVN 저장소 전환 - " } : std::u8string { u8"전환 - " }) + dialog.title;
         spec.content_width = width;
         spec.content_height = height;
         // 예전에는 창 전체를 덮던 본체의 클릭이 취소였다. 이제 그 자리가 scrim이다.

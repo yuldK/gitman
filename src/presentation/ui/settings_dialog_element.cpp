@@ -936,8 +936,8 @@ namespace gitman::ui {
 
         // 활성 탭의 항목만 컨트롤을 만든다. 다른 탭의 값은 dialog 초안에 그대로 남아
         // 있고, 탭을 옮기면 그 탭의 컨트롤이 만들어진다 (S1.2).
-        // 컨트롤의 접근 이름은 항목 제목이다. 툴팁은 설명이라 이름으로 읽히면 길고, 같은
-        // 글의 단추(찾아보기·지우기)가 어느 항목의 것인지 갈리지 않는다.
+        // 토글·입력 칸의 접근 이름은 항목 제목이다. 툴팁은 설명이라 이름으로 읽히면 길다.
+        // 글자 버튼(찾아보기·지우기)은 luil이 적힌 글을 이름으로 쓴다.
         const auto add_toggle = [panel_raw](const ui_element_kind kind, const bool on, const char8_t* const tooltip, logic_message message, std::vector<ui_element*>& controls,
                                     const std::u8string& title) {
             auto toggle { std::make_unique<toggle_element>(ui_element_id { kind }, on, std::u8string { tooltip }, std::move(message)) };
@@ -967,14 +967,12 @@ namespace gitman::ui {
                     // 찾아보기는 UI thread의 파일 선택으로, 지우기는 intent로 처리한다.
                     luil::text_button_element* const browse { add_text_button(git ? kind_settings_git_browse : kind_settings_svn_browse, u8"찾아보기", controls) };
                     const app_command picker { git ? app_command::show_git_executable_picker : app_command::show_svn_executable_picker };
-                    browse->set_access_name(item.title + u8" 찾아보기");
                     browse->set_action(ui_trigger::left_click, make_app_command_click(picker));
 
                     // 지우기는 두 모드 모두 빈 값(자동 탐색)이다. 문서 정의 삭제는
                     // `덮어씀` 배지의 몫이다 (S4.2).
                     luil::text_button_element* const clear { add_text_button(git ? kind_settings_git_clear : kind_settings_svn_clear, u8"지우기", controls) };
                     clear->set_tooltip(u8"지우면 자동 탐색을 사용합니다");
-                    clear->set_access_name(item.title + u8" 지우기");
                     clear->set_enabled(item.value.empty() == false);
                     const repository_kind tool { git ? repository_kind::git : repository_kind::subversion };
                     clear->set_action(ui_trigger::left_click, make_logic_click(clear_settings_executable_intent { tool }));
@@ -1036,7 +1034,6 @@ namespace gitman::ui {
                         add_text_button(code ? kind_settings_code_font_pick : kind_settings_ui_font_pick, u8"선택…", controls),
                     };
                     pick->set_tooltip(code ? u8"로그와 diff 본문에 쓸 글꼴을 고릅니다" : u8"창 전체에 쓸 글꼴을 고릅니다");
-                    pick->set_access_name(item.title + u8" 선택");
                     pick->set_action(ui_trigger::left_click, make_logic_click(open_font_dialog_intent { code }));
                     break;
                 }
@@ -1271,6 +1268,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_settings };
+        spec.name = view.document_mode ? std::u8string { u8"환경설정 (문서)" } : std::u8string { u8"환경설정 (전역)" };
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭도 Esc도 취소다 — 예전 overlay의 배경 클릭 액션을 그대로 옮겼다.

@@ -152,6 +152,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_notice };
+        spec.name = view.title;
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭도 Esc도 닫기다 (예전 overlay의 left_click과 policy 사슬을 옮긴 것).

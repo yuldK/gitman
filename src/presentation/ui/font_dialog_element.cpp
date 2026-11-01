@@ -75,6 +75,12 @@ namespace gitman::ui {
                 set_tab_stop(false);
             }
 
+            // 툴팁이 없어 접근 tree에서 접혔다. 화면에 그린 이름이 곧 이름이다.
+            [[nodiscard]] access_info accessibility() const override
+            {
+                return { .role = access_role::list_item, .name = name_, .selected = selected_ };
+            }
+
             void arrange(const arrange_context& context) override
             {
                 set_bounds(context.slot);
@@ -360,6 +366,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_font };
+        spec.name = view.title;
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭도 Esc도 취소다 — 예전 overlay의 배경 클릭 액션을 그대로 옮겼다.

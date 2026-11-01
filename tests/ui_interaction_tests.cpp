@@ -177,6 +177,29 @@ TEST_CASE("Keyboard focus walks the visible cards", "[ui][interaction]")
     REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::enter }).empty());
 }
 
+TEST_CASE("Shift+F10 opens the focused card's context menu from the keyboard", "[ui][interaction]")
+{
+    const auto tree { make_tree(3) };
+    interaction_harness harness { tree };
+
+    // 초점 카드가 없으면 열 메뉴가 없다.
+    REQUIRE(harness.process(luil::key_pressed_event { .key = luil::key_code::f10, .shift = true }).empty());
+
+    const auto first { harness.process(luil::key_pressed_event { luil::key_code::arrow_down }) };
+    REQUIRE(as_intent<gitman::select_card_intent>(first)->id->value == u8"card-0");
+
+    // Shift 없는 F10은 Windows 메뉴 막대 키라 가져가지 않는다.
+    REQUIRE(harness.process(luil::key_pressed_event { luil::key_code::f10 }).empty());
+
+    const auto opened { harness.process(luil::key_pressed_event { .key = luil::key_code::f10, .shift = true }) };
+    const gitman::open_context_menu_intent* const menu { as_intent<gitman::open_context_menu_intent>(opened) };
+    REQUIRE(menu != nullptr);
+    REQUIRE(menu->id.value == u8"card-0");
+    // 메뉴는 카드 안쪽에 앵커를 둔다.
+    const luil::rect_f card { bounds_of(*tree, ui::kind_card_body, u8"card-0") };
+    REQUIRE(card.contains(menu->anchor_x, menu->anchor_y));
+}
+
 TEST_CASE("Dragging a card lets the list insert it at the nearest slot", "[ui][interaction][drag]")
 {
     const auto tree { make_tree(3) };

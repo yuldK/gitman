@@ -83,6 +83,16 @@ namespace gitman::ui {
                 add_child(std::move(explorer));
             }
 
+            // 종류 배지와 경로를 화면 순서대로 읽힌다. 툴팁이 없어 접근 tree에서 접혔다.
+            [[nodiscard]] access_info accessibility() const override
+            {
+                std::u8string name { row_.badge };
+                if (name.empty() == false)
+                    name += u8" ";
+                name += row_.path;
+                return { .role = access_role::list_item, .name = std::move(name), .selected = row_.selected };
+            }
+
             void arrange(const arrange_context& context) override
             {
                 set_bounds(context.slot);
@@ -477,6 +487,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_local_changes };
+        spec.name = std::u8string { u8"로컬 변경 - " } + view.title;
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭도 Esc도 닫기다 (예전 overlay의 left_click과 policy 사슬을 옮긴 것).

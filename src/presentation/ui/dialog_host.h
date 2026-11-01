@@ -14,6 +14,9 @@ namespace gitman::ui {
     {
         // dialog마다 다른 owner다 (`dialog_owner_*`). host·scrim id를 가른다.
         std::u8string owner {};
+        // 화면 읽기가 dialog가 뜰 때 말하는 이름이다. 본체가 그리는 제목과 같은 말을
+        // 적는다 — 비우면 "대화상자"라고만 들린다.
+        std::u8string name {};
         // 본체의 논리 크기다. 창보다 크면 factory가 미리 줄여 넣는다.
         float content_width { 0.0f };
         float content_height { 0.0f };
@@ -29,6 +32,7 @@ namespace gitman::ui {
     {
         luil::modal_host_config config {};
         config.owner = std::move(spec.owner);
+        config.name = std::move(spec.name);
         config.scrim_opacity = 0.45f;
         config.outside = std::move(spec.outside);
         config.dismiss = std::move(spec.dismiss);

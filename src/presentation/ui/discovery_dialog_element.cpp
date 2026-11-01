@@ -112,6 +112,19 @@ namespace gitman::ui {
                 set_bounds(context.slot);
             }
 
+            // 체크 상자 행이다. 이름은 화면의 글(폴더 이름과 제외 사유)이고 전체 경로는
+            // 툴팁에 남는다. 제외 후보는 비활성이라 체크 상태가 없다.
+            [[nodiscard]] access_info accessibility() const override
+            {
+                std::u8string name { row_.candidate.directory_name };
+                if (row_.candidate.exclusion != discovery_exclusion::none)
+                    name += std::u8string { u8" (" } + std::u8string { exclusion_text(row_.candidate.exclusion) } + u8")";
+                access_info info { .role = access_role::check_box, .name = std::move(name) };
+                if (row_.candidate.selectable())
+                    info.checked = row_.checked;
+                return info;
+            }
+
             void draw(draw_context& context, const interaction_snapshot& interaction) const override
             {
                 const float scale { context.scale > 0.0f ? context.scale : 1.0f };
@@ -382,6 +395,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_discovery };
+        spec.name = std::u8string { u8"하위 저장소 탐색·등록" };
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭과 Esc가 모두 취소다 (등록 실행 중에는 logic이 무시한다).

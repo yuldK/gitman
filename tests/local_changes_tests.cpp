@@ -189,6 +189,14 @@ TEST_CASE("The dialog tree exposes rows, the diff pane, and close paths", "[ui][
     REQUIRE(find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_local_changes) != nullptr);
     REQUIRE(tree->focus_trap() != nullptr);
 
+    // 화면 읽기는 dialog를 본체 제목으로 부르고, 행은 배지와 경로로 읽는다.
+    const luil::access_info host { find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_local_changes)->accessibility() };
+    REQUIRE(host.name.starts_with(u8"로컬 변경 - "));
+    const luil::access_info first_row { tree->find(gitman::ui::local_changes_item_id(0))->accessibility() };
+    REQUIRE(first_row.role == luil::access_role::list_item);
+    REQUIRE(first_row.name.ends_with(u8"a.txt"));
+    REQUIRE(first_row.selected == true);
+
     // 행 클릭은 선택 intent다.
     const auto selected_actions { click_action(*tree, gitman::ui::local_changes_item_id(1)) };
     const auto* const selected { as_intent<gitman::select_local_change_intent>(selected_actions) };

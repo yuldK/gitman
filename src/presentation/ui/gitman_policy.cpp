@@ -179,6 +179,17 @@ namespace gitman::ui {
             if (focused_card_.has_value())
                 return { make_logic_action(refresh_card_intent { *focused_card_ }) };
             return {};
+        case luil::key_code::f10: {
+            // Shift+F10은 Windows의 키보드 컨텍스트 메뉴다. 초점 카드의 메뉴를 카드
+            // 왼쪽 위 안쪽에 연다 — 로컬 변경 확인·저장소 열기가 마우스만의 길이었다.
+            if (event.shift == false || event.control || event.alt || tree == nullptr || focused_card_.has_value() == false)
+                return {};
+            const luil::ui_element* const card { tree->find(luil::ui_element_id { kind_card_body, focused_card_->value }) };
+            if (card == nullptr || card->visible() == false)
+                return {};
+            const luil::rect_f box { card->bounds() };
+            return { make_logic_action(open_context_menu_intent { *focused_card_, box.x + box.height / 2.0f, box.y + box.height / 2.0f }) };
+        }
         case luil::key_code::f5:
             // 누르고 있는 동안의 자동 반복으로 전체 갱신을 거듭 제출하지 않는다.
             if (event.repeat)

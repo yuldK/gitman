@@ -196,6 +196,8 @@ TEST_CASE("The generate dialog stands in a modal host that cancels on the scrim 
     REQUIRE(find(*tree, gitman::ui::kind_generate_dialog) != nullptr);
     REQUIRE(find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_generate) != nullptr);
     REQUIRE(tree->focus_trap() != nullptr);
+    // 화면 읽기가 dialog가 뜰 때 말하는 이름은 본체 제목과 같다.
+    REQUIRE(find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_generate)->accessibility().name == u8"새 문서 만들기");
 
     // 배경 클릭은 host의 scrim이 받는다. 본체에는 배경 액션이 없다.
     const std::vector<luil::input_action> outside { click(*tree, id_of(luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_generate)) };

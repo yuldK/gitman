@@ -736,7 +736,7 @@ namespace gitman {
 
         // 스크롤 한계는 progress 접기 후의 표시 줄 수 기준이다 (stage-8-plan 5.3).
         const std::size_t count { log_display_line_count(buffer->records(), log_filter_) };
-        return static_cast<float>(count) * layout_log_line_height + layout_log_text_inset * 2.0f;
+        return static_cast<float>(count) * layout_log_line_height() + layout_log_text_inset * 2.0f;
     }
 
     float logic_controller::log_viewport_height() const noexcept
@@ -744,7 +744,7 @@ namespace gitman {
         // pane 높이는 창이 작으면 줄어든다. layout과 같은 함수로 계산해야 스크롤
         // 한계가 그리기와 일치한다.
         const list_layout layout { compute_list_layout(window_height_ / scale_, 1.0f, has_notice(), has_log_pane()) };
-        const float body { layout.log_height - layout_log_header_height };
+        const float body { layout.log_height - layout_log_header_height() };
         return body > 0.0f ? body : 0.0f;
     }
 
@@ -1369,7 +1369,7 @@ namespace gitman {
         if (discovery_dialog_.has_value() == false)
             return;
 
-        const float content { static_cast<float>(discovery_dialog_->result.candidates.size()) * layout_discovery_dialog_row_height };
+        const float content { static_cast<float>(discovery_dialog_->result.candidates.size()) * layout_discovery_dialog_row_height() };
         float maximum { content - layout_discovery_dialog_list_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
@@ -1518,7 +1518,7 @@ namespace gitman {
         if (font_dialog_.has_value() == false)
             return;
 
-        const float content { static_cast<float>(filtered_font_families().size()) * layout_font_dialog_row_height };
+        const float content { static_cast<float>(filtered_font_families().size()) * layout_font_dialog_row_height() };
         float maximum { content - layout_font_dialog_list_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
@@ -2091,8 +2091,8 @@ namespace gitman {
         if (index.has_value())
         {
             const float viewport { switch_dialog_list_height(switch_dialog_->subversion, window_height_ / scale_) };
-            const float top { static_cast<float>(*index) * layout_switch_dialog_row_height };
-            switch_dialog_->scroll_offset = top - (viewport - layout_switch_dialog_row_height) / 2.0f;
+            const float top { static_cast<float>(*index) * layout_switch_dialog_row_height() };
+            switch_dialog_->scroll_offset = top - (viewport - layout_switch_dialog_row_height()) / 2.0f;
         }
         // 찾지 못했어도 한계 고정은 한다 — 목록이 줄어든 뒤일 수 있다. 계산은 휠과
         // 같은 handler를 그대로 쓴다.
@@ -2463,7 +2463,7 @@ namespace gitman {
         if (switch_dialog_.has_value() == false)
             return;
 
-        const float content { static_cast<float>(switch_dialog_row_count()) * layout_switch_dialog_row_height };
+        const float content { static_cast<float>(switch_dialog_row_count()) * layout_switch_dialog_row_height() };
         const float viewport { switch_dialog_list_height(switch_dialog_->subversion, window_height_ / scale_) };
         float maximum { content - viewport };
         if (maximum < 0.0f)
@@ -2695,7 +2695,7 @@ namespace gitman {
         if (local_changes_dialog_.has_value() == false)
             return;
 
-        const float content { static_cast<float>(local_changes_dialog_->entries.size()) * layout_local_changes_row_height };
+        const float content { static_cast<float>(local_changes_dialog_->entries.size()) * layout_local_changes_row_height() };
         float maximum { content - layout_local_changes_list_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
@@ -2712,7 +2712,7 @@ namespace gitman {
         if (local_changes_dialog_.has_value() == false)
             return;
 
-        const float content { static_cast<float>(local_changes_dialog_->diff_rows.size()) * layout_local_changes_diff_line_height };
+        const float content { static_cast<float>(local_changes_dialog_->diff_rows.size()) * layout_local_changes_diff_line_height() };
         float maximum { content - layout_local_changes_diff_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
@@ -3094,7 +3094,7 @@ namespace gitman {
             if (families.empty())
                 dialog.list_note = font_families_.empty() ? u8"시스템 글꼴 목록을 읽지 못했습니다." : u8"이름이 맞는 글꼴이 없습니다.";
 
-            const float content { static_cast<float>(families.size()) * layout_font_dialog_row_height };
+            const float content { static_cast<float>(families.size()) * layout_font_dialog_row_height() };
             float maximum { content - layout_font_dialog_list_height };
             if (maximum < 0.0f)
                 maximum = 0.0f;
@@ -3244,7 +3244,7 @@ namespace gitman {
                     dialog.confirm_label = u8"전환 실행";
 
                 const std::size_t row_count { dialog.svn_browser ? dialog.svn_rows.size() : dialog.candidates.size() };
-                const float content { static_cast<float>(row_count) * layout_switch_dialog_row_height };
+                const float content { static_cast<float>(row_count) * layout_switch_dialog_row_height() };
                 const float viewport { switch_dialog_list_height(dialog.svn_browser, window_height_ / scale_) };
                 float maximum { content - viewport };
                 if (maximum < 0.0f)
@@ -3274,7 +3274,7 @@ namespace gitman {
             }
             dialog.can_confirm = dialog.loading == false && dialog.executing == false && any_checked;
 
-            const float content { static_cast<float>(dialog.rows.size()) * layout_discovery_dialog_row_height };
+            const float content { static_cast<float>(dialog.rows.size()) * layout_discovery_dialog_row_height() };
             float maximum { content - layout_discovery_dialog_list_height };
             if (maximum < 0.0f)
                 maximum = 0.0f;

@@ -529,7 +529,7 @@ namespace gitman::ui {
         // viewport는 logic의 clamp 계산과 같은 값이라 thumb와 실제 스크롤이
         // 어긋나지 않는다. luil 막대는 전부 논리 픽셀을 받는다 (설계 L4).
         const std::size_t bar_rows { dialog_.svn_browser ? dialog_.svn_rows.size() : dialog_.candidates.size() };
-        const float bar_content { static_cast<float>(bar_rows) * layout_switch_dialog_row_height };
+        const float bar_content { static_cast<float>(bar_rows) * layout_switch_dialog_row_height() };
         const float bar_viewport { switch_dialog_list_height(dialog_.svn_browser, window_height_) };
         luil::scrollbar_config bar_config {};
         bar_config.scroll = [](const float delta) -> input_action { return make_logic_action(switch_dialog_scroll_intent { delta }); };
@@ -611,7 +611,7 @@ namespace gitman::ui {
             input_width = 0.0f;
         query_input_->arrange({ { query_left + query_height + query_gap, query_top, input_width, query_height }, scale });
 
-        const float row_height { layout_switch_dialog_row_height * scale };
+        const float row_height { layout_switch_dialog_row_height() * scale };
         // 스크롤 막대가 보이면 행을 그만큼 좁혀 막대와 겹치지 않게 한다.
         const float scrollbar_margin { 1.0f * scale };
         const float scrollbar_reserved { scrollbar_->visible() ? layout_scrollbar_hit_width * scale + scrollbar_margin : 0.0f };

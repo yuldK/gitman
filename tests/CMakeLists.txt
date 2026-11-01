@@ -111,6 +111,7 @@ gitman_add_source_filter(gitman_test_files "presentation/ui"
     start_page_tests.cpp
     status_presentation_tests.cpp
     text_font_tests.cpp
+    text_size_metrics_tests.cpp
     ui_interaction_tests.cpp
     ui_tree_build_tests.cpp
     update_ui_tests.cpp)

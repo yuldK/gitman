@@ -85,7 +85,7 @@ namespace gitman::ui {
         const float logical_scroll { clamp_scroll_offset(view.scroll_offset, logical_content, logical_viewport) };
         const float content { logical_content * scale };
         const float scroll { logical_scroll * scale };
-        const float card_height { layout_card_height * scale };
+        const float card_height { layout_card_height() * scale };
         const float card_gap { layout_card_gap * scale };
         const float list_bottom { layout.content_top + layout.viewport_height };
 
@@ -136,7 +136,7 @@ namespace gitman::ui {
         scrollbar_->set_metrics(logical_content, logical_viewport, logical_scroll);
 
         const float margin { layout_margin * scale };
-        const float card_height { layout_card_height * scale };
+        const float card_height { layout_card_height() * scale };
         const float hit_width { layout_scrollbar_hit_width * scale };
         const float inset { layout_scrollbar_right_inset * scale };
         // 막대가 보이면 그만큼 카드를 좁혀 클릭 영역이 겹치지 않게 한다.

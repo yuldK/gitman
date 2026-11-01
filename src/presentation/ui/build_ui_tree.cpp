@@ -143,7 +143,7 @@ namespace gitman::ui {
                 {
                     const float scale { view.scale > 0.0f ? view.scale : 1.0f };
                     const list_layout layout { compute_list_layout(view.window_height, scale, view.notices.empty() == false, true) };
-                    float body_height { layout.log_height - layout_log_header_height * scale };
+                    float body_height { layout.log_height - layout_log_header_height() * scale };
                     if (body_height < 0.0f)
                         body_height = 0.0f;
                     auto log_pane { std::make_unique<log_view_element>(*view.log, body_height, scale) };
@@ -233,7 +233,7 @@ namespace gitman::ui {
                 toolbar_->arrange({ { 0.0f, caption_height, context.slot.width, toolbar_height }, scale });
                 const float notice_top { caption_height + toolbar_height };
                 // 배너는 막대처럼 창 폭을 가득 채운다. 바탕색이 카드와 구분을 만든다.
-                notice_->arrange({ { 0.0f, notice_top, context.slot.width, layout_notice_height * scale }, scale });
+                notice_->arrange({ { 0.0f, notice_top, context.slot.width, layout_notice_height() * scale }, scale });
                 card_list_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale, context.scroll_offset });
                 if (log_pane_ != nullptr)
                     log_pane_->arrange({ { 0.0f, layout.log_top, context.slot.width, layout.log_height }, scale });

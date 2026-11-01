@@ -225,7 +225,7 @@ TEST_CASE("Pinned rows sit under their own section header", "[ui][start-page][pi
         const std::shared_ptr<const luil::ui_tree> tree { make_tree(*fixture.view()) };
         const float first { tree->find(gitman::ui::start_page_recent_item_id(0))->bounds().y };
         const float second { tree->find(gitman::ui::start_page_recent_item_id(1))->bounds().y };
-        REQUIRE(second - first == gitman::layout_start_page_row_height);
+        REQUIRE(second - first == gitman::layout_start_page_row_height());
     }
 
     // 하나를 고정하면 그 행이 맨 위 `고정됨` 무리로 가고, 나머지 앞에 `최근 항목`
@@ -238,7 +238,7 @@ TEST_CASE("Pinned rows sit under their own section header", "[ui][start-page][pi
     const std::shared_ptr<const luil::ui_tree> tree { make_tree(*view) };
     const float pinned { tree->find(gitman::ui::start_page_recent_item_id(0))->bounds().y };
     const float loose { tree->find(gitman::ui::start_page_recent_item_id(1))->bounds().y };
-    REQUIRE(loose - pinned == gitman::layout_start_page_row_height + gitman::layout_start_page_section_height);
+    REQUIRE(loose - pinned == gitman::layout_start_page_row_height() + gitman::layout_start_page_section_height());
 }
 
 TEST_CASE("A short window draws only the rows that fit and reports the rest", "[ui][start-page]")

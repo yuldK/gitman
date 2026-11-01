@@ -194,7 +194,7 @@ namespace gitman::ui {
                 // diff는 열이 맞아야 읽히므로 코드 글꼴을 쓴다 (F1).
                 const SkFont font { code_font(context, 11.0f) };
                 const float inset { 7.0f * scale };
-                const float line_height { layout_local_changes_diff_line_height * scale };
+                const float line_height { layout_local_changes_diff_line_height() * scale };
                 const float scroll { dialog_->diff_scroll * scale };
 
                 context.canvas.save();
@@ -393,7 +393,7 @@ namespace gitman::ui {
 
         // 목록·diff 각각의 시각적 스크롤 막대다. 내용이 넘칠 때만 보인다. 길이는
         // 전부 논리 픽셀이고 배율은 막대가 곱한다 (설계 L5).
-        const float list_content { static_cast<float>(dialog_.rows.size()) * layout_local_changes_row_height };
+        const float list_content { static_cast<float>(dialog_.rows.size()) * layout_local_changes_row_height() };
         auto list_bar {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_local_changes_list } },
                 luil::scrollbar_config {
@@ -409,7 +409,7 @@ namespace gitman::ui {
         list_scrollbar_ = list_bar.get();
         add_child(std::move(list_bar));
 
-        const float diff_content { static_cast<float>(dialog_.diff_rows.size()) * layout_local_changes_diff_line_height };
+        const float diff_content { static_cast<float>(dialog_.diff_rows.size()) * layout_local_changes_diff_line_height() };
         auto diff_bar {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_local_changes_diff } },
                 luil::scrollbar_config {
@@ -442,7 +442,7 @@ namespace gitman::ui {
         auto* const panel { static_cast<local_changes_panel_element*>(panel_) };
         panel->list_area = { left + padding, top + list_top_offset * scale, width - padding * 2.0f, layout_local_changes_list_height * scale };
 
-        const float row_height { layout_local_changes_row_height * scale };
+        const float row_height { layout_local_changes_row_height() * scale };
         // 스크롤 막대가 보이면 행을 그만큼 좁혀 열기 아이콘과 겹치지 않게 한다.
         const float scrollbar_reserved { list_scrollbar_->visible() ? layout_scrollbar_hit_width * scale : 0.0f };
         const std::span<const std::unique_ptr<ui_element>> rows { panel_->children() };

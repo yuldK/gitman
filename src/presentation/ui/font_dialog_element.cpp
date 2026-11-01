@@ -277,7 +277,7 @@ namespace gitman::ui {
         add_child(std::move(cancel));
 
         // 막대에 넘기는 치수와 스크롤 값은 전부 논리 픽셀이다 (설계 L4).
-        const float bar_content { static_cast<float>(dialog_.names.size()) * layout_font_dialog_row_height };
+        const float bar_content { static_cast<float>(dialog_.names.size()) * layout_font_dialog_row_height() };
         const float bar_viewport { layout_font_dialog_list_height };
         auto bar {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_font_dialog } },
@@ -323,7 +323,7 @@ namespace gitman::ui {
             input_width = 0.0f;
         query_input_->arrange({ { bar_left, bar_top, input_width, bar_height }, scale });
 
-        const float row_height { layout_font_dialog_row_height * scale };
+        const float row_height { layout_font_dialog_row_height() * scale };
         const float scrollbar_margin { 1.0f * scale };
         const float scrollbar_reserved { scrollbar_->visible() ? layout_scrollbar_hit_width * scale + scrollbar_margin : 0.0f };
         const std::span<const std::unique_ptr<ui_element>> rows { panel_->children() };

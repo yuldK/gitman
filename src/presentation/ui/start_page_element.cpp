@@ -255,14 +255,14 @@ namespace gitman::ui {
         set_bounds(context.slot);
 
         const float padding { layout_start_page_padding * scale };
-        const float row_height { layout_start_page_row_height * scale };
-        const float section_height { layout_start_page_section_height * scale };
+        const float row_height { layout_start_page_row_height() * scale };
+        const float section_height { layout_start_page_section_height() * scale };
         const float left { context.slot.x + padding };
         const float content_width { context.slot.width - padding * 2.0f };
         const float bottom { context.slot.y + context.slot.height - padding };
 
-        title_ = { left, context.slot.y + padding, content_width, layout_start_page_title_height * scale };
-        subtitle_ = { left, title_.y + title_.height, content_width, layout_start_page_subtitle_height * scale };
+        title_ = { left, context.slot.y + padding, content_width, layout_start_page_title_height() * scale };
+        subtitle_ = { left, title_.y + title_.height, content_width, layout_start_page_subtitle_height() * scale };
 
         const float content_top { subtitle_.y + subtitle_.height + padding * 0.5f };
         const float action_height { section_height + row_height * 2.0f };
@@ -365,7 +365,7 @@ namespace gitman::ui {
 
         const SkFont section_font { ui_font(context, 13.0f) };
         static_cast<void>(draw_text_within(context.canvas, u8"시작", action_section_.x + 4.0f * scale,
-            action_section_.y + centered_text_baseline(section_font, layout_start_page_section_height * scale), action_section_.width, section_font, dim));
+            action_section_.y + centered_text_baseline(section_font, layout_start_page_section_height() * scale), action_section_.width, section_font, dim));
         if (pinned_header_.width > 0.0f)
             static_cast<void>(draw_text_within(context.canvas, u8"고정됨", pinned_header_.x + 4.0f * scale,
                 pinned_header_.y + centered_text_baseline(section_font, pinned_header_.height), pinned_header_.width, section_font, dim));

@@ -97,7 +97,7 @@ namespace gitman::ui {
         // 막대가 받는 길이는 전부 논리 픽셀이라 물리 픽셀로 받은 본문 높이는
         // 배율로 되돌린다 (설계 L4).
         const float effective_scale { scale > 0.0f ? scale : 1.0f };
-        const float content_height { static_cast<float>(log_.lines.size()) * layout_log_line_height + layout_log_text_inset * 2.0f };
+        const float content_height { static_cast<float>(log_.lines.size()) * layout_log_line_height() + layout_log_text_inset * 2.0f };
         const float viewport_height { body_viewport_height / effective_scale };
         luil::scrollbar_config scrollbar_config {
             .scroll = [](const float delta) -> input_action { return make_logic_action(log_scroll_intent { delta }); },
@@ -118,7 +118,7 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        const float header_height { layout_log_header_height * scale };
+        const float header_height { layout_log_header_height() * scale };
         const float margin { layout_margin * scale };
         const float gap { layout_card_gap * scale };
         // 헤더가 낮으므로 toolbar 버튼보다 작은 정사각형을 쓴다.
@@ -194,7 +194,7 @@ namespace gitman::ui {
             const SkFont font { ui_font(context, 10.5f) };
             SkPaint paint { solid_paint(context.palette.primary_foreground) };
             paint.setAlphaf(0.6f);
-            const float header_height { layout_log_header_height * scale };
+            const float header_height { layout_log_header_height() * scale };
             draw_text(context.canvas, text, elapsed_right_ - measure_text(text, font), box.y + centered_text_baseline(font, header_height), font, paint);
         }
 
@@ -238,13 +238,13 @@ namespace gitman::ui {
                 hint = u8"이 카드에서 실행한 작업의 로그가 여기에 표시됩니다.";
             // 안내는 본문 위쪽 첫 줄 자리다. 세로 가운데에 두면 높은 pane에서 글이
             // 아래로 떠 보였다.
-            const float line_height { layout_log_line_height * scale };
+            const float line_height { layout_log_line_height() * scale };
             draw_text(context.canvas, hint, body.x + inset, body.y + inset + centered_text_baseline(font, line_height), font, dim);
             context.canvas.restore();
             return;
         }
 
-        const float line_height { layout_log_line_height * scale };
+        const float line_height { layout_log_line_height() * scale };
         // 시각 열의 폭은 고정 형식(HH:MM:SS)이라 한 번만 잰다.
         const float time_width { measure_text(u8"00:00:00", font) + inset };
         const float top { body.y + inset - log_.scroll_offset * scale };

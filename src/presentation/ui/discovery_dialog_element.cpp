@@ -313,7 +313,7 @@ namespace gitman::ui {
 
         // 목록의 스크롤 막대다 (switch dialog와 같은 정책). logic의 clamp 계산과
         // 같은 content·viewport를 쓴다. 치수와 스크롤 값은 전부 논리 픽셀이다.
-        const float bar_content { static_cast<float>(dialog_.rows.size()) * layout_discovery_dialog_row_height };
+        const float bar_content { static_cast<float>(dialog_.rows.size()) * layout_discovery_dialog_row_height() };
         const float bar_viewport { layout_discovery_dialog_list_height };
         auto bar {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_discovery_dialog } },
@@ -349,7 +349,7 @@ namespace gitman::ui {
 
         // 후보 행 배치: 스크롤을 반영하고 목록 영역을 벗어난 행은 숨긴다. 스크롤
         // 막대가 보이면 행을 그만큼 좁혀 막대와 겹치지 않게 한다.
-        const float row_height { layout_discovery_dialog_row_height * scale };
+        const float row_height { layout_discovery_dialog_row_height() * scale };
         const float scrollbar_reserved { scrollbar_->visible() ? layout_scrollbar_hit_width * scale : 0.0f };
         const std::span<const std::unique_ptr<ui_element>> rows { panel_->children() };
         for (std::size_t index = 0; index < rows.size(); ++index)

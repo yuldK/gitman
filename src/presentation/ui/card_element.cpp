@@ -221,7 +221,7 @@ namespace gitman::ui {
 
         // 세 번째 줄은 조각(chip)으로 그린다. 브랜치·리비전·상태·작업 트리를 같은
         // 폰트의 한 줄로 이어 붙이면 구분이 되지 않는다는 지적을 반영한 것이다.
-        draw_status_row(context, { text_x, line_3_top, text_width, layout_card_status_height * scale });
+        draw_status_row(context, { text_x, line_3_top, text_width, layout_card_status_height() * scale });
 
         draw_children(context, interaction);
     }

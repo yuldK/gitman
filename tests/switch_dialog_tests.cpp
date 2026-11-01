@@ -803,7 +803,7 @@ TEST_CASE("The SVN browser scrolls the revealed location into view", "[logic][sw
     // 목록이 두 행 남짓만 보이는 낮은 창이다. 도달한 행이 화면 아래에 숨는다.
     fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 260.0f, 1.0f });
     const float viewport { gitman::switch_dialog_list_height(true, 260.0f) };
-    REQUIRE(viewport < 5.0f * gitman::layout_switch_dialog_row_height);
+    REQUIRE(viewport < 5.0f * gitman::layout_switch_dialog_row_height());
 
     const std::uint64_t root_operation { fixture.deliver_svn_browser(u8"https://svn.example.com/repo", u8"https://svn.example.com/repo/trunk/source") };
     fixture.deliver_svn_directory(root_operation, u8"https://svn.example.com/repo", { u8"branches", u8"trunk" });
@@ -816,7 +816,7 @@ TEST_CASE("The SVN browser scrolls the revealed location into view", "[logic][sw
         const auto view { fixture.controller.make_view_snapshot() };
         REQUIRE(view->switch_dialog->svn_rows.size() == 5u);
         REQUIRE(view->switch_dialog->svn_rows.back().selected);
-        REQUIRE(view->switch_dialog->scroll_offset == 5.0f * gitman::layout_switch_dialog_row_height - viewport);
+        REQUIRE(view->switch_dialog->scroll_offset == 5.0f * gitman::layout_switch_dialog_row_height() - viewport);
     }
 
     // 가운데 가지로 이동하면 그 행이 목록 한가운데에 온다.
@@ -827,7 +827,7 @@ TEST_CASE("The SVN browser scrolls the revealed location into view", "[logic][sw
         const auto view { fixture.controller.make_view_snapshot() };
         REQUIRE(view->switch_dialog->svn_rows[3].text == u8"docs");
         REQUIRE(view->switch_dialog->svn_rows[3].selected);
-        const float centered { 3.0f * gitman::layout_switch_dialog_row_height - (viewport - gitman::layout_switch_dialog_row_height) / 2.0f };
+        const float centered { 3.0f * gitman::layout_switch_dialog_row_height() - (viewport - gitman::layout_switch_dialog_row_height()) / 2.0f };
         REQUIRE(view->switch_dialog->scroll_offset == centered);
     }
 

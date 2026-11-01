@@ -1,6 +1,7 @@
 #pragma once
 
 #include "luil/ui/caption_metrics.h"
+#include "luil/ui/font_scale.h"
 #include "luil/ui/layout_metrics.h"
 
 #include <cstddef>
@@ -10,11 +11,28 @@ namespace gitman {
     // custom caption이 client 영역 위쪽을 차지하므로 목록은 그 아래에서 시작한다.
     // luil의 caption 치수에서 직접 읽어 수동 동기화를 없앤다 (설계 L4). 두 헤더는
     // element 어휘가 없는 값 헤더라 logic이 include해도 된다.
+    // 시스템 글자 크기가 논리 글자 크기 `size`를 키운 몫이다 (논리 픽셀, 100%면 0).
+    // 글이 드는 칸의 높이는 100% 값에 이 몫을 더한다 (text-font-migration-design 7.3).
+    // logic thread(스크롤 한계)와 UI thread(배치)가 같은 함수를 부른다 — luil 글자 크기 표는
+    // 어느 thread에서나 읽을 수 있다.
+    [[nodiscard]] inline float text_growth(const float size) noexcept
+    {
+        return luil::scaled_font_size(size) - size;
+    }
+
     inline constexpr float layout_caption_height { static_cast<float>(luil::default_caption_ui_metrics.height) };
     inline constexpr float layout_toolbar_height { 40.0f };
     // notice 배너의 높이다. 배너가 보이면 목록이 그만큼 아래에서 시작한다.
-    inline constexpr float layout_notice_height { 22.0f };
-    inline constexpr float layout_card_height { 64.0f };
+    // 100%에서 22.0이고, 배너 label(12)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_notice_height() noexcept
+    {
+        return 22.0f + text_growth(12.0f);
+    }
+    // 100%에서 64.0이고, 제목(14)·경로(11)·상태 조각(10.5) 세 줄이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_card_height() noexcept
+    {
+        return 64.0f + text_growth(14.0f) + text_growth(11.0f) + text_growth(10.5f);
+    }
     inline constexpr float layout_card_gap { 6.0f };
     inline constexpr float layout_margin { 10.0f };
     inline constexpr float layout_button_size { 28.0f };
@@ -23,7 +41,11 @@ namespace gitman {
     inline constexpr float layout_card_text_left { 28.0f };
     inline constexpr float layout_card_minimum_text { 72.0f };
     // 카드 세 번째 줄(상태 조각)의 높이다.
-    inline constexpr float layout_card_status_height { 16.0f };
+    // 100%에서 16.0이고, 상태 조각 글(10.5)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_card_status_height() noexcept
+    {
+        return 16.0f + text_growth(10.5f);
+    }
     // 상단 막대(도구 막대·배너) 아래에 드리우는 그림자의 높이와 진하기다. 스크롤된
     // 카드가 막대 아래로 지나갈 때만 나타난다.
     inline constexpr float layout_content_shadow_height { 8.0f };
@@ -41,16 +63,40 @@ namespace gitman {
     inline constexpr float layout_scrollbar_vertical_inset { 6.0f };
     // 선택 카드 전용 하단 로그 pane의 치수다 (stage-7-plan 4.3).
     inline constexpr float layout_log_pane_height { 160.0f };
-    inline constexpr float layout_log_header_height { 26.0f };
-    inline constexpr float layout_log_line_height { 15.0f };
+    // 100%에서 26.0이고, 제목 label(11.5)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_log_header_height() noexcept
+    {
+        return 26.0f + text_growth(11.5f);
+    }
+    // 100%에서 15.0이고, 본문 코드 글(10.5)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_log_line_height() noexcept
+    {
+        return 15.0f + text_growth(10.5f);
+    }
     inline constexpr float layout_log_text_inset { 8.0f };
     // 시작 페이지의 치수다 (app-shell-design A1.3). 두 열은 창이 좁으면 세로로
     // 쌓인다.
     inline constexpr float layout_start_page_padding { 28.0f };
-    inline constexpr float layout_start_page_title_height { 40.0f };
-    inline constexpr float layout_start_page_subtitle_height { 22.0f };
-    inline constexpr float layout_start_page_section_height { 26.0f };
-    inline constexpr float layout_start_page_row_height { 26.0f };
+    // 100%에서 40.0이고, 제목(26)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_start_page_title_height() noexcept
+    {
+        return 40.0f + text_growth(26.0f);
+    }
+    // 100%에서 22.0이고, 설명(12)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_start_page_subtitle_height() noexcept
+    {
+        return 22.0f + text_growth(12.0f);
+    }
+    // 100%에서 26.0이고, 머리글(13)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_start_page_section_height() noexcept
+    {
+        return 26.0f + text_growth(13.0f);
+    }
+    // 100%에서 26.0이고, 행 글(13)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_start_page_row_height() noexcept
+    {
+        return 26.0f + text_growth(13.0f);
+    }
     inline constexpr float layout_start_page_action_column_width { 240.0f };
     inline constexpr float layout_start_page_stack_width { 720.0f };
 
@@ -84,7 +130,11 @@ namespace gitman {
     // 같은 값으로 하도록 여기에 둔다 (stage-7-plan 4.5).
     inline constexpr float layout_switch_dialog_width { 400.0f };
     inline constexpr float layout_switch_dialog_height { 352.0f };
-    inline constexpr float layout_switch_dialog_row_height { 22.0f };
+    // 100%에서 22.0이고, 후보 이름(11.5)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_switch_dialog_row_height() noexcept
+    {
+        return 22.0f + text_growth(11.5f);
+    }
     inline constexpr float layout_switch_dialog_list_height { 190.0f };
     inline constexpr float layout_svn_browser_dialog_width { 640.0f };
     inline constexpr float layout_svn_browser_dialog_height { 462.0f };
@@ -108,38 +158,58 @@ namespace gitman {
         const float available_height { dialog_available_height(window_height) };
         const float panel_height { available_height < dialog_height ? available_height : dialog_height };
         float available { panel_height - layout_switch_dialog_chrome_height };
-        if (available < layout_switch_dialog_row_height)
-            available = layout_switch_dialog_row_height;
+        if (available < layout_switch_dialog_row_height())
+            available = layout_switch_dialog_row_height();
         return available < preferred ? available : preferred;
     }
     // 로컬 변경 확인 dialog의 치수다 (field-feedback-design 2.3). 상단 목록과 하단
     // diff pane의 스크롤 한계를 logic과 element가 같은 값으로 계산하도록 여기에 둔다.
     inline constexpr float layout_local_changes_dialog_width { 560.0f };
     inline constexpr float layout_local_changes_dialog_height { 460.0f };
-    inline constexpr float layout_local_changes_row_height { 22.0f };
+    // 100%에서 22.0이고, 경로(11.5)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_local_changes_row_height() noexcept
+    {
+        return 22.0f + text_growth(11.5f);
+    }
     inline constexpr float layout_local_changes_list_height { 132.0f };
     inline constexpr float layout_local_changes_diff_height { 220.0f };
-    inline constexpr float layout_local_changes_diff_line_height { 15.0f };
+    // 100%에서 15.0이고, diff 코드 글(11)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_local_changes_diff_line_height() noexcept
+    {
+        return 15.0f + text_growth(11.0f);
+    }
 
     // 탐색 후보 선택 등록 dialog의 치수다 (stage-8-plan 5.2). 목록 스크롤 한계를
     // logic과 element가 같은 값으로 계산하도록 여기에 둔다.
     inline constexpr float layout_discovery_dialog_width { 480.0f };
     inline constexpr float layout_discovery_dialog_height { 360.0f };
-    inline constexpr float layout_discovery_dialog_row_height { 22.0f };
+    // 100%에서 22.0이고, 후보 이름(11.5)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_discovery_dialog_row_height() noexcept
+    {
+        return 22.0f + text_growth(11.5f);
+    }
     inline constexpr float layout_discovery_dialog_list_height { 224.0f };
 
     // 글꼴 선택 dialog의 치수다 (fonts-and-in-app-dialogs-design F2.5). 목록·미리
     // 보기의 스크롤 한계를 logic과 element가 같은 값으로 계산하도록 여기에 둔다.
     inline constexpr float layout_font_dialog_width { 460.0f };
     inline constexpr float layout_font_dialog_height { 428.0f };
-    inline constexpr float layout_font_dialog_row_height { 24.0f };
+    // 100%에서 24.0이고, 글꼴 이름(12.5)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_font_dialog_row_height() noexcept
+    {
+        return 24.0f + text_growth(12.5f);
+    }
     inline constexpr float layout_font_dialog_list_height { 214.0f };
     inline constexpr float layout_font_dialog_preview_height { 48.0f };
 
     // 새 문서 만들기 dialog의 치수다 (fonts-and-in-app-dialogs-design F3).
     inline constexpr float layout_generate_dialog_width { 520.0f };
     inline constexpr float layout_generate_dialog_height { 300.0f };
-    inline constexpr float layout_generate_dialog_row_height { 30.0f };
+    // 100%에서 30.0이고, 칸 글(11)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_generate_dialog_row_height() noexcept
+    {
+        return 30.0f + text_growth(11.0f);
+    }
     inline constexpr float layout_generate_dialog_label_width { 76.0f };
 
     // 카드 컨텍스트 메뉴 popup의 너비다 (field-feedback-design 3장). 행 높이·여백은

@@ -31,7 +31,7 @@ namespace gitman::ui {
         // 행 하나의 위쪽 좌표다 (논리 픽셀). 네 줄이 같은 간격으로 쌓인다.
         float row_top(const std::size_t index)
         {
-            return first_row_top + static_cast<float>(index) * (layout_generate_dialog_row_height + row_gap);
+            return first_row_top + static_cast<float>(index) * (layout_generate_dialog_row_height() + row_gap);
         }
 
         // 읽기 전용 경로 칸이다. 편집하지 않으므로 element가 아니라 panel이 그린다.
@@ -98,7 +98,7 @@ namespace gitman::ui {
                     const float top { box.y + row_top(index) * scale };
                     SkPaint paint { solid_paint(context.palette.primary_foreground) };
                     paint.setAlphaf(enabled ? 0.8f : 0.4f);
-                    draw_text(context.canvas, text, label_left, top + centered_text_baseline(label_font, layout_generate_dialog_row_height * scale), label_font, paint);
+                    draw_text(context.canvas, text, label_left, top + centered_text_baseline(label_font, layout_generate_dialog_row_height() * scale), label_font, paint);
                 };
 
                 label_at(0, u8"이름", true);
@@ -110,10 +110,10 @@ namespace gitman::ui {
                 const float browse { browse_button_width * scale };
                 const float gap { 8.0f * scale };
                 const float path_width { field_right - field_left - browse - gap };
-                const float scan_top { box.y + row_top(1) * scale + (layout_generate_dialog_row_height * scale - field_height * scale) / 2.0f };
+                const float scan_top { box.y + row_top(1) * scale + (layout_generate_dialog_row_height() * scale - field_height * scale) / 2.0f };
                 draw_path_field(context, { field_left, scan_top, path_width, field_height * scale }, dialog_.scan_root, u8"저장소들을 담은 폴더를 고르세요", true);
 
-                const float location_top { box.y + row_top(2) * scale + (layout_generate_dialog_row_height * scale - field_height * scale) / 2.0f };
+                const float location_top { box.y + row_top(2) * scale + (layout_generate_dialog_row_height() * scale - field_height * scale) / 2.0f };
                 const std::u8string_view location { dialog_.same_folder ? std::u8string_view { dialog_.scan_root } : std::u8string_view { dialog_.location } };
                 draw_path_field(context, { field_left, location_top, path_width, field_height * scale }, location, u8"문서를 저장할 폴더를 고르세요", dialog_.same_folder == false);
 
@@ -122,14 +122,14 @@ namespace gitman::ui {
                 SkPaint preview_paint { solid_paint(context.palette.primary_foreground) };
                 preview_paint.setAlphaf(0.6f);
                 const std::u8string_view preview { dialog_.document_path.empty() ? std::u8string_view { u8"만들 경로: —" } : std::u8string_view { dialog_.document_path } };
-                static_cast<void>(draw_text_within(context.canvas, preview, label_left, preview_top + centered_text_baseline(label_font, layout_generate_dialog_row_height * scale),
+                static_cast<void>(draw_text_within(context.canvas, preview, label_left, preview_top + centered_text_baseline(label_font, layout_generate_dialog_row_height() * scale),
                     box.width - padding * 2.0f, label_font, preview_paint));
 
                 if (dialog_.message.empty() == false)
                 {
                     const float message_top { box.y + row_top(5) * scale };
                     const ui_color color { dialog_.executing ? context.palette.primary_foreground : context.palette.warning_accent };
-                    static_cast<void>(draw_text_within(context.canvas, dialog_.message, label_left, message_top + centered_text_baseline(label_font, layout_generate_dialog_row_height * scale),
+                    static_cast<void>(draw_text_within(context.canvas, dialog_.message, label_left, message_top + centered_text_baseline(label_font, layout_generate_dialog_row_height() * scale),
                         box.width - padding * 2.0f, label_font, solid_paint(color)));
                 }
 
@@ -208,7 +208,7 @@ namespace gitman::ui {
         const float field_right { left + width - padding };
         const float browse { browse_button_width * scale };
         const float gap { 8.0f * scale };
-        const float row { layout_generate_dialog_row_height * scale };
+        const float row { layout_generate_dialog_row_height() * scale };
         const float field { field_height * scale };
         const auto centered = [row, field](const float row_y) { return row_y + (row - field) / 2.0f; };
 

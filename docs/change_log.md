@@ -47,11 +47,25 @@
 - 커스텀 그리기의 글꼴을 `SkFont { typeface, size * scale }`로 손수 짓는다. luil
   `make_text_font`로 옮기는 설계는 [text-font-migration-design.md](text-font-migration-design.md)다.
   (처음에 "시스템 글자 크기를 따르지 않는다"고 적었으나, Windows에서는 luil도 같은 크기
-  공식이라 크기 차이는 없다. 달라지는 것은 굵은 글의 face다.)
+  공식이라 크기 차이는 없다. 달라지는 것은 굵은 글의 face다.) **같은 날 구현했다** — 아래
+  "글꼴·text block 이전" 절.
 - 카드 목록을 luil 가상 목록으로, 배너를 cyella 같은 토스트로 바꾸는 것은 설계 검수 뒤에 한다.
 - `gitman_format_check`(clang-format)는 이 작업 전부터 70여 곳에서 실패한다. luil은
   손으로 고른 줄바꿈을 지키려 clang-format을 검사에서 뺐다 (`9035391`). gitman도 같은
   결정을 할지 정해야 한다.
+
+### 글꼴·text block 이전 (설계 text-font-migration-design.md)
+
+사용자가 설계 D1~D6을 정하고 T1~T7을 자율 진행으로 맡겼다.
+
+- 직접 그리는 글의 글꼴 57곳을 `ui_font`·`code_font`·`icon_font` 도우미로 모았다. 굵은 글 6곳은
+  덧칠 대신 Malgun Gothic Bold face로 그린다.
+- 글 그리기 57곳을 luil `draw_text_block` 위의 `draw_text_line`으로 옮겼다. 경로(카드, 최근 폴더,
+  로컬 변경, 탐색 폴더, 새 문서 경로, 실행 파일)는 넘치면 앞을 줄여 끝의 이름을 남긴다. 알림
+  본문은 넘치면 줄을 바꾼다.
+- 글이 드는 행 높이 15개가 시스템 글자 크기에서 정해진다. Windows 텍스트 크기는 luil이 읽게
+  요청했다 ([luil-text-size-request.md](luil-text-size-request.md)).
+- 격리 데스크톱에서 찍은 9개 화면이 굵은 글을 바꾼 T3을 빼고 매 단계 픽셀까지 같았다.
 
 ## 2026-09-06 - luil 채택 구현 시작 (feature/luil-migration)
 

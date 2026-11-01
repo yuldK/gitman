@@ -108,7 +108,7 @@ Skia 취득 측면에서 ADR-006의 구성은 submodule 10개(그중 ICU는
 
 ## 갱신 (2026-11-02)
 
-- 핀을 `d87096b9…`(luil main, 2026-11-02)로 옮긴다. 이 판의 skia-prep 패키지는
+- 핀을 `d87096b81132bc0151223424f5488cb3cf547405`(luil main, 2026-11-02)로 옮긴다. 이 판의 skia-prep 패키지는
   Skia milestone 157, commit `b94213a11b3a…`, package revision 1이며 clang-cl로
   빌드되어 있다. 결정 2의 "152, `0873ec164a06…`"은 이 값으로 읽는다.
 - 결정 3을 바꾼다. luil에 `LUIL_ENABLE_WEBVIEW` 옵션이 생겨 gitman은 이를 OFF로

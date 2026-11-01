@@ -101,7 +101,7 @@ namespace gitman::ui {
                     draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
 
                 const float inset { 8.0f * scale };
-                const SkFont font { sk_ref_sp(family_or_ui(context, family_)), 12.5f * scale };
+                const SkFont font { luil::make_text_font(context, { .size = 12.5f, .typeface = sk_ref_sp(family_or_ui(context, family_)) }) };
                 const SkPaint foreground { solid_paint(selected_ ? context.palette.accent_emphasis_foreground : context.palette.primary_foreground) };
                 static_cast<void>(draw_text_within(context.canvas, name_, box.x + inset, box.y + centered_text_baseline(font, box.height), box.width - inset * 2.0f, font, foreground));
             }
@@ -176,7 +176,7 @@ namespace gitman::ui {
                 // 미리 보기는 고른 글꼴로 예문 한 줄이다. 목록 행보다 크게 그려
                 // 자획을 확인할 수 있다.
                 context.canvas.drawRect(SkRect::MakeXYWH(preview_area.x, preview_area.y, preview_area.width, preview_area.height), outline);
-                const SkFont preview_font { sk_ref_sp(family_or_ui(context, preview_family_)), 14.0f * scale };
+                const SkFont preview_font { luil::make_text_font(context, { .size = 14.0f, .typeface = sk_ref_sp(family_or_ui(context, preview_family_)) }) };
                 static_cast<void>(draw_text_within(context.canvas, preview_, preview_area.x + 8.0f * scale, preview_area.y + centered_text_baseline(preview_font, preview_area.height),
                     preview_area.width - 16.0f * scale, preview_font, solid_paint(context.palette.primary_foreground)));
             }

@@ -44,8 +44,10 @@
   찾아보기·지우기처럼 같은 글의 단추가 둘이면 화면 읽기로 구별되지 않는다 (luil 요청 후보).
 - 도구 막대 토글(경로 표시·로그 자동 스크롤)은 luil `button_element`에 토글 접근 정보가
   없어 켬·끔이 읽히지 않는다 (luil 요청 후보).
-- 커스텀 그리기의 글꼴이 `SkFont { typeface, size * scale }`라 시스템 글자 크기를 따르지
-  않는다. luil `make_text_font`로 옮기는 것은 파일이 많아 따로 한다.
+- 커스텀 그리기의 글꼴을 `SkFont { typeface, size * scale }`로 손수 짓는다. luil
+  `make_text_font`로 옮기는 설계는 [text-font-migration-design.md](text-font-migration-design.md)다.
+  (처음에 "시스템 글자 크기를 따르지 않는다"고 적었으나, Windows에서는 luil도 같은 크기
+  공식이라 크기 차이는 없다. 달라지는 것은 굵은 글의 face다.)
 - 카드 목록을 luil 가상 목록으로, 배너를 cyella 같은 토스트로 바꾸는 것은 설계 검수 뒤에 한다.
 - `gitman_format_check`(clang-format)는 이 작업 전부터 70여 곳에서 실패한다. luil은
   손으로 고른 줄바꿈을 지키려 clang-format을 검사에서 뺐다 (`9035391`). gitman도 같은

@@ -60,14 +60,14 @@ namespace gitman {
                 return;
             case configured_path_state::missing:
                 add_path_diagnostic(
-                    result, diagnostic_code::path_missing, diagnostic_severity::warning, u8"project 경로가 존재하지 않습니다.", document_path, source_index, project.id.value, resolution.native_error);
+                    result, diagnostic_code::path_missing, diagnostic_severity::warning, u8"저장소 경로가 존재하지 않습니다.", document_path, source_index, project.id.value, resolution.native_error);
                 return;
             case configured_path_state::inaccessible:
-                add_path_diagnostic(result, diagnostic_code::path_inaccessible, diagnostic_severity::warning, u8"project 경로에 접근할 수 없습니다.", document_path, source_index, project.id.value,
+                add_path_diagnostic(result, diagnostic_code::path_inaccessible, diagnostic_severity::warning, u8"저장소 경로에 접근할 수 없습니다.", document_path, source_index, project.id.value,
                     resolution.native_error);
                 return;
             case configured_path_state::not_directory:
-                add_path_diagnostic(result, diagnostic_code::path_not_directory, diagnostic_severity::warning, u8"project 경로가 디렉터리가 아닙니다.", document_path, source_index, project.id.value,
+                add_path_diagnostic(result, diagnostic_code::path_not_directory, diagnostic_severity::warning, u8"저장소 경로가 디렉터리가 아닙니다.", document_path, source_index, project.id.value,
                     resolution.native_error);
                 return;
             case configured_path_state::unchecked:

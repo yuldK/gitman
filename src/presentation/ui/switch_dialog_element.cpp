@@ -109,16 +109,19 @@ namespace gitman::ui {
         class candidate_row_element final : public ui_element
         {
         public:
-            candidate_row_element(const std::size_t index, const switch_candidate& candidate, const bool selected)
+            candidate_row_element(const std::size_t index, const switch_candidate& candidate, const bool selected, const bool current)
                 : ui_element { switch_dialog_item_id(index) }
                 , candidate_ { candidate }
                 , selected_ { selected }
+                , current_ { current }
             {
                 set_action(ui_trigger::left_click, make_logic_click(select_switch_candidate_intent { index }));
                 // 목록 행은 Tab 자리가 아니다 (설계 D1-B). 후보 이동은 질의 칸과
                 // 마우스가 맡는다.
                 set_tab_stop(false);
-                if (candidate_.requires_tracking_branch)
+                if (current_)
+                    set_tooltip(u8"지금 체크아웃된 브랜치입니다");
+                else if (candidate_.requires_tracking_branch)
                     set_tooltip(u8"local tracking branch를 만들고 전환합니다 (확인 필요)");
                 else if (candidate_.stale)
                     set_tooltip(u8"이번 조회에서 갱신되지 않은 후보입니다");
@@ -134,6 +137,8 @@ namespace gitman::ui {
             [[nodiscard]] access_info accessibility() const override
             {
                 std::u8string name { candidate_.display_name };
+                if (current_)
+                    name += u8" (현재 브랜치)";
                 if (candidate_.stale)
                     name += u8" (미갱신)";
                 return { .role = access_role::list_item, .name = std::move(name), .selected = selected_ };
@@ -152,6 +157,9 @@ namespace gitman::ui {
                     context.canvas.drawRRect(SkRRect::MakeRectXY(body, 3.0f * scale, 3.0f * scale), solid_paint(with_alpha(context.palette.accent_soft, 0.18f)));
                 else
                     draw_hover_fill(context, box, id(), interaction, enabled(), 3.0f);
+                // 현재 브랜치는 SVN 저장소 browser의 현재 위치와 같은 왼쪽 띠로 알린다.
+                if (current_)
+                    context.canvas.drawRect(SkRect::MakeXYWH(box.x, box.y + 2.0f * scale, 2.0f * scale, box.height - 4.0f * scale), solid_paint(context.palette.accent));
 
                 const float inset { 6.0f * scale };
                 float text_left { box.x + inset };
@@ -169,6 +177,8 @@ namespace gitman::ui {
                 if (candidate_.stale)
                     foreground.setAlphaf(0.6f);
                 std::u8string text { candidate_.display_name };
+                if (current_)
+                    text += u8" (현재 브랜치)";
                 if (candidate_.stale)
                     text += u8" (미갱신)";
                 static_cast<void>(draw_text_within(context.canvas, text, text_left, box.y + centered_text_baseline(font, box.height), box.x + box.width - inset - text_left, font, foreground));
@@ -177,6 +187,7 @@ namespace gitman::ui {
         private:
             switch_candidate candidate_ {};
             bool selected_ { false };
+            bool current_ { false };
         };
 
         class svn_expand_element final : public ui_element
@@ -492,7 +503,8 @@ namespace gitman::ui {
             for (std::size_t index = 0; index < dialog_.candidates.size(); ++index)
             {
                 const bool selected { dialog_.selected.has_value() && *dialog_.selected == index };
-                panel->adopt(std::make_unique<candidate_row_element>(index, dialog_.candidates[index], selected));
+                const bool current { dialog_.current.has_value() && *dialog_.current == index };
+                panel->adopt(std::make_unique<candidate_row_element>(index, dialog_.candidates[index], selected, current));
             }
         }
         panel_ = panel.get();

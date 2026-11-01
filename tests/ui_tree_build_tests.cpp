@@ -288,3 +288,28 @@ TEST_CASE("An empty card list is not read aloud", "[ui][tree][accessibility]")
     const auto tree { make_tree(0, gitman::view_empty_state::no_projects) };
     REQUIRE(find(*tree, ui::kind_card_list)->accessibility().role == luil::access_role::none);
 }
+
+TEST_CASE("The notice banner counts the notices it cannot show", "[ui][tree]")
+{
+    gitman::view_snapshot view { make_view(1) };
+    view.notices = { u8"alpha: 저장소 경로가 존재하지 않습니다.", u8"beta: 저장소 경로에 접근할 수 없습니다." };
+    const auto tree { make_tree(view) };
+
+    const luil::ui_element* const notice { find(*tree, ui::kind_notice) };
+    REQUIRE(notice->visible());
+    REQUIRE(notice->accessibility().name == u8"alpha: 저장소 경로가 존재하지 않습니다. (외 1건)");
+    REQUIRE(notice->tooltip() == u8"alpha: 저장소 경로가 존재하지 않습니다.\nbeta: 저장소 경로에 접근할 수 없습니다.");
+}
+
+TEST_CASE("Toolbar buttons that need a document are disabled without one", "[ui][tree]")
+{
+    const auto closed { make_tree(0, gitman::view_empty_state::no_document) };
+    REQUIRE(find(*closed, ui::kind_toolbar_refresh_all)->enabled() == false);
+    REQUIRE(find(*closed, ui::kind_toolbar_toggle_path_display)->enabled() == false);
+    REQUIRE(find(*closed, ui::kind_toolbar_discover)->enabled() == false);
+    REQUIRE(find(*closed, ui::kind_toolbar_settings)->enabled());
+
+    const auto opened { make_tree(1) };
+    REQUIRE(find(*opened, ui::kind_toolbar_refresh_all)->enabled());
+    REQUIRE(find(*opened, ui::kind_toolbar_toggle_path_display)->enabled());
+}

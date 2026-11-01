@@ -135,6 +135,9 @@ namespace gitman {
         std::vector<switch_candidate> candidates {};
         std::vector<svn_repository_browser_row> svn_rows {};
         std::optional<std::size_t> selected {};
+        // 지금 체크아웃된 후보다 (`candidates` 기준 index). 행이 `현재 브랜치`로
+        // 표시되어, 고르면 거부될 후보를 미리 알 수 있다.
+        std::optional<std::size_t> current {};
         // 질의 막대다 (switch-dialog-query-bar-design Q1). Git은 필터, SVN은 저장소
         // root 기준 실제 경로를 담는 주소 막대다.
         text_input_view query {};

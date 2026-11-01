@@ -44,6 +44,17 @@ namespace gitman::ui {
             return u8"";
         }
 
+        std::u8string count_digits(std::size_t value)
+        {
+            std::u8string digits {};
+            do
+            {
+                digits.insert(digits.begin(), static_cast<char8_t>(u8'0' + value % 10));
+                value /= 10;
+            } while (value > 0);
+            return digits;
+        }
+
         // 화면 전체를 덮는 root다. 자식의 slot 분배가 이곳의 책임이며, 빈 곳 클릭은
         // 선택 해제다. 자식 순서가 곧 그리기 순서라 caption을 마지막에 두어 카드가
         // caption을 덮지 않는다.
@@ -74,13 +85,33 @@ namespace gitman::ui {
                 toolbar_ = toolbar.get();
                 add_child(std::move(toolbar));
 
+                // 배너는 한 줄이라 첫 알림만 싣는다. 나머지는 개수로 알리고, 툴팁이
+                // 전부를 보인다 — 잘린 알림이 없었던 것처럼 보이지 않게 한다.
                 luil::label_config notice_config {};
-                notice_config.text = view.notices.empty() ? std::u8string {} : view.notices.front();
+                std::u8string notice_tooltip {};
+                if (view.notices.empty() == false)
+                {
+                    notice_config.text = view.notices.front();
+                    if (view.notices.size() > 1)
+                    {
+                        notice_config.text += u8" (외 ";
+                        notice_config.text += count_digits(view.notices.size() - 1);
+                        notice_config.text += u8"건)";
+                        for (const std::u8string& notice : view.notices)
+                        {
+                            if (notice_tooltip.empty() == false)
+                                notice_tooltip += u8"\n";
+                            notice_tooltip += notice;
+                        }
+                    }
+                }
                 notice_config.color = luil::label_color_role::error;
                 notice_config.background = luil::label_background_role::notice;
                 notice_config.padding = layout_margin;
                 auto notice { std::make_unique<luil::label_element>(ui_element_id { kind_notice }, std::move(notice_config)) };
                 notice->set_visible(view.notices.empty() == false);
+                if (notice_tooltip.empty() == false)
+                    notice->set_tooltip(std::move(notice_tooltip));
                 notice_ = notice.get();
                 add_child(std::move(notice));
 

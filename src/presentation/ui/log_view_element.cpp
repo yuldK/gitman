@@ -231,9 +231,15 @@ namespace gitman::ui {
         {
             SkPaint dim { solid_paint(context.palette.primary_foreground) };
             dim.setAlphaf(0.5f);
-            draw_text(context.canvas,
-                log_.filter == log_stream_filter::all ? std::u8string_view { u8"이 카드에서 실행한 작업의 로그가 여기에 표시됩니다." } : std::u8string_view { u8"필터와 일치하는 로그가 없습니다." },
-                body.x + inset, body.y + centered_text_baseline(font, body.height), font, dim);
+            std::u8string_view hint { u8"필터와 일치하는 로그가 없습니다." };
+            if (log_.card.value.empty())
+                hint = u8"카드를 선택하면 그 카드에서 실행한 작업의 로그가 여기에 표시됩니다.";
+            else if (log_.filter == log_stream_filter::all)
+                hint = u8"이 카드에서 실행한 작업의 로그가 여기에 표시됩니다.";
+            // 안내는 본문 위쪽 첫 줄 자리다. 세로 가운데에 두면 높은 pane에서 글이
+            // 아래로 떠 보였다.
+            const float line_height { layout_log_line_height * scale };
+            draw_text(context.canvas, hint, body.x + inset, body.y + inset + centered_text_baseline(font, line_height), font, dim);
             context.canvas.restore();
             return;
         }

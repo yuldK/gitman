@@ -44,6 +44,8 @@ namespace gitman::ui {
 
         auto refresh_all { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_refresh_all }, luil::button_config { .glyph = codicons::icon_refresh }) };
         refresh_all->set_tooltip(u8"모든 카드 새로 고침");
+        // 문서가 없으면 새로 고칠 카드가 없다. 탐색 등록처럼 흐리게 둔다.
+        refresh_all->set_enabled(document_open);
         refresh_all->set_action(ui_trigger::left_click, make_logic_click(refresh_all_intent {}));
         refresh_all_ = refresh_all.get();
         add_child(std::move(refresh_all));
@@ -60,6 +62,7 @@ namespace gitman::ui {
             std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_toggle_path_display }, luil::button_config { .glyph = codicons::icon_root_folder, .active = relative_paths }),
         };
         toggle_path_display->set_tooltip(relative_paths ? std::u8string { u8"카드 경로를 전체 경로로 표시" } : std::u8string { u8"카드 경로를 문서 기준 상대 경로로 표시" });
+        toggle_path_display->set_enabled(document_open);
         toggle_path_display->set_action(ui_trigger::left_click, make_logic_click(toggle_path_display_intent {}));
         toggle_path_display_ = toggle_path_display.get();
         add_child(std::move(toggle_path_display));

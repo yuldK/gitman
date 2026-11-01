@@ -30,6 +30,19 @@ namespace gitman {
             return u8"";
         }
 
+        // 배너에 싣는 문서 진단 한 줄이다. project 하나에 걸린 진단은 메시지만으로는
+        // 어느 카드의 일인지 알 수 없어 그 project의 표시 이름을 앞에 붙인다.
+        std::u8string document_notice_text(const diagnostic& value, const workspace_document& document)
+        {
+            if (value.source.project_id.has_value() == false)
+                return value.message;
+            std::u8string name { *value.source.project_id };
+            for (const project_definition& project : document.projects)
+                if (project.id.value == *value.source.project_id && project.display_name.empty() == false)
+                    name = project.display_name;
+            return name + u8": " + value.message;
+        }
+
         // 글꼴 목록 첫 항목의 표시 이름이다. 고르면 빈 이름 = 내장 글꼴이다.
         constexpr std::u8string_view default_font_display_name { u8"(기본 글꼴)" };
         // 글꼴 미리 보기 문구다. 한글·영문·숫자·기호를 한 줄에 담아 코드 글꼴 판단에 쓴다.
@@ -562,7 +575,7 @@ namespace gitman {
         notices_.clear();
         for (const diagnostic& value : diagnostics)
             if (value.severity != diagnostic_severity::information)
-                notices_.push_back(value.message);
+                notices_.push_back(document_notice_text(value, document));
 
         save_notice_.clear();
         selected_.reset();
@@ -3099,9 +3112,10 @@ namespace gitman {
         // 값이라 렌더러는 그대로 그린다 (REQ-008).
         if (has_log_pane())
         {
-            // pane은 항상 열려 있다. 선택 카드가 없으면 안내 제목의 빈 모델을 게시한다.
+            // pane은 항상 열려 있다. 선택 카드가 없으면 제목만 있는 빈 모델을 게시하고,
+            // 고르라는 안내는 본문이 한 번만 한다 (제목과 본문이 같은 말을 둘로 했다).
             log_view_model log {};
-            log.title = u8"카드를 선택하면 로그가 표시됩니다";
+            log.title = u8"로그";
             log.filter = log_filter_;
             log.auto_scroll = log_auto_scroll_;
             if (selected_.has_value())
@@ -3151,7 +3165,12 @@ namespace gitman {
                 const std::vector<std::size_t> visible { filtered_switch_candidates() };
                 dialog.candidates.reserve(visible.size());
                 for (const std::size_t index : visible)
-                    dialog.candidates.push_back(switch_dialog_->candidates.candidates[index]);
+                {
+                    const switch_candidate& candidate { switch_dialog_->candidates.candidates[index] };
+                    if (candidate_is_current(card.snapshot, candidate))
+                        dialog.current = dialog.candidates.size();
+                    dialog.candidates.push_back(candidate);
+                }
                 if (switch_dialog_->svn_browser.has_value())
                     dialog.svn_rows = build_svn_repository_browser_rows(*switch_dialog_->svn_browser);
                 dialog.selected = switch_dialog_->selected;

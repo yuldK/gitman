@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1244,4 +1245,30 @@ TEST_CASE("The SVN address bar keeps its rows while a composition is open", "[lo
     const auto view { fixture.controller.make_view_snapshot() };
     REQUIRE(view->switch_dialog->svn_rows.size() == rows);
     REQUIRE(view->switch_dialog->query.composing);
+}
+
+TEST_CASE("The checked out branch is marked in the switch candidates", "[logic][ui][switch-ui]")
+{
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    candidates.push_back(make_candidate(u8"origin/main", gitman::switch_candidate_kind::git_remote_branch));
+    candidates.push_back(make_candidate(u8"main", gitman::switch_candidate_kind::git_local_branch));
+    candidates.push_back(make_candidate(u8"develop", gitman::switch_candidate_kind::git_local_branch));
+    fixture.deliver_candidates(std::move(candidates));
+
+    // 같은 이름의 remote 후보가 아니라 체크아웃된 local branch만 현재다.
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->current == std::optional<std::size_t> { 1u });
+
+    // 질의로 거른 목록에서도 index가 그 목록을 따른다.
+    type_query(fixture.controller, u8"ma");
+    const auto filtered { fixture.controller.make_view_snapshot() };
+    REQUIRE(filtered->switch_dialog->candidates.size() == 2u);
+    REQUIRE(filtered->switch_dialog->current == std::optional<std::size_t> { 1u });
+
+    const auto tree { make_tree(*filtered) };
+    const luil::ui_element* const current { tree->find(gitman::ui::switch_dialog_item_id(1)) };
+    REQUIRE(current != nullptr);
+    REQUIRE(current->accessibility().name == u8"main (현재 브랜치)");
+    REQUIRE(tree->find(gitman::ui::switch_dialog_item_id(0))->accessibility().name == u8"origin/main");
 }

@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace gitman::ui {
     namespace {
@@ -34,13 +35,47 @@ namespace gitman::ui {
             return panel_padding * 2.0f + title_height + lines + 12.0f + button_height;
         }
 
+        // 본문 한 줄의 규칙이다. panel 폭에서 줄을 바꾸고 줄 높이는 panel 높이 계산과 같다
+        // (설계 D6). 넘치는 경로는 예전처럼 한 줄 끝이 잘리지 않고 다음 줄로 넘어간다.
+        [[nodiscard]] luil::text_block_style body_style() noexcept
+        {
+            luil::text_block_style style {};
+            style.font = { .size = 12.0f };
+            style.vertical = luil::text_vertical_align::top;
+            style.wrap = true;
+            style.line_height = line_height;
+            return style;
+        }
+
+        // 본문 줄마다 바꾼 줄이다 (논리 픽셀로 잰다). 그리기는 이 결과를 그대로 써서
+        // panel 높이와 그린 줄 수가 어긋나지 않는다.
+        [[nodiscard]] std::vector<luil::text_block_layout> wrap_body(const std::vector<std::u8string>& lines, const float text_width)
+        {
+            const luil::measure_context measure {};
+            std::vector<luil::text_block_layout> wrapped {};
+            wrapped.reserve(lines.size());
+            for (const std::u8string& line : lines)
+                wrapped.push_back(luil::measure_text_block(measure, line, body_style(), text_width));
+            return wrapped;
+        }
+
+        // 바꾼 줄을 모두 센다. 빈 줄도 한 줄 자리를 차지한다.
+        [[nodiscard]] std::size_t wrapped_line_count(const std::vector<luil::text_block_layout>& wrapped) noexcept
+        {
+            std::size_t count { 0 };
+            for (const luil::text_block_layout& layout : wrapped)
+                count += layout.lines.empty() ? 1 : layout.lines.size();
+            return count;
+        }
+
         // 제목·본문을 그리는 panel이다.
         class notice_panel_element final : public ui_element
         {
         public:
-            explicit notice_panel_element(const notice_dialog_view& dialog)
+            notice_panel_element(const notice_dialog_view& dialog, std::vector<luil::text_block_layout> lines)
                 : ui_element { ui_element_id { kind_notice_dialog_panel } }
                 , dialog_ { dialog }
+                , lines_ { std::move(lines) }
             {
                 // 흡수는 host가 content(본체)에 건다 — panel이 다시 걸 필요가 없다.
             }
@@ -81,19 +116,23 @@ namespace gitman::ui {
                 SkPaint line_paint { solid_paint(context.palette.primary_foreground) };
                 line_paint.setAlphaf(0.85f);
                 float line_top { box.y + padding + title_height * scale };
-                for (const std::u8string& line : dialog_.lines)
+                for (std::size_t index = 0; index < dialog_.lines.size() && index < lines_.size(); ++index)
                 {
-                    draw_text_line(context, line, { box.x + padding, line_top, box.width - padding * 2.0f, line_height * scale }, line_paint, { .size = 12.0f });
-                    line_top += line_height * scale;
+                    const luil::text_block_layout& layout { lines_[index] };
+                    const float rows { static_cast<float>(layout.lines.empty() ? 1 : layout.lines.size()) };
+                    const rect_f line_box { box.x + padding, line_top, box.width - padding * 2.0f, rows * line_height * scale };
+                    static_cast<void>(luil::draw_text_block(context, dialog_.lines[index], line_box, body_style(), line_paint, layout));
+                    line_top += line_box.height;
                 }
             }
 
         private:
             notice_dialog_view dialog_ {};
+            std::vector<luil::text_block_layout> lines_ {};
         };
     } // namespace
 
-    notice_dialog_element::notice_dialog_element(const notice_dialog_view& dialog)
+    notice_dialog_element::notice_dialog_element(const notice_dialog_view& dialog, std::vector<luil::text_block_layout> lines)
         : ui_element { ui_element_id { kind_notice_dialog } }
         , dialog_ { dialog }
     {
@@ -101,7 +140,7 @@ namespace gitman::ui {
         // 본체 자체는 Tab 자리가 아니다 (설계 D1-B). 키보드 닫기는 host의 Esc다.
         set_tab_stop(false);
 
-        auto panel { std::make_unique<notice_panel_element>(dialog_) };
+        auto panel { std::make_unique<notice_panel_element>(dialog_, std::move(lines)) };
         panel_ = panel.get();
         add_child(std::move(panel));
 
@@ -140,9 +179,11 @@ namespace gitman::ui {
     {
         // 예전 arrange의 clamp 규칙 그대로다 — 창보다 크면 창 크기까지 줄인다.
         float width { panel_width };
-        float height { panel_height(view.lines.size()) };
         if (width > window_width)
             width = window_width;
+        // 본문은 panel 안쪽 폭에서 줄을 바꾼다. 바뀐 줄 수만큼 panel이 높아진다.
+        std::vector<luil::text_block_layout> lines { wrap_body(view.lines, width - panel_padding * 2.0f) };
+        float height { panel_height(wrapped_line_count(lines)) };
         if (height > window_height)
             height = window_height;
 
@@ -154,6 +195,6 @@ namespace gitman::ui {
         // 배경 클릭도 Esc도 닫기다 (예전 overlay의 left_click과 policy 사슬을 옮긴 것).
         spec.outside = make_logic_click(dismiss_notice_intent {});
         spec.dismiss = make_logic_click(dismiss_notice_intent {});
-        return make_dialog_host(std::move(spec), std::make_unique<notice_dialog_element>(view));
+        return make_dialog_host(std::move(spec), std::make_unique<notice_dialog_element>(view, std::move(lines)));
     }
 } // namespace gitman::ui

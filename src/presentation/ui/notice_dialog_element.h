@@ -6,6 +6,7 @@
 #include "luil/ui/modal_host_element.h"
 
 #include <memory>
+#include <vector>
 
 namespace gitman::ui {
     // 확인 버튼 하나짜리 알림 다이얼로그의 본체다 (app-shell-design A3.2). 파일 연결
@@ -17,7 +18,8 @@ namespace gitman::ui {
     class notice_dialog_element final : public ui_element
     {
     public:
-        explicit notice_dialog_element(const notice_dialog_view& dialog);
+        // `lines`는 본문 줄마다 factory가 panel 폭에서 바꾼 줄이다 (`make_notice_dialog`).
+        notice_dialog_element(const notice_dialog_view& dialog, std::vector<luil::text_block_layout> lines);
 
         void arrange(const arrange_context& context) override;
         void draw(draw_context& context, const interaction_snapshot& interaction) const override;

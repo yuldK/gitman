@@ -131,6 +131,23 @@ TEST_CASE("The notice dialog draws above the other dialogs and closes on click o
     REQUIRE(as_intent<gitman::dismiss_notice_intent>(escaped) != nullptr);
 }
 
+TEST_CASE("A long notice line wraps inside the panel instead of being cut", "[ui][notice]")
+{
+    // 본문 줄이 panel 폭을 넘으면 다음 줄로 넘어가고 panel이 그만큼 높아진다 (글꼴 설계 D6).
+    const auto panel_height = [](std::u8string line) {
+        gitman::view_snapshot view { make_view(0, gitman::view_empty_state::no_document) };
+        view.notice_dialog = { gitman::notice_dialog_view { .title = u8"알림", .lines = { std::move(line) } } };
+        const std::shared_ptr<const luil::ui_tree> tree { make_tree(view) };
+        const luil::ui_element* const panel { find(*tree, gitman::ui::kind_notice_dialog_panel) };
+        REQUIRE(panel != nullptr);
+        return panel->bounds().height;
+    };
+
+    const float short_line { panel_height(u8"연결했습니다.") };
+    const float long_line { panel_height(u8"C:/Users/someone/AppData/Local/Programs/Gitman/bin/gitman.exe 를 .version-list 문서의 기본 프로그램으로 등록했습니다. 탐색기에서 문서를 두 번 누르면 이 프로그램이 열립니다.") };
+    REQUIRE(long_line > short_line);
+}
+
 TEST_CASE("The notice dialog's confirm button is the default button for Enter", "[ui][notice]")
 {
     notice_fixture fixture {};

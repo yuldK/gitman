@@ -84,33 +84,55 @@ namespace gitman::win32 {
         }
     }
 
-    std::u8string read_environment_variable(const std::u8string_view name) noexcept
+    std::optional<std::u8string> find_environment_variable(const std::u8string_view name) noexcept
     {
         try
         {
             const auto wide_name { utf8_to_utf16(name) };
             if (wide_name.value.has_value() == false)
-                return {};
+                return std::nullopt;
 
+            // 빈 값으로 정의된 변수도 끝 NUL 자리 1을 돌려주므로 0은 정의되지 않았거나 읽지
+            // 못한 것이다. 둘 다 `${env:}`에서는 미정의로 본다.
             SetLastError(ERROR_SUCCESS);
             DWORD capacity { GetEnvironmentVariableW(wide_name.value->c_str(), nullptr, 0) };
             if (capacity == 0)
-                return {};
+                return std::nullopt;
 
             while (true)
             {
                 std::wstring buffer(static_cast<std::size_t>(capacity), L'\0');
+                SetLastError(ERROR_SUCCESS);
                 const DWORD length { GetEnvironmentVariableW(wide_name.value->c_str(), buffer.data(), capacity) };
+                // 0은 빈 값이거나 그 사이 지워진 것이다. 마지막 오류로 가른다.
                 if (length == 0)
-                    return {};
+                {
+                    if (GetLastError() == ERROR_SUCCESS)
+                        return std::u8string {};
+                    return std::nullopt;
+                }
                 if (length < capacity)
                 {
                     buffer.resize(static_cast<std::size_t>(length));
-                    const auto value { utf16_to_utf8(buffer) };
-                    return value.value.has_value() ? std::move(*value.value) : std::u8string {};
+                    auto value { utf16_to_utf8(buffer) };
+                    if (value.value.has_value() == false)
+                        return std::nullopt;
+                    return std::move(*value.value);
                 }
                 capacity = length;
             }
+        }
+        catch (...)
+        {
+            return std::nullopt;
+        }
+    }
+
+    std::u8string read_environment_variable(const std::u8string_view name) noexcept
+    {
+        try
+        {
+            return find_environment_variable(name).value_or(std::u8string {});
         }
         catch (...)
         {

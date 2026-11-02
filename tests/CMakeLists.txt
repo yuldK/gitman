@@ -46,6 +46,7 @@ gitman_add_source_filter(gitman_test_files "application/logic"
     log_isolation_stress_tests.cpp
     logic_change_operation_tests.cpp
     logic_controller_tests.cpp
+    logic_function_run_tests.cpp
     process_cancellation_tests.cpp
     stabilization_tests.cpp
     task_scheduler_tests.cpp)
@@ -98,6 +99,7 @@ gitman_add_source_filter(gitman_test_files "infrastructure/process"
     process_output_pipeline_tests.cpp
     process_request_tests.cpp
     secret_masking_tests.cpp
+    win32_environment_variable_tests.cpp
     win32_process_launcher_tests.cpp
     win32_process_runner_tests.cpp
     win32_text_transcoder_tests.cpp)

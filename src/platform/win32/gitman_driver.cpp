@@ -30,6 +30,16 @@ namespace gitman::win32 {
         scheduler_ = std::make_unique<task_scheduler>(executor_, [this](logic_message message) { relay_.post(std::move(message)); }, default_worker_count());
         function_pool_ = std::make_unique<function_execution_pool>(function_executor_, [this](logic_message message) { relay_.post(std::move(message)); });
         controller_ = std::make_unique<logic_controller>(*scheduler_, log_writer_, registry_);
+        // 기능 실행은 전용 풀로 간다 (function-buttons-design 4.4). `${env:}`는 클릭 시점의
+        // gitman 프로세스 환경이다 (3.3).
+        controller_->bind_function_execution(*function_pool_
+            , make_function_run_services(
+                [](const std::u8string_view name)
+                {
+                    return find_environment_variable(name);
+                }
+            )
+        );
     }
 
     gitman_driver::~gitman_driver() = default;

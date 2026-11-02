@@ -2,6 +2,7 @@
 
 #include "domain/text_edit.h"
 
+#include "application/function_execution_pool.h"
 #include "application/svn_repository_browser.h"
 #include "domain/log_file_naming.h"
 #include "domain/path_syntax.h"
@@ -9,8 +10,11 @@
 #include "presentation/log_presentation.h"
 #include "presentation/ui/settings_dialog_element.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -35,6 +39,100 @@ namespace gitman {
         {
             const std::u8string_view pointer { value.source.json_pointer };
             return pointer == u8"/function_buttons" || pointer.starts_with(u8"/function_buttons/");
+        }
+
+        std::u8string decimal_text(const long long value)
+        {
+            const std::string digits { std::to_string(value) };
+            return std::u8string { digits.begin(), digits.end() };
+        }
+
+        // 기능 실행의 로그 줄이다. 카드 로그에 VCS 작업과 섞이므로 `[라벨]` 접두로 가른다
+        // (function-buttons-design 2.3.6). 출력 줄에도 붙인다.
+        std::u8string function_log_text(const std::u8string_view label, const std::u8string_view text)
+        {
+            std::u8string result { u8"[" };
+            result += label;
+            result += u8"] ";
+            result += text;
+            return result;
+        }
+
+        // 끝 줄의 소요 시간이다. 0.1초 단위로 반올림한다 (`12.3초`).
+        std::u8string function_duration_text(const std::chrono::milliseconds duration)
+        {
+            const long long milliseconds { duration.count() < 0 ? 0 : static_cast<long long>(duration.count()) };
+            const long long tenths { (milliseconds + 50) / 100 };
+            return decimal_text(tenths / 10) + u8"." + decimal_text(tenths % 10) + u8"초";
+        }
+
+        std::u8string function_capacity_message()
+        {
+            return u8"동시에 실행할 수 있는 기능은 " + decimal_text(static_cast<long long>(function_execution_capacity)) + u8"개까지입니다";
+        }
+
+        // 로컬 조회 결과가 아직 없어 판정할 수 없는 사유다. 제외된 카드는 조회하지 않아 기다려도
+        // 풀리지 않으므로 그렇게 알린다 (D17).
+        std::u8string unqueried_card_reason(const bool excluded)
+        {
+            if (excluded)
+                return u8"제외된 카드는 저장소를 조회하지 않습니다";
+            return u8"저장소를 조회한 뒤에 쓸 수 있습니다";
+        }
+
+        // 치환이 실패한 까닭이다. 카드별 비활성 사유(tooltip)와 클릭 시점 거부 줄이 같이 쓴다.
+        // 조사(이/가)가 이름에 따라 달라지지 않게 이름을 문장 뒤에 둔다. `excluded`는 제외된
+        // 카드(`enabled == false`)다.
+        std::u8string function_expansion_reason(const expansion_error& error, const bool has_local_result, const bool excluded)
+        {
+            switch (error.kind)
+            {
+            case expansion_error_kind::unterminated:
+                return u8"닫히지 않은 ${가 있습니다";
+            case expansion_error_kind::empty_name:
+                return u8"이름이 빈 변수가 있습니다";
+            case expansion_error_kind::undefined:
+                return u8"이 저장소에 정의되지 않은 변수입니다: ${" + error.name + u8"}";
+            case expansion_error_kind::unresolved:
+                // 런타임 변수는 로컬 조회가 끝나야 풀린다 (3.3). 조회 전이면 그 사실을 알린다.
+                if (is_runtime_variable_name(error.name) && has_local_result == false)
+                    return unqueried_card_reason(excluded);
+                return u8"지금 값을 풀 수 없는 변수입니다: ${" + error.name + u8"}";
+            case expansion_error_kind::environment_undefined:
+                return u8"정의되지 않은 환경 변수입니다: ${env:" + error.name + u8"}";
+            }
+            return u8"변수를 풀 수 없습니다";
+        }
+
+        // 실패 줄의 사유다. runner·launcher·executor가 단 첫 진단이다.
+        const diagnostic* first_problem(const std::vector<diagnostic>& diagnostics) noexcept
+        {
+            for (const diagnostic& value : diagnostics)
+            {
+                if (value.severity != diagnostic_severity::information)
+                    return &value;
+            }
+            return nullptr;
+        }
+
+        // 끝 줄(`시간 초과(N초)`, `취소됨`)이 이미 같은 뜻을 말하는 진단이다. 다시 남기지 않는다.
+        bool restates_function_end(const diagnostic& value) noexcept
+        {
+            return value.code == diagnostic_code::process_timed_out || value.code == diagnostic_code::process_cancelled;
+        }
+
+        // 끝 줄의 종료 코드다. runner가 `0xC0000005` 같은 bit 값을 부호 있는 수로 보존하므로
+        // 음수는 10진수 대신 Windows가 쓰는 16진수로 적는다.
+        std::u8string function_exit_code_text(const std::int32_t code)
+        {
+            if (code >= 0)
+                return decimal_text(code);
+            constexpr std::u8string_view digits { u8"0123456789ABCDEF" };
+            const std::uint32_t bits { static_cast<std::uint32_t>(code) };
+            std::u8string text { u8"0x" };
+            for (int shift = 28; shift >= 0; shift -= 4)
+                text.push_back(digits[(bits >> shift) & 0xFu]);
+            return text;
         }
 
         // 묶은 기능 버튼 알림의 상세 상한이다. 버튼이 많은 문서에서 tooltip이 화면을 덮지
@@ -205,6 +303,33 @@ namespace gitman {
         registry_->add(cancellation_source_);
     }
 
+    void logic_controller::bind_function_execution(function_run_submitter& submitter, function_run_services services)
+    {
+        // 하나라도 비면 클릭 시점에 logic thread에서 `bad_function_call`이 난다. 묶지 않은
+        // 것으로 두어 실행 intent가 로그 한 줄로 거절되게 한다.
+        if (services.join == nullptr || services.mask == nullptr || services.environment == nullptr || services.make_command == nullptr)
+        {
+            function_submitter_ = nullptr;
+            function_services_ = {};
+            return;
+        }
+        function_submitter_ = &submitter;
+        function_services_ = std::move(services);
+    }
+
+    std::optional<logic_controller::function_button_state> logic_controller::function_state(const project_id& id, const std::u8string_view button_id) const
+    {
+        const function_button* const button { find_function_button(button_id) };
+        if (button == nullptr)
+            return std::nullopt;
+        for (const card_state& card : cards_)
+        {
+            if (card.project.id == id)
+                return evaluate_function(card, *button);
+        }
+        return std::nullopt;
+    }
+
     void logic_controller::handle(logic_message message)
     {
         std::visit(
@@ -243,6 +368,10 @@ namespace gitman {
                     handle_request_switch(value);
                 else if constexpr (std::is_same_v<value_type, cancel_operation_intent>)
                     handle_cancel_operation(value);
+                else if constexpr (std::is_same_v<value_type, run_function_intent>)
+                    handle_run_function(value);
+                else if constexpr (std::is_same_v<value_type, stop_function_intent>)
+                    handle_stop_function(value);
                 else if constexpr (std::is_same_v<value_type, clear_log_intent>)
                 {
                     card_state* const card { find_card(value.id) };
@@ -463,6 +592,12 @@ namespace gitman {
                     handle_app_settings_loaded(std::move(value));
                 else if constexpr (std::is_same_v<value_type, app_settings_saved_event>)
                     handle_app_settings_saved(std::move(value));
+                else if constexpr (std::is_same_v<value_type, function_started_event>)
+                    handle_function_started(value);
+                else if constexpr (std::is_same_v<value_type, function_log_event>)
+                    handle_function_log(std::move(value));
+                else if constexpr (std::is_same_v<value_type, function_completed_event>)
+                    handle_function_completed(std::move(value));
             },
             std::move(message));
     }
@@ -755,7 +890,14 @@ namespace gitman {
         // 다른 카드의 로그를 이전 카드의 필터·스크롤로 보지 않도록 뷰 상태를
         // 기본값으로 되돌린다. 진행 중 작업은 건드리지 않는다 (plan 3.9).
         if ((selected_ == previous) == false)
+        {
             reset_log_view_state();
+            // 실패 점은 그 카드를 선택하면 지운다. 실패는 로그의 끝 줄(error)로 남는다
+            // (function-buttons-design 2.3.5).
+            card_state* const card { selected_.has_value() ? find_card(*selected_) : nullptr };
+            if (card != nullptr)
+                card->function_results.clear();
+        }
 
         // 키보드 순회는 화면 밖 카드도 고를 수 있다. 선택이 보이도록 따라간다.
         scroll_selected_into_view();
@@ -950,6 +1092,18 @@ namespace gitman {
                 is_update ? std::u8string { u8"이미 작업이 진행 중이라 update를 시작하지 않습니다." } : std::u8string { u8"이미 작업이 진행 중이라 switch를 시작하지 않습니다." });
             return;
         }
+        // 같은 카드의 출력 수집 기능과 서로 막는다 (function-buttons-design 4.7, D6-A). 빌드
+        // 스크립트와 `git pull`이 같은 작업 트리를 동시에 건드리지 않게 한다. 버튼과 메뉴는
+        // 이미 비활성이고 여기가 마지막 거부다.
+        for (const function_run_state& run : card.function_runs)
+        {
+            if (run.mode != function_run_mode::capture)
+                continue;
+            std::u8string text { is_update ? u8"기능이 실행 중이라 update를 시작하지 않습니다: " : u8"기능이 실행 중이라 switch를 시작하지 않습니다: " };
+            text += run.label;
+            append_lifecycle_log(card, diagnostic_severity::warning, std::move(text));
+            return;
+        }
 
         process_cancellation_source cancellation {};
         operation_request request { make_request(kind, &card, card.generation) };
@@ -992,6 +1146,445 @@ namespace gitman {
 
         card->change_cancellation->request_cancellation();
         append_lifecycle_log(*card, diagnostic_severity::warning, u8"취소를 요청했습니다.");
+    }
+
+    const function_button* logic_controller::find_function_button(const std::u8string_view button_id) const noexcept
+    {
+        if (document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return nullptr;
+        // 검증에 실패한 항목은 원문만 있어 실행과 화면에서 빠진다 (3.8).
+        for (const function_button_entry& entry : document_->function_buttons->buttons)
+        {
+            const function_button* const button { std::get_if<function_button>(&entry) };
+            if (button != nullptr && button->id == button_id)
+                return button;
+        }
+        return nullptr;
+    }
+
+    variable_lookup logic_controller::make_function_lookup(const card_state& card, function_environment_lookup environment) const
+    {
+        variable_lookup lookup {};
+        lookup.builtins = make_builtin_variables(document_path_, card.project, card.has_local_result ? &card.snapshot : nullptr);
+        if (document_.has_value() && document_->function_buttons.has_value())
+            lookup.user = make_user_variables(*document_->function_buttons, card.project.id.value);
+        lookup.environment = std::move(environment);
+        return lookup;
+    }
+
+    bool logic_controller::function_running(const card_state& card) noexcept
+    {
+        return std::ranges::any_of(card.function_runs
+            , [](const function_run_state& run)
+            {
+                return run.mode == function_run_mode::capture;
+            }
+        );
+    }
+
+    logic_controller::function_run_state* logic_controller::find_function_run(card_state& card, const std::uint64_t run_id) noexcept
+    {
+        for (function_run_state& run : card.function_runs)
+        {
+            if (run.run_id == run_id)
+                return &run;
+        }
+        return nullptr;
+    }
+
+    bool logic_controller::change_allowed(const card_state& card) noexcept
+    {
+        return card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready && function_running(card) == false;
+    }
+
+    std::size_t logic_controller::function_runs_in_flight() const noexcept
+    {
+        std::size_t count { 0 };
+        for (const card_state& card : cards_)
+            count += card.function_runs.size();
+        return count;
+    }
+
+    std::optional<logic_controller::function_button_state> logic_controller::evaluate_function(const card_state& card, const function_button& button) const
+    {
+        // 적용 범위다. 범위 밖 카드에는 그 기능이 버튼으로도 메뉴로도 없다 (B4).
+        if (button.project_ids.has_value() && std::ranges::find(*button.project_ids, card.project.id.value) == button.project_ids->end())
+            return std::nullopt;
+
+        function_button_state state {};
+        for (const function_result_state& result : card.function_results)
+        {
+            if (result.button_id == button.id)
+                state.failed = result.failed;
+        }
+
+        // 자기 자신이 실행 중이면 중지 버튼으로 활성이다. 그 사이 조회 결과(`vcs_hint: auto`의
+        // 종류, 런타임 값)가 바뀌어도 중지할 수 있어야 하므로 `vcs` 범위와 변수 판정보다 앞에 둔다.
+        for (const function_run_state& run : card.function_runs)
+        {
+            if (run.button_id == button.id && run.mode == function_run_mode::capture)
+                state.running = true;
+        }
+        if (state.running)
+        {
+            state.enabled = true;
+            return state;
+        }
+
+        if (button.vcs != function_vcs_scope::any)
+        {
+            const repository_kind wanted { button.vcs == function_vcs_scope::git ? repository_kind::git : repository_kind::subversion };
+            repository_kind kind { repository_kind::unknown };
+            if (card.project.hint == vcs_hint::git)
+                kind = repository_kind::git;
+            else if (card.project.hint == vcs_hint::subversion)
+                kind = repository_kind::subversion;
+            else if (card.has_local_result)
+                kind = card.snapshot.kind;
+            // `vcs_hint: auto`이고 조회 전이면 범위 안인지 아직 모른다. 버튼은 보이되 비활성이다 (B4).
+            // 제외된 카드는 조회하지 않으므로 늘 이 상태다 (D17).
+            if (kind == repository_kind::unknown)
+            {
+                if (card.has_local_result)
+                    state.disabled_reason = u8"저장소 종류를 알 수 없습니다";
+                else if (card.project.enabled)
+                    state.disabled_reason = u8"저장소 종류를 아직 모릅니다";
+                else
+                    state.disabled_reason = unqueried_card_reason(true);
+                return state;
+            }
+            if (kind != wanted)
+                return std::nullopt;
+        }
+
+        // 사용자 변수와 런타임 값이 이 카드에서 풀리는지 본다. `${env:}`는 클릭 시점에만 보므로
+        // 여기서는 어떤 이름이든 정의된 것으로 친다 (3.7).
+        const variable_lookup lookup {
+            make_function_lookup(card
+                , [](const std::u8string_view)
+                {
+                    return std::optional<std::u8string> { std::u8string {} };
+                }
+            )
+        };
+        std::vector<std::u8string_view> templates { button.program };
+        for (const std::u8string& argument : button.args)
+            templates.push_back(argument);
+        templates.push_back(button.working_directory());
+        bool uses_project_root { false };
+        for (const std::u8string_view text : templates)
+        {
+            const variable_expansion expansion { expand_variables(text, lookup) };
+            if (expansion.error.has_value())
+            {
+                state.disabled_reason = function_expansion_reason(*expansion.error, card.has_local_result, card.project.enabled == false);
+                return state;
+            }
+            // 사용자 변수 값 안의 `${projectRoot}`도 그 이름의 구간으로 남는다.
+            for (const expansion_segment& segment : expansion.segments)
+            {
+                if (segment.variable == u8"projectRoot")
+                    uses_project_root = true;
+            }
+        }
+
+        // 경로가 없으면 클릭하고 나서야 프로세스 시작이 실패하므로 미리 막는다 (4.8의 5).
+        if (uses_project_root && card.project.path.state != configured_path_state::available)
+        {
+            state.disabled_reason = u8"저장소 경로를 쓸 수 없습니다";
+            return state;
+        }
+
+        // 출력 수집은 같은 카드에서 하나만 돌고 update·switch와 서로 막는다 (4.7). refresh(`busy`)는
+        // 보지 않는다. 보면 초기 조회와 F5 동안 모든 출력 수집 버튼이 비활성이 된다.
+        if (button.mode == function_run_mode::capture)
+        {
+            if (card.change_operation_id != 0)
+            {
+                state.disabled_reason = card.change_kind == operation_kind::switch_to ? u8"전환 중입니다" : u8"업데이트 중입니다";
+                return state;
+            }
+            if (function_running(card))
+            {
+                state.disabled_reason = u8"이 카드에서 다른 기능이 실행 중입니다";
+                return state;
+            }
+        }
+
+        state.enabled = true;
+        return state;
+    }
+
+    void logic_controller::handle_run_function(const run_function_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        card_state* const card { find_card(intent.id) };
+        const function_button* const button { find_function_button(intent.button_id) };
+        if (card == nullptr || button == nullptr)
+            return;
+
+        // 버튼을 그릴 때와 같은 판정을 다시 한다. 클릭과 상태 변화가 엇갈린 늦은 클릭이다 (4.8).
+        // 범위 밖이면 그 카드에 버튼이 없다. 이미 실행 중이면 `Alt+N`이 중지하지 않도록 아무것도
+        // 하지 않는다 (2.3.4).
+        const std::optional<function_button_state> state { evaluate_function(*card, *button) };
+        if (state.has_value() == false || state->running)
+            return;
+        if (state->enabled == false)
+        {
+            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, state->disabled_reason));
+            return;
+        }
+        if (function_submitter_ == nullptr)
+        {
+            append_lifecycle_log(*card, diagnostic_severity::error, function_log_text(button->label, u8"기능 실행 경로가 없어 실행하지 않습니다"));
+            return;
+        }
+
+        // 클릭 시점의 값으로 치환하고 검사한다 (3.7). 실제 argv에는 env 값이 들어가고, 로그에는
+        // 표시용 명령줄만 남는다 (3.6).
+        const variable_lookup lookup { make_function_lookup(*card, function_services_.environment) };
+        const variable_expansion program { expand_variables(button->program, lookup) };
+        std::vector<variable_expansion> arguments {};
+        arguments.reserve(button->args.size());
+        for (const std::u8string& argument : button->args)
+            arguments.push_back(expand_variables(argument, lookup));
+        const variable_expansion working_directory { expand_variables(button->working_directory(), lookup) };
+
+        std::optional<expansion_error> error { program.error };
+        for (const variable_expansion& argument : arguments)
+        {
+            if (error.has_value() == false)
+                error = argument.error;
+        }
+        if (error.has_value() == false)
+            error = working_directory.error;
+        if (error.has_value())
+        {
+            reject_function_run(*card, *button, function_expansion_reason(*error, card->has_local_result, card->project.enabled == false));
+            return;
+        }
+
+        const std::optional<function_program_rejection> rejection { check_function_program(program.text) };
+        if (rejection.has_value())
+        {
+            reject_function_run(*card, *button, function_program_rejection_message(*rejection));
+            return;
+        }
+        // stage-3 시작 계약이다 (stage-3-plan.md:59). 드라이브 루트 문서의 `${workspaceFolder}\x`처럼
+        // 구분자가 겹친 경로도 Windows 경로로는 같은 곳이라 그대로 받는다.
+        if (is_absolute_windows_path(working_directory.text) == false)
+        {
+            reject_function_run(*card, *button, u8"작업 폴더(cwd)가 절대 경로가 아닙니다");
+            return;
+        }
+        const std::optional<cmd_injection_finding> injection { find_cmd_injection(program, arguments) };
+        if (injection.has_value())
+        {
+            reject_function_run(*card, *button, cmd_injection_message(*injection));
+            return;
+        }
+
+        // 풀이 꽉 찼으면 대기열에 넣지 않고 거절한다. 보이지 않는 대기열을 두지 않는다 (4.4).
+        if (function_runs_in_flight() >= function_execution_capacity)
+        {
+            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, function_capacity_message()));
+            return;
+        }
+
+        function_command command {};
+        command.program = program.text;
+        command.arguments.reserve(arguments.size());
+        for (const variable_expansion& argument : arguments)
+            command.arguments.push_back(argument.text);
+        command.working_directory = working_directory.text;
+
+        function_run_state run {};
+        run.run_id = next_operation_id_++;
+        run.button_id = button->id;
+        run.label = button->label;
+        run.mode = button->mode;
+        run.timeout_seconds = button->timeout_seconds;
+        run.phase = button->mode == function_run_mode::capture ? function_run_phase::queued : function_run_phase::launching;
+        run.display_command_line = build_display_command_line(program, arguments, function_services_.join, function_services_.mask);
+
+        function_run_request request {};
+        request.id = card->project.id;
+        request.run_id = run.run_id;
+        request.command = function_services_.make_command(std::move(command), button->mode, button->timeout_seconds, lookup.builtins);
+        if (button->mode == function_run_mode::capture)
+        {
+            // 카드 단위로 중지할 수 있고, 종료 취소가 logic thread를 거치지 않게 등록한다 (4.10).
+            run.cancellation.emplace();
+            request.token = run.cancellation->token();
+            registry_->add(*run.cancellation);
+        }
+        else
+        {
+            // 분리 실행은 취소가 없다. 대기 중에 앱이 끝나면 띄우지 않게 종료 token만 싣는다.
+            request.token = cancellation_source_.token();
+        }
+
+        card->function_runs.push_back(std::move(run));
+        if (function_submitter_->submit(std::move(request)) == false)
+        {
+            // 남는 run이 없게 되돌린다. source가 사라지면 registry의 손잡이도 정리된다.
+            card->function_runs.pop_back();
+            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, function_capacity_message()));
+            return;
+        }
+
+        // 실패 점은 그 기능을 다시 실행하면 지운다 (2.3.5).
+        std::erase_if(card->function_results
+            , [button](const function_result_state& result)
+            {
+                return result.button_id == button->id;
+            }
+        );
+
+        // 분리 실행의 `시작:` 줄은 결과를 받은 뒤에 남긴다 (2.3.6).
+        if (button->mode == function_run_mode::capture)
+            append_lifecycle_log(*card, diagnostic_severity::information, function_log_text(button->label, u8"실행: " + card->function_runs.back().display_command_line));
+    }
+
+    void logic_controller::handle_stop_function(const stop_function_intent& intent)
+    {
+        card_state* const card { find_card(intent.id) };
+        if (card == nullptr)
+            return;
+
+        // 끝 줄 `취소됨`은 completed가 남긴다. 대기 중이던 실행도 같은 줄로 끝난다.
+        for (function_run_state& run : card->function_runs)
+        {
+            if (run.button_id == intent.button_id && run.cancellation.has_value())
+                run.cancellation->request_cancellation();
+        }
+    }
+
+    void logic_controller::reject_function_run(card_state& card, const function_button& button, const std::u8string_view reason)
+    {
+        std::u8string text { u8"실행하지 않습니다: " };
+        text += reason;
+        append_lifecycle_log(card, diagnostic_severity::error, function_log_text(button.label, text));
+        set_function_result(card, button.id, true, std::nullopt);
+    }
+
+    void logic_controller::set_function_result(card_state& card, const std::u8string_view button_id, const bool failed, const std::optional<std::int32_t> exit_code)
+    {
+        for (function_result_state& result : card.function_results)
+        {
+            if (result.button_id == button_id)
+            {
+                result.failed = failed;
+                result.exit_code = exit_code;
+                return;
+            }
+        }
+        card.function_results.push_back({ std::u8string { button_id }, failed, exit_code });
+    }
+
+    void logic_controller::handle_function_started(const function_started_event& event)
+    {
+        card_state* const card { find_card(event.id) };
+        function_run_state* const run { card == nullptr ? nullptr : find_function_run(*card, event.run_id) };
+        // 끝났거나 문서를 닫은 뒤의 늦은 event다.
+        if (run == nullptr || run->mode != function_run_mode::capture)
+            return;
+
+        run->phase = function_run_phase::running;
+        run->started_at = event.started_at;
+        // 로그 헤더는 가장 나중에 시작한 작업의 경과 시간을 보인다. 직전 명령이 남긴 값을 지운다.
+        card->change_elapsed.reset();
+    }
+
+    void logic_controller::handle_function_log(function_log_event event)
+    {
+        card_state* const card { find_card(event.id) };
+        const function_run_state* const run { card == nullptr ? nullptr : find_function_run(*card, event.run_id) };
+        if (run == nullptr)
+            return;
+
+        for (operation_log_entry& entry : event.entries)
+        {
+            entry.text = function_log_text(run->label, entry.text);
+            append_card_log(*card, std::move(entry));
+        }
+    }
+
+    void logic_controller::handle_function_completed(function_completed_event event)
+    {
+        card_state* const card { find_card(event.id) };
+        function_run_state* const found { card == nullptr ? nullptr : find_function_run(*card, event.run_id) };
+        // executor가 예외 경로에서 completed를 한 번 더 보낼 수 있다. 이미 끝난 run은 버린다 (T5).
+        if (found == nullptr)
+            return;
+
+        // 끝 줄은 실행을 시작할 때의 라벨과 timeout으로 남긴다. 항목을 빼면 source도 사라진다.
+        const function_run_state run { std::move(*found) };
+        std::erase_if(card->function_runs
+            , [&run](const function_run_state& value)
+            {
+                return value.run_id == run.run_id;
+            }
+        );
+
+        // 시작하지 못한 결과는 첫 진단을 끝 줄의 사유로 쓴다. 그 진단은 아래에서 다시 남기지 않는다.
+        const diagnostic* const problem { first_problem(event.diagnostics) };
+        const bool reason_in_end_line { event.outcome == function_run_outcome::start_failed || event.outcome == function_run_outcome::failed };
+        const std::u8string reason { problem == nullptr ? std::u8string {} : problem->message };
+        std::u8string text {};
+        bool failed { true };
+        switch (event.outcome)
+        {
+        case function_run_outcome::exited:
+            if (event.exit_code.has_value())
+            {
+                text = u8"종료 코드 " + function_exit_code_text(*event.exit_code) + u8" · " + function_duration_text(event.duration);
+                failed = *event.exit_code != 0;
+            }
+            else
+                text = u8"종료 코드를 알 수 없습니다 · " + function_duration_text(event.duration);
+            break;
+        case function_run_outcome::timed_out:
+            text = u8"시간 초과(" + decimal_text(run.timeout_seconds) + u8"초)";
+            break;
+        case function_run_outcome::cancelled:
+            // 사용자 중지는 실패 표식을 남기지 않는다 (2.3.5).
+            text = u8"취소됨";
+            failed = false;
+            break;
+        case function_run_outcome::start_failed:
+            text = reason.empty() ? std::u8string { u8"시작하지 못했습니다" } : u8"시작하지 못했습니다: " + reason;
+            break;
+        case function_run_outcome::failed:
+            text = reason.empty() ? std::u8string { u8"실행하지 못했습니다" } : u8"실행하지 못했습니다: " + reason;
+            break;
+        case function_run_outcome::launched:
+            text = u8"시작: " + run.display_command_line;
+            failed = false;
+            break;
+        }
+        diagnostic_severity severity { failed ? diagnostic_severity::error : diagnostic_severity::information };
+        if (event.outcome == function_run_outcome::cancelled)
+            severity = diagnostic_severity::warning;
+
+        append_lifecycle_log(*card, severity, function_log_text(run.label, text));
+        set_function_result(*card, run.button_id, failed, event.exit_code);
+
+        // 끝 줄 뒤에 runner가 단 경고와 오류를 남긴다 (`handle_change_completed`와 같다). 출력
+        // 잘림, pipe 읽기 실패, sink 예외, 출력 pipe를 잡은 손자 정리처럼 정상 종료에도 붙는
+        // 진단이다 (4.1, 6.3). 잘림 문구도 원인별로 이 진단이 맡는다.
+        for (const diagnostic& value : event.diagnostics)
+        {
+            if (value.severity == diagnostic_severity::information || restates_function_end(value) || (reason_in_end_line && &value == problem))
+                continue;
+            append_lifecycle_log(*card, value.severity, function_log_text(run.label, value.message));
+        }
+
+        // 끝나도 걸린 시간을 헤더에 남긴다. 소요 시간은 started부터 잰 값이다 (4.5).
+        if (run.phase == function_run_phase::running)
+            card->change_elapsed = { std::chrono::duration_cast<std::chrono::steady_clock::duration>(event.duration) };
+        // 결과를 VCS 상태로 해석하지 않으므로 refresh를 걸지 않는다 (B8).
     }
 
     void logic_controller::handle_operation_log(operation_log_event event)
@@ -2054,6 +2647,13 @@ namespace gitman {
             switch_dialog_->message = u8"카드가 다른 작업을 실행 중입니다. 끝난 뒤 다시 시도하세요.";
             return;
         }
+        // dialog가 열린 뒤 시작한 출력 수집 기능과도 서로 막는다 (function-buttons-design 4.7).
+        // begin_change도 거부하지만 사유는 dialog에 보여야 한다.
+        if (function_running(*card))
+        {
+            switch_dialog_->message = u8"이 카드에서 기능이 실행 중입니다. 끝난 뒤 다시 시도하세요.";
+            return;
+        }
 
         begin_change(*card, operation_kind::switch_to, {}, &target);
         if (card->change_operation_id != 0)
@@ -2582,7 +3182,7 @@ namespace gitman {
 
         // 비활성 항목은 view에서 이미 걸렀지만, 메뉴가 떠 있는 동안 카드 상태가
         // 바뀌었을 수 있다. view를 만들 때와 같은 판정을 다시 본다 (늦은 클릭 방어).
-        const bool can_change { state->project.enabled && state->busy == false && state->has_local_result && state->snapshot.availability == repository_availability::ready };
+        const bool can_change { change_allowed(*state) };
         const bool change_running { state->change_operation_id != 0 };
 
         switch (intent.entry)
@@ -2829,8 +3429,17 @@ namespace gitman {
     void logic_controller::cancel_running_changes() noexcept
     {
         for (card_state& card : cards_)
+        {
             if (card.change_cancellation.has_value())
                 card.change_cancellation->request_cancellation();
+            // 출력 수집 기능도 문서를 열고 닫을 때와 종료할 때 함께 취소한다 (4.10). join하지
+            // 않으며 늦게 온 event는 run id로 버린다. 분리 실행은 취소가 없어 남는다.
+            for (function_run_state& run : card.function_runs)
+            {
+                if (run.cancellation.has_value())
+                    run.cancellation->request_cancellation();
+            }
+        }
     }
 
     void logic_controller::request_refresh(card_state& card)
@@ -3038,7 +3647,7 @@ namespace gitman {
             model.busy = card.busy;
             model.selected = selected_.has_value() && *selected_ == card.project.id;
             model.enabled = card.project.enabled;
-            model.can_change = card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready;
+            model.can_change = change_allowed(card);
             model.change_running = card.change_operation_id != 0;
 
             card_view_inputs inputs {};
@@ -3185,8 +3794,19 @@ namespace gitman {
                     // 실행 중이면 헤더의 경과 시간이 흐르고, 끝난 뒤에는 마지막
                     // 명령이 걸린 시간을 그대로 세워 둔다. 둘 다 없으면 표시하지
                     // 않는다 (아직 아무 명령도 실행하지 않았다).
+                    // 기능 실행도 같은 표시다 (function-buttons-design 2.3.6). 기준점은
+                    // started이라 풀 대기 시간이 섞이지 않는다. 출력 수집 기능과 update·switch는
+                    // 서로 막으므로 둘이 함께 흐르지 않는다.
+                    const function_run_state* started_function { nullptr };
+                    for (const function_run_state& run : card.function_runs)
+                    {
+                        if (run.phase == function_run_phase::running)
+                            started_function = &run;
+                    }
                     if (card.change_operation_id != 0)
                         log.change_started_at = { card.change_started_at };
+                    else if (started_function != nullptr)
+                        log.change_started_at = { started_function->started_at };
                     else
                         log.change_elapsed = card.change_elapsed;
 
@@ -3411,7 +4031,7 @@ namespace gitman {
                 // 항목 활성 여부는 카드 버튼과 같은 판정이다 (3장: 버튼이 비활성이면
                 // 메뉴 항목도 비활성). 실행 중에는 update 버튼이 취소 버튼으로
                 // 바뀌므로 메뉴의 업데이트는 비활성이다.
-                const bool can_change { card.project.enabled && card.busy == false && card.has_local_result && card.snapshot.availability == repository_availability::ready };
+                const bool can_change { change_allowed(card) };
                 const bool change_running { card.change_operation_id != 0 };
                 menu.items.push_back({ context_menu_entry::open_repository, u8"저장소 열기", true, repository_path });
                 // 미추적·변경 정리는 편집기에서 하는 편이 낫다 (2026-08-22 지시).

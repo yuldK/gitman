@@ -1,5 +1,8 @@
 #include "infrastructure/function_execution_policy.h"
 
+#include "infrastructure/command_line_builder.h"
+#include "infrastructure/secret_masking.h"
+
 #include <algorithm>
 #include <array>
 #include <string_view>
@@ -87,5 +90,28 @@ namespace gitman {
         request.working_directory = std::move(command.working_directory);
         request.environment_overrides = function_environment_overrides(builtins, function_run_mode::detached);
         return request;
+    }
+
+    std::variant<process_request, process_launch_request> make_function_command(function_command command, const function_run_mode mode, const std::int32_t timeout_seconds, const std::span<const variable_binding> builtins)
+    {
+        if (mode == function_run_mode::detached)
+            return make_function_launch_request(std::move(command), builtins);
+        return make_function_process_request(std::move(command), timeout_seconds, builtins);
+    }
+
+    function_run_services make_function_run_services(function_environment_lookup environment)
+    {
+        function_run_services services {};
+        services.join = [](const std::u8string_view program, const std::span<const std::u8string> arguments)
+        {
+            return build_windows_command_line(program, arguments);
+        };
+        services.mask = [](const std::u8string_view text)
+        {
+            return mask_secrets(text);
+        };
+        services.environment = std::move(environment);
+        services.make_command = &make_function_command;
+        return services;
     }
 } // namespace gitman

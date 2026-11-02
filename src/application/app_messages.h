@@ -90,6 +90,23 @@ namespace gitman {
         project_id id {};
     };
 
+    // 카드의 기능 버튼 실행이다 (function-buttons-design 4.5). 카드 버튼, 기능 줄 버튼,
+    // 기능 메뉴, 카드 메뉴, `Alt+N`이 같은 intent를 낸다. 그 기능이 이미 실행 중이면 아무것도
+    // 하지 않는다. 중지는 `stop_function_intent`다 (`Alt+N`이 중지하지 않게, 2.3.4).
+    struct run_function_intent
+    {
+        project_id id {};
+        std::u8string button_id {};
+    };
+
+    // 실행 중인 출력 수집 기능의 중지다. 실행 중인 버튼이 중지 버튼으로 바뀌어 낸다.
+    // 분리 실행은 취소가 없어 대상이 아니다.
+    struct stop_function_intent
+    {
+        project_id id {};
+        std::u8string button_id {};
+    };
+
     struct clear_log_intent
     {
         project_id id {};
@@ -788,7 +805,7 @@ namespace gitman {
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
-        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
+        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, run_function_intent, stop_function_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
         switch_dialog_scroll_intent, edit_text_input_intent, set_text_composition_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent,
         confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event, open_generate_document_intent, set_generate_scan_root_intent,

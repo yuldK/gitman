@@ -666,7 +666,7 @@ namespace gitman {
             message.append(u8"줄바꿈");
         else
             message.push_back(finding.character);
-        message.append(u8")가 있어 실행하지 않습니다.");
+        message.append(u8")가 있습니다.");
         return message;
     }
 } // namespace gitman

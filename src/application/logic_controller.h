@@ -2,6 +2,7 @@
 
 #include "application/app_messages.h"
 #include "application/cancellation_registry.h"
+#include "application/function_run_services.h"
 #include "application/log_file_sink.h"
 #include "application/process_cancellation.h"
 #include "domain/operation_log.h"
@@ -40,6 +41,28 @@ namespace gitman {
 
         void handle(logic_message message);
 
+        // 기능 버튼 실행 경계를 묶는다 (function-buttons-design 4.4, 4.5). 풀(`submitter`)은
+        // controller보다 오래 살아 있어야 한다. 묶지 않으면 실행 intent는 로그 한 줄로 거절된다
+        // (기능 버튼을 쓰지 않는 test 조립). `services`의 함수가 하나라도 비어 있어도 묶지 않은
+        // 것으로 둔다. 생성자를 늘리지 않으려고 따로 둔다.
+        void bind_function_execution(function_run_submitter& submitter, function_run_services services);
+
+        // 카드 하나에서 본 기능 버튼 하나의 상태다 (4.8). 판정은 배치와 무관하다.
+        struct function_button_state
+        {
+            bool enabled { false };
+            // 비활성 사유다. tooltip과 메뉴 라벨 접미가 쓴다 (T9).
+            std::u8string disabled_reason {};
+            // 그 기능의 출력 수집 실행이 이 카드에서 돌고 있다. 버튼은 중지 버튼으로 활성이다.
+            bool running { false };
+            // 마지막 실행이 실패했다 (실패 점). 다시 실행하거나 카드를 선택하면 지운다.
+            bool failed { false };
+        };
+
+        // 그 카드에 그 기능이 적용되지 않거나(범위 밖, 문서·카드·기능 없음) 검증에 실패한
+        // 항목이면 값이 없다. logic thread에서만 호출한다 (카드 view 구성과 test 관찰용).
+        [[nodiscard]] std::optional<function_button_state> function_state(const project_id& id, std::u8string_view button_id) const;
+
         // `startup_intent`를 받으면 한 번 호출한다 (설계 L3). 앱 단위 설정을 읽는
         // 작업을 제출한다 (app-shell-design A1.2).
         void start();
@@ -55,6 +78,42 @@ namespace gitman {
         [[nodiscard]] const operation_log_buffer* card_log(const project_id& id) const noexcept;
 
     private:
+        // 카드에서 실행 중인 기능 하나다 (4.7). `capture`는 completed까지, `detached`는 결과
+        // event가 올 때까지만 있다.
+        enum class function_run_phase
+        {
+            // 풀에 제출했고 started 전이다.
+            queued,
+            // started를 받았다. 경과 시간의 기준점이 있다.
+            running,
+            // 분리 실행을 제출했고 결과 전이다.
+            launching,
+        };
+
+        struct function_run_state
+        {
+            std::uint64_t run_id { 0 };
+            std::u8string button_id {};
+            // 끝 줄은 실행을 시작할 때의 라벨과 timeout으로 남긴다 (4.11, 2.3.6).
+            std::u8string label {};
+            function_run_mode mode { function_run_mode::capture };
+            std::int32_t timeout_seconds { default_function_timeout_seconds };
+            function_run_phase phase { function_run_phase::queued };
+            std::chrono::steady_clock::time_point started_at {};
+            // 분리 실행의 `시작:` 줄은 결과를 받은 뒤에 남기므로 표시용 명령줄을 들고 있는다.
+            std::u8string display_command_line {};
+            // 출력 수집만 있다. `registry_`에도 등록해 종료 취소가 logic thread를 거치지 않는다.
+            std::optional<process_cancellation_source> cancellation {};
+        };
+
+        // 버튼별 마지막 결과다 (4.7). 메모리에만 있다.
+        struct function_result_state
+        {
+            std::u8string button_id {};
+            bool failed { false };
+            std::optional<std::int32_t> exit_code {};
+        };
+
         struct card_state
         {
             project_definition project {};
@@ -76,6 +135,10 @@ namespace gitman {
             // 변경 작업별 취소 source다. 조회와 달리 사용자가 카드 단위로 취소할 수
             // 있다 (stage-7-plan 4.4).
             std::optional<process_cancellation_source> change_cancellation {};
+            // 이 카드의 기능 실행이다 (4.7). `busy`와 따로 둔다. 기능 실행은 `busy`를 세우지
+            // 않아 저장소 상태 때문에 IDE 열기 같은 기능이 막히지 않는다 (B8).
+            std::vector<function_run_state> function_runs {};
+            std::vector<function_result_state> function_results {};
             bool busy { false };
             bool refresh_queued { false };
             bool has_local_result { false };
@@ -97,6 +160,29 @@ namespace gitman {
         void handle_request_update(const request_update_intent& intent);
         void handle_request_switch(const request_switch_intent& intent);
         void handle_cancel_operation(const cancel_operation_intent& intent);
+        // 기능 버튼 실행이다 (4.5). 활성 재판정 → 치환 → 허용 목록·절대 경로·cmd 방어 →
+        // 풀 자리 → 제출 순서다. 신뢰 확인과 `confirm` 미리보기는 T7에서 이 사이에 들어간다.
+        void handle_run_function(const run_function_intent& intent);
+        void handle_stop_function(const stop_function_intent& intent);
+        void handle_function_started(const function_started_event& event);
+        void handle_function_log(function_log_event event);
+        void handle_function_completed(function_completed_event event);
+        // 클릭 시점 검사에 걸린 실행 거부다. 로그 한 줄(error)과 실패 점을 남긴다 (3.7).
+        void reject_function_run(card_state& card, const function_button& button, std::u8string_view reason);
+        void set_function_result(card_state& card, std::u8string_view button_id, bool failed, std::optional<std::int32_t> exit_code);
+        [[nodiscard]] const function_button* find_function_button(std::u8string_view button_id) const noexcept;
+        // 활성 조건(4.8)이다. 범위 밖이면 값이 없다. `${env:}`는 보지 않는다 (클릭 시점에 본다).
+        [[nodiscard]] std::optional<function_button_state> evaluate_function(const card_state& card, const function_button& button) const;
+        // 치환 값 묶음이다. 로컬 조회 전이면 런타임 변수는 풀리지 않는다.
+        [[nodiscard]] variable_lookup make_function_lookup(const card_state& card, function_environment_lookup environment) const;
+        // 모든 카드에서 풀 자리를 차지한 실행 수다. 풀의 상한과 같은 기준이다 (4.4).
+        [[nodiscard]] std::size_t function_runs_in_flight() const noexcept;
+        [[nodiscard]] static bool function_running(const card_state& card) noexcept;
+        // run id로 실행 항목을 찾는다. 끝났거나 다른 문서의 run이면 null이다.
+        [[nodiscard]] static function_run_state* find_function_run(card_state& card, std::uint64_t run_id) noexcept;
+        // update·switch를 시작할 수 있는 상태다. 카드 view, 카드 메뉴 view, 메뉴 클릭 재판정이
+        // 같은 식을 쓴다. 같은 카드의 출력 수집 실행과 서로 막는다 (4.7, D6-A).
+        [[nodiscard]] static bool change_allowed(const card_state& card) noexcept;
         void handle_operation_log(operation_log_event event);
         void handle_change_completed(change_completed_event event);
         void handle_begin_discovery(const begin_discovery_intent& intent);
@@ -248,6 +334,9 @@ namespace gitman {
         [[nodiscard]] operation_request make_request(operation_kind kind, const card_state* card, std::uint64_t generation);
 
         operation_submitter* submitter_ { nullptr };
+        // 기능 전용 실행 풀이다 (4.4). 묶지 않았으면 null이다.
+        function_run_submitter* function_submitter_ { nullptr };
+        function_run_services function_services_ {};
         log_file_sink* log_sink_ { nullptr };
         // 만든 취소 source를 등록해 두는 보관소다. 종료 취소가 logic thread를 거치지
         // 않아도 되게 한다 (설계 L3).

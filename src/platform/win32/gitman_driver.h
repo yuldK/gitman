@@ -11,6 +11,7 @@
 #include "application/task_scheduler.h"
 #include "application/vcs_file_probe.h"
 #include "infrastructure/file_log_writer.h"
+#include "infrastructure/function_execution_policy.h"
 #include "infrastructure/function_process_executor.h"
 #include "infrastructure/json_app_settings_store.h"
 #include "infrastructure/json_project_store.h"
@@ -85,7 +86,7 @@ namespace gitman::win32 {
         operation_result_relay relay_ {};
         std::unique_ptr<task_scheduler> scheduler_ {};
         // 기능 버튼 전용 실행 풀이다 (function-buttons-design 4.4). scheduler와 따로 돈다.
-        // logic 연결은 T6에서 한다.
+        // controller보다 먼저 선언해 controller가 사라진 뒤에 사라진다.
         function_process_executor function_executor_ { *runner_, *launcher_ };
         std::unique_ptr<function_execution_pool> function_pool_ {};
         std::unique_ptr<logic_controller> controller_ {};

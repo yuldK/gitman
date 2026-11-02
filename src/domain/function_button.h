@@ -329,5 +329,6 @@ namespace gitman {
     // 해석하는 문자(`% & | ^ < > "`, 줄바꿈)를 찾는다. 문서 출처와 글자 그대로의 구간은
     // 문서 작성자가 쓴 것이라 보지 않는다. `program`이 cmd가 아니면 늘 값이 없다.
     [[nodiscard]] std::optional<cmd_injection_finding> find_cmd_injection(const variable_expansion& program, std::span<const variable_expansion> arguments);
+    // 거부 사유 문구다. `실행하지 않습니다:` 접두는 거부 줄을 남기는 logic이 붙인다.
     [[nodiscard]] std::u8string cmd_injection_message(const cmd_injection_finding& finding);
 } // namespace gitman

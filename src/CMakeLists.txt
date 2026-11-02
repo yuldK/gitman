@@ -92,6 +92,7 @@ gitman_add_source_filter(gitman_lib_files "application/logic"
     application/function_execution_pool.cpp
     application/function_execution_pool.h
     application/function_executor.h
+    application/function_run_services.h
     application/logic_controller.cpp
     application/logic_controller.h
     application/operation_executor.h

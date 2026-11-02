@@ -275,7 +275,10 @@ TEST_CASE("Invalid function button items warn and keep their source in place", "
         REQUIRE(is_function_button_pointer(value.source.json_pointer));
         REQUIRE_FALSE(value.source.project_index.has_value());
     }
-    REQUIRE(result.diagnostics.size() == 24u);
+    // 첫 세 card는 아이콘을 생략해 같은 기본 아이콘이라 둘째·셋째에 아이콘 경고가 하나씩 붙는다 (V, 2.6).
+    REQUIRE(result.diagnostics.size() == 26u);
+    REQUIRE(count_diagnostics(result.diagnostics, u8"/function_buttons/buttons/1/icon") == 1u);
+    REQUIRE(count_diagnostics(result.diagnostics, u8"/function_buttons/buttons/2/icon") == 1u);
 
     REQUIRE(result.document->function_buttons.has_value());
     const gitman::function_buttons_definition& definition { *result.document->function_buttons };
@@ -1254,4 +1257,30 @@ TEST_CASE("A null button list takes the buttons the editor added", "[function_bu
     const gitman::function_buttons_definition& reloaded { *trip.reloaded.document->function_buttons };
     REQUIRE(reloaded.buttons.size() == 1u);
     REQUIRE(button_at(reloaded, 0).id == u8"function-1");
+}
+
+TEST_CASE("Card functions sharing an icon warn on the later one", "[function_buttons][v]")
+{
+    // 카드 열은 아이콘만 보인다 (2.6). 생략한 아이콘은 기본 아이콘이라 같은 아이콘이다. bar·menu와 4번째 card는 세지 않는다.
+    const gitman::workspace_document_parse_result result {
+        parse(document_with(
+            u8R"({"buttons":[)"
+            u8R"({"id":"a","label":"가","program":"C:\\x.exe","placement":"card"},)"
+            u8R"({"id":"b","label":"나","program":"C:\\x.exe","icon":"tools","placement":"bar"},)"
+            u8R"({"id":"c","label":"다","program":"C:\\x.exe","icon":"tools","placement":"card"},)"
+            u8R"({"id":"d","label":"라","program":"C:\\x.exe","placement":"card"},)"
+            u8R"({"id":"e","label":"마","program":"C:\\x.exe","placement":"card"}]})"
+            , u8R"([])"
+        ))
+    };
+    REQUIRE(result.document.has_value());
+    const gitman::diagnostic* const same_icon { find_diagnostic(result.diagnostics, u8"/function_buttons/buttons/3/icon") };
+    REQUIRE(same_icon != nullptr);
+    REQUIRE(same_icon->code == gitman::diagnostic_code::function_button_warning);
+    REQUIRE(same_icon->severity == gitman::diagnostic_severity::warning);
+    REQUIRE(count_diagnostics(result.diagnostics, u8"/function_buttons/buttons/2/icon") == 0u);
+    REQUIRE(count_diagnostics(result.diagnostics, u8"/function_buttons/buttons/4/icon") == 0u);
+    // 4번째 card는 bar로 보인다는 경고 하나뿐이다.
+    REQUIRE(count_diagnostics(result.diagnostics, u8"/function_buttons/buttons/4/placement") == 1u);
+    REQUIRE(result.diagnostics.size() == 2u);
 }

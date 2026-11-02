@@ -437,6 +437,25 @@ namespace gitman {
                 );
             }
 
+            // 카드 열은 아이콘만 보여 같은 아이콘의 고정 기능은 tooltip으로만 구별된다 (2.6). 보이는 배치가 card인 기능끼리
+            // 아이콘(생략하면 기본 아이콘)이 같으면 뒤 기능에 경고 하나를 단다. 적용 범위는 보지 않는다.
+            std::vector<std::u8string_view> card_icons {};
+            for (std::size_t index = 0; index < buttons.size(); ++index)
+            {
+                const function_button* const button { std::get_if<function_button>(&buttons[index]) };
+                if (button == nullptr || visible[index] != function_placement::card)
+                    continue;
+                if (std::ranges::find(card_icons, button->icon_name()) == card_icons.end())
+                {
+                    card_icons.push_back(button->icon_name());
+                    continue;
+                }
+                add_function_diagnostic(result, diagnostic_code::function_button_warning, locations[index]
+                    , u8"앞의 card 기능과 아이콘이 같아 카드에서 구별하기 어렵습니다. icon을 바꾸십시오."
+                    , document_path, append_pointer_token(append_pointer_index(u8"/function_buttons/buttons", index), "icon")
+                );
+            }
+
             for (const project_definition& project : projects)
             {
                 std::size_t applied { 0 };

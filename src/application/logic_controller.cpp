@@ -924,6 +924,24 @@ namespace gitman {
         function_confirm_.reset();
         // 이전 문서의 다시 읽기 결과는 도착해도 쓰지 않는다.
         abandon_reload();
+        // 이전 문서를 가리키던 dialog와 메뉴도 지금 닫는다. 읽기에 실패하면 `install_document`가 닫아 주지 않아, 편집
+        // dialog가 이전 문서의 초안을 든 채 남고 그 Apply는 문서가 없어 아무 말 없이 버려진다 (`close_document_now`와 같다).
+        switch_dialog_.reset();
+        settings_dialog_.reset();
+        local_changes_dialog_.reset();
+        context_menu_.reset();
+        function_focus_.reset();
+        function_editor_.reset();
+        if (composition_.has_value() && is_function_editor_target(composition_->target))
+            composition_.reset();
+        function_trust_after_save_ = false;
+        function_notice_after_save_ = false;
+        function_definition_unsaved_ = false;
+        function_button_problems_.clear();
+        function_editor_lock_reason_.clear();
+        if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
+            discovery_dialog_->scan_cancellation->request_cancellation();
+        discovery_dialog_.reset();
 
         document_path_ = std::move(path);
         document_.reset();

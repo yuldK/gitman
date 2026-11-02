@@ -1234,3 +1234,15 @@ TEST_CASE("A trust dialog confirmed after Apply changed the definition does not 
     REQUIRE(last_card_log(fixture, u8"p00").find(u8"확인한 뒤 기능 정의가 바뀌어 실행하지 않습니다") != std::u8string::npos);
 }
 
+TEST_CASE("Opening another document drops the draft even when the load fails", "[function_buttons][v][logic]")
+{
+    editor_fixture fixture { make_function_card_projects(1), entries_of({ make_function_card_button(u8"a", u8"가") }) };
+    fixture.open();
+    fixture.type(gitman::text_input_target::function_editor_label, u8"바뀜");
+    fixture.controller.handle(gitman::open_document_intent { std::u8string { u8"C:\\work\\other.version-list" } });
+    REQUIRE(fixture.snapshot()->function_editor.has_value() == false);
+
+    // 읽기에 실패하면 이전 문서가 돌아오지 않는다. 남은 초안의 Apply가 아무 말 없이 버려지지 않게 dialog가 없어야 한다.
+    fixture.controller.handle(gitman::document_loaded_event {});
+    REQUIRE(fixture.snapshot()->function_editor.has_value() == false);
+}

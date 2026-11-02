@@ -412,14 +412,14 @@ TEST_CASE("Function and card menus are 589, 433 and 407 tall", "[function_button
         require_clean_tree(*popup.tree);
 
         // 아래 구역은 구분선 뒤에 있다. T12 전의 `기능 편집…` 자리는 문서 폴더를 VS Code로 여는 항목이고,
-        // `문서 다시 읽기`는 T11 전까지 비활성이다.
+        // `문서 다시 읽기`는 T11부터 활성이다.
         REQUIRE(menu.items[20].separator_above);
         REQUIRE(menu.items[20].entry == gitman::context_menu_entry::open_document_in_vscode);
         REQUIRE(menu.items[20].label == u8"문서 폴더를 VS Code로 열기");
         REQUIRE(menu.items[20].target_path == u8"C:\\work");
         REQUIRE(menu.items[21].entry == gitman::context_menu_entry::reload_document);
         REQUIRE(menu.items[21].label == u8"문서 다시 읽기");
-        REQUIRE(menu.items[21].enabled == false);
+        REQUIRE(menu.items[21].enabled);
     }
 
     SECTION("카드 메뉴: 기존 6 + 구분선 + 기능 8 + 기능 더 보기 + 기능 편집 = 433")
@@ -608,10 +608,16 @@ TEST_CASE("Choosing function menu items runs, stops and opens more", "[function_
     REQUIRE(more.anchor_y == 40.0f);
     REQUIRE(function_item_count(more) == 10u);
 
-    // 비활성 `문서 다시 읽기`는 골라도 닫기만 한다.
+    // `문서 다시 읽기`는 안전한 다시 읽기다 (T11, 4.9). 중지한 f04의 completed가 아직 오지 않아 출력 수집 실행이 남아
+    // 있으므로 먼저 묻는다. 취소하면 지금 문서 그대로이고 읽기를 내지 않는다.
+    fixture.submitter.requests.clear();
     fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::reload_document, {} });
     REQUIRE(fixture.snapshot()->context_menu.has_value() == false);
     REQUIRE(fixture.snapshot()->document_path == function_card_fixture::document_path);
+    REQUIRE(fixture.snapshot()->function_confirm_dialog.has_value());
+    REQUIRE(fixture.snapshot()->function_confirm_dialog->mode == gitman::function_confirm_mode::running);
+    REQUIRE(fixture.submitter.requests.empty());
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
 
     // `기능 편집…` 자리는 UI thread의 앱 명령으로 문서 폴더를 연다 (배너 메뉴의 `VSCode로 열기`와 같다).
     fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 30.0f, 40.0f });

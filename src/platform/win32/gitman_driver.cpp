@@ -4,6 +4,7 @@
 #include "platform/win32/win32_app_settings_path.h"
 #include "presentation/ui/build_ui_tree.h"
 #include "presentation/ui/context_menu_popup.h"
+#include "presentation/ui/ui_actions.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -82,6 +83,14 @@ namespace gitman::win32 {
             frame->popups.push_back(ui::build_context_menu_popup(*view->context_menu, view->scale));
         frame->appearance = view->appearance;
         frame->fonts = view->fonts;
+        // 출력 수집 기능이 실행 중이면 주 창의 닫힘을 받아 logic이 실행 중인 기능을 보이고 묻는다
+        // (function-buttons-design 4.10). 확인 버튼이 앱 끝내기 명령을 내면 luil이 이 훅을 비켜 기존 종료 순서
+        // (`cancel` → close → `stop_workers`)를 밟는다. 실행 중인 것이 없으면 훅을 걸지 않아 지금처럼 곧바로 끝난다.
+        if (view->exit_needs_confirmation)
+            frame->close = []
+            {
+                return ui::make_logic_action(request_exit_intent {});
+            };
         frame->window_placement_revision = view->window_placement_revision;
         if (view->window_placement_request.has_value())
             frame->window_placement_request = to_luil_placement(*view->window_placement_request);

@@ -152,6 +152,10 @@ namespace {
         void open(std::vector<gitman::project_definition> projects, gitman::function_buttons_definition definition, const std::u8string_view path = document_path)
         {
             controller.handle(gitman::open_document_intent { std::u8string { path } });
+            // 출력 수집 기능이 실행 중이면 다른 문서를 열기 전에 묻는다 (T11, 4.10). 이 fixture는 확인하고 연다.
+            const std::shared_ptr<const gitman::view_snapshot> view { controller.make_view_snapshot() };
+            if (view->function_confirm_dialog.has_value() && view->function_confirm_dialog->mode == gitman::function_confirm_mode::running)
+                controller.handle(gitman::confirm_function_run_intent {});
             gitman::document_loaded_event event {};
             gitman::workspace_document document {};
             document.document_path = path;

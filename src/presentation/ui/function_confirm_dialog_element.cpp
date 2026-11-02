@@ -25,7 +25,26 @@ namespace gitman::ui {
     namespace {
         constexpr float action_button_width { 104.0f };
         constexpr float action_button_gap { 8.0f };
-        constexpr std::u8string_view dialog_title { u8"기능 실행 확인" };
+        // 제목이다. 실행 중인 기능 확인(4.10)은 실행하려는 것이 아니라 실행 중인 것을 멈출지 묻는다.
+        [[nodiscard]] std::u8string_view dialog_title(const function_confirm_mode mode) noexcept
+        {
+            return mode == function_confirm_mode::running ? std::u8string_view { u8"실행 중인 기능" } : std::u8string_view { u8"기능 실행 확인" };
+        }
+
+        // panel의 화면 읽기 이름 앞머리다.
+        [[nodiscard]] std::u8string_view panel_access_prefix(const function_confirm_mode mode) noexcept
+        {
+            switch (mode)
+            {
+            case function_confirm_mode::trust:
+                return u8"신뢰 확인";
+            case function_confirm_mode::preview:
+                return u8"실행 전 확인";
+            case function_confirm_mode::running:
+                return u8"실행 중인 기능 확인";
+            }
+            return u8"기능 실행 확인";
+        }
 
         std::u8string item_owner_value(const std::size_t index)
         {
@@ -202,7 +221,7 @@ namespace gitman::ui {
             // 이 이름이 없으면 경고가 보조 기술에 닿지 않는다.
             [[nodiscard]] access_info accessibility() const override
             {
-                std::u8string name { mode_ == function_confirm_mode::trust ? std::u8string_view { u8"신뢰 확인" } : std::u8string_view { u8"실행 전 확인" } };
+                std::u8string name { panel_access_prefix(mode_) };
                 name += u8", ";
                 name += subject_;
                 for (const std::u8string& line : description_)
@@ -233,14 +252,15 @@ namespace gitman::ui {
                 const float padding { layout_function_confirm_padding * scale };
                 const float text_width { box.width - padding * 2.0f };
                 const float title_height { layout_function_confirm_title_height * scale };
-                draw_text_line(context, dialog_title, { box.x + padding, box.y + padding, text_width, title_height }, solid_paint(context.palette.primary_foreground), { .size = 13.0f });
+                draw_text_line(context, dialog_title(mode_), { box.x + padding, box.y + padding, text_width, title_height }, solid_paint(context.palette.primary_foreground), { .size = 13.0f });
 
-                // 대상(문서 경로·카드 이름)은 앞을 줄여 끝의 파일 이름을 남긴다.
+                // 대상(문서 경로·카드 이름)은 앞을 줄여 끝의 파일 이름을 남긴다. 실행 중인 기능 요약(`빌드 (frontend) 외 1개`)은
+                // 앞의 기능 이름이 먼저 사라지지 않게 끝을 줄인다.
                 SkPaint dim { solid_paint(context.palette.primary_foreground) };
                 dim.setAlphaf(0.65f);
                 const float line_height { layout_function_confirm_text_line_height() * scale };
                 float line_top { box.y + padding + title_height };
-                draw_text_line(context, subject_, { box.x + padding, line_top, text_width, line_height }, dim, { .size = 11.0f, .elide = luil::text_elide::start });
+                draw_text_line(context, subject_, { box.x + padding, line_top, text_width, line_height }, dim, { .size = 11.0f, .elide = mode_ == function_confirm_mode::running ? luil::text_elide::end : luil::text_elide::start });
                 line_top += line_height;
                 for (const std::u8string& line : description_)
                 {
@@ -305,7 +325,22 @@ namespace gitman::ui {
             std::make_unique<luil::text_button_element>(
                 ui_element_id { kind_function_confirm_dialog_confirm }, luil::text_button_config { .text = dialog_.confirm_label, .visual = luil::text_button_visual::accent }),
         };
-        confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_function_run_intent {}));
+        // 앱 종료에서 연 실행 중인 기능 확인은 UI thread의 앱 끝내기 명령을 곧바로 낸다 (4.10). 종료는 주 창의 닫힘 훅을
+        // 받아 간 뒤라 logic이 끝낼 길이 없고, 끝내기는 그 훅을 비켜 기존 종료 순서(`cancel`이 출력 수집 기능을 취소 →
+        // close → worker join)를 밟는다.
+        if (dialog_.exit_application)
+        {
+            confirm->set_action(ui_trigger::left_click
+                , [](const luil::ui_action_context&) -> std::vector<input_action>
+                {
+                    return { input_action { luil::ui_command::application_exit } };
+                }
+            );
+        }
+        else
+        {
+            confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_function_run_intent {}));
+        }
         add_child(std::move(confirm));
 
         auto cancel {
@@ -397,7 +432,7 @@ namespace gitman::ui {
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_function_confirm };
-        spec.name = std::u8string { dialog_title };
+        spec.name = std::u8string { dialog_title(view.mode) };
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭과 Esc는 모두 취소다. 실행하지 않는 쪽이 안전하다.

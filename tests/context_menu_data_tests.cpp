@@ -107,6 +107,9 @@ namespace {
             return luil::codicons::icon_repo_pull;
         case gitman::context_menu_entry::switch_to:
             return luil::codicons::icon_source_control;
+        case gitman::context_menu_entry::reload_document:
+            // 예전 표에는 없었다. T11에서 배너 메뉴에 붙은 `문서 다시 읽기`의 글리프다 (기능 메뉴의 항목과 같다).
+            return luil::codicons::icon_sync;
         }
         return luil::codicons::icon_question;
     }
@@ -247,7 +250,9 @@ TEST_CASE("The banner menu built from item data matches the previous menu", "[fu
     const gitman::context_menu_view& menu { *view->context_menu };
 
     REQUIRE(menu.owner.value.empty());
-    REQUIRE(menu.items.size() == 2u);
+    // T11에서 `문서 다시 읽기`가 끝에 붙었다 (function-buttons-design 2.3.3, 4.9). 앞의 두 항목은 예전 그대로다.
+    REQUIRE(menu.items.size() == 3u);
+    REQUIRE(menu.items[2].entry == gitman::context_menu_entry::reload_document);
     REQUIRE(menu.items[0].entry == gitman::context_menu_entry::open_document_folder);
     REQUIRE(menu.items[0].label == u8"경로를 탐색기로 열기");
     REQUIRE(menu.items[0].enabled);
@@ -262,7 +267,7 @@ TEST_CASE("The banner menu built from item data matches the previous menu", "[fu
     REQUIRE(popup.x == 40.0f);
     REQUIRE(popup.y == 50.0f);
     REQUIRE(popup.width == 190.0f);
-    REQUIRE(popup.height == 60.0f);
+    REQUIRE(popup.height == 86.0f);
     require_clean_tree(*popup.tree);
     require_plain_rows(menu, popup);
 

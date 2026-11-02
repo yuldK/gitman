@@ -248,6 +248,22 @@ namespace gitman {
         void handle_discovery_completed(discovery_completed_event event);
         void handle_projects_registered(projects_registered_event event);
         void handle_close_document();
+        // 문서를 닫는다. 실행 중인 출력 수집 기능이 있었으면 확인을 거친 뒤다 (4.10).
+        void close_document_now();
+        // 다른 문서를 연다. 확인을 거친 뒤다 (4.10).
+        void open_document_now(std::u8string path);
+        // 안전한 다시 읽기다 (4.9). 실행 중인 출력 수집 기능이 있으면 확인을 받고, 진행 중인 저장이 끝난 뒤 새 파일을
+        // 읽는다. 지금 문서·카드·로그는 읽기가 성공해 교체할 때까지 그대로다.
+        void handle_reload_document();
+        // 확인을 거친 뒤의 다시 읽기다. 저장이 진행 중이면 끝난 뒤로 미룬다.
+        void begin_reload_document();
+        void handle_document_reloaded(document_loaded_event event);
+        // 진행 중인 다시 읽기를 버린다. 문서를 열거나 닫거나 바꾸면 그 결과가 도착해도 쓰지 않는다.
+        void abandon_reload();
+        // 다시 읽기를 시작할 수 있다. 메뉴 항목의 활성과 같은 판정이다.
+        [[nodiscard]] bool reload_available() const noexcept;
+        // 주 창의 닫힘 요청이다 (4.10). 실행 중인 기능 확인을 앱 종료 모드로 연다.
+        void handle_request_exit();
         void handle_show_notice(show_notice_intent intent);
         void handle_app_settings_loaded(app_settings_loaded_event event);
         void handle_app_settings_saved(app_settings_saved_event event);
@@ -634,6 +650,8 @@ namespace gitman {
         [[nodiscard]] static context_menu_item_view function_menu_item(const card_function_view& function, std::chrono::steady_clock::time_point opened_at);
         // T12 전의 `기능 편집…` 자리다. 배너 메뉴의 `VSCode로 열기`와 같은 동작이다 (2.3.2).
         [[nodiscard]] std::optional<context_menu_item_view> function_edit_menu_item() const;
+        // 배너 메뉴와 기능 메뉴의 `문서 다시 읽기`다. 읽는 동안은 비활성이고 라벨에 사유를 붙인다 (2.3.2).
+        [[nodiscard]] context_menu_item_view reload_menu_item() const;
         // 배치 메뉴다 (2.2.5). `카드에 두기`·`기능 줄에 두기`·`메뉴에만 두기`(radio, 보이는 배치에 `checked`) → 구분선 →
         // `기능 편집…` 자리다. 그 기능이 이 카드에 `card`나 `bar` 버튼으로 활성이 아니면 비어 있다(메뉴를 닫는다).
         [[nodiscard]] std::vector<context_menu_item_view> placement_context_menu_items(const card_state& card, std::u8string_view button_id, bool from_bar) const;
@@ -641,11 +659,36 @@ namespace gitman {
         // 이미 처리했으므로 여기서는 하지 않는다.
         void run_context_menu_item(const context_menu_state& menu, const context_menu_item_view& item);
 
-        // 기능 실행 확인 dialog의 상태다 (function-buttons-design 3.10, 4.5). 값이 있으면 dialog가
+        // 실행 중인 기능 확인(4.10)을 거친 뒤 이어 할 일이다.
+        enum class running_function_action
+        {
+            close_document,
+            open_document,
+            reload_document,
+            // 확인 버튼이 UI thread의 앱 끝내기 명령을 곧바로 내므로 logic이 이어 할 일은 없다.
+            exit_application,
+        };
+
+        // 출력 수집 기능이 실행 중이면 실행 중인 기능 확인 dialog를 열고 false다. 없으면 true이고, 부르는 쪽이 곧바로
+        // 그 일을 한다. 분리 실행만 있으면 묻지 않는다 (4.10).
+        [[nodiscard]] bool confirm_running_functions(running_function_action action, std::u8string_view path = {});
+        // 기능 실행 확인 dialog의 취소다. 실행도, 미뤄 둔 일도 하지 않는다.
+        void handle_cancel_function_run();
+        // 실행 중인 기능 확인의 표시 모델이다. 지금 실행 중인 출력 수집 기능을 카드 순서대로 싣는다.
+        [[nodiscard]] function_confirm_dialog_view build_running_function_view(running_function_action action) const;
+        // 모든 카드에서 실행 중인(대기 포함) 출력 수집 기능의 수다. 분리 실행은 세지 않는다.
+        [[nodiscard]] std::size_t running_capture_count() const noexcept;
+
+        // 기능 실행 확인 dialog의 상태다 (function-buttons-design 3.10, 4.5, 4.10). 값이 있으면 dialog가
         // 열려 있고, 그동안 다른 기능 실행 intent는 받지 않는다.
         struct function_confirm_state
         {
             function_confirm_mode mode { function_confirm_mode::trust };
+            // 실행 중인 기능 확인(`running`)을 확인하면 이어 할 일과, 다른 문서 열기면 그 경로다.
+            running_function_action action { running_function_action::close_document };
+            std::u8string path {};
+            // 다른 문서 열기가 새 문서 만들기의 결과다. 취소하면 만든 파일이 있다는 것을 알린다.
+            bool generated_document { false };
             project_id card {};
             std::u8string button_id {};
             // dialog를 열 때의 신뢰 해시다. 신뢰 모드는 확인하면 이 값을 기록한다 — 사용자가 본
@@ -702,6 +745,17 @@ namespace gitman {
         // 전의 늦은 저장 결과를 구분해 버린다.
         std::uint64_t pending_save_operation_id_ { 0 };
         bool save_queued_ { false };
+        // 다시 읽기의 load 작업 id다 (4.9). 0이 아니면 결과를 기다린다. 그동안 들어온 저장은 `save_queued_`로
+        // 미룬다 — 다시 읽기가 성공하면 모델이 바뀌어 버리고, 실패하면 이어 낸다.
+        std::uint64_t pending_reload_operation_id_ { 0 };
+        // 진행 중인 저장이 끝나면 다시 읽는다 (4.9의 2).
+        bool reload_after_save_ { false };
+        // 문서를 열거나 닫아 버린 다시 읽기의 load 작업 id다. 열기 결과는 id를 보지 않으므로(test가 id 없이 넣는
+        // 적재 결과도 받는다) 버린 다시 읽기의 결과가 새 문서로 설치되지 않게 따로 걸러 낸다.
+        std::vector<std::uint64_t> abandoned_reload_operation_ids_ {};
+        // 다시 읽기에 실패한 알림이다. 지금 문서를 그대로 두었다는 뜻이라 문서 진단과 따로 두고 맨 앞에 보인다.
+        // 다시 읽기를 다시 하거나 문서를 바꾸면 지운다.
+        std::optional<notice_view_model> reload_notice_ {};
         bool shutting_down_ { false };
     };
 } // namespace gitman

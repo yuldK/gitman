@@ -9,6 +9,11 @@ namespace gitman {
         std::function<bool()> canceller { source.weak_canceller() };
 
         const std::lock_guard<std::mutex> guard { mutex_ };
+        if (cancelled_)
+        {
+            canceller();
+            return;
+        }
         collect();
         cancellers_.push_back(std::move(canceller));
     }
@@ -18,6 +23,7 @@ namespace gitman {
         try
         {
             const std::lock_guard<std::mutex> guard { mutex_ };
+            cancelled_ = true;
             collect();
             // 취소 콜백은 event 하나를 신호하는 짧은 일이라(process_cancellation의
             // 계약) lock 안에서 불러도 된다. 손잡이는 살아 있는 것만 남아 있다.

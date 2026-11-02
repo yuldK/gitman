@@ -660,7 +660,9 @@ TEST_CASE("A banner right click opens the document menu without changing the sel
     REQUIRE(view->context_menu->anchor_x == 40.0f);
     REQUIRE(view->context_menu->anchor_y == 50.0f);
 
-    REQUIRE(view->context_menu->items.size() == 2u);
+    // 셋째 항목은 `문서 다시 읽기`다 (function-buttons-design T11).
+    REQUIRE(view->context_menu->items.size() == 3u);
+    REQUIRE(view->context_menu->items[2].entry == gitman::context_menu_entry::reload_document);
     REQUIRE(view->context_menu->items[0].entry == gitman::context_menu_entry::open_document_folder);
     REQUIRE(view->context_menu->items[0].enabled);
     // 탐색기는 문서 파일을, VSCode는 그 폴더를 받는다. 둘 다 Windows 원형이다.

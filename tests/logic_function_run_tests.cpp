@@ -455,15 +455,20 @@ TEST_CASE("A capture run registers its cancellation and closing the document can
         REQUIRE(request.token.cancelled());
     }
 
+    // 실행 중이면 닫기·다른 문서 열기는 먼저 묻는다 (T11, 4.10). 확인하면 취소한다.
     SECTION("closing the document")
     {
         fixture.controller.handle(gitman::close_document_intent {});
+        REQUIRE(request.token.cancelled() == false);
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
         REQUIRE(request.token.cancelled());
     }
 
     SECTION("opening another document")
     {
         fixture.controller.handle(gitman::open_document_intent { u8"C:\\work\\other.version-list" });
+        REQUIRE(request.token.cancelled() == false);
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
         REQUIRE(request.token.cancelled());
     }
 
@@ -511,7 +516,9 @@ TEST_CASE("Late function events are discarded by run id", "[function_buttons][t6
 
     SECTION("after the document is closed and opened again")
     {
+        // 실행 중이라 닫기는 확인을 거친다 (T11, 4.10).
         fixture.controller.handle(gitman::close_document_intent {});
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
         // 같은 controller에 같은 문서를 다시 연다. 카드 id는 같지만 run id가 다르다.
         fixture.controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.version-list" });
         gitman::document_loaded_event event {};

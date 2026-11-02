@@ -179,4 +179,27 @@ namespace gitman {
         text += u8"\"가 실행 중입니다";
         return text;
     }
+
+    std::u8string function_running_entry_text(const function_running_entry& entry)
+    {
+        std::u8string text { entry.label };
+        text += u8" (";
+        text += entry.card_name;
+        text += u8")";
+        return text;
+    }
+
+    std::u8string function_running_summary(const std::vector<function_running_entry>& entries)
+    {
+        if (entries.empty())
+            return u8"실행 중인 기능이 없습니다";
+        std::u8string text { function_running_entry_text(entries.front()) };
+        if (entries.size() > 1)
+        {
+            text += u8" 외 ";
+            text += decimal_text(static_cast<std::int64_t>(entries.size() - 1));
+            text += u8"개";
+        }
+        return text;
+    }
 }

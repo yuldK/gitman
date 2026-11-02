@@ -43,6 +43,11 @@ namespace gitman {
             return pointer == u8"/function_buttons" || pointer.starts_with(u8"/function_buttons/");
         }
 
+        // 저장 충돌(`concurrent_modification`)의 알림이다 (function-buttons-design 4.9).
+        constexpr std::u8string_view save_conflict_notice { u8"문서가 밖에서 바뀌었습니다. 문서 다시 읽기로 불러오십시오." };
+        // 다시 읽기에 실패한 알림이다. 사유는 띠 tooltip의 상세 줄에 둔다.
+        constexpr std::u8string_view reload_failed_notice { u8"문서를 다시 읽지 못해 지금 문서를 그대로 둡니다." };
+
         std::u8string decimal_text(const long long value)
         {
             const std::string digits { std::to_string(value) };
@@ -574,7 +579,7 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, confirm_function_run_intent>)
                     handle_confirm_function_run();
                 else if constexpr (std::is_same_v<value_type, cancel_function_run_intent>)
-                    function_confirm_.reset();
+                    handle_cancel_function_run();
                 else if constexpr (std::is_same_v<value_type, function_confirm_scroll_intent>)
                     handle_function_confirm_scroll(value);
                 else if constexpr (std::is_same_v<value_type, clear_log_intent>)
@@ -696,6 +701,10 @@ namespace gitman {
                     handle_toggle_recent_document_pin(value);
                 else if constexpr (std::is_same_v<value_type, close_document_intent>)
                     handle_close_document();
+                else if constexpr (std::is_same_v<value_type, reload_document_intent>)
+                    handle_reload_document();
+                else if constexpr (std::is_same_v<value_type, request_exit_intent>)
+                    handle_request_exit();
                 else if constexpr (std::is_same_v<value_type, show_notice_intent>)
                     handle_show_notice(std::move(value));
                 else if constexpr (std::is_same_v<value_type, dismiss_notice_intent>)
@@ -841,6 +850,16 @@ namespace gitman {
     {
         if (shutting_down_)
             return;
+        // 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.10). 확인하면 `open_document_now`가 이어 연다.
+        if (confirm_running_functions(running_function_action::open_document, intent.path) == false)
+            return;
+        open_document_now(intent.path);
+    }
+
+    void logic_controller::open_document_now(std::u8string path)
+    {
+        if (shutting_down_)
+            return;
 
         // 문서를 열기 전의 배치를 앱 설정에 남긴다 (S3.2). 아래에서 document_를
         // 비우므로 열려 있었는지 판정이 가능한 지금 호출한다.
@@ -852,8 +871,10 @@ namespace gitman {
         // 기능 실행 확인은 이전 문서의 정의를 가리킨다. 남겨 두면 확인할 때 새 문서 경로에 이전
         // 정의의 해시를 기록하게 된다.
         function_confirm_.reset();
+        // 이전 문서의 다시 읽기 결과는 도착해도 쓰지 않는다.
+        abandon_reload();
 
-        document_path_ = intent.path;
+        document_path_ = std::move(path);
         document_.reset();
         revision_ = {};
         cards_.clear();
@@ -889,6 +910,23 @@ namespace gitman {
 
     void logic_controller::handle_document_loaded(document_loaded_event event)
     {
+        // 다시 읽기의 결과는 따로 처리한다 (4.9). 버린 다시 읽기의 결과는 지금 문서에도, 새로 여는 문서에도 쓰지
+        // 않는다. 열기 결과는 지금처럼 id를 보지 않는다.
+        if (event.operation_id != 0)
+        {
+            if (event.operation_id == pending_reload_operation_id_)
+            {
+                handle_document_reloaded(std::move(event));
+                return;
+            }
+            const auto abandoned { std::ranges::find(abandoned_reload_operation_ids_, event.operation_id) };
+            if (abandoned != abandoned_reload_operation_ids_.end())
+            {
+                abandoned_reload_operation_ids_.erase(abandoned);
+                return;
+            }
+        }
+
         document_loading_ = false;
         if (event.document.has_value() == false)
         {
@@ -927,10 +965,20 @@ namespace gitman {
         // 성공하면 만든 문서를 곧바로 열므로 dialog는 닫는다.
         generate_dialog_.reset();
 
+        // 다른 문서를 여는 것이라 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.10). 만든 문서는 이미 파일에
+        // 있으므로, 확인하면 그 경로를 여는 길(`open_document_now`)로 다시 읽어 연다. 취소하면 지금 문서가 남고
+        // 만든 파일은 나중에 열 수 있다.
+        if (confirm_running_functions(running_function_action::open_document, event.document_path) == false)
+        {
+            function_confirm_->generated_document = true;
+            return;
+        }
+
         // 생성된 문서를 곧바로 연다. 이전 문서의 진행 중 결과가 새 문서에 적용되지
         // 않도록 열기와 같은 규칙으로 대기 상태를 정리한다. 문서를 여는 것이므로
         // 열기와 같은 배치 기록 규칙을 따른다 (S3.2).
         record_app_window_placement();
+        abandon_reload();
         document_path_ = std::move(event.document_path);
         document_loading_ = false;
         pending_save_operation_id_ = 0;
@@ -979,6 +1027,7 @@ namespace gitman {
         }
 
         save_notice_.clear();
+        reload_notice_.reset();
         selected_.reset();
         scroll_offset_ = 0.0f;
         document_ = std::move(document);
@@ -1249,7 +1298,10 @@ namespace gitman {
             for (const diagnostic& value : event.diagnostics)
                 if (value.severity == diagnostic_severity::error)
                 {
-                    save_notice_ = value.message;
+                    // 손으로 고친 문서는 다시 읽기 전까지 모든 저장이 이 사유로 실패한다. 다시 읽기로 회복하는 길을
+                    // 알린다 (function-buttons-design 4.9). store가 revision이 없을 때와 파일이 바뀌었을 때 모두
+                    // 이 코드를 내고, 두 경우 모두 다시 읽으면 새 revision으로 저장할 수 있다.
+                    save_notice_ = value.code == diagnostic_code::concurrent_modification ? std::u8string { save_conflict_notice } : value.message;
                     break;
                 }
 
@@ -1258,13 +1310,21 @@ namespace gitman {
             save_queued_ = false;
             request_save();
         }
+        // 저장이 모두 끝났으면 미뤄 둔 다시 읽기를 낸다 (4.9의 2). 이어 낸 저장이 있으면 그 결과를 기다린다.
+        if (reload_after_save_ && pending_save_operation_id_ == 0)
+        {
+            reload_after_save_ = false;
+            begin_reload_document();
+        }
     }
 
     void logic_controller::request_save()
     {
         if (shutting_down_ || document_.has_value() == false)
             return;
-        if (pending_save_operation_id_ != 0)
+        // 다시 읽기의 결과를 기다리는 동안은 내지 않는다. 지금 모델을 쓰면 읽은 파일과 어긋나고, 다시 읽기가
+        // 성공하면 모델이 바뀌므로 버리며, 실패하면 이어 낸다.
+        if (pending_save_operation_id_ != 0 || pending_reload_operation_id_ != 0)
         {
             save_queued_ = true;
             return;
@@ -1918,6 +1978,27 @@ namespace gitman {
         const function_confirm_state pending { std::move(*function_confirm_) };
         function_confirm_.reset();
 
+        // 실행 중인 기능 확인이다 (4.10). 미뤄 둔 일을 이어 한다. 그 길이 출력 수집 기능을 취소한다 — 닫기·열기는 곧바로,
+        // 다시 읽기는 읽기에 성공해 문서를 바꿀 때다. 앱 종료는 확인 버튼이 UI thread 명령을 내므로 여기 오지 않는다.
+        if (pending.mode == function_confirm_mode::running)
+        {
+            switch (pending.action)
+            {
+            case running_function_action::close_document:
+                close_document_now();
+                break;
+            case running_function_action::open_document:
+                open_document_now(pending.path);
+                break;
+            case running_function_action::reload_document:
+                begin_reload_document();
+                break;
+            case running_function_action::exit_application:
+                break;
+            }
+            return;
+        }
+
         // 사용자가 본 정의의 해시를 기록한다. 저장에 실패해도 `app_settings_`에 남아 이 실행 동안은
         // 다시 묻지 않는다 (3.10, `docs/user-manual.md:96`의 앱 설정 규칙).
         if (pending.mode == function_confirm_mode::trust && document_path_.empty() == false && pending.digest.empty() == false)
@@ -1936,8 +2017,8 @@ namespace gitman {
         const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button) };
         if (prepared.has_value() == false)
             return;
-        // 지금은 dialog가 떠 있는 동안 정의나 project가 바뀌는 길이 없다 (문서 열기·교체·닫기는 dialog를
-        // 닫는다). T11의 다시 읽기나 T12의 저장이 그 길을 열 때를 위한 방어다.
+        // 지금은 dialog가 떠 있는 동안 정의나 project가 바뀌는 길이 없다 (문서 열기·교체·닫기·다시 읽기는 dialog를
+        // 닫는다). T12의 편집기 저장이 그 길을 열 때를 위한 방어다.
         if (current_function_digest() != pending.digest)
         {
             append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"확인한 뒤 기능 정의가 바뀌어 실행하지 않습니다"));
@@ -2390,9 +2471,21 @@ namespace gitman {
     {
         if (shutting_down_ || document_.has_value() == false)
             return;
+        // 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.10). 확인하면 `close_document_now`가 이어 닫는다.
+        if (confirm_running_functions(running_function_action::close_document) == false)
+            return;
+        close_document_now();
+    }
 
-        // 카드가 사라지기 전에 진행 중인 변경 작업을 취소한다 (문서 열기와 같다).
+    void logic_controller::close_document_now()
+    {
+        if (shutting_down_ || document_.has_value() == false)
+            return;
+
+        // 카드가 사라지기 전에 진행 중인 변경 작업을 취소한다 (문서 열기와 같다). 출력 수집 기능도 함께 취소하고
+        // join하지 않는다. 늦게 온 event는 run id로 버린다 (4.10).
         cancel_running_changes();
+        abandon_reload();
         // 아직 문서에 반영되지 않은 창 배치는 닫기 전에 한 번 내보낸다. 이미 제출된
         // 저장은 worker가 끝까지 수행하고 늦은 결과는 id 비교로 버려진다.
         if (window_placement_dirty_)
@@ -2436,6 +2529,244 @@ namespace gitman {
         pending_generation_operation_id_ = 0;
         // 문서를 닫으면 더 쌓을 로그가 없다. 파일은 그대로 두고 적재만 멈춘다.
         publish_log_targets();
+    }
+
+    bool logic_controller::reload_available() const noexcept
+    {
+        return shutting_down_ == false
+            && document_.has_value()
+            && document_path_.empty() == false
+            && document_loading_ == false
+            && pending_reload_operation_id_ == 0
+            && reload_after_save_ == false;
+    }
+
+    context_menu_item_view logic_controller::reload_menu_item() const
+    {
+        // 비활성 사유는 라벨 접미다 (2.3.2, `카드에 두기 — 3개까지`). 문서가 없거나 여는 중이면 메뉴 자체가 그 상태를
+        // 말하므로 다시 읽는 중일 때만 붙인다.
+        const bool reading { pending_reload_operation_id_ != 0 || reload_after_save_ };
+        context_menu_item_view item { .entry = context_menu_entry::reload_document, .label = u8"문서 다시 읽기", .enabled = reload_available(), .icon = u8"sync" };
+        if (reading)
+            item.label = u8"문서 다시 읽기 — 읽는 중";
+        return item;
+    }
+
+    void logic_controller::handle_reload_document()
+    {
+        // 다시 읽기가 이미 진행 중이면 한 번으로 족하다. 메뉴 항목도 그동안 비활성이다.
+        if (reload_available() == false)
+            return;
+        // 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.9의 1). 확인해도 취소는 읽기가 성공해 문서를 바꿀 때 한다
+        // — 읽기에 실패하면 지금 문서와 함께 실행도 그대로 남는다.
+        if (confirm_running_functions(running_function_action::reload_document) == false)
+            return;
+        begin_reload_document();
+    }
+
+    void logic_controller::begin_reload_document()
+    {
+        if (reload_available() == false)
+            return;
+        reload_notice_.reset();
+        // 저장 충돌 알림은 다시 읽기를 안내한다. 그 안내를 따랐으니 걷는다 — 남기면 띠 첫 줄을 차지해 다시 읽기의 실패를
+        // 가린다. 실패한 뒤 저장이 다시 충돌하면 그때 다시 선다.
+        if (save_notice_ == save_conflict_notice)
+            save_notice_.clear();
+        // 진행 중인 저장이 있으면 끝난 뒤 읽는다 (4.9의 2). 저장이 쓴 파일을 읽어야 그 revision이 맞는다.
+        if (pending_save_operation_id_ != 0)
+        {
+            reload_after_save_ = true;
+            return;
+        }
+
+        // 지금 문서·카드·로그·revision은 건드리지 않는다 (4.9의 3). 열기 경로와 달리 load 전에 비우지 않는다.
+        operation_request request { make_request(operation_kind::load_document, nullptr, 0) };
+        request.document_path = document_path_;
+        const std::uint64_t operation_id { request.operation_id };
+        if (submitter_->submit(std::move(request)) == false)
+            return;
+        pending_reload_operation_id_ = operation_id;
+    }
+
+    void logic_controller::handle_document_reloaded(document_loaded_event event)
+    {
+        pending_reload_operation_id_ = 0;
+        // 종료가 시작된 뒤의 결과로 문서를 바꾸거나 조회를 내지 않는다.
+        if (shutting_down_)
+            return;
+
+        // 읽지 못했거나(파일이 없음, JSON 오류, schema 오류) error 진단이 하나라도 있으면 지금 문서·카드·로그·실행을
+        // 그대로 두고 알림 띠에 알린다 (4.9의 4, B10). 열기는 project 하나의 오류처럼 문서가 오는 error를 받지만, 다시
+        // 읽기는 손 편집의 실수로 그 project를 뺀 문서로 바꾸고 실행을 취소하지 않으려고 받지 않는다. 고쳐서 다시
+        // 읽으면 된다.
+        const bool has_error { std::ranges::any_of(event.diagnostics, [](const diagnostic& value) { return value.severity == diagnostic_severity::error; }) };
+        if (event.document.has_value() == false || has_error)
+        {
+            // 사유는 상세 줄이다. 문서가 왔으면 막은 error만 project 이름을 붙여 싣는다 — 기능 버튼 경고 같은 warning은
+            // 다시 읽기를 막지 않았다.
+            notice_view_model notice { std::u8string { reload_failed_notice }, {} };
+            for (const diagnostic& value : event.diagnostics)
+            {
+                if (event.document.has_value() == false)
+                {
+                    if (value.severity != diagnostic_severity::information)
+                        notice.details.push_back(value.message);
+                }
+                else if (value.severity == diagnostic_severity::error)
+                    notice.details.push_back(document_notice_text(value, *event.document));
+            }
+            reload_notice_ = { std::move(notice) };
+            // 기다리게 한 저장을 이어 낸다. 손 편집으로 파일이 바뀌었으면 저장 충돌로 알린다.
+            if (save_queued_)
+            {
+                save_queued_ = false;
+                request_save();
+            }
+            return;
+        }
+
+        // 다시 읽은 문서가 모델을 바꾸므로 기다리게 한 저장은 버린다.
+        save_queued_ = false;
+        // 창 배치는 닫기와 종료에서만 문서에 저장한다. 아직 저장하지 않은 배치는 새 모델에 덮어 두고 dirty를 남겨
+        // 닫기·종료 때 저장한다 (4.9의 6). 화면의 배치를 그대로 두려고 UI thread에 다시 알리는 값도 이 배치다.
+        const bool placement_dirty { window_placement_dirty_ && document_->window.has_value() };
+        const std::optional<window_placement> placement { placement_dirty ? document_->window : std::nullopt };
+
+        // 교체다 (4.9의 5). `install_document`가 출력 수집 기능과 변경 작업을 취소하고, 카드 상태와 로그를 새로 만들고,
+        // 모든 카드를 다시 조회한다. revision도 새 파일의 것이라 손 편집 뒤의 저장이 회복된다.
+        install_document(std::move(*event.document), std::move(event.revision), std::move(event.diagnostics));
+        if (placement.has_value())
+        {
+            document_->window = placement;
+            window_placement_ = placement;
+            window_placement_dirty_ = true;
+        }
+    }
+
+    void logic_controller::abandon_reload()
+    {
+        if (pending_reload_operation_id_ != 0)
+            abandoned_reload_operation_ids_.push_back(pending_reload_operation_id_);
+        pending_reload_operation_id_ = 0;
+        reload_after_save_ = false;
+        reload_notice_.reset();
+    }
+
+    void logic_controller::handle_request_exit()
+    {
+        if (shutting_down_)
+            return;
+        // driver는 출력 수집 기능이 실행 중일 때만 닫힘 훅을 건다. 그 frame을 게시한 뒤 기능이 끝났으면 실행 중인
+        // 것이 없다는 dialog가 뜬다 — logic은 UI thread의 끝내기 명령을 낼 수 없어 확인 버튼에 맡긴다.
+        function_confirm_state state {};
+        state.mode = function_confirm_mode::running;
+        state.action = running_function_action::exit_application;
+        state.view = build_running_function_view(running_function_action::exit_application);
+        context_menu_.reset();
+        function_confirm_ = { std::move(state) };
+    }
+
+    std::size_t logic_controller::running_capture_count() const noexcept
+    {
+        std::size_t count { 0 };
+        for (const card_state& card : cards_)
+        {
+            for (const function_run_state& run : card.function_runs)
+            {
+                if (run.mode == function_run_mode::capture)
+                    ++count;
+            }
+        }
+        return count;
+    }
+
+    bool logic_controller::confirm_running_functions(const running_function_action action, const std::u8string_view path)
+    {
+        // 확인이 없는 것은 출력 수집 기능이 0개일 때뿐이다. 분리 실행은 job 밖이라 남으므로 묻지 않는다 (4.10).
+        if (running_capture_count() == 0)
+            return true;
+
+        function_confirm_state state {};
+        state.mode = function_confirm_mode::running;
+        state.action = action;
+        state.path = path;
+        state.view = build_running_function_view(action);
+        // 열린 메뉴가 dialog 뒤에 남지 않게 한다. 떠 있던 신뢰 확인·미리보기는 이 dialog가 대신한다 — 그 실행은
+        // 닫기·열기·다시 읽기와 함께 사라질 일이다.
+        context_menu_.reset();
+        function_confirm_ = { std::move(state) };
+        return false;
+    }
+
+    void logic_controller::handle_cancel_function_run()
+    {
+        if (function_confirm_.has_value() == false)
+            return;
+        const function_confirm_state pending { std::move(*function_confirm_) };
+        function_confirm_.reset();
+        // 새 문서 만들기의 결과를 열지 않았다. 생성 dialog는 이미 닫혔고 파일은 디스크에 있으므로 그 경로를 알린다 —
+        // 알리지 않으면 만든 문서가 어디 있는지 다시 찾아야 한다.
+        if (pending.mode == function_confirm_mode::running && pending.generated_document)
+            notices_.push_back({ u8"새 문서를 만들었지만 열지 않았습니다.", { pending.path } });
+    }
+
+    function_confirm_dialog_view logic_controller::build_running_function_view(const running_function_action action) const
+    {
+        function_confirm_dialog_view view {};
+        view.mode = function_confirm_mode::running;
+        view.exit_application = action == running_function_action::exit_application;
+
+        // 개수와 이름을 보인다 (4.10, `빌드 (frontend) 외 1개`). 항목은 카드 순서, 카드 안에서는 시작 순서다.
+        std::vector<function_running_entry> entries {};
+        for (const card_state& card : cards_)
+        {
+            for (const function_run_state& run : card.function_runs)
+            {
+                if (run.mode != function_run_mode::capture)
+                    continue;
+                entries.push_back({ run.label, std::u8string { function_project_name(card.project) } });
+
+                function_confirm_item_view item {};
+                item.label = function_running_entry_text(entries.back());
+                item.mode_text = run.phase == function_run_phase::running ? u8"실행 중" : u8"시작 대기";
+                item.lines.push_back({ run.display_command_line, false });
+                view.items.push_back(std::move(item));
+            }
+        }
+        view.subject = function_running_summary(entries);
+
+        // 안내 두 줄과 경고 한 줄이다. 신뢰 dialog처럼 480 폭과 글 크기 150%에서 말줄임되지 않게 짧게 나눈다.
+        switch (action)
+        {
+        case running_function_action::close_document:
+            view.description = { u8"문서를 닫으면 실행 중인 기능을 중지합니다.", u8"따로 실행한 기능은 그대로 둡니다." };
+            view.confirm_label = u8"중지하고 닫기";
+            break;
+        case running_function_action::open_document:
+            view.description = { u8"다른 문서를 열면 실행 중인 기능을 중지합니다.", u8"따로 실행한 기능은 그대로 둡니다." };
+            view.confirm_label = u8"중지하고 열기";
+            break;
+        case running_function_action::reload_document:
+            view.description = { u8"다시 읽은 문서로 바꿀 때 실행 중인 기능을 중지합니다.", u8"읽지 못하면 중지하지 않고 지금 문서를 둡니다." };
+            view.confirm_label = u8"중지하고 읽기";
+            break;
+        case running_function_action::exit_application:
+            view.description = { u8"종료하면 실행 중인 기능을 중지합니다.", u8"따로 실행한 기능은 그대로 둡니다." };
+            view.confirm_label = u8"중지하고 종료";
+            break;
+        }
+        if (entries.empty())
+        {
+            // 닫힘 훅을 건 frame 뒤에 기능이 끝났다 (앱 종료에서만 생긴다). 대상 줄이 `실행 중인 기능이 없습니다`라
+            // 안내는 같은 말을 되풀이하지 않고 누르면 무엇이 되는지만 말한다.
+            view.description = { u8"그사이 기능이 끝나 바로 종료할 수 있습니다." };
+            view.confirm_label = view.exit_application ? u8"종료" : u8"확인";
+            return view;
+        }
+        // 중지는 job 종료라 유예가 없다 (4.10). 그래서 확인을 받는다.
+        view.note = { u8"중지하면 끝나기를 기다리지 않고 바로 끝냅니다." };
+        return view;
     }
 
     void logic_controller::handle_show_notice(show_notice_intent intent)
@@ -3982,7 +4313,8 @@ namespace gitman {
                 context_menu_ = { context_menu_state { context_menu_kind::functions, menu.card, menu.anchor_x, menu.anchor_y, std::chrono::steady_clock::now() } };
             break;
         case context_menu_entry::reload_document:
-            // 안전한 다시 읽기(4.9)는 T11이다. 그때까지 항목은 비활성이라 여기 오지 않는다.
+            // 안전한 다시 읽기다 (4.9). 실행 중인 출력 수집 기능이 있으면 확인 dialog가 먼저 뜬다.
+            handle_reload_document();
             break;
         case context_menu_entry::place_function_on_card:
         case context_menu_entry::place_function_on_bar:
@@ -4071,8 +4403,8 @@ namespace gitman {
         const std::size_t tail { items.size() };
         if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
             items.push_back(std::move(*edit));
-        // 안전한 다시 읽기(4.9)는 T11에서 들어온다. 자리와 메뉴 높이를 지금 맞춰 두고 그때까지 비활성이다.
-        items.push_back({ .entry = context_menu_entry::reload_document, .label = u8"문서 다시 읽기", .enabled = false, .icon = u8"sync" });
+        // 안전한 다시 읽기다 (4.9). 다시 읽기가 진행 중이면 비활성이다.
+        items.push_back(reload_menu_item());
         items[tail].separator_above = tail > 0;
         return items;
     }
@@ -4194,6 +4526,8 @@ namespace gitman {
         std::vector<context_menu_item_view> items {};
         items.push_back({ .entry = context_menu_entry::open_document_folder, .label = u8"경로를 탐색기로 열기", .target_path = document_path_, .icon = u8"folder-opened" });
         items.push_back({ .entry = context_menu_entry::open_document_in_vscode, .label = u8"VSCode로 열기", .target_path = folder, .icon = u8"vscode" });
+        // 손으로 고친 문서를 불러오는 길이다 (function-buttons-design 4.9, 2.3.3). 기능 메뉴의 항목과 같은 동작이다.
+        items.push_back(reload_menu_item());
         return items;
     }
 
@@ -4486,7 +4820,7 @@ namespace gitman {
 
     bool logic_controller::has_notice() const noexcept
     {
-        return notices_.empty() == false || save_notice_.empty() == false;
+        return notices_.empty() == false || save_notice_.empty() == false || reload_notice_.has_value();
     }
 
     float logic_controller::list_viewport_height() const noexcept
@@ -4675,7 +5009,11 @@ namespace gitman {
         snapshot->selected = selected_;
         snapshot->filter_text = filter_;
         snapshot->notices = notices_;
-        // 저장 실패는 문서 진단보다 먼저 보인다. UI는 첫 notice만 표시한다.
+        // 다시 읽기 실패는 문서 진단보다 먼저 보인다. 띠가 첫 알림만 보이므로 묻히면 실패를 모른다.
+        if (reload_notice_.has_value())
+            snapshot->notices.insert(snapshot->notices.begin(), *reload_notice_);
+        // 저장 실패는 그보다도 앞이다. UI는 첫 notice만 표시한다. 다시 읽기에 실패한 뒤의 저장은 대개 저장 충돌이고, 그
+        // 알림이 다시 읽기를 다시 하라고 안내한다. 다시 읽기의 사유는 띠 tooltip에 남는다.
         if (save_notice_.empty() == false)
             snapshot->notices.insert(snapshot->notices.begin(), notice_view_model { save_notice_ });
         snapshot->window_width = window_width_;
@@ -4764,6 +5102,8 @@ namespace gitman {
         snapshot->window_placement_revision = window_placement_revision_;
         snapshot->document_generating = pending_generation_operation_id_ != 0;
         snapshot->shutting_down = shutting_down_;
+        // 출력 수집 기능이 실행 중이면 창을 닫기 전에 묻는다 (function-buttons-design 4.10).
+        snapshot->exit_needs_confirmation = shutting_down_ == false && running_capture_count() > 0;
         snapshot->cards = build_ordered_cards();
 
         // 선택 카드의 로그 뷰다. 필터를 통과한 record만 담고 스크롤은 이미 고정된

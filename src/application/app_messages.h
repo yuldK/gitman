@@ -108,8 +108,9 @@ namespace gitman {
         std::u8string button_id {};
     };
 
-    // 기능 실행 확인 dialog(신뢰 확인, `confirm` 미리보기)의 확인이다 (function-buttons-design
-    // 3.10, 4.5). logic은 다시 치환해 dialog를 열 때와 같은지 본 뒤에만 실행한다. 확인 한 번은 언제나
+    // 기능 실행 확인 dialog(신뢰 확인, `confirm` 미리보기, 실행 중인 기능 확인)의 확인이다 (function-buttons-design
+    // 3.10, 4.5, 4.10). logic은 다시 치환해 dialog를 열 때와 같은지 본 뒤에만 실행한다. 실행 중인 기능 확인은
+    // 미뤄 둔 닫기·열기·다시 읽기를 이어 한다(앱 종료는 버튼이 UI thread 명령을 곧바로 낸다). 확인 한 번은 언제나
     // 실행 한 번으로 끝나고 다른 dialog를 잇따라 열지 않으므로, 두 번 누른 확인이 다음 dialog를
     // 지나가는 일이 없다 — 그래서 dialog를 가르는 번호를 싣지 않는다.
     struct confirm_function_run_intent
@@ -541,6 +542,19 @@ namespace gitman {
     struct close_document_intent
     {};
 
+    // 열린 문서를 파일에서 다시 읽는다 (function-buttons-design 4.9). 새 파일을 먼저 읽고 파싱해 성공했을 때만
+    // 문서를 바꾼다. 실패하면 지금 문서·카드·로그를 그대로 두고 알림 띠에 알린다. 배너 메뉴와 기능 메뉴의
+    // `문서 다시 읽기`가 낸다.
+    struct reload_document_intent
+    {};
+
+    // 주 창의 닫힘 요청이다 (function-buttons-design 4.10). 출력 수집 기능이 실행 중일 때만 driver가 frame의 닫힘
+    // 훅(`ui_frame::close`)에 이 intent를 걸어, 창을 닫는 대신 logic이 실행 중인 기능을 보이고 확인을 받는다.
+    // 실행 중인 기능이 없으면 훅을 걸지 않아 지금처럼 곧바로 끝난다. 확인하면 dialog 버튼이 UI thread의
+    // 앱 끝내기 명령을 내고, 이후는 기존 종료 순서(`cancel` → close → worker join)다.
+    struct request_exit_intent
+    {};
+
     // UI thread가 곧바로 수행한 작업(파일 연결 등록·제거)의 결과를 앱 스타일
     // 다이얼로그로 알린다 (app-shell-design A3.2).
     struct show_notice_intent
@@ -891,7 +905,7 @@ namespace gitman {
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
         local_changes_diff_scroll_intent, open_context_menu_intent, open_function_menu_intent, run_function_shortcut_intent, open_function_placement_menu_intent,
         set_function_placement_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
-        remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
+        remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, reload_document_intent, request_exit_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
         local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event,

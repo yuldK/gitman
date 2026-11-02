@@ -88,7 +88,10 @@ function(gitman_apply_msvc_options target)
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:__cplusplus>
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/Zc:preprocessor>
         $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/external:anglebrackets>
-        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/external:W0>)
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/external:W0>
+        # `logic_message` variant의 대안이 늘어 그 방문 코드를 펼치는 파일(settings_dialog_element.cpp 등)이
+        # 개체 파일의 기본 섹션 한도(C1128)를 넘는다 (function-buttons-design T11). 큰 개체 형식은 출력만 바꾼다.
+        $<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/bigobj>)
 
     if(arguments_ENABLE_ANALYZE)
         target_compile_options("${target}" ${option_scope}

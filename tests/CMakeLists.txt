@@ -48,6 +48,7 @@ gitman_add_source_filter(gitman_test_files "application/logic"
     log_isolation_stress_tests.cpp
     logic_change_operation_tests.cpp
     logic_controller_tests.cpp
+    logic_function_reload_tests.cpp
     logic_function_run_tests.cpp
     logic_function_trust_tests.cpp
     process_cancellation_tests.cpp
@@ -143,6 +144,7 @@ gitman_add_source_filter(gitman_test_files "presentation/dialogs"
     switch_dialog_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "platform/host"
+    function_shutdown_tests.cpp
     gitman_delegate_tests.cpp
     gitman_driver_tests.cpp
     operation_result_relay_tests.cpp)

@@ -101,7 +101,27 @@ TEST_CASE("The registry takes concurrent adds and a concurrent cancel", "[app][c
     adder.join();
 
     registry.cancel_all();
-    REQUIRE(registry.size() == sources.size());
+    // `cancel_all` 뒤에 들어온 source는 보관하지 않고 곧바로 취소한다 (function-buttons-design T11). 그래서 보관한
+    // 수는 엇갈림에 달렸지만, 어느 쪽이든 모두 취소되어 있다.
+    REQUIRE(registry.size() <= sources.size());
     for (const gitman::process_cancellation_source& source : sources)
         REQUIRE(source.cancellation_requested());
+}
+
+TEST_CASE("A source added after cancel_all is cancelled at once", "[app][cancellation][function_buttons][t11]")
+{
+    // 종료 때 UI thread의 `cancel_all`과 logic thread가 처리 중이던 기능 실행 등록이 엇갈릴 수 있다. 늦게 등록한
+    // 출력 수집 실행이 취소되지 않으면 기능 풀의 worker join이 그 실행이 끝날 때까지 매달린다 (4.10).
+    gitman::cancellation_registry registry {};
+    gitman::process_cancellation_source early {};
+    registry.add(early);
+    registry.cancel_all();
+    REQUIRE(early.cancellation_requested());
+
+    gitman::process_cancellation_source late {};
+    registry.add(late);
+    REQUIRE(late.cancellation_requested());
+    REQUIRE(late.token().cancelled());
+    // 닫힌 보관소는 늦은 source를 들지 않는다. 이미 취소했으므로 들 이유가 없다.
+    REQUIRE(registry.size() == 1u);
 }

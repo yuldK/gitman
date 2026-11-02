@@ -63,4 +63,17 @@ namespace gitman {
 
     // 출력 수집 기능이 실행 중이라 update·switch가 막힌 사유다: `기능 "빌드"가 실행 중입니다` (4.7).
     [[nodiscard]] std::u8string function_running_reason(std::u8string_view label);
+
+    // 실행 중인 출력 수집 기능 하나다. 문서 닫기·다시 읽기·다른 문서 열기·종료의 확인 dialog가 쓴다 (4.10).
+    struct function_running_entry
+    {
+        std::u8string label {};
+        std::u8string card_name {};
+    };
+
+    // `빌드 (frontend)`다. 같은 기능이 여러 카드에서 돌 수 있어 카드 이름을 붙인다.
+    [[nodiscard]] std::u8string function_running_entry_text(const function_running_entry& entry);
+    // 확인 dialog의 요약이다: 하나면 `빌드 (frontend)`, 여럿이면 `빌드 (frontend) 외 1개`, 없으면
+    // `실행 중인 기능이 없습니다` (4.10).
+    [[nodiscard]] std::u8string function_running_summary(const std::vector<function_running_entry>& entries);
 }

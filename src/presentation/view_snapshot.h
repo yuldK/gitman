@@ -328,7 +328,7 @@ namespace gitman {
         stop_function,
         // 카드 메뉴의 `기능 더 보기…`다. 같은 자리에 그 카드의 기능 메뉴를 연다.
         more_functions,
-        // 기능 메뉴의 `문서 다시 읽기`다. 안전한 다시 읽기(4.9)는 T11이라 그때까지 비활성이다.
+        // 기능 메뉴와 배너 메뉴의 `문서 다시 읽기`다 (안전한 다시 읽기, function-buttons-design 4.9).
         reload_document,
         // 배치 메뉴의 세 radio다 (function-buttons-design 2.2.5). argument가 버튼 id다. 항목 하나에 값이 둘(버튼 id,
         // 배치) 필요해 배치마다 동작을 하나씩 둔다 — argument에 둘을 이어 담으면 늦은 클릭 판정이 나눠 읽어야 한다.
@@ -411,13 +411,16 @@ namespace gitman {
         bool error { false };
     };
 
-    // 기능 실행 확인 dialog의 두 모드다 (function-buttons-design 3.10, 4.5). 같은 element를 쓴다.
+    // 기능 실행 확인 dialog의 세 모드다 (function-buttons-design 3.10, 4.5, 4.10). 같은 element를 쓴다.
     enum class function_confirm_mode
     {
         // 신뢰를 기록하지 않은 정의에서 처음 누를 때다. 문서의 기능 정의 전체를 치환 전 원문으로 보인다.
         trust,
         // `confirm: true` 버튼의 실행 전 미리보기다. 그 버튼의 표시용 명령줄과 작업 폴더를 보인다.
         preview,
+        // 출력 수집 기능이 실행 중일 때 문서를 닫거나 다시 읽거나 다른 문서를 열거나 앱을 끝내려 할 때다 (4.10).
+        // 실행 중인 기능을 목록으로 보이고, 확인하면 중지하고 그 일을 한다.
+        running,
     };
 
     // dialog 목록 항목의 코드 줄 하나다. 비밀 가리기를 거친 글이고, 제어 문자와 보이지 않는 글자는
@@ -454,6 +457,9 @@ namespace gitman {
         // 목록 아래 경고 줄이다 (신뢰가 덮지 않는 것). 비면 그리지 않는다.
         std::vector<std::u8string> note {};
         std::u8string confirm_label {};
+        // 실행 중인 기능 확인을 앱 종료에서 열었다 (4.10). 확인 버튼이 logic intent 대신 UI thread의 앱 끝내기
+        // 명령을 낸다 — 종료는 창의 닫힘 훅을 받아 간 뒤라 logic이 끝낼 길이 없다.
+        bool exit_application { false };
         // 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
         float scroll_offset { 0.0f };
     };
@@ -664,6 +670,9 @@ namespace gitman {
         std::optional<context_menu_view> context_menu {};
         // 값이 있으면 탐색 후보 선택 등록 dialog가 화면을 덮는다.
         std::optional<discovery_dialog_view> discovery_dialog {};
+        // 출력 수집 기능이 실행 중이라 창을 닫기 전에 확인을 받아야 한다 (function-buttons-design 4.10). driver가 이
+        // 값일 때만 frame의 닫힘 훅을 건다. 분리 실행만 있으면 묻지 않는다.
+        bool exit_needs_confirmation { false };
         bool shutting_down { false };
     };
 } // namespace gitman

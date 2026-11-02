@@ -500,7 +500,7 @@ TEST_CASE("The function menu default key is the first enabled function only whil
     REQUIRE(fixture.menu().default_item.has_value() == false);
 }
 
-TEST_CASE("Function status labels read like 빌드 — 실행 중 00:12", "[function_buttons][t9][ui][context-menu]")
+TEST_CASE("Function status labels append running time, failure or disabled reason","[function_buttons][t9][ui][context-menu]")
 {
     gitman::card_function_view function {};
     function.label = u8"빌드";

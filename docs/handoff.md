@@ -28,9 +28,12 @@
   card 경고)와 문서 커밋(`(기능 버튼 설계 V)`의 `docs:` 커밋)이다.
 - 체크포인트마다 무엇을 했고 설계와 무엇이 달라졌는지는 설계 문서의 "구현 결과" 절(표,
   "설계에서 달라진 것", "확인하지 못한 것")이 정본이다. 다음 세션은 그 절부터 읽는다.
-- 남은 일은 6.1의 V(전역 검증)다: Debug·Release 전체 CTest, `vs2026-analysis`,
-  `check_source_style.ps1`, 앱 두 구성 빌드, 실제 `.exe` 버튼과 `powershell.exe -File` 버튼
-  수동 확인(luil UIA로 카드·기능 줄·메뉴 상태와 배치 변경 뒤 문서 되읽기). 검증 기록은
+- V의 자동 검증은 2026-11-03에 했다: Debug·Release 전체 CTest 1091건(통과 1088, 환경이 없어 건너뜀 3),
+  `vs2026-analysis` 경고 0, 앱 Debug·Release 빌드 경고 0, 줄 끝·스타일 검사 통과. 그 길에 CTest가 ASCII 밖
+  이름의 test를 찾지 못하던 것을 고쳤고, 부하 중 드물게 출력 없이 끝나는 driver harness test는 원인을 확정하지
+  못해 설계 문서 "확인하지 못한 것"의 T10 항목에 남겼다.
+- 남은 일은 6.1의 V(전역 검증) 중 실제 `.exe` 버튼과 `powershell.exe -File` 버튼의
+  수동 확인이다(luil UIA로 카드·기능 줄·메뉴 상태와 배치 변경 뒤 문서 되읽기). 검증 기록은
   `verification/2026-MM-DD-function-buttons.md`로 둔다(설계 6.2).
 - V 전에 잴 것(설계 6.3에서 미룬 실측): 분리 실행 콘솔 창, `start`로 띄운 손자 정리, PowerShell
   `-File` 출력 인코딩, `Alt+1..3`·`Alt+↓` 뒤 SC_KEYMENU, `card` 버튼의 UIA 노출, 모니터보다 긴
@@ -46,7 +49,7 @@
   **luil 요청 후보** — 메뉴 Enter·활성 키의 자동 반복 무시, `faulted()`면 닫힘 훅 건너뛰기, live
   region 알림, 소비한 Alt 조합의 `WM_SYSCHAR`·`WM_SYSKEYUP` 삼키기.
 - T13에서 손대지 않은 것: `user-manual.html`은 2026-09-06 뒤로 갱신되지 않아 md와 다르다(11-02의
-  md 변경도 반영되지 않음). README의 CTest 등록 수(812)는 luil 이식 때 값이라 시점만 밝혔고 V에서 다시 센다.
+  md 변경도 반영되지 않음). README의 CTest 등록 수(812)는 luil 이식 때 값이라 시점만 밝혔고 V에서 1091로 다시 셌다.
   `logic_controller.cpp:2067` 주석의 `docs/user-manual.md:96`은 V(`4bc2936`)에서 절 참조로 고쳤다.
 - V 전역 검토에서 **사용자 결정 필요**로 남긴 것(설계 문서 "확인하지 못한 것"의 V 항목이 정본): 저장 충돌 뒤
   다시 읽으면 저장하지 못한 편집·배치 변경이 경고 없이 사라지는 것(medium), 배치 파일 안의 따옴표 없는

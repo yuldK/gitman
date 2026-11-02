@@ -1142,3 +1142,95 @@ TEST_CASE("The program field drops quotes pasted around a path", "[function_butt
     fixture.apply();
     REQUIRE(button_at(fixture.saved(), 0).program == u8"C:\\Program Files\\Tool\\run.exe");
 }
+
+namespace {
+    [[nodiscard]] std::u8string last_card_log(const editor_fixture& fixture, const std::u8string_view card)
+    {
+        const gitman::operation_log_buffer* const log { fixture.controller.card_log(gitman::project_id { std::u8string { card } }) };
+        REQUIRE(log != nullptr);
+        REQUIRE(log->records().empty() == false);
+        return log->records().back().entry.text;
+    }
+}
+
+TEST_CASE("An edit whose save failed neither runs nor records trust", "[function_buttons][v][logic][trust]")
+{
+    // 해시 입력은 파일 원문이라 저장하지 못한 편집 모델과 어긋난다. 신뢰 dialog가 보일 모델과 기록할 해시가 다르면 안 된다.
+    for (const bool trusted : { false, true })
+    {
+        CAPTURE(trusted);
+        editor_fixture fixture { make_function_card_projects(1), entries_of({ make_function_card_button(u8"a", u8"가"), make_function_card_button(u8"b", u8"나") }), trusted };
+        fixture.open();
+        fixture.list(function_editor_list_edit::remove);
+        fixture.apply();
+        fixture.finish_save(std::nullopt, false);
+
+        fixture.run(u8"p00", u8"b");
+        REQUIRE(fixture.snapshot()->function_confirm_dialog.has_value() == false);
+        REQUIRE(fixture.functions.requests.empty());
+        REQUIRE(fixture.saved_trust().has_value() == false);
+        REQUIRE(last_card_log(fixture, u8"p00").find(u8"기능 정의가 아직 저장되지 않아 실행하지 않습니다") != std::u8string::npos);
+
+        // 다시 읽으면 파일의 정의로 돌아가 다시 실행할 수 있다.
+        fixture.controller.handle(gitman::reload_document_intent {});
+        const gitman::operation_request* const reload { fixture.last_of(gitman::operation_kind::load_document) };
+        REQUIRE(reload != nullptr);
+        gitman::document_loaded_event loaded {};
+        loaded.operation_id = reload->operation_id;
+        gitman::workspace_document document {};
+        document.document_path = editor_fixture::document_path;
+        document.projects = make_function_card_projects(1);
+        gitman::function_buttons_definition definition {};
+        definition.buttons = entries_of({ make_function_card_button(u8"a", u8"가"), make_function_card_button(u8"b", u8"나") });
+        definition.source_digest_input = u8"{\"before\":1}";
+        document.function_buttons = std::move(definition);
+        loaded.document = { std::move(document) };
+        fixture.controller.handle(std::move(loaded));
+        fixture.run(u8"p00", u8"b");
+        REQUIRE(fixture.snapshot()->function_confirm_dialog.has_value() != trusted);
+        REQUIRE(fixture.functions.requests.size() == (trusted ? 1u : 0u));
+    }
+}
+
+TEST_CASE("A run between Apply and its save result waits for the saved definition", "[function_buttons][v][logic][trust]")
+{
+    editor_fixture fixture { make_function_card_projects(1), entries_of({ make_function_card_button(u8"a", u8"가") }) };
+    fixture.open();
+    fixture.type(gitman::text_input_target::function_editor_arguments, u8"--all");
+    fixture.apply();
+
+    // 저장이 끝나기 전에는 해시 입력이 편집 전 원문이다. 그 해시로 신뢰를 판정하거나 기록하지 않는다.
+    fixture.run(u8"p00", u8"a");
+    REQUIRE(fixture.snapshot()->function_confirm_dialog.has_value() == false);
+    REQUIRE(fixture.functions.requests.empty());
+
+    fixture.finish_save(std::u8string { u8"{\"after\":1}" });
+    fixture.run(u8"p00", u8"a");
+    REQUIRE(fixture.snapshot()->function_confirm_dialog.has_value() == false);
+    REQUIRE(fixture.functions.requests.size() == 1u);
+}
+
+TEST_CASE("A trust dialog confirmed after Apply changed the definition does not run", "[function_buttons][v][logic][trust]")
+{
+    // 확인 dialog가 떠 있는 동안 편집 dialog의 Apply가 정의를 바꾸면, 확인한 것은 편집 전 정의다 (4.5).
+    editor_fixture fixture { make_function_card_projects(1), entries_of({ make_function_card_button(u8"a", u8"가") }), false };
+    fixture.open();
+    fixture.run(u8"p00", u8"a");
+    REQUIRE(fixture.snapshot()->function_confirm_dialog.has_value());
+    fixture.type(gitman::text_input_target::function_editor_arguments, u8"--all");
+    fixture.apply();
+
+    SECTION("저장 결과 전에 확인한다")
+    {
+    }
+
+    SECTION("저장 결과가 먼저 도착한다")
+    {
+        fixture.finish_save(std::u8string { u8"{\"after\":1}" });
+    }
+
+    fixture.controller.handle(gitman::confirm_function_run_intent {});
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(last_card_log(fixture, u8"p00").find(u8"확인한 뒤 기능 정의가 바뀌어 실행하지 않습니다") != std::u8string::npos);
+}
+

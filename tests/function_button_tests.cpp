@@ -773,6 +773,21 @@ TEST_CASE("Cmd defense rejects metacharacters from runtime variables", "[functio
     REQUIRE(gitman::cmd_injection_message(*finding).find(u8"(&)") != std::u8string::npos);
 }
 
+TEST_CASE("Cmd defense rejects the delayed expansion mark", "[function_buttons][v]")
+{
+    // 지연 확장이 켜진 cmd(`/v:on`, `setlocal EnableDelayedExpansion`)는 `!NAME!`을 gitman 환경의 값으로 바꾼다.
+    gitman::repository_snapshot snapshot { make_git_snapshot() };
+    snapshot.current_reference = u8"!GITHUB_TOKEN!";
+    const gitman::variable_lookup lookup { make_lookup(&snapshot) };
+    const gitman::variable_expansion program { expand(u8"cmd.exe", lookup) };
+    const std::vector<gitman::variable_expansion> arguments { expand(u8"/c", lookup), expand(u8"${branch}", lookup) };
+
+    const std::optional<gitman::cmd_injection_finding> finding { gitman::find_cmd_injection(program, arguments) };
+    REQUIRE(finding.has_value());
+    REQUIRE(finding->character == u8'!');
+    REQUIRE(gitman::cmd_injection_message(*finding).find(u8"(!)") != std::u8string::npos);
+}
+
 TEST_CASE("Cmd defense checks every metacharacter and environment values", "[function_buttons][t4]")
 {
     const gitman::variable_expansion program { expand(u8"C:\\Windows\\System32\\CMD.EXE", make_lookup(nullptr)) };

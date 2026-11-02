@@ -1105,6 +1105,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         function_notice_after_save_ = false;
+        function_definition_unsaved_ = false;
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -1738,6 +1739,13 @@ namespace gitman {
         const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button) };
         if (prepared.has_value() == false)
             return;
+        // 편집 dialog가 바꾼 정의가 아직 파일에 없으면 해시 입력이 편집 전 원문이다. 그 해시로 판정하면 신뢰 dialog가 보일
+        // 정의와 기록할 해시가 다르다 (4.11). 저장이 끝나거나 다시 읽을 때까지 실행하지 않는다.
+        if (function_definition_unsaved_)
+        {
+            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"기능 정의가 아직 저장되지 않아 실행하지 않습니다"));
+            return;
+        }
 
         // 신뢰를 기록하지 않은 정의는 확인 없이 실행하지 않는다 (B9, 3.10). 해시는 누른 이 순간의
         // 문서 모델로 만든다 (`current_function_digest`). 신뢰한 정의라도 `confirm` 버튼은 미리보기를 거친다.
@@ -2064,7 +2072,7 @@ namespace gitman {
         }
 
         // 사용자가 본 정의의 해시를 기록한다. 저장에 실패해도 `app_settings_`에 남아 이 실행 동안은
-        // 다시 묻지 않는다 (3.10, `docs/user-manual.md:96`의 앱 설정 규칙).
+        // 다시 묻지 않는다 (3.10, `docs/user-manual.md` 3장 끝의 앱 설정 규칙).
         if (pending.mode == function_confirm_mode::trust && document_path_.empty() == false && pending.digest.empty() == false)
         {
             if (trust_function_definition(app_settings_, document_path_, pending.digest))
@@ -2081,9 +2089,10 @@ namespace gitman {
         const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button) };
         if (prepared.has_value() == false)
             return;
-        // 지금은 dialog가 떠 있는 동안 정의나 project가 바뀌는 길이 없다 (문서 열기·교체·닫기·다시 읽기는 dialog를
-        // 닫는다). T12의 편집기 저장이 그 길을 열 때를 위한 방어다.
-        if (current_function_digest() != pending.digest)
+        // dialog가 떠 있는 동안 정의가 바뀌는 길은 편집 dialog의 Apply다 (문서 열기·교체·닫기·다시 읽기는 dialog를 닫는다).
+        // Apply 뒤 저장이 끝나기 전에는 해시 입력이 아직 편집 전 원문이라 해시만 보면 같으므로 저장 전 표시도 본다. 저장이
+        // 끝났으면 해시가 바뀌어 잡힌다. dialog는 저장 전 표시가 꺼져 있을 때만 열린다 (`handle_run_function`).
+        if (function_definition_unsaved_ || current_function_digest() != pending.digest)
         {
             append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"확인한 뒤 기능 정의가 바뀌어 실행하지 않습니다"));
             return;
@@ -2581,6 +2590,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         function_notice_after_save_ = false;
+        function_definition_unsaved_ = false;
         function_button_problems_.clear();
         function_editor_lock_reason_.clear();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())

@@ -98,8 +98,9 @@ namespace gitman {
             return path.substr(separator + 1);
         }
 
-        // cmd가 `/c` 뒤의 명령줄을 다시 파싱할 때 뜻을 갖는 문자다 (4.3).
-        constexpr std::u8string_view cmd_metacharacters { u8"%&|^<>\"\r\n" };
+        // cmd가 `/c` 뒤의 명령줄을 다시 파싱할 때 뜻을 갖는 문자다 (4.3). `!`는 지연 확장이 켜진 cmd(`/v:on`,
+        // `setlocal EnableDelayedExpansion`, 레지스트리)가 `!NAME!`을 gitman 환경의 값으로 바꾼다.
+        constexpr std::u8string_view cmd_metacharacters { u8"%&|^<>\"!\r\n" };
 
         // 원문을 글자 그대로의 조각과 참조로 나눈 결과다. `$${`는 이 단계에서 `${`로 바뀐다.
         struct template_token

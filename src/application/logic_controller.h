@@ -757,6 +757,10 @@ namespace gitman {
         bool function_trust_after_save_ { false };
         // 편집 dialog의 Apply가 낸 저장이 끝나면 쓴 글을 다시 읽은 진단으로 기능 버튼 알림을 다시 만든다. 저장이 실패하면 끈다.
         bool function_notice_after_save_ { false };
+        // 편집 dialog의 Apply가 바꾼 기능 정의가 아직 파일에 없다. 신뢰 해시 입력(`source_digest_input`)은 파일 원문이라
+        // 모델과 어긋나므로, 켜져 있는 동안은 기능을 실행하지 않고 신뢰도 기록하지 않는다. 저장이 성공하면(이어 낼 저장이
+        // 없을 때) 끄고, 실패하면 다시 읽거나 문서를 바꿀 때까지 남는다.
+        bool function_definition_unsaved_ { false };
         // 검증에 실패한 버튼 항목의 사유다. 문서의 `buttons`와 같은 순서이고 통과한 항목 자리는 비어 있다. 편집 dialog의
         // 경고 행이 쓴다.
         std::vector<std::u8string> function_button_problems_ {};

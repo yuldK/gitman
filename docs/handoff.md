@@ -22,9 +22,10 @@
 - 브랜치 `feature/function-buttons`에서 [function-buttons-design.md](function-buttons-design.md)의
   체크포인트를 차례로 진행했다. T1 설계 `a0cde3b`, T2 `cae62a0`, T3 `ae49803`, T4 `e9b1424`,
   T5 `8c206b7`, T6 `e527d3c`, T7 `518d55b`, T8 `db4144f`, T9 `92a9ccb`, T10 `5272755`,
-  T11 `0e37c93`, T12 `8546245`. T13은 문서 갱신(README, deployment, user-manual 12장과
-  5.x·17~20장·부록, requirements REQ-018, plan, 이 절, change_log)이고, 이 절을 담은 커밋이라
-  해시는 `git log`의 `(기능 버튼 설계 T13)` 커밋에서 본다. V가 여기와 설계 문서 T13 행에 채운다.
+  T11 `0e37c93`, T12 `8546245`, T13 `daaf4b1`(문서 갱신: README, deployment, user-manual 12장과
+  5.x·17~20장·부록, requirements REQ-018, plan, 이 절, change_log). V의 전역 검토 결함 수정은
+  `4bc2936`(저장 전 편집 정의 실행 막기, cmd 방어 `!`), `6231df2`(다른 문서 열 때 편집 dialog 닫기, 같은 아이콘
+  card 경고)와 문서 커밋(`(기능 버튼 설계 V)`의 `docs:` 커밋)이다.
 - 체크포인트마다 무엇을 했고 설계와 무엇이 달라졌는지는 설계 문서의 "구현 결과" 절(표,
   "설계에서 달라진 것", "확인하지 못한 것")이 정본이다. 다음 세션은 그 절부터 읽는다.
 - 남은 일은 6.1의 V(전역 검증)다: Debug·Release 전체 CTest, `vs2026-analysis`,
@@ -40,12 +41,20 @@
   색으로만 전해짐. **사용자 확인 필요** — 탐색·등록으로 project가 늘면 신뢰를 다시 묻는 것, 다시 읽기가
   성공하면 카드 상태·로그·선택이 처음부터 시작하는 것(부분 다시 읽기 D7-B는 후속), 다시 읽기가
   error 진단 하나에도 실패로 보는 것(열기보다 엄격), MSVC 공용 `/bigobj`, `card` 버튼을 누른 뒤의
-  `Alt+N` 대상("설계에서 달라진 것" T9). **소유자 확인 필요** — `Esc`로 선택을 풀 때 기능 줄 버튼의 초점을 지우는 해석.
+  `Alt+N` 대상("설계에서 달라진 것" T9), `Alt+N`을 policy가 아니라 logic이 N번째 `card`로 풀도록 새 intent
+  `run_function_shortcut_intent`를 둔 것(같은 T9 항목, policy는 문서를 몰라 버튼 id를 정할 수 없음). **소유자 확인 필요** — `Esc`로 선택을 풀 때 기능 줄 버튼의 초점을 지우는 해석.
   **luil 요청 후보** — 메뉴 Enter·활성 키의 자동 반복 무시, `faulted()`면 닫힘 훅 건너뛰기, live
   region 알림, 소비한 Alt 조합의 `WM_SYSCHAR`·`WM_SYSKEYUP` 삼키기.
 - T13에서 손대지 않은 것: `user-manual.html`은 2026-09-06 뒤로 갱신되지 않아 md와 다르다(11-02의
   md 변경도 반영되지 않음). README의 CTest 등록 수(812)는 luil 이식 때 값이라 시점만 밝혔고 V에서 다시 센다.
-  `logic_controller.cpp:2067` 주석의 `docs/user-manual.md:96`(이제 99행)도 V에서 절 참조로 고친다.
+  `logic_controller.cpp:2067` 주석의 `docs/user-manual.md:96`은 V(`4bc2936`)에서 절 참조로 고쳤다.
+- V 전역 검토에서 **사용자 결정 필요**로 남긴 것(설계 문서 "확인하지 못한 것"의 V 항목이 정본): 저장 충돌 뒤
+  다시 읽으면 저장하지 못한 편집·배치 변경이 경고 없이 사라지는 것(medium), 배치 파일 안의 따옴표 없는
+  `%GITMAN_BRANCH%`가 브랜치 이름의 `&`로 명령을 실행하는 것과 설명서 12.6·12.7이 그 길을 권하는 것(high,
+  D14·4.3), 신뢰 해시가 `label`·`icon`을 빼서 신뢰 뒤 이름 맞바꾸기나 실패 항목의 label 채우기로 확인 없이
+  다른 명령이 도는 것(low, D4-A 재검수 후보), `cmd.exe`에 넘기는 문서 경로 인자가 `& ^ %`·따옴표 벗기기로 다른
+  명령이 되거나 실패하는 것(medium, D15·설명서 12.6). V에서 고치지 않고 남긴 것: 종료 직전 대기 저장이 버려지는
+  틈, 앱 설정을 읽기 전에 누른 기능이 이미 신뢰한 정의도 다시 묻는 것(T7 결정).
 
 ## 1. 현재 상태
 

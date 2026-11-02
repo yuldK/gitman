@@ -128,6 +128,7 @@ gitman_add_source_filter(gitman_test_files "presentation/ui"
     update_ui_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "presentation/dialogs"
+    context_menu_data_tests.cpp
     context_menu_tests.cpp
     discovery_dialog_tests.cpp
     generate_document_dialog_tests.cpp

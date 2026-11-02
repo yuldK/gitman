@@ -241,9 +241,11 @@ namespace gitman {
         float diff_scroll { 0.0f };
     };
 
-    // 컨텍스트 메뉴의 항목 종류다 (field-feedback-design 3장,
-    // theme-and-banner-menu-design T1). element가 이 값으로 클릭 액션과 아이콘을
-    // 정한다. 앞의 여섯은 카드 메뉴, 뒤의 둘은 배너(문서) 메뉴의 항목이다.
+    // 컨텍스트 메뉴 항목이 고르면 하는 하위 동작의 식별자다 (field-feedback-design 3장,
+    // theme-and-banner-menu-design T1). 모양(라벨·아이콘·단축키·구분선·radio)은 항목 데이터가
+    // 들고(function-buttons-design T8), 이 값은 고른 뒤의 동작만 가른다. 외부 열기는 popup이
+    // UI thread의 앱 명령으로 곧바로 내고 나머지는 logic이 처리한다. 앞의 여섯은 카드 메뉴,
+    // 뒤의 둘은 배너(문서) 메뉴의 항목이다.
     enum class context_menu_entry
     {
         open_repository,
@@ -260,6 +262,14 @@ namespace gitman {
         open_document_in_vscode,
     };
 
+    // 메뉴 항목 하나의 모양이다. radio는 하나만 고르는 무리(배치 메뉴의 세 배치,
+    // function-buttons-design 2.2.5)이고 luil `menu_item_kind::radio`로 그린다.
+    enum class context_menu_item_kind
+    {
+        action,
+        radio,
+    };
+
     struct context_menu_item_view
     {
         context_menu_entry entry { context_menu_entry::open_repository };
@@ -271,11 +281,33 @@ namespace gitman {
         // VSCode 항목은 문서가 있는 폴더를 받는다. Windows 원형 그대로이며 표시용
         // 변환(`/`)을 적용하지 않는다. 외부 열기가 아닌 항목은 비어 있다.
         std::u8string target_path {};
+
+        // 아래는 메뉴를 항목 데이터로 짓기 위한 칸이다 (function-buttons-design T8). 앞의 네 칸
+        // 뒤에 붙여 기존 집합 초기화(`{ entry, label, enabled, target_path }`)가 그대로 뜻을 갖는다.
+
+        // 같은 동작을 여러 항목이 나눠 쓸 때 항목을 가르는 값이다 (기능 메뉴의 버튼 id 등).
+        // popup 항목 키와 select intent에 함께 실린다. 비어 있으면 동작 하나에 항목 하나다.
+        // 같은 메뉴 안에서 (entry, argument)는 겹치지 않는다. 겹치면 popup 항목 id가 겹치고
+        // logic은 목록의 첫 항목만 처리한다.
+        std::u8string argument {};
+        // 아이콘 이름이다 (codicon 이름, `folder-opened` 등). 이름 → 글리프는 presentation이
+        // 정하고(`context_menu_icon_glyph`), 비었거나 모르는 이름이면 아이콘을 그리지 않는다.
+        // 기능 버튼의 `icon`도 이름이라 같은 칸에 싣는다.
+        std::u8string icon {};
+        // 오른쪽 단축키 열(`Alt+1` 등)이다. 표시만 하며 실행 판정에는 쓰지 않는다. 메뉴 항목의
+        // 접근 이름은 라벨뿐이라, 낭독해야 하는 상태는 이 열이 아니라 라벨에 넣는다.
+        std::u8string shortcut_text {};
+        // 참이면 이 항목 위에 구분선을 긋는다 (높이 9).
+        bool separator_above { false };
+        // radio 항목은 아이콘 자리에 `checked` 점을 그린다 (배치 메뉴).
+        context_menu_item_kind kind { context_menu_item_kind::action };
+        bool checked { false };
     };
 
     // 카드 body 또는 배너 우클릭이 여는 컨텍스트 메뉴의 불변 표시 모델이다 (3장,
     // T1). anchor는 우클릭 지점의 창 좌표(물리 픽셀)이며, panel이 창 밖으로 나가면
-    // element가 안쪽으로 민다.
+    // element가 안쪽으로 민다. 항목 수는 정해져 있지 않고 popup 높이는 항목과 구분선
+    // 수로 정해진다 (function-buttons-design T8).
     struct context_menu_view
     {
         // 카드 메뉴에서만 채운다. 배너(문서) 메뉴는 비어 있다.
@@ -283,6 +315,10 @@ namespace gitman {
         float anchor_x { 0.0f };
         float anchor_y { 0.0f };
         std::vector<context_menu_item_view> items {};
+        // 강조가 없을 때 Enter가 고를 항목의 순번(`items` 안)이다. 비어 있으면 강조 없는
+        // Enter는 아무것도 하지 않는다 (카드 메뉴·배너 메뉴). 기능 메뉴가 유휴일 때 첫 기능을
+        // 가리킨다 (function-buttons-design 2.3.2).
+        std::optional<std::size_t> default_item {};
     };
 
     // 확인 버튼 하나짜리 알림 다이얼로그다 (app-shell-design A3.2). 파일 연결

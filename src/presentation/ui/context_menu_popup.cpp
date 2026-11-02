@@ -14,55 +14,60 @@
 
 namespace gitman::ui {
     namespace {
-        // 항목 아이콘 표다 (예전 `context_menu_element`의 것을 그대로 옮겼다).
-        char32_t entry_glyph(const context_menu_entry entry) noexcept
+        struct icon_name_glyph
         {
-            switch (entry)
-            {
-            case context_menu_entry::open_repository:
-                return luil::codicons::icon_folder_opened;
-            case context_menu_entry::open_in_vscode:
-                return luil::codicons::icon_vscode;
-            case context_menu_entry::show_local_changes:
-                return luil::codicons::icon_diff;
-            case context_menu_entry::refresh:
-                return luil::codicons::icon_refresh;
-            case context_menu_entry::update:
-                return luil::codicons::icon_repo_pull;
-            case context_menu_entry::switch_to:
-                return luil::codicons::icon_source_control;
-            case context_menu_entry::open_document_folder:
-                return luil::codicons::icon_folder_opened;
-            case context_menu_entry::open_document_in_vscode:
-                return luil::codicons::icon_vscode;
-            }
-            return luil::codicons::icon_question;
-        }
+            std::u8string_view name {};
+            char32_t glyph { 0 };
+        };
+
+        // 메뉴가 쓰는 아이콘 이름 표다. 예전 entry별 표의 글리프를 codicon 이름으로 옮겼다
+        // (function-buttons-design T8). 기능 버튼 아이콘 이름 표(D16)는 T9에서 더한다.
+        constexpr std::array<icon_name_glyph, 6> menu_icons {
+            icon_name_glyph { u8"folder-opened", luil::codicons::icon_folder_opened },
+            icon_name_glyph { u8"vscode", luil::codicons::icon_vscode },
+            icon_name_glyph { u8"diff", luil::codicons::icon_diff },
+            icon_name_glyph { u8"refresh", luil::codicons::icon_refresh },
+            icon_name_glyph { u8"repo-pull", luil::codicons::icon_repo_pull },
+            icon_name_glyph { u8"source-control", luil::codicons::icon_source_control },
+        };
 
         // 항목 하나를 고른 결과다. 외부 열기 3종은 UI thread가 셸을 부르는 앱
-        // 명령이라 여기서 곧바로 내고(설계 L7), 메뉴 닫기는 delegate가 명령을
-        // 실행한 뒤 잇는다. 나머지는 logic이 닫기와 본 동작을 함께 처리한다.
-        luil::input_action entry_action(const context_menu_entry entry, const std::u8string& target_path)
+        // 명령이라 여기서 곧바로 내고(설계 L7), 메뉴 닫기는 delegate가 명령을 실행한
+        // 뒤 잇는다. 나머지는 logic이 닫기와 본 동작을 함께 처리한다. 하위 동작이 어느
+        // 길로 가는지는 동작의 성질이라 항목 데이터가 아니라 이 표가 정한다.
+        luil::input_action item_action(const context_menu_item_view& item)
         {
-            switch (entry)
+            switch (item.entry)
             {
             case context_menu_entry::open_repository:
-                return make_app_command_action(app_command::open_in_explorer_folder, target_path);
+                return make_app_command_action(app_command::open_in_explorer_folder, item.target_path);
             case context_menu_entry::open_in_vscode:
             case context_menu_entry::open_document_in_vscode:
                 // 로컬 변경 dialog의 파일 열기와 같은 UI thread 경로다. 폴더를 주면
                 // VSCode가 workspace로 연다.
-                return make_app_command_action(app_command::open_in_vscode, target_path);
+                return make_app_command_action(app_command::open_in_vscode, item.target_path);
             case context_menu_entry::open_document_folder:
                 // 문서 파일을 선택 상태로 두고 그 폴더를 연다 (T1).
-                return make_app_command_action(app_command::open_in_explorer_select, target_path);
+                return make_app_command_action(app_command::open_in_explorer_select, item.target_path);
             case context_menu_entry::show_local_changes:
             case context_menu_entry::refresh:
             case context_menu_entry::update:
             case context_menu_entry::switch_to:
                 break;
             }
-            return make_logic_action(select_context_menu_item_intent { entry });
+            return make_logic_action(select_context_menu_item_intent { item.entry, item.argument });
+        }
+
+        luil::menu_item_kind item_kind(const context_menu_item_kind kind) noexcept
+        {
+            switch (kind)
+            {
+            case context_menu_item_kind::action:
+                return luil::menu_item_kind::action;
+            case context_menu_item_kind::radio:
+                return luil::menu_item_kind::radio;
+            }
+            return luil::menu_item_kind::action;
         }
     } // namespace
 
@@ -109,6 +114,26 @@ namespace gitman::ui {
         return std::nullopt;
     }
 
+    std::u8string context_menu_item_key(const context_menu_item_view& item)
+    {
+        std::u8string key { context_menu_entry_key(item.entry) };
+        if (item.argument.empty() == false)
+        {
+            // entry 키에는 `:`가 없으므로 첫 `:` 앞이 늘 entry다.
+            key += u8':';
+            key += item.argument;
+        }
+        return key;
+    }
+
+    char32_t context_menu_icon_glyph(const std::u8string_view name) noexcept
+    {
+        for (const icon_name_glyph& icon : menu_icons)
+            if (icon.name == name)
+                return icon.glyph;
+        return 0;
+    }
+
     luil::win32::ui_popup build_context_menu_popup(const context_menu_view& menu, const float scale)
     {
         const float effective_scale { scale > 0.0f ? scale : 1.0f };
@@ -118,25 +143,29 @@ namespace gitman::ui {
         luil::menu_config config {};
         // menu의 owner는 비워 둔다. luil controller의 `find_menu`는 정책이 준 kind 짝을
         // owner 없는 id로 찾으므로 owner를 채우면 ↑/↓/Enter/Esc가 메뉴로 가지 않는다.
-        // popup 구분은 `ui_popup::id`가, 항목 구분은 항목 owner(entry 키)가 한다.
+        // popup 구분은 `ui_popup::id`가, 항목 구분은 항목 owner(항목 키)가 한다.
         for (const context_menu_item_view& item : menu.items)
         {
             luil::menu_item_config row {};
-            row.key = std::u8string { context_menu_entry_key(item.entry) };
+            row.key = context_menu_item_key(item);
             row.label = item.label;
-            row.icon = entry_glyph(item.entry);
+            row.icon = context_menu_icon_glyph(item.icon);
             row.enabled = item.enabled;
+            row.separator_above = item.separator_above;
+            row.kind = item_kind(item.kind);
+            row.checked = item.checked;
+            row.shortcut_text = item.shortcut_text;
             config.items.push_back(std::move(row));
         }
-        // factory는 키 하나만 받으므로 항목을 값으로 들고 있다가 키로 찾는다 —
-        // 외부 열기 항목의 `target_path`가 항목마다 다르기 때문이다.
+        if (menu.default_item.has_value() && *menu.default_item < config.items.size())
+            config.default_key = config.items[*menu.default_item].key;
+        // factory는 키 하나만 받으므로 항목을 값으로 들고 있다가 키로 찾는다 — 외부 열기
+        // 항목의 `target_path`와 기능 항목의 `argument`가 항목마다 다르기 때문이다. 같은
+        // 동작을 여러 항목이 나눠 쓰므로 entry가 아니라 항목 키로 찾는다.
         config.select = [items = menu.items](const std::u8string& key) -> luil::input_action {
-            const std::optional<context_menu_entry> entry { parse_context_menu_entry(key) };
-            if (entry.has_value() == false)
-                return {};
             for (const context_menu_item_view& item : items)
-                if (item.entry == *entry)
-                    return entry_action(item.entry, item.target_path);
+                if (context_menu_item_key(item) == key)
+                    return item_action(item);
             return {};
         };
 

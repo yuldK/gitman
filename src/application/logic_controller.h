@@ -580,6 +580,16 @@ namespace gitman {
 
         std::optional<context_menu_state> context_menu_ {};
 
+        // 열린 메뉴의 항목 목록이다 (function-buttons-design T8). view와 고른 항목의 처리가 같은
+        // 목록을 써서, 메뉴가 떠 있는 사이 바뀐 활성 여부를 고른 시점에 다시 본다. 대상이
+        // 사라졌으면(카드가 없거나 문서 경로가 비었으면) 비어 있고, 그러면 메뉴를 그리지 않는다.
+        [[nodiscard]] std::vector<context_menu_item_view> context_menu_items(const context_menu_state& menu) const;
+        [[nodiscard]] static std::vector<context_menu_item_view> card_context_menu_items(const card_state& card);
+        [[nodiscard]] std::vector<context_menu_item_view> document_context_menu_items() const;
+        // 고른 항목의 하위 동작을 한다. 항목은 지금 활성인 것이다. 외부 열기는 UI thread가
+        // 이미 처리했으므로 여기서는 하지 않는다.
+        void run_context_menu_item(const context_menu_state& menu, const context_menu_item_view& item);
+
         // 기능 실행 확인 dialog의 상태다 (function-buttons-design 3.10, 4.5). 값이 있으면 dialog가
         // 열려 있고, 그동안 다른 기능 실행 intent는 받지 않는다.
         struct function_confirm_state

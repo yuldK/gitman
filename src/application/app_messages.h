@@ -489,6 +489,9 @@ namespace gitman {
     struct select_context_menu_item_intent
     {
         context_menu_entry entry { context_menu_entry::refresh };
+        // 고른 항목의 `context_menu_item_view::argument`다 (function-buttons-design T8). logic은
+        // 하위 동작과 이 값이 같은 항목을 지금 메뉴에서 다시 찾아 처리한다.
+        std::u8string argument {};
     };
 
     // 열린 문서를 명시적으로 닫는다 (2026-08-21 사용자 지시). 문서 상태와 카드를

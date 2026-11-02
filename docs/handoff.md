@@ -17,6 +17,36 @@
 - 같은 브랜치(`feature/luil-latest-ui`)에서 UI/UX 점검 결과를 고쳤다. 내용은
   `change_log.md`의 2026-11-02 항목이다.
 
+## 0.2 2026-11-03 추가 — 저장소 카드의 기능 버튼 (REQ-018)
+
+- 브랜치 `feature/function-buttons`에서 [function-buttons-design.md](function-buttons-design.md)의
+  체크포인트를 차례로 진행했다. T1 설계 `a0cde3b`, T2 `cae62a0`, T3 `ae49803`, T4 `e9b1424`,
+  T5 `8c206b7`, T6 `e527d3c`, T7 `518d55b`, T8 `db4144f`, T9 `92a9ccb`, T10 `5272755`,
+  T11 `0e37c93`, T12 `8546245`. T13은 문서 갱신(README, deployment, user-manual 12장과
+  5.x·17~20장·부록, requirements REQ-018, plan, 이 절, change_log)이고, 이 절을 담은 커밋이라
+  해시는 `git log`의 `(기능 버튼 설계 T13)` 커밋에서 본다. V가 여기와 설계 문서 T13 행에 채운다.
+- 체크포인트마다 무엇을 했고 설계와 무엇이 달라졌는지는 설계 문서의 "구현 결과" 절(표,
+  "설계에서 달라진 것", "확인하지 못한 것")이 정본이다. 다음 세션은 그 절부터 읽는다.
+- 남은 일은 6.1의 V(전역 검증)다: Debug·Release 전체 CTest, `vs2026-analysis`,
+  `check_source_style.ps1`, 앱 두 구성 빌드, 실제 `.exe` 버튼과 `powershell.exe -File` 버튼
+  수동 확인(luil UIA로 카드·기능 줄·메뉴 상태와 배치 변경 뒤 문서 되읽기). 검증 기록은
+  `verification/2026-MM-DD-function-buttons.md`로 둔다(설계 6.2).
+- V 전에 잴 것(설계 6.3에서 미룬 실측): 분리 실행 콘솔 창, `start`로 띄운 손자 정리, PowerShell
+  `-File` 출력 인코딩, `Alt+1..3`·`Alt+↓` 뒤 SC_KEYMENU, `card` 버튼의 UIA 노출, 모니터보다 긴
+  메뉴, 기능 줄 버튼 실제 폭, 상태 글이 바뀔 때의 낭독. 사용 설명서 20장은 앞의 셋을 "확인하지
+  않음"으로 적었다. 결과가 나오면 그 줄을 고친다.
+- 검수에 올릴 것(설계 문서 "구현 결과" 절의 표시 그대로): **설계 재검수 필요** — 기능 메뉴가 작업 영역보다
+  길면 아래가 잘림(쪽 나누기·메뉴 줄이기·luil 스크롤 요청 중 고름). **설계 재검수 후보** — `⋯` 점이
+  색으로만 전해짐. **사용자 확인 필요** — 탐색·등록으로 project가 늘면 신뢰를 다시 묻는 것, 다시 읽기가
+  성공하면 카드 상태·로그·선택이 처음부터 시작하는 것(부분 다시 읽기 D7-B는 후속), 다시 읽기가
+  error 진단 하나에도 실패로 보는 것(열기보다 엄격), MSVC 공용 `/bigobj`, `card` 버튼을 누른 뒤의
+  `Alt+N` 대상("설계에서 달라진 것" T9). **소유자 확인 필요** — `Esc`로 선택을 풀 때 기능 줄 버튼의 초점을 지우는 해석.
+  **luil 요청 후보** — 메뉴 Enter·활성 키의 자동 반복 무시, `faulted()`면 닫힘 훅 건너뛰기, live
+  region 알림, 소비한 Alt 조합의 `WM_SYSCHAR`·`WM_SYSKEYUP` 삼키기.
+- T13에서 손대지 않은 것: `user-manual.html`은 2026-09-06 뒤로 갱신되지 않아 md와 다르다(11-02의
+  md 변경도 반영되지 않음). README의 CTest 등록 수(812)는 luil 이식 때 값이라 시점만 밝혔고 V에서 다시 센다.
+  `logic_controller.cpp:2067` 주석의 `docs/user-manual.md:96`(이제 99행)도 V에서 절 참조로 고친다.
+
 ## 1. 현재 상태
 
 - 기준일: 2026-08-19

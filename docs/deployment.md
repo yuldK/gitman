@@ -1,7 +1,7 @@
 # Gitman 배포 안내
 
 단일 실행 파일 `gitman.exe`의 배포, 설치, 업그레이드, 제거와 사용자 데이터
-위치를 정리한다 (REQ-013, REQ-016, stage-8-plan 5.7). 빌드 절차는
+위치를 정리한다 (REQ-013, REQ-016, REQ-018, stage-8-plan 5.7). 빌드 절차는
 [build.md](build.md), 검증 기록은 `verification/`에 있다.
 
 ## 1. 지원 환경과 prerequisite
@@ -54,8 +54,8 @@ bin\gitman.exe --register-file-association
 
 | 데이터 | 위치 |
 | --- | --- |
-| 프로젝트 목록·문서 설정(Git/SVN 경로, 경로 표시 방식)·창 배치 | 사용자가 만든 `<이름>.version-list` (UTF-8 JSON, 스키마 버전 1) |
-| 최근에 연 문서 목록 | `gitman.exe`와 같은 폴더의 `gitman.app-settings.json` (UTF-8 JSON, 스키마 버전 1) |
+| 프로젝트 목록·문서 설정(Git/SVN 경로, 경로 표시 방식)·창 배치·기능 버튼과 변수(`function_buttons`, REQ-018) | 사용자가 만든 `<이름>.version-list` (UTF-8 JSON, 스키마 버전 1) |
+| 최근에 연 문서 목록, 신뢰한 기능 정의(`trusted_function_definitions`: 문서 경로와 정의 해시) | `gitman.exe`와 같은 폴더의 `gitman.app-settings.json` (UTF-8 JSON, 스키마 버전 1) |
 | 작업 로그(화면) | 메모리 전용 (카드당 1,000 record ring buffer) |
 | 작업 로그(파일) | 문서 폴더의 `.<이름>.version-list.log\<저장소>\<타임스탬프>.log` (문서 설정 `write_log_files`가 켜져 있을 때) |
 | file association | `HKCU\Software\Classes`의 `.version-list`·`Gitman.VersionList` (등록한 경우만) |
@@ -68,6 +68,12 @@ bin\gitman.exe --register-file-association
   없는 필드는 항목별 진단으로 보고된다 (단계 2 계약).
 - exe 경로가 바뀌지 않았다면 file association도 그대로 유효하다. 경로가
   바뀌었으면 `--register-file-association`을 다시 실행한다.
+- 기능 버튼(`function_buttons`)은 스키마 버전을 올리지 않고 최상위 키 하나로
+  더했다. 이 키를 모르는 구버전 gitman은 `unknown_field` 경고 1건을 내고 문서를
+  열며 키를 보존한다.
+- 신뢰한 기능 정의 목록은 `gitman.app-settings.json`에 있다. 이 파일 없이
+  실행 파일만 다른 폴더로 옮기면 목록도 없으므로 기능을 처음 누를 때 신뢰를
+  한 번 더 묻는다.
 
 ## 6. 저장 안전성
 
@@ -79,6 +85,12 @@ bin\gitman.exe --register-file-association
 - 문서가 손상되면 앱이 항목별 오류를 표시하고 원본을 덮어쓰지 않는다.
 - 다른 프로그램이 문서를 동시에 수정하면 저장 시 revision 비교로 감지해 충돌
   오류를 표시하고 덮어쓰지 않는다.
+  알림은 "문서가 밖에서 바뀌었습니다. 문서 다시 읽기로 불러오십시오."이고,
+  `문서 다시 읽기`(도구 막대 우클릭 메뉴)로 새 파일을 먼저 읽어 성공할 때만
+  교체하면 다시 저장할 수 있다. 읽기에 실패하면 지금 문서를 그대로 둔다.
+- 기능 버튼의 배치 변경과 기능 편집 dialog의 적용은 `function_buttons`를
+  모델에서 다시 쓴다. 검증에 실패한 항목과 알 수 없는 키는 원문 그대로
+  되살리지만, 그 절의 키 순서와 들여쓰기는 gitman이 쓰는 모양으로 바뀔 수 있다.
 
 ## 7. 제거
 
@@ -110,4 +122,12 @@ embed된다. 고지문은 luil의 생성기가 빌드 시 라이선스 원문에
   "저장소를 찾을 수 없습니다"로 표시된다 (credential helper가 응답하기 때문,
   `verification/2026-08-19-stage-8-d5.md` 3장).
 - 커밋·푸시·병합·리베이스·충돌 해결, 대화형 셸, 자격 증명 저장, 깊이 2 이상
-  탐색은 범위 밖이다 (plan 2.2).
+  탐색은 gitman 자신의 동작으로는 범위 밖이다 (plan 2.2). 기능 버튼(REQ-018)이
+  실행하는 사용자 프로그램은 gitman이 해석하거나 제한하지 않는다.
+- **기능 버튼의 분리 실행**(`detached`)은 gitman이 만드는 job 밖에서 돌아 앱을
+  종료해도 남는다. 시작 성공 여부만 기록하며 NFR-007의 timeout·취소·비대화형
+  조건의 적용 대상이 아니다. 출력 수집 실행(`capture`)도 자식이 띄우는 GUI
+  프롬프트는 막지 않는다.
+- 기능 버튼의 실제 창 확인과 실측(분리 실행 콘솔 창, `start`로 띄운 손자 정리,
+  PowerShell `-File` 출력 인코딩)은 전역 검증(V)에 남아 있다
+  ([function-buttons-design.md](function-buttons-design.md) 6.3).

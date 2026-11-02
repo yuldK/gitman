@@ -41,6 +41,8 @@
 | 2026-08-19 | 단계 8 개시. SVN 미설치 유지, GitHub 공개 저장소 실측, UI 이월 3건 포함을 결정. 자동 진행 위임을 종료하고 매 체크포인트 검수와 제안 커밋 메시지 첨부를 지시 | `docs/stage-8-plan.md`, 단계 8 | REQ-004, REQ-012, REQ-016, REQ-017 |
 | 2026-09-05 | UI 계층을 luil로 교체하고 Skia 종속성 제거. 구현 전 계획서 작성, 서브 에이전트 모델 지정(기본 sonnet, 코드 작업은 opus) | `docs/luil-migration-design.md`, ADR-007 | REQ-003, REQ-009, REQ-013 |
 | 2026-09-06 | luil 공개 API 개선분을 확인해 반영하고, 판단이 필요한 일 외에는 묻지 않고 끝까지 진행 | `docs/luil-migration-plan.md`, `docs/verification/2026-09-06-luil-migration*.md` | REQ-009, REQ-012 |
+| 2026-11-02 | 저장소마다 자주 쓰는 일을 버튼으로 만들어 빠르게 실행한다. 버튼과 변수는 작업공간 문서에서 관리하고 각 저장소에서 버전 관리하지 않는다. 목표 정제 → UI/UX 시안 → 검수 후 구현 순서로 진행 | `docs/function-buttons-design.md` 1~4장 | REQ-018 |
+| 2026-11-02 | 기능 버튼 설계 1차 검수(D1 A·B 절충, D2-B 편집 dialog 포함, D3-A, D4-A)와 2차 검수(D5~D25, D22만 B: 배치를 생략하면 메뉴만) 승인. 체크포인트 T2~T13을 차례로 구현 | `docs/function-buttons-design.md` 검수 결정, 6.1, 구현 결과 | REQ-018, REQ-012 |
 
 ### 1.2 단계 진행 상태
 
@@ -57,6 +59,7 @@
 | 단계 7: 작업 UI와 로그 | 구현 완료 - `S7-V1` 최종 검증 후 사용자 보고 | `docs/verification/2026-08-19-stage-7.md` |
 | 단계 8: 안정화와 배포 | 구현 완료 - `S8-V1` 최종 검증 후 사용자 보고 | `docs/verification/2026-08-19-stage-8.md` |
 | luil 이식 (2026-09) | 구현 완료 - 최종 검증 후 사용자 보고, `feature/luil-migration` 브랜치 | `docs/verification/2026-09-06-luil-migration.md` |
+| 기능 버튼 (2026-11, REQ-018) | T1 설계 승인, T2~T12 구현, T13 문서 갱신. 전역 검증(V) 전, `feature/function-buttons` 브랜치 | `docs/function-buttons-design.md` 6.1·구현 결과, 검증 기록은 V에서 `docs/verification/`에 둔다 |
 
 ## 2. 목표와 범위
 
@@ -81,8 +84,11 @@
 | REQ-015 | 입력, UI, 로직 스레드를 분리한다. | 세 스레드의 소유권을 지키고 범용 메시지 구조는 별도 설계 승인 후 구현한다. |
 | REQ-016 | `.version-list`를 solution과 같은 작업공간 문서 및 Windows 연결 프로그램 대상으로 제공한다. | shell에서 전달된 문서를 한 창의 활성 목록으로 열고 association 등록 및 제거를 검증한다. |
 | REQ-017 | 문서 수준 환경설정을 `.version-list`의 `settings`에 저장한다. | Git 및 SVN 실행 파일 경로를 수동으로 지정할 수 있고, 지정하지 않으면 자동 탐색하며, 저장 시 값이 보존된다. |
+| REQ-018 | 작업공간 문서에 정의한 외부 프로그램(기능 버튼)을 저장소 카드에서 그 저장소의 값으로 실행한다. | 셸 없이 인자 배열로 실행하고, 출력 수집 실행은 stdin NUL·timeout·취소를 지키며, 신뢰를 기록하지 않은 정의는 확인 없이 실행하지 않는다. 상세는 `docs/requirements.md`와 `docs/function-buttons-design.md`다. |
 
 ### 2.2 초기 버전에서 제외할 범위
+
+아래는 gitman 자신이 수행하는 동작에 대한 제외다. 2026-11-02 REQ-018(기능 버튼)부터 사용자가 문서에 정의한 프로그램을 gitman이 대신 실행할 수 있으며, 그 프로그램이 하는 일은 이 목록의 대상이 아니다. gitman 안의 터미널 입력은 계속 제공하지 않는다.
 
 - 커밋, 푸시, 병합, 리베이스, 충돌 해결 기능
 - 터미널 입력 및 대화형 셸

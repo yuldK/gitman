@@ -1,6 +1,7 @@
 #pragma once
 
 #include "domain/appearance.h"
+#include "domain/function_button.h"
 
 #include <cstdint>
 #include <optional>
@@ -150,6 +151,10 @@ namespace gitman {
         // 문서의 `window` 필드를 지우지 않는다.
         std::optional<window_placement> window {};
         std::vector<project_definition> projects {};
+        // 문서의 `function_buttons` 절이다 (function-buttons-design 3.1). 값이 없으면
+        // 키가 없었거나 object가 아니어서 기능 버튼 없이 열었다는 뜻이고, 저장 때
+        // 그 키를 건드리지 않는다 (3.9).
+        std::optional<function_buttons_definition> function_buttons {};
     };
 
     [[nodiscard]] std::optional<vcs_hint> parse_vcs_hint(std::u8string_view value) noexcept;

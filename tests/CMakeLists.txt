@@ -33,6 +33,7 @@ gitman_add_source_filter(gitman_test_files "domain"
     dependency_versions_tests.cpp
     discovery_domain_tests.cpp
     domain_model_tests.cpp
+    function_button_tests.cpp
     local_changes_domain_tests.cpp
     operation_log_tests.cpp
     utf8_tests.cpp

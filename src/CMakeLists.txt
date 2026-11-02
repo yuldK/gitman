@@ -68,6 +68,11 @@ gitman_add_source_filter(gitman_lib_files "domain/settings"
     domain/app_settings.h
     domain/appearance.h)
 
+# 문서에 정의한 기능 버튼과 변수의 모델, 배치 판정, 변수 치환과 표시용 명령줄이다.
+gitman_add_source_filter(gitman_lib_files "domain/function_buttons"
+    domain/function_button.cpp
+    domain/function_button.h)
+
 # 텍스트 편집 상태와 UTF-8 도우미의 전달 헤더다 (luil의 값 타입).
 gitman_add_source_filter(gitman_lib_files "domain/text"
     domain/text_edit.h

@@ -1418,9 +1418,18 @@ VCS 배타(D6-A, 2차 검수. v1에서는 끌 수 없다. 버튼별 `exclusive: 
 
 | 체크포인트 | 커밋 | 결과 |
 |---|---|---|
+| T2 | (커밋 전) | `src/domain/function_button.{h,cpp}`: 버튼·변수 모델(실패 항목 원문 자리 포함), 배치 원문과 보이는 배치 판정, 이름 규칙, 내장·사용자 변수 표, `expand_variables`(구간 출처), `scan_variable_references`, 표시용 명령줄. `workspace_document::function_buttons`(optional). test `function_button_tests.cpp` `[function_buttons][t2]` 27건 통과 |
 
 설계에서 달라진 것:
--
+
+- T2: 표시용 명령줄(3.6)의 3단계 인용(`build_windows_command_line`)과 4단계 마스킹(`mask_secrets`)은 infrastructure에 있어 domain이 부를 수 없다. `build_display_command_line`은 둘을 인자(`command_line_joiner`, `secret_text_masker`)로 받고, 인자마다 env 구간을 `${env:NAME}`으로 되돌린 글을 잇은 뒤 결과 전체에 마스킹을 한 번 적용한다. logic(T6)은 상위 계층에서 두 함수를 주입받아 넘긴다.
+- T2: 검증에 실패한 항목의 원문(3.9)은 `ordered_json`이 아니라 다시 직렬화한 JSON 문자열(`function_source_text`)로 든다. domain은 JSON 라이브러리에 의존하지 않는다. 쓰기 함수(T10)가 다시 파싱해 같은 자리에 되살린다.
+- T2: `function_button::project_ids`는 `project_id`가 아니라 문자열 배열이다. `project.h`가 문서 모델에 기능 버튼 절을 넣으려고 `function_button.h`를 include하므로 반대 방향 include를 피했다. 같은 이유로 `make_builtin_variables`는 `project_definition`과 `repository_snapshot`을 전방 선언으로 받는다.
+- T2: 5장의 "기본 `operator==`"는 `function_buttons_definition`과 그 하위 값 타입에 두었다. `workspace_document` 자체에는 지금도 `operator==`가 없어 더하지 않았다.
+- T2: `${workspaceFile}`과 `${projectRoot}`도 값이 비면 미해결로 둔다(3.3 표는 "없다"/절대 경로 검사). 빈 경로 인자를 만들지 않는다는 D13과 같은 이유다. 런타임 변수 `${repositoryRoot}`, `${revision}`, `${branch}`도 조회 뒤 값이 비면 미해결이다.
+- T2(3.5에 없던 경우를 정함): 원문은 왼쪽부터 읽는다. `$$${x}`는 글자 `$` + 이스케이프 `${`로 읽혀 `$${x}`가 된다. `$${env:X}`가 만든 글자 `${env:X}`는 표시용 명령줄에서 진짜 env 구간과 같은 글로 보인다(출처는 `literal`이라 실제 값은 넣지 않는다).
+- T2: 3.2와 5장은 모델이 배치 원문과 보이는 배치를 함께 든다고 했으나, 모델은 원문(`function_button::placement`)만 든다. 보이는 배치는 문서 전체의 `card` 수에 달려 버튼 하나의 필드로 둘 수 없으므로 `resolve_visible_placements`가 `buttons` 순서대로 그때그때 계산한다. 판정 규칙(2.2.2 규칙 4)은 같다.
+- T2(3.3에 없던 경우를 정함): 문서가 드라이브 루트에 있으면 `${workspaceFolder}`는 `E:`가 아니라 `E:\`다. `E:`는 드라이브 기준 상대 경로라 cwd 절대 경로 검사에 걸리고, `GITMAN_WORKSPACE_FOLDER`를 쓰는 스크립트가 다른 폴더로 갈 수 있다. 이어 쓰면 `${workspaceFolder}\tools\x.ps1`이 `E:\\tools\x.ps1`처럼 구분자가 겹치지만 Windows 경로로는 같은 곳이다. 배너 메뉴도 쓰는 `windows_parent_directory`는 바꾸지 않았다.
 
 확인하지 못한 것:
 

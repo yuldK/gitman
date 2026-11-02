@@ -226,6 +226,8 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/shell"
 gitman_add_source_filter(gitman_lib_files "presentation/model"
     presentation/diff_presentation.cpp
     presentation/diff_presentation.h
+    presentation/function_presentation.cpp
+    presentation/function_presentation.h
     presentation/list_metrics.cpp
     presentation/list_metrics.h
     presentation/log_presentation.cpp
@@ -242,6 +244,8 @@ gitman_add_source_filter(gitman_lib_files "presentation/ui/foundation"
     presentation/ui/build_ui_tree.h
     presentation/ui/dialog_host.h
     presentation/ui/element_kinds.h
+    presentation/ui/function_icon_catalog.cpp
+    presentation/ui/function_icon_catalog.h
     presentation/ui/gitman_caption.h
     presentation/ui/status_glyphs.cpp
     presentation/ui/status_glyphs.h

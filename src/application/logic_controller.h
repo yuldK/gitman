@@ -17,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -57,6 +58,8 @@ namespace gitman {
             bool running { false };
             // 마지막 실행이 실패했다 (실패 점). 다시 실행하거나 카드를 선택하면 지운다.
             bool failed { false };
+            // 실패한 마지막 실행의 종료 코드다. 시간 초과·시작 실패·거부는 값이 없다 (메뉴 라벨, 접근 이름, T9).
+            std::optional<std::int32_t> exit_code {};
         };
 
         // 그 카드에 그 기능이 적용되지 않거나(범위 밖, 문서·카드·기능 없음) 검증에 실패한
@@ -202,10 +205,22 @@ namespace gitman {
         void reject_function_run(card_state& card, const function_button& button, std::u8string_view reason);
         void set_function_result(card_state& card, std::u8string_view button_id, bool failed, std::optional<std::int32_t> exit_code);
         [[nodiscard]] const function_button* find_function_button(std::u8string_view button_id) const noexcept;
-        // 활성 조건(4.8)이다. 범위 밖이면 값이 없다. `${env:}`는 보지 않는다 (클릭 시점에 본다).
-        [[nodiscard]] std::optional<function_button_state> evaluate_function(const card_state& card, const function_button& button) const;
+        // 활성 조건(4.8)이다. 범위 밖이면 값이 없다. `${env:}`는 보지 않는다 (클릭 시점에 본다). `preview`는
+        // `make_function_preview_lookup`으로 카드마다 한 번 만든 치환 값 묶음이다 — snapshot마다 카드 × 기능 수만큼
+        // 부르므로 버튼마다 내장·사용자 변수 표를 새로 짓지 않는다 (T6에서 넘어온 일).
+        [[nodiscard]] std::optional<function_button_state> evaluate_function(const card_state& card, const function_button& button, const variable_lookup& preview) const;
         // 치환 값 묶음이다. 로컬 조회 전이면 런타임 변수는 풀리지 않는다.
         [[nodiscard]] variable_lookup make_function_lookup(const card_state& card, function_environment_lookup environment) const;
+        // 활성 판정용 치환 값 묶음이다. `${env:}`는 어떤 이름이든 정의된 것으로 친다 (3.7).
+        [[nodiscard]] variable_lookup make_function_preview_lookup(const card_state& card) const;
+        // 카드에 적용되는 기능의 표시 모델이다 (2.3). 문서 순서이고 카드당 20개까지다. `placements`는 문서의
+        // `buttons`와 같은 순서의 보이는 배치(`resolve_visible_placements`)이고, snapshot이 한 번 만들어 모든 카드에
+        // 넘긴다. 비어 있으면 이 함수가 만든다.
+        [[nodiscard]] std::vector<card_function_view> card_function_views(const card_state& card, std::span<const std::optional<function_placement>> placements = {}) const;
+        // 카드의 `⋯`·`Alt+↓`이 여는 기능 메뉴다 (2.3.2). 카드 안 버튼이라 선택을 바꾸지 않는다 (2.2.6).
+        void handle_open_function_menu(const open_function_menu_intent& intent);
+        // `Alt+1..3`이다 (2.3.4). N번째 보이는 `card` 기능이 그 카드에 적용되면 실행 intent와 같다.
+        void handle_run_function_shortcut(const run_function_shortcut_intent& intent);
         // 모든 카드에서 풀 자리를 차지한 실행 수다. 풀의 상한과 같은 기준이다 (4.4).
         [[nodiscard]] std::size_t function_runs_in_flight() const noexcept;
         [[nodiscard]] static bool function_running(const card_state& card) noexcept;
@@ -568,6 +583,8 @@ namespace gitman {
             card,
             // 배너(도구 막대) 우클릭이 연 문서 메뉴다. `card`는 비어 있다.
             document,
+            // 카드의 `⋯`·`Alt+↓`·카드 메뉴의 `기능 더 보기…`가 연 기능 메뉴다 (function-buttons-design 2.3.2).
+            functions,
         };
 
         struct context_menu_state
@@ -576,6 +593,10 @@ namespace gitman {
             project_id card {};
             float anchor_x { 0.0f };
             float anchor_y { 0.0f };
+            // 메뉴를 연 시각이다. 기능 항목 라벨의 경과 시간(`빌드 — 실행 중 00:12`)은 이 시각에서 멈춘다. snapshot은
+            // 기능 출력·조회 event마다 다시 지어지므로 지을 때의 시각을 쓰면 떠 있는 메뉴의 라벨과 접근 이름이
+            // 불규칙하게 바뀐다 (function-buttons-design 2.3.4).
+            std::chrono::steady_clock::time_point opened_at {};
         };
 
         std::optional<context_menu_state> context_menu_ {};
@@ -584,8 +605,15 @@ namespace gitman {
         // 목록을 써서, 메뉴가 떠 있는 사이 바뀐 활성 여부를 고른 시점에 다시 본다. 대상이
         // 사라졌으면(카드가 없거나 문서 경로가 비었으면) 비어 있고, 그러면 메뉴를 그리지 않는다.
         [[nodiscard]] std::vector<context_menu_item_view> context_menu_items(const context_menu_state& menu) const;
-        [[nodiscard]] static std::vector<context_menu_item_view> card_context_menu_items(const card_state& card);
+        [[nodiscard]] std::vector<context_menu_item_view> card_context_menu_items(const card_state& card, std::chrono::steady_clock::time_point opened_at) const;
         [[nodiscard]] std::vector<context_menu_item_view> document_context_menu_items() const;
+        // 기능 메뉴다 (2.3.2). 그 카드의 적용 기능 전체(배치와 상관없이 문서 순서) → 구분선 → `기능 편집…` 자리,
+        // `문서 다시 읽기`다.
+        [[nodiscard]] std::vector<context_menu_item_view> function_context_menu_items(const card_state& card, std::chrono::steady_clock::time_point opened_at) const;
+        // 기능 항목 하나다. 기능 메뉴와 카드 메뉴 기능 절이 같은 항목을 쓴다. 경과 시간은 메뉴를 연 시각(`opened_at`)까지다.
+        [[nodiscard]] static context_menu_item_view function_menu_item(const card_function_view& function, std::chrono::steady_clock::time_point opened_at);
+        // T12 전의 `기능 편집…` 자리다. 배너 메뉴의 `VSCode로 열기`와 같은 동작이다 (2.3.2).
+        [[nodiscard]] std::optional<context_menu_item_view> function_edit_menu_item() const;
         // 고른 항목의 하위 동작을 한다. 항목은 지금 활성인 것이다. 외부 열기는 UI thread가
         // 이미 처리했으므로 여기서는 하지 않는다.
         void run_context_menu_item(const context_menu_state& menu, const context_menu_item_view& item);

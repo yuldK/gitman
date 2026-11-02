@@ -199,6 +199,10 @@ namespace gitman {
     // `${projectName}`(`GITMAN_PROJECT_NAME`)의 값이다. 표시 이름이 비면 id다. 신뢰 해시(T7)도 이 값을
     // 넣어 실행 입력과 같은 규칙을 본다.
     [[nodiscard]] std::u8string_view function_project_name(const project_definition& project) noexcept;
+    // 카드당 적용 수(20개, B6)를 셀 때의 정적 적용 판정이다. `project_ids`와 `vcs`를 project의 `vcs_hint`로만 보고
+    // `vcs_hint: auto`는 적용되는 것으로 센다. 파서의 21번째 경고와 카드 view의 상한이 같은 기준을 써야 경고한
+    // 기능이 조회 뒤 메뉴에 나타나지 않는다 (function-buttons-design T9).
+    [[nodiscard]] bool function_counts_toward_card(const function_button& button, const project_definition& project) noexcept;
     // 문서 변수에 그 project의 덮어쓰기를 얹는다. 같은 이름이면 저장소 값이 이긴다.
     // 쓸 수 없는 항목(원문 항목, 이름 규칙 위반, 예약 이름)은 뺀다.
     [[nodiscard]] std::vector<user_variable> make_user_variables(const function_buttons_definition& definition, std::u8string_view project);

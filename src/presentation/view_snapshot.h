@@ -21,6 +21,30 @@
 #include <vector>
 
 namespace gitman {
+    // 카드 하나에서 본 기능 버튼 하나다 (function-buttons-design 2.3, 4.8). logic이 snapshot을 만들 때 판정을
+    // 끝내 싣고, 카드 열·기능 메뉴·카드 메뉴가 같은 값을 쓴다. 활성 판정은 배치와 무관하다.
+    struct card_function_view
+    {
+        std::u8string button_id {};
+        std::u8string label {};
+        // 아이콘 이름이다 (D16). 이름 → 글리프는 presentation이 정하고 모르는 이름은 `play`다.
+        std::u8string icon {};
+        // 보이는 배치다 (2.2.2 규칙 4). 4번째 `card`와 알 수 없는 값은 이미 `bar`다.
+        function_placement placement { function_placement::menu };
+        // `Alt+N`의 N이다 (1~3). 문서 전체의 보이는 `card` 순서이고 `card`가 아니면 0이다.
+        std::size_t shortcut { 0 };
+        bool enabled { false };
+        // 비활성 사유다. tooltip과 메뉴 라벨 접미가 쓴다.
+        std::u8string disabled_reason {};
+        // 그 기능의 출력 수집 실행이 이 카드에서 돌고 있다. 버튼은 중지 버튼으로 활성이다.
+        bool running { false };
+        // 마지막 실행이 실패했다 (실패 점). 종료 코드가 없는 실패(시간 초과, 시작 실패, 거부)도 있다.
+        bool failed { false };
+        std::optional<std::int32_t> exit_code {};
+        // 실행 중이고 started를 받았으면 그 시각이다. 메뉴 라벨의 경과 시간 기준이다.
+        std::optional<std::chrono::steady_clock::time_point> started_at {};
+    };
+
     // 렌더러가 그대로 그리는 카드 하나의 불변 표시 모델이다 (REQ-005).
     struct card_view_model
     {
@@ -46,6 +70,16 @@ namespace gitman {
         bool can_change { false };
         // 변경 작업이 실행 중이다. update 버튼이 중지 버튼으로 바뀐다.
         bool change_running { false };
+        // 이 카드에 적용되는 기능이다 (function-buttons-design 2.3). 문서 순서이고 카드당 20개까지다.
+        // 비어 있으면 카드 열은 기능 버튼 이전과 같다(`⋯`도 구분선도 없다).
+        std::vector<card_function_view> functions {};
+        // 출력 수집 기능이 이 카드에서 돌고 있다. 상태 아이콘이 돌고 3번째 줄 맨 앞에 칩이 선다 (2.3.5).
+        // `busy`와 따로 둔다 (B8).
+        bool function_running { false };
+        // 실행 중인 출력 수집 기능의 라벨과 started 시각이다. 칩과 update·switch 비활성 사유
+        // (`기능 "빌드"가 실행 중입니다`)가 쓴다. 칩의 경과 시간은 렌더러가 draw 시각과의 차이로 그린다.
+        std::u8string running_function_label {};
+        std::optional<std::chrono::steady_clock::time_point> running_function_started_at {};
     };
 
     enum class view_empty_state
@@ -245,7 +279,8 @@ namespace gitman {
     // theme-and-banner-menu-design T1). 모양(라벨·아이콘·단축키·구분선·radio)은 항목 데이터가
     // 들고(function-buttons-design T8), 이 값은 고른 뒤의 동작만 가른다. 외부 열기는 popup이
     // UI thread의 앱 명령으로 곧바로 내고 나머지는 logic이 처리한다. 앞의 여섯은 카드 메뉴,
-    // 뒤의 둘은 배너(문서) 메뉴의 항목이다.
+    // 그다음 둘은 배너(문서) 메뉴의 항목이고, 그 뒤는 기능 메뉴·카드 메뉴 기능 절의 항목이다
+    // (function-buttons-design T9). 기능 메뉴의 `기능 편집…` 자리(T12 전)는 `open_document_in_vscode`를 쓴다.
     enum class context_menu_entry
     {
         open_repository,
@@ -260,7 +295,20 @@ namespace gitman {
         // 상태로 두거나, 그 폴더를 VSCode workspace로 연다.
         open_document_folder,
         open_document_in_vscode,
+        // 기능 메뉴와 카드 메뉴 기능 절의 기능 항목이다 (function-buttons-design 2.3.2, 2.3.3). argument가 버튼
+        // id다. 실행과 중지를 다른 동작으로 둬, 메뉴가 떠 있는 사이 그 기능이 시작됐으면 늦은 "실행" 클릭이
+        // 중지가 되지 않고 닫히기만 한다 (항목 목록에서 같은 동작을 다시 찾으므로).
+        run_function,
+        stop_function,
+        // 카드 메뉴의 `기능 더 보기…`다. 같은 자리에 그 카드의 기능 메뉴를 연다.
+        more_functions,
+        // 기능 메뉴의 `문서 다시 읽기`다. 안전한 다시 읽기(4.9)는 T11이라 그때까지 비활성이다.
+        reload_document,
     };
+
+    // `context_menu_entry`의 값 수다. 키 표를 되돌리는 배열이 모든 값을 덮는지 묶는다 (popup의
+    // `static_assert`). 새 값은 enum 끝에 더하고 이 값을 함께 고친다.
+    inline constexpr std::size_t context_menu_entry_count { static_cast<std::size_t>(context_menu_entry::reload_document) + 1 };
 
     // 메뉴 항목 하나의 모양이다. radio는 하나만 고르는 무리(배치 메뉴의 세 배치,
     // function-buttons-design 2.2.5)이고 luil `menu_item_kind::radio`로 그린다.

@@ -43,6 +43,30 @@ namespace gitman::ui {
             }
             return std::nullopt;
         }
+
+        // `Alt+1..3`의 N이다 (function-buttons-design 2.3.4). Alt만 눌린 숫자 키다.
+        [[nodiscard]] std::optional<std::size_t> function_shortcut_number(const luil::key_pressed_event& event) noexcept
+        {
+            if (event.alt == false || event.control || event.shift || event.meta)
+                return std::nullopt;
+            switch (event.key)
+            {
+            case luil::key_code::key_1:
+                return 1;
+            case luil::key_code::key_2:
+                return 2;
+            case luil::key_code::key_3:
+                return 3;
+            default:
+                break;
+            }
+            return std::nullopt;
+        }
+
+        [[nodiscard]] bool is_function_menu_key(const luil::key_pressed_event& event) noexcept
+        {
+            return event.key == luil::key_code::arrow_down && event.alt && event.control == false && event.shift == false && event.meta == false;
+        }
     } // namespace
 
     luil::text_input_target to_luil_target(const text_input_target target) noexcept
@@ -184,10 +208,36 @@ namespace gitman::ui {
                 return { make_logic_action(function_confirm_scroll_intent { 0.0f, *step }) };
         }
 
+        // 카드 기능의 단축키다 (function-buttons-design 2.3.4). `Alt+1..3`은 초점 카드의 N번째 `card` 기능을
+        // 시작하고, `Alt+↓`은 초점 카드의 기능 메뉴를 연다. 아래 ↑/↓ 카드 이동보다 먼저 본다.
+        const std::optional<std::size_t> shortcut { function_shortcut_number(event) };
+        if (shortcut.has_value() || is_function_menu_key(event))
+        {
+            // 누르고 있는 동안의 자동 반복으로 거듭 내지 않는다. dialog가 떠 있으면 키는 그 dialog의 것이다 —
+            // 뒤의 카드에서 기능이 시작되면 안 된다.
+            if (tree == nullptr || event.repeat || tree->ids_of_kind(luil::ui_element_kind::modal_host).empty() == false)
+                return {};
+            const std::optional<project_id> card { focus_card(*tree, snapshot) };
+            if (card.has_value() == false)
+                return {};
+            if (shortcut.has_value())
+                return { make_logic_action(run_function_shortcut_intent { *card, *shortcut }) };
+            // 메뉴는 `⋯`의 왼쪽 아래에 연다 (`⋯` 클릭과 같은 자리). 적용 기능이 없어 `⋯`가 없거나 보이지 않는
+            // 카드(목록 밖, 아주 좁은 창)에서는 아무것도 하지 않는다. `visible()`은 자기 표시만 말하므로 카드 body도
+            // 본다 — 목록은 화면 위아래 한 장씩을 숨긴 채 tree에 두어(`card_list_element`) 그 `⋯`는 화면 밖이다.
+            const luil::ui_element* const body { tree->find(luil::ui_element_id { kind_card_body, card->value }) };
+            const luil::ui_element* const more { tree->find(luil::ui_element_id { kind_card_function_more, card->value }) };
+            if (body == nullptr || body->visible() == false || more == nullptr || more->visible() == false)
+                return {};
+            const luil::rect_f box { more->bounds() };
+            return { make_logic_action(open_function_menu_intent { *card, box.x, box.y + box.height }) };
+        }
+
         switch (event.key)
         {
         case luil::key_code::arrow_down:
         case luil::key_code::arrow_up: {
+            // `Alt+↓`은 위에서 기능 메뉴로 끝나 여기 오지 않는다. `Alt+↑`은 예전처럼 카드 이동이다 (설계가 정하지 않았다).
             if (tree == nullptr)
                 return {};
             const std::vector<luil::ui_element_id> cards { tree->ids_of_kind(kind_card_body) };
@@ -267,5 +317,30 @@ namespace gitman::ui {
     const std::optional<project_id>& gitman_policy::focused_card() const noexcept
     {
         return focused_card_;
+    }
+
+    std::optional<project_id> gitman_policy::focus_card(const luil::ui_tree& tree, const luil::interaction_snapshot& snapshot) const
+    {
+        // Tab 초점이 카드 안 버튼이면 그 카드다. Tab으로 `⋯`에 서도 `focused_card_`는 세워지지 않으므로
+        // (`on_click`은 카드 body만 본다) owner를 먼저 본다 (2.3.4).
+        if (snapshot.focused_surface.empty())
+        {
+            const luil::ui_element_id& focused { snapshot.focused };
+            // `card` 기능 버튼은 Tab 자리가 아니라 초점을 갖지 않는다. 누르면 초점이 걷히고 `on_click`도 카드 body만
+            // 보므로, 누른 뒤의 `Alt+N`은 아래 `focused_card_`나 선택 카드의 것이다 (2.2.6, 내장 버튼 클릭과 같다).
+            if (focused.kind == kind_card_function_more || focused.kind == kind_card_refresh || focused.kind == kind_card_update || focused.kind == kind_card_switch)
+                return project_id { focused.owner };
+        }
+        if (focused_card_.has_value())
+            return focused_card_;
+        // 마지막은 선택 카드다. 선택의 진실은 logic의 것이고 policy는 tree에 그려진 카드의 선택 표시로만 안다.
+        // 그래서 선택 카드가 목록 밖이라 tree에 없으면 초점 카드가 없는 것으로 본다.
+        for (const luil::ui_element_id& id : tree.ids_of_kind(kind_card_body))
+        {
+            const luil::ui_element* const card { tree.find(id) };
+            if (card != nullptr && card->accessibility().selected == std::optional<bool> { true })
+                return project_id { id.owner };
+        }
+        return std::nullopt;
     }
 } // namespace gitman::ui

@@ -47,6 +47,10 @@ namespace gitman::ui {
         // 이 값은 ↑/↓가 다음에 고를 자리를 알기 위한 입력 상태다.
         [[nodiscard]] const std::optional<project_id>& focused_card() const noexcept;
 
+        // `Alt+1..3`·`Alt+↓`이 쓰는 초점 카드다 (function-buttons-design 2.3.4). Tab 초점이 카드 버튼이면 그 owner
+        // 카드, 아니면 `focused_card_`, 그것도 없으면 tree에 그려진 선택 카드다. 셋 다 없으면 값이 없다.
+        [[nodiscard]] std::optional<project_id> focus_card(const luil::ui_tree& tree, const luil::interaction_snapshot& snapshot) const;
+
     private:
         std::optional<project_id> focused_card_ {};
     };

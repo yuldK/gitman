@@ -7,6 +7,7 @@
 #include "domain/function_trust.h"
 #include "domain/log_file_naming.h"
 #include "domain/path_syntax.h"
+#include "presentation/function_presentation.h"
 #include "presentation/list_metrics.h"
 #include "presentation/log_presentation.h"
 #include "presentation/ui/settings_dialog_element.h"
@@ -330,19 +331,8 @@ namespace gitman {
             return chunks;
         }
 
-        // 끝 줄의 종료 코드다. runner가 `0xC0000005` 같은 bit 값을 부호 있는 수로 보존하므로
-        // 음수는 10진수 대신 Windows가 쓰는 16진수로 적는다.
-        std::u8string function_exit_code_text(const std::int32_t code)
-        {
-            if (code >= 0)
-                return decimal_text(code);
-            constexpr std::u8string_view digits { u8"0123456789ABCDEF" };
-            const std::uint32_t bits { static_cast<std::uint32_t>(code) };
-            std::u8string text { u8"0x" };
-            for (int shift = 28; shift >= 0; shift -= 4)
-                text.push_back(digits[(bits >> shift) & 0xFu]);
-            return text;
-        }
+        // 기능 메뉴가 카드 메뉴 기능 절에 싣는 앞 기능 수다 (2.3.3). 넘으면 `기능 더 보기…`가 붙는다.
+        constexpr std::size_t card_menu_function_count { 8 };
 
         // 묶은 기능 버튼 알림의 상세 상한이다. 버튼이 많은 문서에서 tooltip이 화면을 덮지
         // 않게 하고, 나머지는 개수로만 알린다. 항목별 확인은 편집 dialog의 경고 행(T12)이 맡는다.
@@ -534,7 +524,7 @@ namespace gitman {
         for (const card_state& card : cards_)
         {
             if (card.project.id == id)
-                return evaluate_function(card, *button);
+                return evaluate_function(card, *button, make_function_preview_lookup(card));
         }
         return std::nullopt;
     }
@@ -682,6 +672,10 @@ namespace gitman {
                     handle_discovery_dialog_scroll(value.delta);
                 else if constexpr (std::is_same_v<value_type, open_context_menu_intent>)
                     handle_open_context_menu(value);
+                else if constexpr (std::is_same_v<value_type, open_function_menu_intent>)
+                    handle_open_function_menu(value);
+                else if constexpr (std::is_same_v<value_type, run_function_shortcut_intent>)
+                    handle_run_function_shortcut(value);
                 else if constexpr (std::is_same_v<value_type, open_document_context_menu_intent>)
                     handle_open_document_context_menu(value);
                 else if constexpr (std::is_same_v<value_type, set_theme_preference_intent>)
@@ -1392,6 +1386,16 @@ namespace gitman {
         return lookup;
     }
 
+    variable_lookup logic_controller::make_function_preview_lookup(const card_state& card) const
+    {
+        return make_function_lookup(card
+            , [](const std::u8string_view)
+            {
+                return std::optional<std::u8string> { std::u8string {} };
+            }
+        );
+    }
+
     bool logic_controller::function_running(const card_state& card) noexcept
     {
         return std::ranges::any_of(card.function_runs
@@ -1425,7 +1429,7 @@ namespace gitman {
         return count;
     }
 
-    std::optional<logic_controller::function_button_state> logic_controller::evaluate_function(const card_state& card, const function_button& button) const
+    std::optional<logic_controller::function_button_state> logic_controller::evaluate_function(const card_state& card, const function_button& button, const variable_lookup& preview) const
     {
         // 적용 범위다. 범위 밖 카드에는 그 기능이 버튼으로도 메뉴로도 없다 (B4).
         if (button.project_ids.has_value() && std::ranges::find(*button.project_ids, card.project.id.value) == button.project_ids->end())
@@ -1435,7 +1439,10 @@ namespace gitman {
         for (const function_result_state& result : card.function_results)
         {
             if (result.button_id == button.id)
+            {
                 state.failed = result.failed;
+                state.exit_code = result.exit_code;
+            }
         }
 
         // 자기 자신이 실행 중이면 중지 버튼으로 활성이다. 그 사이 조회 결과(`vcs_hint: auto`의
@@ -1478,15 +1485,7 @@ namespace gitman {
         }
 
         // 사용자 변수와 런타임 값이 이 카드에서 풀리는지 본다. `${env:}`는 클릭 시점에만 보므로
-        // 여기서는 어떤 이름이든 정의된 것으로 친다 (3.7).
-        const variable_lookup lookup {
-            make_function_lookup(card
-                , [](const std::u8string_view)
-                {
-                    return std::optional<std::u8string> { std::u8string {} };
-                }
-            )
-        };
+        // 여기서는 어떤 이름이든 정의된 것으로 친다 (3.7, `make_function_preview_lookup`).
         std::vector<std::u8string_view> templates { button.program };
         for (const std::u8string& argument : button.args)
             templates.push_back(argument);
@@ -1494,7 +1493,7 @@ namespace gitman {
         bool uses_project_root { false };
         for (const std::u8string_view text : templates)
         {
-            const variable_expansion expansion { expand_variables(text, lookup) };
+            const variable_expansion expansion { expand_variables(text, preview) };
             if (expansion.error.has_value())
             {
                 state.disabled_reason = function_expansion_reason(*expansion.error, card.has_local_result, card.project.enabled == false);
@@ -1533,6 +1532,62 @@ namespace gitman {
 
         state.enabled = true;
         return state;
+    }
+
+    std::vector<card_function_view> logic_controller::card_function_views(const card_state& card, std::span<const std::optional<function_placement>> placements) const
+    {
+        std::vector<card_function_view> views {};
+        if (document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return views;
+        const std::span<const function_button_entry> buttons { document_->function_buttons->buttons };
+        std::vector<std::optional<function_placement>> own_placements {};
+        if (placements.size() != buttons.size())
+        {
+            own_placements = resolve_visible_placements(buttons);
+            placements = own_placements;
+        }
+
+        // 치환 값 묶음은 카드마다 한 번 만든다 (T6에서 넘어온 일). 적용 범위 밖 기능에는 쓰이지 않는다.
+        const variable_lookup preview { make_function_preview_lookup(card) };
+        std::size_t card_number { 0 };
+        std::size_t counted { 0 };
+        for (std::size_t index = 0; index < buttons.size(); ++index)
+        {
+            const function_button* const button { std::get_if<function_button>(&buttons[index]) };
+            // 검증에 실패한 항목은 원문만 있어 화면에 나오지 않는다 (3.8).
+            if (button == nullptr || placements[index].has_value() == false)
+                continue;
+            const function_placement placement { *placements[index] };
+            // `Alt+N`의 N은 문서 전체의 보이는 `card` 순서다. 이 카드에 적용되지 않는 `card`도 번호를 차지한다 (2.3.4).
+            if (placement == function_placement::card)
+                ++card_number;
+            // 카드당 적용 기능은 20개까지다. 넘친 것은 그 카드에서 쓰지 않고 파서가 경고했다 (2.3.2, 3.8). 파서와 같은
+            // 정적 기준으로 센다 — 조회 뒤 범위 밖이 된 `vcs` 한정 기능이 자리를 비워도 21번째가 올라오지 않는다.
+            if (function_counts_toward_card(*button, card.project) == false || ++counted > maximum_functions_per_card)
+                continue;
+            const std::optional<function_button_state> state { evaluate_function(card, *button, preview) };
+            if (state.has_value() == false)
+                continue;
+
+            card_function_view view {};
+            view.button_id = button->id;
+            view.label = button->label;
+            view.icon = std::u8string { button->icon_name() };
+            view.placement = placement;
+            view.shortcut = placement == function_placement::card ? card_number : 0;
+            view.enabled = state->enabled;
+            view.disabled_reason = state->disabled_reason;
+            view.running = state->running;
+            view.failed = state->failed;
+            view.exit_code = state->exit_code;
+            for (const function_run_state& run : card.function_runs)
+            {
+                if (run.button_id == button->id && run.mode == function_run_mode::capture && run.phase == function_run_phase::running)
+                    view.started_at = run.started_at;
+            }
+            views.push_back(std::move(view));
+        }
+        return views;
     }
 
     void logic_controller::handle_run_function(const run_function_intent& intent)
@@ -1575,7 +1630,7 @@ namespace gitman {
         // 버튼을 그릴 때와 같은 판정을 다시 한다. 클릭과 상태 변화가 엇갈린 늦은 클릭이다 (4.8).
         // 범위 밖이면 그 카드에 버튼이 없다. 이미 실행 중이면 `Alt+N`이 중지하지 않도록 아무것도
         // 하지 않는다 (2.3.4).
-        const std::optional<function_button_state> state { evaluate_function(card, button) };
+        const std::optional<function_button_state> state { evaluate_function(card, button, make_function_preview_lookup(card)) };
         if (state.has_value() == false || state->running)
             return std::nullopt;
         if (state->enabled == false)
@@ -3656,7 +3711,44 @@ namespace gitman {
 
         // 우클릭한 카드를 선택 카드로 만든 뒤 연다 (로그 pane 연동 유지, 3장).
         handle_select_card(select_card_intent { { intent.id } });
-        context_menu_ = { context_menu_state { context_menu_kind::card, intent.id, intent.anchor_x, intent.anchor_y } };
+        context_menu_ = { context_menu_state { context_menu_kind::card, intent.id, intent.anchor_x, intent.anchor_y, std::chrono::steady_clock::now() } };
+    }
+
+    void logic_controller::handle_open_function_menu(const open_function_menu_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        // 확인 dialog가 떠 있는 동안에는 열지 않는다. `Alt+↓`은 키라 modal을 지나 올 수 있다.
+        if (find_card(intent.id) == nullptr || function_confirm_.has_value())
+        {
+            context_menu_.reset();
+            return;
+        }
+        // 카드 안 버튼이라 선택과 로그 pane은 그대로다 (2.2.6). 카드 메뉴와 달리 카드를 선택하지 않는다.
+        context_menu_ = { context_menu_state { context_menu_kind::functions, intent.id, intent.anchor_x, intent.anchor_y, std::chrono::steady_clock::now() } };
+    }
+
+    void logic_controller::handle_run_function_shortcut(const run_function_shortcut_intent& intent)
+    {
+        if (shutting_down_ || intent.number == 0 || document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return;
+        // 필터로 목록에서 빠진 카드는 보이지 않으므로 그 카드에서 기능을 시작하지 않는다. 초점 카드(`focused_card_`)는
+        // 필터가 바뀌어도 policy에 남아 있을 수 있다.
+        const card_state* const card { find_card(intent.id) };
+        if (card == nullptr || matches_filter(*card) == false)
+            return;
+
+        // N은 문서 전체의 보이는 `card` 순서다 — 창 폭과 그 카드의 적용 범위와 상관없다 (2.3.4). 카드 view와 같은
+        // 목록에서 찾으므로 그 기능이 이 카드의 범위 밖이면(목록에 없으면) 아무것도 하지 않는다. 실행 중이면 실행
+        // intent의 늦은 클릭 규칙대로 아무것도 하지 않는다 — `Alt+N`은 중지하지 않는다.
+        for (const card_function_view& function : card_function_views(*card))
+        {
+            if (function.shortcut == intent.number)
+            {
+                handle_run_function(run_function_intent { intent.id, function.button_id });
+                return;
+            }
+        }
     }
 
     void logic_controller::handle_open_document_context_menu(const open_document_context_menu_intent& intent)
@@ -3672,7 +3764,7 @@ namespace gitman {
         }
 
         // 문서 메뉴는 선택 카드를 바꾸지 않는다 — 카드와 무관한 대상이다.
-        context_menu_ = { context_menu_state { context_menu_kind::document, {}, intent.anchor_x, intent.anchor_y } };
+        context_menu_ = { context_menu_state { context_menu_kind::document, {}, intent.anchor_x, intent.anchor_y, std::chrono::steady_clock::now() } };
     }
 
     void logic_controller::handle_select_context_menu_item(const select_context_menu_item_intent& intent)
@@ -3724,6 +3816,23 @@ namespace gitman {
             if (state != nullptr)
                 handle_begin_switch(begin_switch_intent { menu.card });
             break;
+        case context_menu_entry::run_function:
+            // 버튼 클릭과 같은 길이다. 신뢰 확인·`confirm` 미리보기도 그대로 거친다 (T7).
+            if (state != nullptr)
+                handle_run_function(run_function_intent { menu.card, item.argument });
+            break;
+        case context_menu_entry::stop_function:
+            if (state != nullptr)
+                handle_stop_function(stop_function_intent { menu.card, item.argument });
+            break;
+        case context_menu_entry::more_functions:
+            // 카드 메뉴가 닫힌 자리에 같은 카드의 기능 메뉴를 연다 (2.3.3). 하위 메뉴는 쓰지 않는다.
+            if (state != nullptr)
+                context_menu_ = { context_menu_state { context_menu_kind::functions, menu.card, menu.anchor_x, menu.anchor_y, std::chrono::steady_clock::now() } };
+            break;
+        case context_menu_entry::reload_document:
+            // 안전한 다시 읽기(4.9)는 T11이다. 그때까지 항목은 비활성이라 여기 오지 않는다.
+            break;
         case context_menu_entry::open_repository:
         case context_menu_entry::open_in_vscode:
         case context_menu_entry::open_document_folder:
@@ -3738,12 +3847,17 @@ namespace gitman {
         if (menu.kind == context_menu_kind::document)
             return document_context_menu_items();
         for (const card_state& card : cards_)
-            if (card.project.id == menu.card)
-                return card_context_menu_items(card);
+        {
+            if ((card.project.id == menu.card) == false)
+                continue;
+            if (menu.kind == context_menu_kind::functions)
+                return function_context_menu_items(card, menu.opened_at);
+            return card_context_menu_items(card, menu.opened_at);
+        }
         return {};
     }
 
-    std::vector<context_menu_item_view> logic_controller::card_context_menu_items(const card_state& card)
+    std::vector<context_menu_item_view> logic_controller::card_context_menu_items(const card_state& card, const std::chrono::steady_clock::time_point opened_at) const
     {
         const std::u8string repository_path { card.project.path.normalized.empty() ? card.project.path.original : card.project.path.normalized };
 
@@ -3760,7 +3874,71 @@ namespace gitman {
         items.push_back({ .entry = context_menu_entry::refresh, .label = u8"상태 갱신", .icon = u8"refresh" });
         items.push_back({ .entry = context_menu_entry::update, .label = u8"업데이트", .enabled = can_change && change_running == false, .icon = u8"repo-pull" });
         items.push_back({ .entry = context_menu_entry::switch_to, .label = u8"전환…", .enabled = can_change, .icon = u8"source-control" });
+
+        // 기능 절이다 (function-buttons-design 2.3.3). 적용 기능이 없으면 지금 메뉴 그대로다. 앞 8개를 문서 순서로
+        // 싣고 넘치면 `기능 더 보기…`가 그 카드의 기능 메뉴를 연다. 하위 메뉴는 쓰지 않는다.
+        const std::vector<card_function_view> functions { card_function_views(card) };
+        if (functions.empty())
+            return items;
+        for (std::size_t index = 0; index < functions.size() && index < card_menu_function_count; ++index)
+        {
+            context_menu_item_view item { function_menu_item(functions[index], opened_at) };
+            item.separator_above = index == 0;
+            items.push_back(std::move(item));
+        }
+        if (functions.size() > card_menu_function_count)
+            items.push_back({ .entry = context_menu_entry::more_functions, .label = u8"기능 더 보기…", .icon = u8"ellipsis" });
+        if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
+            items.push_back(std::move(*edit));
         return items;
+    }
+
+    std::vector<context_menu_item_view> logic_controller::function_context_menu_items(const card_state& card, const std::chrono::steady_clock::time_point opened_at) const
+    {
+        // 그 카드의 적용 기능 전체다 — 배치(`card`·`bar`·`menu`)와 상관없이 문서 순서다 (2.3.2). 카드 열이나 기능 줄에
+        // 이미 보이는 것도 다시 나온다. 메뉴가 카드 폭에 의존하면 logic이 UI 배치를 알아야 한다.
+        std::vector<context_menu_item_view> items {};
+        for (const card_function_view& function : card_function_views(card))
+            items.push_back(function_menu_item(function, opened_at));
+
+        // 아래 구역은 기능 목록과 구분선으로 가른다. 기능이 없으면 구분선도 없다.
+        const std::size_t tail { items.size() };
+        if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
+            items.push_back(std::move(*edit));
+        // 안전한 다시 읽기(4.9)는 T11에서 들어온다. 자리와 메뉴 높이를 지금 맞춰 두고 그때까지 비활성이다.
+        items.push_back({ .entry = context_menu_entry::reload_document, .label = u8"문서 다시 읽기", .enabled = false, .icon = u8"sync" });
+        items[tail].separator_above = tail > 0;
+        return items;
+    }
+
+    context_menu_item_view logic_controller::function_menu_item(const card_function_view& function, const std::chrono::steady_clock::time_point opened_at)
+    {
+        // 상태는 라벨 안에 넣는다 (2.3.2). 메뉴 항목의 접근 이름은 라벨뿐이라 단축키 열에 두면 읽히지 않는다.
+        // 경과 시간은 메뉴를 연 시각에서 멈춘다 — 떠 있는 동안 snapshot이 다시 지어져도 라벨(접근 이름)과 메뉴 폭이
+        // 바뀌지 않는다. 메뉴가 떠 있는 사이 시작된 기능은 00:00이다. 흐르는 시간은 카드 3번째 줄 칩이 보인다.
+        const std::chrono::steady_clock::duration elapsed {
+            function.started_at.has_value() && opened_at > *function.started_at ? opened_at - *function.started_at : std::chrono::steady_clock::duration::zero()
+        };
+        context_menu_item_view item {};
+        // 실행 중인 항목은 고르면 중지다. 아이콘 자리에 중지 글리프를 둔다.
+        item.entry = function.running ? context_menu_entry::stop_function : context_menu_entry::run_function;
+        item.label = function_menu_label(function, elapsed);
+        item.enabled = function.enabled;
+        item.argument = function.button_id;
+        item.icon = function.running ? std::u8string { u8"stop-circle" } : function.icon;
+        // `card` 항목은 단축키 열에 `Alt+N`을 붙여 고정 표시와 단축키 안내를 겸한다.
+        item.shortcut_text = function_shortcut_text(function.shortcut);
+        return item;
+    }
+
+    std::optional<context_menu_item_view> logic_controller::function_edit_menu_item() const
+    {
+        // 편집 dialog(T12) 전에는 `기능 편집…` 자리가 문서 폴더를 VS Code로 여는 항목이다 (2.3.2). 배너 메뉴의
+        // `VSCode로 열기`와 같은 동작이라 같은 하위 동작을 쓰고 UI thread가 곧바로 연다.
+        const std::u8string folder { windows_parent_directory(document_path_) };
+        if (document_path_.empty() || folder.empty())
+            return std::nullopt;
+        return context_menu_item_view { .entry = context_menu_entry::open_document_in_vscode, .label = u8"문서 폴더를 VS Code로 열기", .target_path = folder, .icon = u8"vscode" };
     }
 
     std::vector<context_menu_item_view> logic_controller::document_context_menu_items() const
@@ -4190,6 +4368,10 @@ namespace gitman {
     std::vector<card_view_model> logic_controller::build_ordered_cards() const
     {
         std::vector<card_view_model> ordered {};
+        // 보이는 배치는 문서 전체의 `card` 수에 달려 snapshot마다 한 번 만든다 (2.2.2 규칙 4).
+        std::vector<std::optional<function_placement>> placements {};
+        if (document_.has_value() && document_->function_buttons.has_value())
+            placements = resolve_visible_placements(document_->function_buttons->buttons);
         for (const card_state& card : cards_)
         {
             if (matches_filter(card) == false)
@@ -4213,6 +4395,17 @@ namespace gitman {
             model.enabled = card.project.enabled;
             model.can_change = change_allowed(card);
             model.change_running = card.change_operation_id != 0;
+            if (placements.empty() == false)
+                model.functions = card_function_views(card, placements);
+            for (const function_run_state& run : card.function_runs)
+            {
+                if (run.mode != function_run_mode::capture)
+                    continue;
+                model.function_running = true;
+                model.running_function_label = run.label;
+                if (run.phase == function_run_phase::running)
+                    model.running_function_started_at = run.started_at;
+            }
 
             card_view_inputs inputs {};
             inputs.enabled = card.project.enabled;
@@ -4575,11 +4768,34 @@ namespace gitman {
             if (items.empty() == false)
             {
                 context_menu_view menu {};
-                // 카드 메뉴만 대상 카드를 갖는다. 배너(문서) 메뉴는 owner가 비어 있다.
-                if (context_menu_->kind == context_menu_kind::card)
+                // 카드 메뉴와 기능 메뉴만 대상 카드를 갖는다. 배너(문서) 메뉴는 owner가 비어 있다.
+                if (context_menu_->kind != context_menu_kind::document)
                     menu.owner = context_menu_->card;
                 menu.anchor_x = context_menu_->anchor_x;
                 menu.anchor_y = context_menu_->anchor_y;
+                // 기능 메뉴만 기본 항목이 있다 (2.3.2). 메뉴를 열고 Enter 한 번이면 첫 기능이 실행된다. 비활성 항목은
+                // Enter가 고르지 못하므로 첫 **활성** 기능이다. 그 카드에서 출력 수집이 돌고 있으면 비운다 — 습관적으로
+                // 친 Enter가 실행 중인 작업을 끊거나 다른 기능을 시작하지 않게 한다.
+                if (context_menu_->kind == context_menu_kind::functions)
+                {
+                    const card_state* card { nullptr };
+                    for (const card_state& candidate : cards_)
+                    {
+                        if (candidate.project.id == context_menu_->card)
+                            card = &candidate;
+                    }
+                    if (card != nullptr && function_running(*card) == false)
+                    {
+                        for (std::size_t index = 0; index < items.size(); ++index)
+                        {
+                            if (items[index].entry == context_menu_entry::run_function && items[index].enabled)
+                            {
+                                menu.default_item = index;
+                                break;
+                            }
+                        }
+                    }
+                }
                 menu.items = std::move(items);
                 snapshot->context_menu = { std::move(menu) };
             }

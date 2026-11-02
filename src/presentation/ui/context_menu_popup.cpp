@@ -1,12 +1,13 @@
 #include "presentation/ui/context_menu_popup.h"
 
 #include "presentation/list_metrics.h"
+#include "presentation/ui/function_icon_catalog.h"
 #include "presentation/ui/ui_actions.h"
 
-#include "luil/generated/codicons.h"
 #include "luil/ui/menu_element.h"
 #include "luil/ui/ui_tree.h"
 
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <string>
@@ -14,22 +15,15 @@
 
 namespace gitman::ui {
     namespace {
-        struct icon_name_glyph
+        // 항목 아이콘이다. 실행 항목의 아이콘 이름은 기능 버튼의 `icon`이라 D16 표로 찾고 모르는 이름도 기본 `play`로
+        // 그린다 — 카드 버튼과 같은 글리프여야 한다. 중지 항목(`stop-circle`)과 나머지 항목은 메뉴 이름까지 든 전체
+        // 표로 찾고 모르는 이름이면 아이콘이 없다.
+        char32_t item_icon(const context_menu_item_view& item) noexcept
         {
-            std::u8string_view name {};
-            char32_t glyph { 0 };
-        };
-
-        // 메뉴가 쓰는 아이콘 이름 표다. 예전 entry별 표의 글리프를 codicon 이름으로 옮겼다
-        // (function-buttons-design T8). 기능 버튼 아이콘 이름 표(D16)는 T9에서 더한다.
-        constexpr std::array<icon_name_glyph, 6> menu_icons {
-            icon_name_glyph { u8"folder-opened", luil::codicons::icon_folder_opened },
-            icon_name_glyph { u8"vscode", luil::codicons::icon_vscode },
-            icon_name_glyph { u8"diff", luil::codicons::icon_diff },
-            icon_name_glyph { u8"refresh", luil::codicons::icon_refresh },
-            icon_name_glyph { u8"repo-pull", luil::codicons::icon_repo_pull },
-            icon_name_glyph { u8"source-control", luil::codicons::icon_source_control },
-        };
+            if (item.entry == context_menu_entry::run_function)
+                return function_icon_glyph(item.icon);
+            return context_menu_icon_glyph(item.icon);
+        }
 
         // 항목 하나를 고른 결과다. 외부 열기 3종은 UI thread가 셸을 부르는 앱
         // 명령이라 여기서 곧바로 내고(설계 L7), 메뉴 닫기는 delegate가 명령을 실행한
@@ -53,6 +47,10 @@ namespace gitman::ui {
             case context_menu_entry::refresh:
             case context_menu_entry::update:
             case context_menu_entry::switch_to:
+            case context_menu_entry::run_function:
+            case context_menu_entry::stop_function:
+            case context_menu_entry::more_functions:
+            case context_menu_entry::reload_document:
                 break;
             }
             return make_logic_action(select_context_menu_item_intent { item.entry, item.argument });
@@ -91,14 +89,23 @@ namespace gitman::ui {
             return u8"open_document_folder";
         case context_menu_entry::open_document_in_vscode:
             return u8"open_document_in_vscode";
+        case context_menu_entry::run_function:
+            return u8"run_function";
+        case context_menu_entry::stop_function:
+            return u8"stop_function";
+        case context_menu_entry::more_functions:
+            return u8"more_functions";
+        case context_menu_entry::reload_document:
+            return u8"reload_document";
         }
         return u8"";
     }
 
     std::optional<context_menu_entry> parse_context_menu_entry(const std::u8string_view key) noexcept
     {
-        // 표는 `context_menu_entry_key` 한 곳뿐이다 — 되돌리기는 그 표를 훑는다.
-        constexpr std::array<context_menu_entry, 8> entries {
+        // 표는 `context_menu_entry_key` 한 곳뿐이다 — 되돌리기는 그 표를 훑는다. 값을 더하고 이 배열을 늘리지
+        // 않으면 아래 검사가 빌드를 멈춘다 (function-buttons-design T8 검토에서 넘어온 일).
+        constexpr std::array<context_menu_entry, 12> entries {
             context_menu_entry::open_repository,
             context_menu_entry::open_in_vscode,
             context_menu_entry::show_local_changes,
@@ -107,7 +114,12 @@ namespace gitman::ui {
             context_menu_entry::switch_to,
             context_menu_entry::open_document_folder,
             context_menu_entry::open_document_in_vscode,
+            context_menu_entry::run_function,
+            context_menu_entry::stop_function,
+            context_menu_entry::more_functions,
+            context_menu_entry::reload_document,
         };
+        static_assert(entries.size() == context_menu_entry_count);
         for (const context_menu_entry entry : entries)
             if (context_menu_entry_key(entry) == key)
                 return entry;
@@ -128,10 +140,8 @@ namespace gitman::ui {
 
     char32_t context_menu_icon_glyph(const std::u8string_view name) noexcept
     {
-        for (const icon_name_glyph& icon : menu_icons)
-            if (icon.name == name)
-                return icon.glyph;
-        return 0;
+        // 기능 버튼 아이콘과 한 표다 (`function_icon_catalog.cpp`). 메뉴의 기존 항목은 모르는 이름이면 아이콘이 없다.
+        return icon_glyph_by_name(name);
     }
 
     luil::win32::ui_popup build_context_menu_popup(const context_menu_view& menu, const float scale)
@@ -149,7 +159,7 @@ namespace gitman::ui {
             luil::menu_item_config row {};
             row.key = context_menu_item_key(item);
             row.label = item.label;
-            row.icon = context_menu_icon_glyph(item.icon);
+            row.icon = item_icon(item);
             row.enabled = item.enabled;
             row.separator_above = item.separator_above;
             row.kind = item_kind(item.kind);
@@ -174,7 +184,10 @@ namespace gitman::ui {
         // anchor는 비운다 — 메뉴는 주 창 위에 뜬다.
         popup.x = menu.anchor_x / effective_scale;
         popup.y = menu.anchor_y / effective_scale;
-        popup.width = layout_context_menu_width;
+        // 폭은 가장 긴 `라벨 + 단축키 열`을 담되 190~320이다 (function-buttons-design 2.3.2). 짧은 기존 메뉴(카드 메뉴
+        // 6항목, 배너 메뉴)는 하한 190 그대로다. 320을 넘는 라벨은 메뉴 항목이 말줄임한다. 글은 설정한 UI 글꼴로
+        // 재고(`width_for`의 기본 측정기, 어느 thread에서나 부를 수 있다), 시스템 글자 크기만큼 넓어진다.
+        popup.width = std::clamp(luil::menu_element::width_for(config), layout_context_menu_width, layout_context_menu_maximum_width);
         popup.height = luil::menu_element::height_for(config);
         auto root { std::make_unique<luil::menu_element>(std::move(config)) };
         popup.tree = std::make_shared<const luil::ui_tree>(

@@ -471,23 +471,6 @@ namespace gitman {
             }
         }
 
-        bool applies_to_project(const function_button& button, const project_definition& project) noexcept
-        {
-            if (button.project_ids.has_value() && std::ranges::find(*button.project_ids, project.id.value) == button.project_ids->end())
-                return false;
-            // `vcs_hint: auto`는 조회 전까지 종류를 모르므로 적용되는 것으로 센다 (B4).
-            switch (button.vcs)
-            {
-            case function_vcs_scope::any:
-                return true;
-            case function_vcs_scope::git:
-                return project.hint != vcs_hint::subversion;
-            case function_vcs_scope::subversion:
-                return project.hint != vcs_hint::git;
-            }
-            return true;
-        }
-
         // 문서 전체를 봐야 하는 경고다. 4번째 card와 알 수 없는 배치는 bar로 보이고 (3.2),
         // 카드당 적용 기능이 20개를 넘으면 그 카드에 21번째로 적용되는 항목에 경고 하나를 단다 (B6).
         void warn_function_button_layout(const std::span<const std::u8string> locations, const std::span<const function_button_entry> buttons
@@ -520,7 +503,8 @@ namespace gitman {
                 for (std::size_t index = 0; index < buttons.size(); ++index)
                 {
                     const function_button* const button { std::get_if<function_button>(&buttons[index]) };
-                    if (button == nullptr || applies_to_project(*button, project) == false)
+                    // 카드 view(T9)의 상한과 같은 판정이다 (`function_counts_toward_card`).
+                    if (button == nullptr || function_counts_toward_card(*button, project) == false)
                         continue;
                     if (++applied != maximum_functions_per_card + 1)
                         continue;

@@ -23,6 +23,7 @@ gitman_add_source_filter(gitman_test_files "resource"
 gitman_add_source_filter(gitman_test_files "helpers"
     helpers/discovery_test_doubles.cpp
     helpers/discovery_test_doubles.h
+    helpers/function_card_fixture.h
     helpers/git_repository_fixture.cpp
     helpers/git_repository_fixture.h
     helpers/ui_test_support.h
@@ -118,6 +119,8 @@ gitman_add_source_filter(gitman_test_files "infrastructure/shell"
 
 gitman_add_source_filter(gitman_test_files "presentation/ui"
     element_kinds_tests.cpp
+    function_card_interaction_tests.cpp
+    function_card_tree_tests.cpp
     log_view_tests.cpp
     start_page_tests.cpp
     status_presentation_tests.cpp

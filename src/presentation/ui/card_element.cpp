@@ -1,7 +1,10 @@
 #include "presentation/ui/card_element.h"
 
+#include "presentation/function_presentation.h"
 #include "presentation/list_metrics.h"
+#include "presentation/log_presentation.h"
 #include "presentation/ui/element_kinds.h"
+#include "presentation/ui/function_icon_catalog.h"
 #include "presentation/ui/status_glyphs.h"
 #include "presentation/ui/ui_actions.h"
 
@@ -14,6 +17,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -46,6 +50,57 @@ namespace gitman::ui {
                 break;
             }
             return palette.primary_foreground;
+        }
+
+        // 실행 중·실패 점 표식의 색이다 (function-buttons-design 2.3.5).
+        enum class marker_tone
+        {
+            error,
+            accent,
+        };
+
+        // 버튼 오른쪽 위에 겹쳐 그리는 6px 점이다. 자식 순서가 그리기 순서라 버튼 뒤에 붙인다
+        // (2.3.5). 액션도 tooltip도 없어 hit 대상이 아니고 접근 tree에도 서지 않는다 — 상태는 버튼의
+        // 접근 이름이 말한다. 색은 `⋯`처럼 접힌 버튼에 따라 정해지는 것이 있어 배치 때 고친다.
+        class function_marker_element final : public ui_element
+        {
+        public:
+            function_marker_element(ui_element_id id, const marker_tone tone) noexcept
+                : ui_element { std::move(id) }
+                , tone_ { tone }
+            {
+            }
+
+            void set_tone(const marker_tone tone) noexcept
+            {
+                tone_ = tone;
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context& context, const interaction_snapshot& interaction) const override
+            {
+                static_cast<void>(interaction);
+                const rect_f box { bounds() };
+                const ui_color color { tone_ == marker_tone::error ? context.palette.error_accent : context.palette.accent };
+                SkPaint paint { solid_paint(color) };
+                paint.setAntiAlias(true);
+                context.canvas.drawCircle(box.x + box.width / 2.0f, box.y + box.height / 2.0f, box.width / 2.0f, paint);
+            }
+
+        private:
+            marker_tone tone_ { marker_tone::error };
+        };
+
+        // 버튼 오른쪽 위 안쪽의 점 자리다.
+        rect_f marker_slot(const rect_f& button, const float scale) noexcept
+        {
+            const float size { layout_function_marker_size * scale };
+            const float inset { layout_function_marker_inset * scale };
+            return { button.x + button.width - inset - size, button.y + inset, size, size };
         }
     } // namespace
 
@@ -91,6 +146,54 @@ namespace gitman::ui {
         };
         set_drag_source(std::move(source));
 
+        // 기능 열이다 (function-buttons-design 2.3). `card` 버튼은 Tab 자리가 아니라 생성 순서가 Tab 순서에
+        // 영향이 없고, `⋯`가 새로 고침 앞 자리라 Tab은 `⋯`, 새로 고침, 업데이트, 전환 순서다 (2.3.4).
+        for (std::size_t index = 0; index < card_.functions.size(); ++index)
+        {
+            const card_function_view& function { card_.functions[index] };
+            if (function.placement != function_placement::card)
+                continue;
+
+            luil::button_config config {};
+            // 실행 중이면 제자리에서 중지 버튼이 된다. 켜진 토글의 강조 바탕(active)으로 보인다 (2.3.5).
+            config.glyph = function.running ? codicons::icon_stop_circle : function_icon_glyph(function.icon);
+            config.active = function.running;
+            auto button { std::make_unique<luil::button_element>(ui_element_id { kind_card_function, card_function_owner(card_.id.value, function.button_id) }, config) };
+            // 키보드는 `Alt+1..3`, `Alt+↓`, `Shift+F10`으로 닿는다. 카드마다 정지점이 늘지 않게 한다 (2.3.4).
+            button->set_tab_stop(false);
+            button->set_tooltip(function_button_tooltip(function));
+            // 경과 시간이 없는 고정 이름이다. 초마다 바뀌면 낭독이 되풀이된다 (2.3.4).
+            button->set_access_name(function_button_access_name(function, card_.display_name));
+            // 비활성 버튼에도 액션을 단다. luil은 비활성 element의 액션을 실행하지 않고, 액션이 있어야
+            // 접근 tree에 단추로 서서 비활성 기능의 이름도 읽힌다. logic이 누른 시점에 다시 판정한다.
+            if (function.running)
+                button->set_action(ui_trigger::left_click, make_logic_click(stop_function_intent { card_.id, function.button_id }));
+            else
+                button->set_action(ui_trigger::left_click, make_logic_click(run_function_intent { card_.id, function.button_id }));
+            if (function.enabled == false)
+                button->set_enabled(false);
+            function_buttons_.push_back({ button.get(), nullptr, index });
+            add_child(std::move(button));
+        }
+        if (card_.functions.empty() == false)
+        {
+            auto more { std::make_unique<luil::button_element>(ui_element_id { kind_card_function_more, card_.id.value }, luil::button_config { .glyph = codicons::icon_ellipsis }) };
+            more->set_tooltip(u8"기능 더 보기 (Alt+↓)");
+            more->set_access_name(function_more_access_name(card_.display_name, card_.functions.size()));
+            // 메뉴는 `⋯`의 왼쪽 아래에 연다. 클릭 액션은 누른 점만 주므로 버튼 자신의 자리를 읽는다.
+            // lambda는 element가 소유하고 tree는 게시 후 불변이라 포인터 캡처가 안전하다 (drag 출발과 같다).
+            const ui_element* const anchor { more.get() };
+            more->set_action(ui_trigger::left_click
+                , [id = card_.id, anchor](const ui_action_context&) -> std::vector<input_action>
+                {
+                    const rect_f box { anchor->bounds() };
+                    return { make_logic_action(open_function_menu_intent { id, box.x, box.y + box.height }) };
+                }
+            );
+            more_ = more.get();
+            add_child(std::move(more));
+        }
+
         auto refresh { std::make_unique<luil::button_element>(ui_element_id { kind_card_refresh, card_.id.value }, luil::button_config { .glyph = codicons::icon_refresh }) };
         refresh->set_tooltip(u8"이 카드 새로 고침");
         refresh->set_action(ui_trigger::left_click, make_logic_click(refresh_card_intent { card_.id }));
@@ -115,7 +218,8 @@ namespace gitman::ui {
         }
         else
         {
-            update->set_tooltip(u8"카드가 준비된 뒤 업데이트할 수 있습니다");
+            // 같은 카드의 출력 수집 기능과 서로 막는다 (4.7, D6-A). 사유를 그 기능 이름으로 알린다.
+            update->set_tooltip(card_.function_running ? function_running_reason(card_.running_function_label) : std::u8string { u8"카드가 준비된 뒤 업데이트할 수 있습니다" });
             update->set_enabled(false);
         }
         update_ = update.get();
@@ -129,11 +233,40 @@ namespace gitman::ui {
         }
         else
         {
-            switch_button->set_tooltip(u8"카드가 준비된 뒤 전환할 수 있습니다");
+            switch_button->set_tooltip(card_.function_running ? function_running_reason(card_.running_function_label) : std::u8string { u8"카드가 준비된 뒤 전환할 수 있습니다" });
             switch_button->set_enabled(false);
         }
         switch_ = switch_button.get();
         add_child(std::move(switch_button));
+
+        // 점 표식은 버튼 위에 그려야 하므로 모든 버튼 뒤에 붙인다 (2.3.5). `card` 버튼의 점은 실패했고
+        // 실행 중이 아닐 때다 — 실행 중이면 버튼 자신이 중지 글리프로 바뀐다.
+        for (function_button_slot& slot : function_buttons_)
+        {
+            const card_function_view& function { card_.functions[slot.function] };
+            if (function.failed == false || function.running)
+                continue;
+            auto marker { std::make_unique<function_marker_element>(ui_element_id { kind_card_function_marker, card_function_owner(card_.id.value, function.button_id) }, marker_tone::error) };
+            slot.marker = marker.get();
+            add_child(std::move(marker));
+        }
+        // `⋯`의 점은 버튼이 아닌 자리(`bar`·`menu`)나 접힌 `card` 기능의 것이다. 접힘은 배치 때 정해지므로
+        // 실행 중·실패인 기능이 하나라도 있으면 만들어 두고, 배치가 보일지와 색을 정한다.
+        const bool any_state {
+            std::ranges::any_of(card_.functions
+                , [](const card_function_view& function)
+                {
+                    return function.running || function.failed;
+                }
+            )
+        };
+
+        if (more_ != nullptr && any_state)
+        {
+            auto marker { std::make_unique<function_marker_element>(ui_element_id { kind_card_function_more_marker, card_.id.value }, marker_tone::error) };
+            more_marker_ = marker.get();
+            add_child(std::move(marker));
+        }
     }
 
     void card_element::arrange(const arrange_context& context)
@@ -141,8 +274,8 @@ namespace gitman::ui {
         const float scale { context.scale > 0.0f ? context.scale : 1.0f };
         set_bounds(context.slot);
 
-        // 카드 오른쪽 끝에 버튼 3개를 세로 중앙 정렬로 둔다. 창이 좁아 글자가 들어갈
-        // 최소 폭도 남지 않으면 오른쪽 버튼부터 숨긴다.
+        // 카드 오른쪽 끝에 버튼 3개를 세로 중앙 정렬로 둔다. 오른쪽(전환)부터 왼쪽으로 놓으므로 창이
+        // 좁아 글자가 들어갈 최소 폭도 남지 않으면 **왼쪽** 버튼(새로 고침)부터 숨는다.
         const float margin { layout_margin * scale };
         const float gap { layout_card_gap * scale };
         const float button { layout_button_size * scale };
@@ -165,6 +298,52 @@ namespace gitman::ui {
         place(update_);
         place(refresh_);
         text_limit_ = next_x + button;
+        separator_x_.reset();
+        if (more_ == nullptr)
+            return;
+
+        // 기능 열이다 (function-buttons-design 2.3). 자리는 카드 폭만으로 정해진다 — 칩·제목·경로 길이를
+        // 보지 않는다 (2.3.1 규칙 4). `⋯`는 내장 버튼과 같은 바닥 규칙을 따른다 (규칙 5).
+        const card_function_slots slots { layout_card_function_slots(context.slot.width / scale, function_buttons_.size(), true) };
+        const float more_x { context.slot.x + slots.more_x * scale };
+        const bool more_visible { more_x >= minimum_right };
+        more_->set_visible(more_visible);
+        if (more_visible)
+        {
+            more_->arrange(context.for_child({ more_x, buttons_y, button, button }));
+            separator_x_ = context.slot.x + (slots.separator_x + layout_card_function_separator / 2.0f) * scale;
+            text_limit_ = context.slot.x + slots.text_right * scale;
+        }
+
+        // 글 예약을 지키지 못하면 뒤쪽 `card` 버튼부터 접는다. 접힌 기능은 `⋯` 메뉴에 그대로 있고
+        // 그 실행 중·실패는 `⋯`의 점이 맡는다.
+        const std::size_t visible_count { more_visible ? slots.visible_count : 0 };
+        std::vector<bool> on_card(card_.functions.size(), false);
+        for (std::size_t index = 0; index < function_buttons_.size(); ++index)
+        {
+            const function_button_slot& slot { function_buttons_[index] };
+            const bool visible { index < visible_count };
+            slot.button->set_visible(visible);
+            if (slot.marker != nullptr)
+                slot.marker->set_visible(visible);
+            if (visible == false)
+                continue;
+            on_card[slot.function] = true;
+            const rect_f box { context.slot.x + card_function_button_x(slots, index) * scale, buttons_y, button, button };
+            slot.button->arrange(context.for_child(box));
+            if (slot.marker != nullptr)
+                slot.marker->arrange(context.for_child(marker_slot(box, scale)));
+        }
+        if (more_marker_ == nullptr)
+            return;
+
+        // 실행 중임은 상태 아이콘 회전과 3번째 줄 칩으로도 보이지만 실패는 이 점뿐이라 실패를 먼저 보인다.
+        const function_more_marker state { function_more_marker_state(card_.functions, on_card) };
+        const bool marker_visible { more_visible && state != function_more_marker::none };
+        more_marker_->set_visible(marker_visible);
+        static_cast<function_marker_element*>(more_marker_)->set_tone(state == function_more_marker::failed ? marker_tone::error : marker_tone::accent);
+        if (marker_visible)
+            more_marker_->arrange(context.for_child(marker_slot(more_->bounds(), scale)));
     }
 
     void card_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -207,11 +386,13 @@ namespace gitman::ui {
         {
             const rect_f icon_slot { box.x + padding, box.y + padding, 16.0f * scale, 16.0f * scale };
             const SkFont glyph_font { icon_font(context, 14.0f) };
-            const bool undetermined { card_.busy == false && card_.status.undetermined };
+            // 기능 실행도 진행 표시다. `busy`는 세우지 않는다 (B8, 2.3.5).
+            const bool spinning { card_.busy || card_.function_running };
+            const bool undetermined { spinning == false && card_.status.undetermined };
             SkPaint icon_paint { solid_paint(undetermined ? context.palette.primary_foreground : state_accent(context.palette, card_.state)) };
             if (undetermined)
                 icon_paint.setAlphaf(0.45f);
-            if (card_.busy)
+            if (spinning)
                 draw_spinning_glyph(context.canvas, codicons::icon_sync, icon_slot, glyph_font, icon_paint, context.now);
             else
                 draw_centered_glyph(context.canvas, codicon_for_name(card_.status.codicon), icon_slot, glyph_font, icon_paint);
@@ -227,6 +408,15 @@ namespace gitman::ui {
         // 폰트의 한 줄로 이어 붙이면 구분이 되지 않는다는 지적을 반영한 것이다.
         draw_status_row(context, { text_x, line_3_top, text_width, layout_card_status_height() * scale });
 
+        // 기능 묶음과 내장 버튼 사이의 12px 구분선이다. 가운데 1px 선을 버튼보다 짧게 긋는다 (2.3).
+        if (separator_x_.has_value())
+        {
+            const float line_height { layout_card_function_separator_height * scale };
+            const float line_top { box.y + (box.height - line_height) / 2.0f };
+            const SkRect line { SkRect::MakeXYWH(*separator_x_ - 0.5f * scale, line_top, 1.0f * scale, line_height) };
+            context.canvas.drawRect(line, solid_paint(context.palette.divider));
+        }
+
         draw_children(context, interaction);
     }
 
@@ -234,7 +424,7 @@ namespace gitman::ui {
     {
         static_cast<void>(interaction);
         // 계속 도는 표시다. 지금 시각을 돌려주면 platform이 짧은 주기로 다시 그린다.
-        if (card_.busy)
+        if (card_.busy || card_.function_running)
             return context.now;
         return std::nullopt;
     }
@@ -259,6 +449,12 @@ namespace gitman::ui {
         append(card_.working_tree_text);
         if (card_.enabled == false)
             append(u8"제외됨");
+        // 카드 열에 보이지 않는 기능도 있으므로 개수를 알린다 (function-buttons-design 2.3.4).
+        if (card_.functions.empty() == false)
+        {
+            const std::string count { std::to_string(card_.functions.size()) };
+            append(u8"기능 " + std::u8string { count.begin(), count.end() } + u8"개");
+        }
         return { .role = access_role::list_item, .name = std::move(name), .selected = card_.selected };
     }
 
@@ -272,6 +468,15 @@ namespace gitman::ui {
         const ui_color neutral { context.palette.primary_foreground };
 
         std::vector<card_chip> chips {};
+        // 출력 수집 기능이 실행 중이면 맨 앞에 `▶ 빌드 00:12`다 (function-buttons-design 2.3.5). 경과 시간은
+        // started부터 draw 시각까지라 연속 다시 그리기(`next_update`)와 함께 흐른다. started 전이면 이름뿐이다.
+        if (card_.function_running)
+        {
+            std::u8string text { card_.running_function_label };
+            if (card_.running_function_started_at.has_value())
+                text += u8" " + format_elapsed_time(context.now - *card_.running_function_started_at);
+            chips.push_back({ codicons::icon_play, std::move(text), context.palette.accent, context.palette.accent_foreground });
+        }
         if (card_.reference.empty() == false)
         {
             // SVN의 참조는 URL이라 branch 아이콘 대신 link 아이콘을 쓴다.

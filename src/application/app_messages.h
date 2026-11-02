@@ -14,6 +14,7 @@
 #include "presentation/view_snapshot.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -457,6 +458,24 @@ namespace gitman {
         float anchor_y { 0.0f };
     };
 
+    // 카드의 `⋯`와 `Alt+↓`이 여는 기능 메뉴다 (function-buttons-design 2.3.2). 좌표는 카드 메뉴와 같은 창 좌표
+    // (물리 픽셀) 앵커이고 `⋯` 버튼의 왼쪽 아래다. 카드 안 버튼이라 카드 메뉴와 달리 선택을 바꾸지 않는다
+    // (2.2.6).
+    struct open_function_menu_intent
+    {
+        project_id id {};
+        float anchor_x { 0.0f };
+        float anchor_y { 0.0f };
+    };
+
+    // `Alt+1..3`이다 (2.3.4). `number`는 문서 전체의 보이는 `card` 배치 순서(1부터)이고, 버튼 id는 logic이
+    // 정한다 — policy는 문서를 모른다. 그 기능이 카드의 범위 밖이거나 이미 실행 중이면 아무것도 하지 않는다.
+    struct run_function_shortcut_intent
+    {
+        project_id id {};
+        std::size_t number { 0 };
+    };
+
     // 배너(도구 막대) 우클릭이 여는 문서 컨텍스트 메뉴다
     // (theme-and-banner-menu-design T1). 좌표 규칙은 카드 메뉴와 같다. 열린 문서가
     // 없으면 logic이 메뉴를 열지 않는다.
@@ -847,7 +866,7 @@ namespace gitman {
         confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
         clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
-        local_changes_diff_scroll_intent, open_context_menu_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
+        local_changes_diff_scroll_intent, open_context_menu_intent, open_function_menu_intent, run_function_shortcut_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
         remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,

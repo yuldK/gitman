@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace gitman::ui {
@@ -111,6 +112,10 @@ namespace gitman::ui {
             function_confirm_dialog_item,
             function_confirm_dialog_confirm,
             function_confirm_dialog_cancel,
+            card_function,
+            card_function_more,
+            card_function_marker,
+            card_function_more_marker,
             count,
         };
 
@@ -213,6 +218,13 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_function_confirm_dialog_item { detail::application_kind(detail::application_kind_index::function_confirm_dialog_item) };
     inline constexpr luil::ui_element_kind kind_function_confirm_dialog_confirm { detail::application_kind(detail::application_kind_index::function_confirm_dialog_confirm) };
     inline constexpr luil::ui_element_kind kind_function_confirm_dialog_cancel { detail::application_kind(detail::application_kind_index::function_confirm_dialog_cancel) };
+    // 카드의 기능 버튼(`card` 배치), `⋯`, 실행 중·실패 점 표식이다 (function-buttons-design 2.3). 기능 버튼과 그 점의
+    // owner는 `card_function_owner`(카드 id + `:` + 버튼 id), `⋯`와 그 점의 owner는 카드 id다. `⋯`의 점은 kind를
+    // 따로 둔다 — 같은 kind면 카드 `team`의 버튼 `build` 점과 카드 `team:build`의 `⋯` 점이 같은 id가 된다.
+    inline constexpr luil::ui_element_kind kind_card_function { detail::application_kind(detail::application_kind_index::card_function) };
+    inline constexpr luil::ui_element_kind kind_card_function_more { detail::application_kind(detail::application_kind_index::card_function_more) };
+    inline constexpr luil::ui_element_kind kind_card_function_marker { detail::application_kind(detail::application_kind_index::card_function_marker) };
+    inline constexpr luil::ui_element_kind kind_card_function_more_marker { detail::application_kind(detail::application_kind_index::card_function_more_marker) };
 
     inline constexpr std::size_t application_kind_count { static_cast<std::size_t>(detail::application_kind_index::count) };
 
@@ -311,6 +323,10 @@ namespace gitman::ui {
         kind_function_confirm_dialog_item,
         kind_function_confirm_dialog_confirm,
         kind_function_confirm_dialog_cancel,
+        kind_card_function,
+        kind_card_function_more,
+        kind_card_function_marker,
+        kind_card_function_more_marker,
     };
 
     static_assert(application_kinds.size() == application_kind_count);
@@ -338,4 +354,22 @@ namespace gitman::ui {
     inline constexpr std::u8string_view dialog_owner_local_changes { u8"local-changes" };
     // 기능 실행 확인 dialog다 (function-buttons-design 3.10). 신뢰 확인과 `confirm` 미리보기가 같은 owner다.
     inline constexpr std::u8string_view dialog_owner_function_confirm { u8"function-confirm" };
+
+    // 카드 기능 버튼의 owner다. tree 안에서 카드마다 같은 버튼 id가 되풀이되므로 카드 id를 앞에 붙인다.
+    // 버튼 id는 `[a-z0-9_-]`라 `:`가 없고 project id에는 있을 수 있으므로, 되돌릴 때는 **마지막** `:`에서 나눈다.
+    [[nodiscard]] inline std::u8string card_function_owner(const std::u8string_view card, const std::u8string_view button)
+    {
+        std::u8string owner { card };
+        owner += u8':';
+        owner += button;
+        return owner;
+    }
+
+    // `card_function_owner`의 카드 id 부분이다. 기능 버튼과 그 점의 owner에만 쓴다 — `⋯`의 owner는 카드 id
+    // 그대로라 나누면 `:`가 든 카드 id가 잘린다. 구분자가 없으면 owner 전체다.
+    [[nodiscard]] inline std::u8string_view card_of_function_owner(const std::u8string_view owner) noexcept
+    {
+        const std::size_t separator { owner.rfind(u8':') };
+        return separator == std::u8string_view::npos ? owner : owner.substr(0, separator);
+    }
 } // namespace gitman::ui

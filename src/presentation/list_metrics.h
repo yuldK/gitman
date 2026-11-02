@@ -40,6 +40,66 @@ namespace gitman {
     // 지켜 주는 최소 텍스트 폭이다.
     inline constexpr float layout_card_text_left { 28.0f };
     inline constexpr float layout_card_minimum_text { 72.0f };
+
+    // 카드 오른쪽 열의 기능 버튼 치수다 (function-buttons-design 2.3). 열은 `[card 0~3][⋯] │ [R][U][S]`이고,
+    // 내장 세 버튼의 자리는 기능 유무와 상관없이 같다. 글 크기와 무관한 상수라 logic과 UI가 같은 값을 본다.
+    //  - 슬롯은 버튼 28 + 간격 6이다. 가장 오른쪽 `card` 버튼이 `cw-180`이고 왼쪽으로 34씩 간다.
+    //  - 구분선은 `cw-118 ~ cw-106`, `⋯`는 `cw-146`이다.
+    //  - 글 예약 160 밑으로 내려가면 뒤쪽 `card` 버튼부터 `⋯`로 접는다. 상한 3에서는 최소 창(480)에서도
+    //    접히지 않으므로 예약 상수가 바뀔 때의 안전장치다.
+    inline constexpr float layout_card_function_slot { 34.0f };
+    inline constexpr float layout_card_function_separator { 12.0f };
+    inline constexpr float layout_card_function_text_reserve { 160.0f };
+    // 선의 길이다. 버튼(28)보다 짧게 그려 묶음을 가르기만 한다 (시안 값).
+    inline constexpr float layout_card_function_separator_height { 16.0f };
+    // 실행 중·실패 점 표식이다. 버튼 오른쪽 위 안쪽에 그린다 (2.3.5).
+    inline constexpr float layout_function_marker_size { 6.0f };
+    inline constexpr float layout_function_marker_inset { 2.0f };
+
+    // 카드 기능 열의 자리다 (카드 왼쪽 가장자리 기준 논리 px). 카드와 test가 같은 함수를 쓴다.
+    struct card_function_slots
+    {
+        // `⋯` 버튼의 x다. 적용 기능이 없으면 쓰지 않는다.
+        float more_x { 0.0f };
+        // 구분선 영역의 왼쪽 x다 (폭 `layout_card_function_separator`).
+        float separator_x { 0.0f };
+        // 접지 않고 둘 수 있는 `card` 버튼 수다. 요청 수 이하다.
+        std::size_t visible_count { 0 };
+        // 이름·경로·상태 줄이 쓸 수 있는 오른쪽 한계다 (가장 왼쪽 버튼 6px 앞).
+        float text_right { 0.0f };
+    };
+
+    // `card_width` 폭 카드에 `card` 버튼 `requested`개(문서 순서로 그 카드에 적용되는 것)를 둘 때의 자리다.
+    // `has_functions`가 거짓이면(적용 기능 0개) 지금 카드와 같아 글은 새로 고침 버튼 6px 앞까지다.
+    [[nodiscard]] inline card_function_slots layout_card_function_slots(const float card_width, const std::size_t requested, const bool has_functions) noexcept
+    {
+        card_function_slots slots {};
+        const float refresh_x { card_width - layout_margin - layout_button_size * 3.0f - layout_card_gap * 2.0f };
+        slots.separator_x = refresh_x - layout_card_function_separator;
+        slots.more_x = slots.separator_x - layout_button_size;
+        if (has_functions == false)
+        {
+            slots.text_right = refresh_x - layout_card_gap;
+            return slots;
+        }
+        // 가장 오른쪽 `card` 버튼은 `⋯` 앞 한 슬롯이다. 왼쪽으로 슬롯 하나씩 늘어난다.
+        const auto text_right_for = [&](const std::size_t count) {
+            const float leftmost { count == 0 ? slots.more_x : slots.more_x - layout_card_function_slot * static_cast<float>(count) };
+            return leftmost - layout_card_gap;
+        };
+        std::size_t count { requested };
+        while (count > 0 && text_right_for(count) - layout_card_text_left < layout_card_function_text_reserve)
+            --count;
+        slots.visible_count = count;
+        slots.text_right = text_right_for(count);
+        return slots;
+    }
+
+    // 보이는 `card` 버튼 `visible`개 중 `index`번째(왼쪽부터)의 x다.
+    [[nodiscard]] inline float card_function_button_x(const card_function_slots& slots, const std::size_t index) noexcept
+    {
+        return slots.more_x - layout_card_function_slot * static_cast<float>(slots.visible_count - index);
+    }
     // 카드 세 번째 줄(상태 조각)의 높이다.
     // 100%에서 16.0이고, 상태 조각 글(10.5)이 시스템 글자 크기만큼 자란다.
     [[nodiscard]] inline float layout_card_status_height() noexcept
@@ -288,6 +348,9 @@ namespace gitman {
     // 카드 컨텍스트 메뉴 popup의 너비다 (field-feedback-design 3장). 행 높이·여백은
     // luil `menu_element`의 것(`menu_item_height`·`menu_padding`)을 쓴다.
     inline constexpr float layout_context_menu_width { 190.0f };
+    // 기능 이름과 상태 라벨(`빌드 — 실행 중 00:12`), 단축키 열이 드는 메뉴는 글 폭만큼 넓히되 이 폭에서
+    // 멈추고 넘치는 라벨은 말줄임에 맡긴다 (function-buttons-design 2.3.2). 190이 하한이다.
+    inline constexpr float layout_context_menu_maximum_width { 320.0f };
 
     // 카드 목록이 차지하는 영역이다. tree 빌드, 카드 목록 element와 logic의 스크롤
     // 한계 계산이 모두 이 함수를 거쳐 같은 값을 쓴다.

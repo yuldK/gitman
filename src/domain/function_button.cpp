@@ -429,6 +429,23 @@ namespace gitman {
         return project.display_name.empty() ? std::u8string_view { project.id.value } : std::u8string_view { project.display_name };
     }
 
+    bool function_counts_toward_card(const function_button& button, const project_definition& project) noexcept
+    {
+        if (button.project_ids.has_value() && std::ranges::find(*button.project_ids, project.id.value) == button.project_ids->end())
+            return false;
+        // `vcs_hint: auto`는 조회 전까지 종류를 모르므로 적용되는 것으로 센다 (B4).
+        switch (button.vcs)
+        {
+        case function_vcs_scope::any:
+            return true;
+        case function_vcs_scope::git:
+            return project.hint != vcs_hint::subversion;
+        case function_vcs_scope::subversion:
+            return project.hint != vcs_hint::git;
+        }
+        return true;
+    }
+
     std::vector<variable_binding> make_builtin_variables(const std::u8string_view document_path, const project_definition& project, const repository_snapshot* const snapshot)
     {
         std::vector<variable_binding> result {};

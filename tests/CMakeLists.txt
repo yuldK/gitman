@@ -46,6 +46,7 @@ gitman_add_source_filter(gitman_test_files "application/logic"
     application_options_tests.cpp
     cancellation_registry_tests.cpp
     log_isolation_stress_tests.cpp
+    function_editor_tests.cpp
     logic_change_operation_tests.cpp
     logic_controller_tests.cpp
     logic_function_reload_tests.cpp
@@ -124,6 +125,7 @@ gitman_add_source_filter(gitman_test_files "presentation/ui"
     function_bar_tree_tests.cpp
     function_card_interaction_tests.cpp
     function_card_tree_tests.cpp
+    function_editor_tree_tests.cpp
     log_view_tests.cpp
     start_page_tests.cpp
     status_presentation_tests.cpp

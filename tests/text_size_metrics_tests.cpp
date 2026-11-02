@@ -1,3 +1,4 @@
+#include "presentation/function_editor_layout.h"
 #include "presentation/list_metrics.h"
 
 #include "luil/ui/font_scale.h"
@@ -91,4 +92,35 @@ TEST_CASE("The function bar grows with the system text size and the log body giv
     REQUIRE(gitman::layout_function_bar_height() == 42.0f);
     const float body { gitman::layout_log_pane_height - gitman::layout_function_bar_height() - gitman::layout_log_header_height() };
     REQUIRE(body == 98.0f - 6.0f - 11.5f * 0.5f);
+}
+
+TEST_CASE("The function editor holds four preview lines and grows with the system text size", "[ui][metrics][text-size][function_buttons][t12]")
+{
+    // 미리보기 칸은 머리·명령줄·작업 폴더·경고 네 줄을 담는다. 셋이 모두 나와도 경고 줄이 칸(바깥 위아래 4, 안쪽 위 3)
+    // 안에 그려진다 (function-buttons-design 2.7 "허용 목록 위반을 보인다").
+    const auto fits = []()
+    {
+        return 3.0f + 4.0f * gitman::layout_function_editor_preview_line_height() <= gitman::layout_function_editor_preview_height() - 8.0f;
+    };
+    REQUIRE(gitman::layout_function_editor_preview_height() == 86.0f);
+    REQUIRE(fits());
+    REQUIRE(gitman::layout_function_editor_row_height() == 28.0f);
+    REQUIRE(gitman::layout_function_editor_field_height() == 26.0f);
+    REQUIRE(gitman::layout_function_editor_note_height() == 16.0f);
+    REQUIRE(gitman::layout_function_editor_check_height() == 24.0f);
+    REQUIRE(gitman::layout_function_editor_list_header_height() == 22.0f);
+    REQUIRE(gitman::layout_function_editor_variable_row_height() == 22.0f);
+    const float form_at_100 { gitman::layout_function_editor_form(500.0f, 2).content_height };
+    const float body_at_100 { gitman::function_editor_body_height(520.0f) };
+
+    const text_size_scope scope { 1.5f };
+    REQUIRE(scope.applied());
+    // 글이 든 줄은 그 글이 자란 만큼 자란다. 폼 내용 높이(logic의 스크롤 한계)도 같은 함수라 함께 자란다.
+    REQUIRE(gitman::layout_function_editor_row_height() == 28.0f + 6.0f);
+    REQUIRE(gitman::layout_function_editor_field_height() == 26.0f + 5.5f);
+    REQUIRE(gitman::layout_function_editor_preview_line_height() == 18.0f + 5.5f);
+    REQUIRE(gitman::layout_function_editor_preview_height() == 14.0f + 4.0f * 23.5f);
+    REQUIRE(fits());
+    REQUIRE(gitman::layout_function_editor_form(500.0f, 2).content_height > form_at_100);
+    REQUIRE(gitman::function_editor_body_height(520.0f) == body_at_100 - 4.0f * 5.5f);
 }

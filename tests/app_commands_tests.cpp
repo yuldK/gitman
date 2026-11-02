@@ -9,7 +9,7 @@
 namespace {
     // luil이 나르는 값은 `std::uint32_t` 하나다. 앱 명령 전부가 그 값으로 왕복해야
     // delegate가 명령을 되찾을 수 있다 (계약 3장 app_ui_command).
-    constexpr std::array<gitman::app_command, 11> all_commands {
+    constexpr std::array<gitman::app_command, 12> all_commands {
         gitman::app_command::show_open_document_dialog,
         gitman::app_command::show_generate_scan_folder_picker,
         gitman::app_command::show_generate_location_picker,
@@ -21,6 +21,7 @@ namespace {
         gitman::app_command::open_in_vscode,
         gitman::app_command::open_in_explorer_select,
         gitman::app_command::open_in_explorer_folder,
+        gitman::app_command::show_function_program_picker,
     };
 } // namespace
 
@@ -57,6 +58,6 @@ TEST_CASE("App command parsing is usable in constant expressions", "[app][comman
     // delegate의 switch가 constexpr 값을 쓰므로 컴파일 시각에도 풀려야 한다.
     static_assert(gitman::parse_app_command(0).has_value() == false);
     static_assert(gitman::parse_app_command(1) == gitman::app_command::show_open_document_dialog);
-    static_assert(gitman::parse_app_command(gitman::last_app_command) == gitman::app_command::open_in_explorer_folder);
+    static_assert(gitman::parse_app_command(gitman::last_app_command) == gitman::app_command::show_function_program_picker);
     SUCCEED();
 }

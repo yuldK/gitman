@@ -691,4 +691,103 @@ namespace gitman {
         message.append(u8")가 있습니다.");
         return message;
     }
+
+    std::vector<std::u8string> function_user_variable_names(const function_buttons_definition& definition, const std::span<const std::u8string> project_ids)
+    {
+        std::vector<std::u8string> names {};
+        const auto add = [&names](const std::vector<function_variable>& variables)
+        {
+            for (const function_variable& variable : variables)
+            {
+                if (is_usable_function_variable(variable) && std::ranges::find(names, variable.name) == names.end())
+                    names.push_back(variable.name);
+            }
+        };
+        add(definition.variables);
+        for (const function_project_variables& entry : definition.project_variables)
+        {
+            const auto* const variables { std::get_if<std::vector<function_variable>>(&entry.variables) };
+            if (variables == nullptr || std::ranges::find(project_ids, entry.project) == project_ids.end())
+                continue;
+            add(*variables);
+        }
+        return names;
+    }
+
+    std::u8string function_decimal_text(std::size_t value)
+    {
+        std::u8string digits {};
+        do
+        {
+            digits.insert(digits.begin(), static_cast<char8_t>(u8'0' + value % 10));
+            value /= 10;
+        } while (value > 0);
+        return digits;
+    }
+
+    std::u8string function_button_problem(const function_button& button, const std::span<const std::u8string> user_variable_names)
+    {
+        if (is_function_button_id(button.id) == false)
+            return u8"id는 영문 소문자·숫자·_·-로 64자까지 쓴 문자열이어야 합니다.";
+        if (button.label.empty())
+            return u8"label은 비지 않은 문자열이어야 합니다.";
+        if (button.program.empty())
+            return u8"program은 비지 않은 문자열이어야 합니다.";
+        if (button.timeout_seconds < 0 || button.timeout_seconds > maximum_function_timeout_seconds)
+            return u8"timeout_seconds는 0~86400 사이의 정수여야 합니다.";
+
+        // 정적 검사(3.7)다. 문법과 이름 존재만 본다. `${env:}`는 클릭 시점에 본다.
+        const auto references = [user_variable_names](const std::u8string_view field, const std::u8string_view text) -> std::u8string
+        {
+            const variable_scan scan { scan_variable_references(text) };
+            if (scan.error.has_value())
+            {
+                std::u8string reason { field };
+                if (scan.error->kind == expansion_error_kind::unterminated)
+                    reason.append(u8"의 변수 문법이 잘못되었습니다: ${가 닫히지 않았습니다.");
+                else
+                    reason.append(u8"의 변수 문법이 잘못되었습니다: 변수 이름이 비었습니다.");
+                return reason;
+            }
+            for (const variable_reference& reference : scan.references)
+            {
+                if (reference.environment || is_builtin_variable_name(reference.name) || std::ranges::find(user_variable_names, reference.name) != user_variable_names.end())
+                    continue;
+                std::u8string reason { field };
+                reason.append(u8"에서 정의되지 않은 변수를 씁니다: ${");
+                reason.append(reference.name);
+                reason.push_back(u8'}');
+                return reason;
+            }
+            return {};
+        };
+
+        if (std::u8string reason { references(u8"program", button.program) }; reason.empty() == false)
+            return reason;
+        // 변수가 없는 program은 읽을 때 허용 목록을 본다 (4.3). 변수가 든 경로는 값이 클릭 시점에 정해지므로 그때 본다.
+        // `$${`는 글자로 풀린 뒤의 경로를 본다. 문법 오류는 앞에서 걸렀다.
+        if (scan_variable_references(button.program).references.empty())
+        {
+            const variable_expansion literal { expand_variables(button.program, variable_lookup {}) };
+            if (literal.succeeded())
+            {
+                if (const std::optional<function_program_rejection> rejection { check_function_program(literal.text) }; rejection.has_value())
+                    return function_program_rejection_message(*rejection);
+            }
+        }
+        for (std::size_t index = 0; index < button.args.size(); ++index)
+        {
+            std::u8string field { u8"args[" };
+            field.append(function_decimal_text(index));
+            field.push_back(u8']');
+            if (std::u8string reason { references(field, button.args[index]) }; reason.empty() == false)
+                return reason;
+        }
+        if (button.cwd.has_value())
+        {
+            if (std::u8string reason { references(u8"cwd", *button.cwd) }; reason.empty() == false)
+                return reason;
+        }
+        return {};
+    }
 } // namespace gitman

@@ -411,12 +411,12 @@ TEST_CASE("Function and card menus are 589, 433 and 407 tall", "[function_button
         REQUIRE(popup.id == ui::card_menu_popup_id);
         require_clean_tree(*popup.tree);
 
-        // 아래 구역은 구분선 뒤에 있다. T12 전의 `기능 편집…` 자리는 문서 폴더를 VS Code로 여는 항목이고,
-        // `문서 다시 읽기`는 T11부터 활성이다.
+        // 아래 구역은 구분선 뒤에 있다. `기능 편집…`은 T12부터 편집 dialog를 열고(버튼 id 없이), `문서 다시 읽기`는
+        // T11부터 활성이다.
         REQUIRE(menu.items[20].separator_above);
-        REQUIRE(menu.items[20].entry == gitman::context_menu_entry::open_document_in_vscode);
-        REQUIRE(menu.items[20].label == u8"문서 폴더를 VS Code로 열기");
-        REQUIRE(menu.items[20].target_path == u8"C:\\work");
+        REQUIRE(menu.items[20].entry == gitman::context_menu_entry::edit_functions);
+        REQUIRE(menu.items[20].label == u8"기능 편집…");
+        REQUIRE(menu.items[20].argument.empty());
         REQUIRE(menu.items[21].entry == gitman::context_menu_entry::reload_document);
         REQUIRE(menu.items[21].label == u8"문서 다시 읽기");
         REQUIRE(menu.items[21].enabled);
@@ -432,7 +432,7 @@ TEST_CASE("Function and card menus are 589, 433 and 407 tall", "[function_button
         REQUIRE(menu.items[6].separator_above);
         REQUIRE(menu.items[14].entry == gitman::context_menu_entry::more_functions);
         REQUIRE(menu.items[14].label == u8"기능 더 보기…");
-        REQUIRE(menu.items[15].entry == gitman::context_menu_entry::open_document_in_vscode);
+        REQUIRE(menu.items[15].entry == gitman::context_menu_entry::edit_functions);
         REQUIRE(ui::build_context_menu_popup(menu, 1.0f).height == 433.0f);
     }
 
@@ -619,20 +619,23 @@ TEST_CASE("Choosing function menu items runs, stops and opens more", "[function_
     REQUIRE(fixture.submitter.requests.empty());
     fixture.controller.handle(gitman::cancel_function_run_intent {});
 
-    // `기능 편집…` 자리는 UI thread의 앱 명령으로 문서 폴더를 연다 (배너 메뉴의 `VSCode로 열기`와 같다).
+    // `기능 편집…`은 T12부터 logic intent로 편집 dialog를 연다 (2.7). 앱 명령이 아니다.
     fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 30.0f, 40.0f });
     const luil::win32::ui_popup popup { ui::build_context_menu_popup(fixture.menu(), 1.0f) };
     interaction_harness harness { fixture.tree() };
     harness.controller.set_surface_trees({ { popup.id, popup.tree } });
-    const luil::ui_element* const edit { popup.tree->find({ luil::ui_element_kind::menu_item, u8"open_document_in_vscode" }) };
+    const luil::ui_element* const edit { popup.tree->find({ luil::ui_element_kind::menu_item, u8"edit_functions" }) };
     REQUIRE(edit != nullptr);
     const luil::rect_f box { edit->bounds() };
     REQUIRE(harness.controller.process(luil::pointer_pressed_event { box.x + 2.0f, box.y + 2.0f, luil::pointer_button::left, at(0), false, popup.id }).empty());
     const auto actions { harness.controller.process(luil::pointer_released_event { box.x + 2.0f, box.y + 2.0f, luil::pointer_button::left, at(0), popup.id }) };
-    const luil::app_ui_command* const command { as_app_command(actions) };
-    REQUIRE(command != nullptr);
-    REQUIRE(gitman::parse_app_command(command->command) == gitman::app_command::open_in_vscode);
-    REQUIRE(command->argument == u8"C:\\work");
+    REQUIRE(as_app_command(actions) == nullptr);
+    const auto* const intent { as_intent<gitman::select_context_menu_item_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->entry == gitman::context_menu_entry::edit_functions);
+    fixture.controller.handle(*intent);
+    REQUIRE(fixture.snapshot()->function_editor.has_value());
+    REQUIRE(fixture.snapshot()->context_menu.has_value() == false);
 }
 
 TEST_CASE("Opening the function menu keeps the selection and the failure dots", "[function_buttons][t9][ui][context-menu]")
@@ -678,7 +681,7 @@ TEST_CASE("Function icon names resolve through one table", "[function_buttons][t
     REQUIRE(root != nullptr);
     REQUIRE(root->config().items[0].icon == luil::codicons::icon_play);
     REQUIRE(root->config().items[1].icon == luil::codicons::icon_beaker);
-    REQUIRE(root->config().items[2].icon == luil::codicons::icon_vscode);
+    REQUIRE(root->config().items[2].icon == luil::codicons::icon_gear);
     REQUIRE(root->config().items[3].icon == luil::codicons::icon_sync);
 }
 

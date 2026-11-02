@@ -73,6 +73,8 @@ gitman_add_source_filter(gitman_lib_files "domain/settings"
 gitman_add_source_filter(gitman_lib_files "domain/function_buttons"
     domain/function_button.cpp
     domain/function_button.h
+    domain/function_editor.cpp
+    domain/function_editor.h
     domain/function_trust.cpp
     domain/function_trust.h)
 
@@ -97,6 +99,7 @@ gitman_add_source_filter(gitman_lib_files "application/logic"
     application/function_run_services.h
     application/logic_controller.cpp
     application/logic_controller.h
+    application/logic_function_editor.cpp
     application/operation_executor.h
     application/process_cancellation.cpp
     application/process_cancellation.h
@@ -226,6 +229,7 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/shell"
 gitman_add_source_filter(gitman_lib_files "presentation/model"
     presentation/diff_presentation.cpp
     presentation/diff_presentation.h
+    presentation/function_editor_layout.h
     presentation/function_presentation.cpp
     presentation/function_presentation.h
     presentation/list_metrics.cpp
@@ -280,6 +284,8 @@ gitman_add_source_filter(gitman_lib_files "presentation/ui/dialogs"
     presentation/ui/font_dialog_element.h
     presentation/ui/function_confirm_dialog_element.cpp
     presentation/ui/function_confirm_dialog_element.h
+    presentation/ui/function_editor_dialog_element.cpp
+    presentation/ui/function_editor_dialog_element.h
     presentation/ui/generate_document_dialog_element.cpp
     presentation/ui/generate_document_dialog_element.h
     presentation/ui/local_changes_dialog_element.cpp

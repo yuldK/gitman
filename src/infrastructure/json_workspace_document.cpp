@@ -232,50 +232,6 @@ namespace gitman {
             );
         }
 
-        // 정적 검사(3.7)다. 문법과 이름 존재만 본다. `${env:}`는 클릭 시점에 본다.
-        // 문제가 없으면 빈 글이다.
-        std::u8string check_variable_references(const std::u8string_view field, const std::u8string_view text, const std::unordered_set<std::u8string>& user_variable_names)
-        {
-            const variable_scan scan { scan_variable_references(text) };
-            if (scan.error.has_value())
-            {
-                std::u8string reason { field };
-                if (scan.error->kind == expansion_error_kind::unterminated)
-                    reason.append(u8"의 변수 문법이 잘못되었습니다: ${가 닫히지 않았습니다.");
-                else
-                    reason.append(u8"의 변수 문법이 잘못되었습니다: 변수 이름이 비었습니다.");
-                return reason;
-            }
-
-            for (const variable_reference& reference : scan.references)
-            {
-                if (reference.environment || is_builtin_variable_name(reference.name) || user_variable_names.contains(reference.name))
-                    continue;
-                std::u8string reason { field };
-                reason.append(u8"에서 정의되지 않은 변수를 씁니다: ${");
-                reason.append(reference.name);
-                reason.push_back(u8'}');
-                return reason;
-            }
-            return {};
-        }
-
-        // 변수가 없는 program은 읽을 때 허용 목록을 본다 (4.3). 변수가 든 경로는 값이 클릭
-        // 시점에 정해지므로 그때 본다. `$${`는 글자로 풀린 뒤의 경로를 본다. 문법 오류는
-        // 앞선 정적 검사가 이미 걸렀다.
-        std::u8string check_static_program(const std::u8string_view program)
-        {
-            if (scan_variable_references(program).references.empty() == false)
-                return {};
-            const variable_expansion literal { expand_variables(program, variable_lookup {}) };
-            if (literal.succeeded() == false)
-                return {};
-            const std::optional<function_program_rejection> rejection { check_function_program(literal.text) };
-            if (rejection.has_value() == false)
-                return {};
-            return function_program_rejection_message(*rejection);
-        }
-
         bool read_string_array(const ordered_json& source, std::vector<std::u8string>& target)
         {
             if (source.is_array() == false)
@@ -310,7 +266,7 @@ namespace gitman {
 
         // 버튼 항목 하나를 검증한다. 실패하면 그 사유를 돌려주고, 부르는 쪽은 항목을 원문째
         // 같은 자리에 둔다 (3.9). 항목마다 경고는 첫 사유 하나다.
-        std::u8string read_function_button(const ordered_json& source, const std::unordered_set<std::u8string>& user_variable_names, function_button& button)
+        std::u8string read_function_button(const ordered_json& source, const std::span<const std::u8string> user_variable_names, function_button& button)
         {
             if (source.is_object() == false)
                 return u8"기능 버튼 항목은 object여야 합니다.";
@@ -401,24 +357,8 @@ namespace gitman {
             if (const auto placement { source.find("placement") }; placement != source.end())
                 button.placement = { placement->is_string() ? as_utf8(placement->get_ref<const std::string&>()) : dump_source(*placement) };
 
-            if (std::u8string reason { check_variable_references(u8"program", button.program, user_variable_names) }; reason.empty() == false)
-                return reason;
-            if (std::u8string reason { check_static_program(button.program) }; reason.empty() == false)
-                return reason;
-            for (std::size_t index = 0; index < button.args.size(); ++index)
-            {
-                std::u8string field { u8"args[" };
-                append_ascii_number(field, index);
-                field.push_back(u8']');
-                if (std::u8string reason { check_variable_references(field, button.args[index], user_variable_names) }; reason.empty() == false)
-                    return reason;
-            }
-            if (button.cwd.has_value())
-            {
-                if (std::u8string reason { check_variable_references(u8"cwd", *button.cwd, user_variable_names) }; reason.empty() == false)
-                    return reason;
-            }
-            return {};
+            // 모델 값의 규칙(변수 문법·이름, 변수 없는 program의 허용 목록 등)은 편집 dialog(T12)와 같은 domain 함수가 본다.
+            return function_button_problem(button, user_variable_names);
         }
 
         // 통과한 항목이 그대로 쓰이되 알려 둘 것을 경고한다.
@@ -628,23 +568,11 @@ namespace gitman {
             // 정적 검사가 받는 사용자 변수 이름이다. 문서 변수와, 카드로 읽은 어느 한 project의
             // 덮어쓰기 중 쓸 수 있는 것이다 (3.7). 카드 목록에 없는 project의 덮어쓰기는 어느
             // 카드에서도 풀리지 않으므로 세지 않는다. 쓸 수 없는 변수를 참조하는 버튼은 여기서 빠진다.
-            std::unordered_set<std::u8string> user_variable_names {};
-            for (const function_variable& variable : definition.variables)
-            {
-                if (is_usable_function_variable(variable))
-                    user_variable_names.insert(variable.name);
-            }
-            for (const function_project_variables& entry : definition.project_variables)
-            {
-                const auto* const variables { std::get_if<std::vector<function_variable>>(&entry.variables) };
-                if (variables == nullptr || has_project(projects, entry.project) == false)
-                    continue;
-                for (const function_variable& variable : *variables)
-                {
-                    if (is_usable_function_variable(variable))
-                        user_variable_names.insert(variable.name);
-                }
-            }
+            // 편집 dialog(T12)도 같은 함수로 이름을 모은다.
+            std::vector<std::u8string> project_ids {};
+            for (const project_definition& project : projects)
+                project_ids.push_back(project.id.value);
+            const std::vector<std::u8string> user_variable_names { function_user_variable_names(definition, project_ids) };
 
             const auto buttons { source.find("buttons") };
             if (buttons == source.end() || buttons->is_null())

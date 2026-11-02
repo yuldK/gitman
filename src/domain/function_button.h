@@ -338,4 +338,18 @@ namespace gitman {
     [[nodiscard]] std::optional<cmd_injection_finding> find_cmd_injection(const variable_expansion& program, std::span<const variable_expansion> arguments);
     // 거부 사유 문구다. `실행하지 않습니다:` 접두는 거부 줄을 남기는 logic이 붙인다.
     [[nodiscard]] std::u8string cmd_injection_message(const cmd_injection_finding& finding);
+
+    // 정적 검사(3.7)가 받는 사용자 변수 이름이다. 문서 변수와, `project_ids`(카드로 읽은 project)의 덮어쓰기 중 쓸 수
+    // 있는 것이다. 카드 목록에 없는 project의 덮어쓰기는 어느 카드에서도 풀리지 않으므로 세지 않는다. 파서와 편집
+    // dialog(T12)가 같은 이름 집합으로 검증한다.
+    [[nodiscard]] std::vector<std::u8string> function_user_variable_names(const function_buttons_definition& definition, std::span<const std::u8string> project_ids);
+
+    // 음이 아닌 정수의 십진 글이다. 편집 dialog의 목록 머리·`Alt+N`·새 id 번호와 규칙 사유의 `args[N]`이 같이 쓴다.
+    [[nodiscard]] std::u8string function_decimal_text(std::size_t value);
+
+    // 버튼 하나를 파서와 같은 규칙으로 본다 (3.2, 3.7, 4.3). JSON 형식 검사는 파서의 몫이고, 여기서는 모델 값의 규칙(id
+    // 이름 규칙, 비지 않은 label·program, timeout 범위, 변수 문법과 이름 존재, 변수 없는 program의 허용 목록)을 본다.
+    // 걸리면 첫 사유를 돌려주고 통과하면 빈 글이다. 편집 dialog의 Apply가 모델을 바꾸기 **전에** 같은 함수로 검증한다
+    // (2.7) — 모델에 잘못된 값이 들어가면 저장 재검증이 이후 모든 저장을 막는다.
+    [[nodiscard]] std::u8string function_button_problem(const function_button& button, std::span<const std::u8string> user_variable_names);
 } // namespace gitman

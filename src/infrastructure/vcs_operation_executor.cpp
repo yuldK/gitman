@@ -88,6 +88,7 @@ namespace gitman {
                     project_store_save_result saved { store_->save(request.document_path, *request.document, request.revision) };
                     event.revision = std::move(saved.revision);
                     event.diagnostics = std::move(saved.diagnostics);
+                    event.function_digest_input = std::move(saved.function_digest_input);
                 }
                 else
                 {

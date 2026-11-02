@@ -424,6 +424,9 @@ namespace gitman {
         workspace_revision_token revision_ {};
         std::vector<card_state> cards_ {};
         std::vector<notice_view_model> notices_ {};
+        // 기능 버튼 진단을 묶은 알림이다 (3.8). view에서 `notices_` 뒤에 선다. 편집 dialog로 고친 저장이 끝나면 쓴 글을 다시
+        // 읽은 진단으로 다시 만든다.
+        std::optional<notice_view_model> function_button_notice_ {};
         // 마지막 저장 실패의 요약이다. 성공하면 비워지고 view notices의 맨 앞에 실린다.
         std::u8string save_notice_ {};
         std::optional<project_id> selected_ {};
@@ -648,8 +651,8 @@ namespace gitman {
         [[nodiscard]] std::vector<context_menu_item_view> function_context_menu_items(const card_state& card, std::chrono::steady_clock::time_point opened_at) const;
         // 기능 항목 하나다. 기능 메뉴와 카드 메뉴 기능 절이 같은 항목을 쓴다. 경과 시간은 메뉴를 연 시각(`opened_at`)까지다.
         [[nodiscard]] static context_menu_item_view function_menu_item(const card_function_view& function, std::chrono::steady_clock::time_point opened_at);
-        // T12 전의 `기능 편집…` 자리다. 배너 메뉴의 `VSCode로 열기`와 같은 동작이다 (2.3.2).
-        [[nodiscard]] std::optional<context_menu_item_view> function_edit_menu_item() const;
+        // `기능 편집…`이다 (2.7). `button_id`가 있으면(배치 메뉴) 그 기능을 고른 상태로 연다. 문서가 없으면 값이 없다.
+        [[nodiscard]] std::optional<context_menu_item_view> function_edit_menu_item(std::u8string_view button_id = {}) const;
         // 배너 메뉴와 기능 메뉴의 `문서 다시 읽기`다. 읽는 동안은 비활성이고 라벨에 사유를 붙인다 (2.3.2).
         [[nodiscard]] context_menu_item_view reload_menu_item() const;
         // 배치 메뉴다 (2.2.5). `카드에 두기`·`기능 줄에 두기`·`메뉴에만 두기`(radio, 보이는 배치에 `checked`) → 구분선 →
@@ -702,6 +705,92 @@ namespace gitman {
         };
 
         std::optional<function_confirm_state> function_confirm_ {};
+
+        // 기능 편집 dialog의 항목 하나다 (function-buttons-design 2.7). 통과한 버튼은 텍스트 칸 다섯의 초안과 나머지 필드를
+        // 들고, 검증에 실패해 원문만 든 항목은 그 원문(`source`)을 그대로 들어 경고 행으로 보인다.
+        struct function_editor_draft
+        {
+            // 편집을 시작할 때의 버튼이다. 새로 더한 항목은 그때의 기본값이다.
+            function_button original {};
+            // 텍스트 칸 밖의 필드(아이콘, 실행 방식, 적용 범위, 배치, 실행 전 확인)는 고르면 곧바로 여기에 쓴다. 텍스트 칸의
+            // 값은 Apply에서 칸 초안으로 덮는다.
+            function_button edited {};
+            text_edit_state label {};
+            text_edit_state program {};
+            text_edit_state arguments {};
+            text_edit_state working_directory {};
+            text_edit_state timeout {};
+            // 칸에 처음 보인 글이다. 그대로면 원래 값을 쓴다 — 인자 배열의 원래 표기와 생략한 `cwd`·`timeout_seconds`를
+            // 다시 쓰지 않는다 (3.9의 "생략한 필드에 기본값 키를 만들지 않는다").
+            std::u8string initial_arguments {};
+            std::u8string initial_working_directory {};
+            std::u8string initial_timeout {};
+            // 검증에 실패한 항목이면 원문과 사유다. 편집할 수 없고 같은 자리에 남는다 (3.9).
+            std::optional<function_source_text> source {};
+            std::u8string problem {};
+            // 경고 행의 목록 행 id 값이다. dialog를 열 때의 순번이라 순서를 바꿔도 따라간다. 통과 항목은 버튼 id를 쓴다.
+            std::size_t source_key { 0 };
+        };
+
+        struct function_editor_state
+        {
+            function_editor_tab tab { function_editor_tab::functions };
+            std::vector<function_editor_draft> entries {};
+            std::optional<std::size_t> selected {};
+            // 미리보기 대상 카드다 (`cards_`의 순번).
+            std::size_t preview_card { 0 };
+            // Apply 거절·검증 실패 사유다.
+            std::u8string message {};
+            // 배치 선택 묶음 아래 줄이다 (`카드 — 3개까지` 거절).
+            std::u8string placement_message {};
+            float list_scroll { 0.0f };
+            float form_scroll { 0.0f };
+            // 새 id가 피할 id다: dialog를 열 때 문서에 있던 버튼 id와 실행 중인 기능의 id다. 지운 기능의 id를 새 버튼이 받으면
+            // 쓰기 함수가 지운 항목의 원문을 template으로 쓰고(3.9), 실행 중 거절 검사가 새 버튼을 지운 기능으로 본다(4.11).
+            std::vector<std::u8string> reserved_ids {};
+        };
+
+        // 기능 편집 dialog다 (2.7). 값이 있으면 열려 있고, Apply 전까지 문서 모델을 바꾸지 않는다.
+        std::optional<function_editor_state> function_editor_ {};
+        // 편집 dialog의 Apply가 낸 저장이 끝나면 저장한 정의의 해시로 신뢰를 갱신한다. 편집 전 정의를 신뢰한 상태였을
+        // 때만 켠다 (D24-A, 4.11). 저장이 실패하면 끈다.
+        bool function_trust_after_save_ { false };
+        // 편집 dialog의 Apply가 낸 저장이 끝나면 쓴 글을 다시 읽은 진단으로 기능 버튼 알림을 다시 만든다. 저장이 실패하면 끈다.
+        bool function_notice_after_save_ { false };
+        // 검증에 실패한 버튼 항목의 사유다. 문서의 `buttons`와 같은 순서이고 통과한 항목 자리는 비어 있다. 편집 dialog의
+        // 경고 행이 쓴다.
+        std::vector<std::u8string> function_button_problems_ {};
+        // 문서의 기능 버튼 절을 편집기로 쓸 수 없는 사유다 (`function_buttons`가 object가 아니거나 `buttons`가 배열이 아님).
+        // 쓰면 원문이 사라지므로 Apply를 막는다 (3.9).
+        std::u8string function_editor_lock_reason_ {};
+
+        // 편집 dialog를 연다. `button_id`가 있으면 그 기능을 고른 상태다.
+        void handle_open_function_editor(const open_function_editor_intent& intent);
+        void handle_select_function_editor_tab(const select_function_editor_tab_intent& intent);
+        void handle_select_function_editor_entry(std::size_t index);
+        void handle_edit_function_editor_list(function_editor_list_edit edit);
+        void handle_set_function_editor_field(const set_function_editor_field_intent& intent);
+        void handle_step_function_editor_preview(bool forward);
+        void handle_function_editor_scroll(const function_editor_scroll_intent& intent);
+        // Apply다 (2.7, 4.11). 모델을 바꾸기 전에 모든 항목을 파서와 같은 규칙 함수로 검증하고, 실행 중인 기능의 삭제와
+        // 실행 중인 카드를 범위 밖으로 만드는 고침을 거절한다.
+        void handle_apply_function_editor();
+        // 편집 dialog의 표시 모델이다. snapshot과 스크롤 한계가 같은 값을 본다.
+        [[nodiscard]] function_editor_view build_function_editor_view() const;
+        // 초안 항목 하나를 버튼으로 만든다. 텍스트 칸을 덮고, 인자 한 줄을 나눈다. 닫히지 않은 따옴표면 값이 없고
+        // `error`에 사유를 쓴다.
+        [[nodiscard]] static std::optional<function_button> function_editor_button(const function_editor_draft& draft, std::u8string* error);
+        // 초안 목록을 문서의 `buttons` 모양으로 만든다. 배치 판정(보이는 배치, `카드 k/3`)이 쓴다. 칸의 오류는 보지 않는다.
+        [[nodiscard]] std::vector<function_button_entry> function_editor_entries() const;
+        // 편집 dialog의 텍스트 칸 초안이다. 다른 대상이거나 고른 항목이 편집할 수 없으면 null이다.
+        [[nodiscard]] text_edit_state* function_editor_text(text_input_target target) noexcept;
+        [[nodiscard]] const text_edit_state* function_editor_text(text_input_target target) const noexcept;
+        [[nodiscard]] static bool is_function_editor_target(text_input_target target) noexcept;
+        // 저장이 끝난 뒤의 신뢰 갱신이다 (D24-A). `handle_document_saved`가 부른다.
+        void finish_function_editor_save(const document_saved_event& event);
+        // 기능 버튼 진단을 묶은 알림(`function_button_notice_`)을 이 진단으로 다시 만든다 (3.8).
+        void refresh_function_button_notice(const std::vector<diagnostic>& diagnostics);
+
         // 확인 버튼 하나짜리 알림 다이얼로그다 (app-shell-design A3.2). 값이
         // 있으면 다른 dialog 위에 떠 있다.
         std::optional<notice_dialog_view> notice_dialog_ {};

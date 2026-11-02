@@ -255,6 +255,11 @@ namespace gitman::win32 {
             if (std::optional<std::u8string> path { choose_executable_file(owner, L"SVN 실행 파일 선택") }; path.has_value())
                 post_intent(host, set_settings_executable_intent { repository_kind::subversion, std::move(*path) });
             return;
+        case app_command::show_function_program_picker:
+            // 고른 경로만 logic으로 돌아간다. 파일을 읽거나 실행하지 않는다 — 검증과 치환은 logic이 Apply에서 한다.
+            if (std::optional<std::u8string> path { choose_executable_file(owner, L"기능 프로그램 선택") }; path.has_value())
+                post_intent(host, set_function_editor_field_intent { function_editor_field::program, std::move(*path) });
+            return;
         case app_command::register_file_association:
         case app_command::unregister_file_association:
             execute_file_association_command(host, *parsed == app_command::register_file_association);

@@ -14,7 +14,6 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -239,37 +238,37 @@ namespace gitman {
         }
 
         // 통과한 버튼의 template이다 (3.9). 버튼 `id`가 열쇠이고 읽을 때의 원문 객체다 — 알 수 없는 키와 알 수 없는
-        // `placement` 값을 여기서 되살린다. 같은 id의 객체가 여럿이면(중복 id는 뒤 항목이 실패 항목이 된다) 모델의
-        // 실패 항목 원문과 같은 객체를 건너뛰어, 실패한 뒤 항목이 앞 항목의 template이 되지 않게 한다.
+        // `placement` 값을 여기서 되살린다. 모델의 실패 항목 원문과 같은 글의 객체는 실패 항목이 그 글마다 든 수만큼만
+        // 건너뛴다 (T12에서 좁힘). 같은 id의 실패한 뒤 항목이 앞 항목의 template이 되지 않고, 통과 항목과 실패 항목의 글이
+        // 같은 중복 id면 남는 객체가 통과 항목의 template이 된다. 실패 항목만 있는 id는 template이 없어, 편집 dialog가 그
+        // id로 더한 버튼에 실패 원문의 알 수 없는 키가 새어 들지 않는다.
         std::unordered_map<std::string, json> function_button_templates(const json& buttons, const std::vector<function_button_entry>& entries)
         {
             std::unordered_map<std::string, json> templates {};
             if (buttons.is_array() == false)
                 return templates;
 
-            std::unordered_set<std::string> failed {};
+            std::unordered_map<std::string, std::size_t> failed {};
             for (const function_button_entry& entry : entries)
             {
                 if (const function_source_text* const source { std::get_if<function_source_text>(&entry) }; source != nullptr)
-                    failed.insert(as_string(source->json));
+                    ++failed[as_string(source->json)];
             }
 
-            std::unordered_map<std::string, json> fallbacks {};
             for (const json& item : buttons)
             {
                 if (item.is_object() == false)
                     continue;
+                if (const auto skipped { failed.find(item.dump()) }; skipped != failed.end() && skipped->second > 0)
+                {
+                    --skipped->second;
+                    continue;
+                }
                 const auto id { item.find("id") };
                 if (id == item.end() || id->is_string() == false)
                     continue;
-                const std::string& key { id->get_ref<const std::string&>() };
-                fallbacks.try_emplace(key, item);
-                if (failed.contains(item.dump()) == false)
-                    templates.try_emplace(key, item);
+                templates.try_emplace(id->get_ref<const std::string&>(), item);
             }
-            // 같은 글의 객체가 통과 항목과 실패 항목에 모두 있으면 둘 다 건너뛰었다. 그때는 그 id의 첫 객체를 쓴다.
-            for (auto& [key, item] : fallbacks)
-                templates.try_emplace(key, std::move(item));
             return templates;
         }
 
@@ -333,7 +332,8 @@ namespace gitman {
 
         // `function_buttons`를 모델에서 다시 쓴다 (function-buttons-design 3.9, D12-A). 모델이 이해하지 못한 것은
         // 원문째 되살린다: 실패 항목은 같은 자리에, 버튼 안과 절 바로 아래의 알 수 없는 키는 template에서, 모델에 자리가
-        // 없는 원문(object가 아닌 `variables`·`project_variables`, 배열이 아닌 `buttons`, `null`)은 그 키를 건드리지 않는다.
+        // 없는 원문(object가 아닌 `variables`·`project_variables`, 배열이 아닌 `buttons`, `null`)은 그 키를 건드리지 않는다. 다만
+        // `buttons: null`은 모델에 버튼이 있으면 쓴다 (아래).
         // 모델에 절이 없으면(키가 없었거나 object가 아니었다) 원문 그대로다.
         void write_function_buttons(json& root, const std::optional<function_buttons_definition>& definition)
         {
@@ -351,10 +351,13 @@ namespace gitman {
             if (project_variables == value.end() ? definition->project_variables.empty() == false : project_variables->is_object())
                 value["project_variables"] = function_project_variables_json(definition->project_variables);
 
+            // `buttons: null`은 파서가 키가 없는 것처럼 읽는다 (빈 목록, 진단 없음). 그래서 편집 dialog로 더한 버튼이 있으면 null
+            // 자리에 쓴다 — 두면 저장은 성공하고 다시 열 때 버튼이 사라진다. 모델이 비었으면 null 원문을 그대로 둔다.
             const auto buttons { value.find("buttons") };
-            if (buttons == value.end() ? definition->buttons.empty() == false : buttons->is_array())
+            const bool buttons_absent { buttons == value.end() || buttons->is_null() };
+            if (buttons_absent ? definition->buttons.empty() == false : buttons->is_array())
             {
-                std::unordered_map<std::string, json> templates { function_button_templates(buttons == value.end() ? json::array() : *buttons, definition->buttons) };
+                std::unordered_map<std::string, json> templates { function_button_templates(buttons_absent ? json::array() : *buttons, definition->buttons) };
                 json items = json::array();
                 for (const function_button_entry& entry : definition->buttons)
                 {
@@ -635,6 +638,9 @@ namespace gitman {
         }
 
         result.revision = std::move(saved_revision);
+        // 쓴 글을 다시 읽은 신뢰 해시 입력이다 (3.10). 편집 dialog로 고친 정의는 이 값으로 해시를 다시 만든다 (T12, 4.11).
+        if (serialized.validation.document->function_buttons.has_value())
+            result.function_digest_input = { std::move(serialized.validation.document->function_buttons->source_digest_input) };
         return result;
     }
 } // namespace gitman

@@ -553,13 +553,14 @@ TEST_CASE("The banner and function menus reload the document", "[function_button
     {
         fixture.controller.handle(gitman::open_document_context_menu_intent { 40.0f, 50.0f });
         const gitman::context_menu_view menu { fixture.menu() };
-        REQUIRE(menu.items.size() == 3u);
+        REQUIRE(menu.items.size() == 4u);
         REQUIRE(menu.items[2].entry == gitman::context_menu_entry::reload_document);
         REQUIRE(menu.items[2].label == u8"문서 다시 읽기");
         REQUIRE(menu.items[2].icon == u8"sync");
         REQUIRE(menu.items[2].enabled);
+        // T12에서 `기능 편집…`이 끝에 붙어 높이가 112다.
         const luil::win32::ui_popup popup { gitman::ui::build_context_menu_popup(menu, 1.0f) };
-        REQUIRE(popup.height == 86.0f);
+        REQUIRE(popup.height == 112.0f);
         fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::reload_document, {} });
     }
 

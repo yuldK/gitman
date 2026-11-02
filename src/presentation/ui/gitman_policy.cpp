@@ -3,6 +3,7 @@
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/ui_actions.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -88,6 +89,12 @@ namespace gitman::ui {
             return text_input_target::font_filter;
         case text_input_target::generate_document_name:
             return text_input_target::generate_document_name;
+        case text_input_target::function_editor_label:
+        case text_input_target::function_editor_program:
+        case text_input_target::function_editor_arguments:
+        case text_input_target::function_editor_working_directory:
+        case text_input_target::function_editor_timeout:
+            return static_cast<text_input_target>(static_cast<std::uint32_t>(target));
         case text_input_target::none:
             break;
         }
@@ -106,6 +113,17 @@ namespace gitman::ui {
             return to_luil_target(text_input_target::font_filter);
         if (kind == kind_generate_dialog_name_input)
             return to_luil_target(text_input_target::generate_document_name);
+        // 기능 편집 dialog의 다섯 칸이다 (function-buttons-design 2.7).
+        if (kind == kind_function_editor_label_input)
+            return to_luil_target(text_input_target::function_editor_label);
+        if (kind == kind_function_editor_program_input)
+            return to_luil_target(text_input_target::function_editor_program);
+        if (kind == kind_function_editor_arguments_input)
+            return to_luil_target(text_input_target::function_editor_arguments);
+        if (kind == kind_function_editor_working_directory_input)
+            return to_luil_target(text_input_target::function_editor_working_directory);
+        if (kind == kind_function_editor_timeout_input)
+            return to_luil_target(text_input_target::function_editor_timeout);
         return std::nullopt;
     }
 
@@ -144,6 +162,32 @@ namespace gitman::ui {
         return { make_logic_action(close_context_menu_intent {}) };
     }
 
+    std::vector<luil::input_action> gitman_policy::on_focus_moved(const luil::ui_tree& tree, const luil::ui_element_id& focused)
+    {
+        // 기능 편집 dialog의 폼과 목록은 앱이 스크롤 값을 든다. Tab·화살표로 닿은 칸이나 행이 보이는 자리 밖이면 그만큼
+        // 흘린다 (luil `route_reveal`, 얼마나는 그 element의 `scroll_delta_to_reveal`이 답한다). 그 밖의 화면은 키보드 초점이
+        // 흘리는 창에 들지 않아 기본(빈 목록) 그대로다.
+        if (tree_has(tree, kind_function_editor_dialog) == false)
+            return {};
+        const std::array<luil::scroll_route, 2> routes {
+            luil::scroll_route {
+                luil::ui_element_id { kind_function_editor_form },
+                [](const float delta) -> luil::input_action
+                {
+                    return make_logic_action(function_editor_scroll_intent { function_editor_scroll_region::form, delta });
+                },
+            },
+            luil::scroll_route {
+                luil::ui_element_id { kind_function_editor_list },
+                [](const float delta) -> luil::input_action
+                {
+                    return make_logic_action(function_editor_scroll_intent { function_editor_scroll_region::list, delta });
+                },
+            },
+        };
+        return luil::route_reveal(tree, focused, routes);
+    }
+
     std::vector<luil::input_action> gitman_policy::on_wheel(const luil::ui_tree& tree, const luil::mouse_wheel_event& event, const float scroll_delta)
     {
         // 메뉴 popup 위의 휠은 아무 데도 흘리지 않는다. 주 창 위의 휠은 UI thread가
@@ -156,6 +200,15 @@ namespace gitman::ui {
         // 기능 실행 확인 dialog는 카드 위의 다른 dialog보다 위에 뜬다. 휠은 그 목록을 스크롤한다.
         if (tree_has(tree, kind_function_confirm_dialog))
             return { make_logic_action(function_confirm_scroll_intent { scroll_delta }) };
+
+        // 기능 편집 dialog는 목록(또는 변수 탭) 위의 휠이 목록을, 그 밖의 휠이 폼을 스크롤한다.
+        if (tree_has(tree, kind_function_editor_dialog))
+        {
+            // 폼 밖(목록, 변수 탭, 미리보기 등)은 목록이다. 폼이 없으면(변수 탭) 늘 목록이다.
+            const luil::ui_element* const form { tree.find(luil::ui_element_id { kind_function_editor_form }) };
+            const bool over_form { form != nullptr && form->visible() && form->bounds().contains(event.x, event.y) };
+            return { make_logic_action(function_editor_scroll_intent { over_form ? function_editor_scroll_region::form : function_editor_scroll_region::list, scroll_delta }) };
+        }
 
         // 로컬 변경 dialog가 열려 있으면 휠은 diff pane 위에서는 diff를, 그 밖에서는
         // 목록을 스크롤한다.
@@ -211,6 +264,16 @@ namespace gitman::ui {
             const std::optional<function_confirm_scroll_step> step { function_confirm_key_step(event) };
             if (step.has_value())
                 return { make_logic_action(function_confirm_scroll_intent { 0.0f, *step }) };
+        }
+
+        // 기능 편집 dialog가 떠 있으면 `Alt+↑/↓`이 고른 기능의 순서를 바꾼다 (2.7). 다른 앱 키는 dialog 뒤의 카드에 가지
+        // 않게 여기서 끝낸다 (방향키의 카드 이동, Enter의 카드 갱신 등).
+        if (tree != nullptr && tree_has(*tree, kind_function_editor_dialog))
+        {
+            const bool alt_only { event.alt && event.control == false && event.shift == false && event.meta == false };
+            if (alt_only && (event.key == luil::key_code::arrow_up || event.key == luil::key_code::arrow_down))
+                return { make_logic_action(edit_function_editor_list_intent { event.key == luil::key_code::arrow_up ? function_editor_list_edit::move_up : function_editor_list_edit::move_down }) };
+            return {};
         }
 
         // 카드 기능의 단축키다 (function-buttons-design 2.3.4). `Alt+1..3`은 초점 카드의 N번째 `card` 기능을

@@ -32,9 +32,12 @@ namespace gitman {
         open_in_explorer_select,
         // 탐색기로 폴더 자체를 연다 (컨텍스트 메뉴의 "저장소 열기").
         open_in_explorer_folder,
+        // 기능 편집 dialog의 프로그램 찾아보기 → `set_function_editor_field_intent { program }`
+        // (function-buttons-design 2.7). 환경설정의 실행 파일 선택과 같은 Win32 dialog다.
+        show_function_program_picker,
     };
 
-    inline constexpr std::uint32_t last_app_command { static_cast<std::uint32_t>(app_command::open_in_explorer_folder) };
+    inline constexpr std::uint32_t last_app_command { static_cast<std::uint32_t>(app_command::show_function_program_picker) };
 
     // luil이 나른 값을 되돌린다. 모르는 값(0 포함)은 nullopt다.
     [[nodiscard]] constexpr std::optional<app_command> parse_app_command(const std::uint32_t value) noexcept

@@ -120,6 +120,24 @@ namespace gitman::ui {
             function_bar_button,
             function_bar_more,
             function_bar_marker,
+            function_editor_dialog,
+            function_editor_panel,
+            function_editor_list,
+            function_editor_item,
+            function_editor_form,
+            function_editor_tool,
+            function_editor_label_input,
+            function_editor_program_input,
+            function_editor_program_browse,
+            function_editor_arguments_input,
+            function_editor_working_directory_input,
+            function_editor_timeout_input,
+            function_editor_icon,
+            function_editor_icons,
+            function_editor_text,
+            function_editor_preview_step,
+            function_editor_apply,
+            function_editor_cancel,
             count,
         };
 
@@ -236,6 +254,28 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_function_bar_button { detail::application_kind(detail::application_kind_index::function_bar_button) };
     inline constexpr luil::ui_element_kind kind_function_bar_more { detail::application_kind(detail::application_kind_index::function_bar_more) };
     inline constexpr luil::ui_element_kind kind_function_bar_marker { detail::application_kind(detail::application_kind_index::function_bar_marker) };
+    // 기능 편집 dialog다 (function-buttons-design 2.7). 목록 행(`kind_function_editor_item`)의 owner는 `function_editor_row_view::key`, 도구 버튼
+    // (`kind_function_editor_tool`)의 owner는 동작 이름, 아이콘 버튼의 owner는 아이콘 이름, 미리보기의 `<` `>`는 `previous`·`next`다.
+    inline constexpr luil::ui_element_kind kind_function_editor_dialog { detail::application_kind(detail::application_kind_index::function_editor_dialog) };
+    inline constexpr luil::ui_element_kind kind_function_editor_panel { detail::application_kind(detail::application_kind_index::function_editor_panel) };
+    inline constexpr luil::ui_element_kind kind_function_editor_list { detail::application_kind(detail::application_kind_index::function_editor_list) };
+    inline constexpr luil::ui_element_kind kind_function_editor_item { detail::application_kind(detail::application_kind_index::function_editor_item) };
+    inline constexpr luil::ui_element_kind kind_function_editor_form { detail::application_kind(detail::application_kind_index::function_editor_form) };
+    inline constexpr luil::ui_element_kind kind_function_editor_tool { detail::application_kind(detail::application_kind_index::function_editor_tool) };
+    inline constexpr luil::ui_element_kind kind_function_editor_label_input { detail::application_kind(detail::application_kind_index::function_editor_label_input) };
+    inline constexpr luil::ui_element_kind kind_function_editor_program_input { detail::application_kind(detail::application_kind_index::function_editor_program_input) };
+    inline constexpr luil::ui_element_kind kind_function_editor_program_browse { detail::application_kind(detail::application_kind_index::function_editor_program_browse) };
+    inline constexpr luil::ui_element_kind kind_function_editor_arguments_input { detail::application_kind(detail::application_kind_index::function_editor_arguments_input) };
+    inline constexpr luil::ui_element_kind kind_function_editor_working_directory_input { detail::application_kind(detail::application_kind_index::function_editor_working_directory_input) };
+    inline constexpr luil::ui_element_kind kind_function_editor_timeout_input { detail::application_kind(detail::application_kind_index::function_editor_timeout_input) };
+    inline constexpr luil::ui_element_kind kind_function_editor_icon { detail::application_kind(detail::application_kind_index::function_editor_icon) };
+    // 아이콘 버튼 묶음이다. 폼 안에서 Tab의 한 자리다.
+    inline constexpr luil::ui_element_kind kind_function_editor_icons { detail::application_kind(detail::application_kind_index::function_editor_icons) };
+    // 그려진 글을 보조 기술에 내는 자리다 (그리지 않는다). owner는 `preview`·`message`·`variables`다.
+    inline constexpr luil::ui_element_kind kind_function_editor_text { detail::application_kind(detail::application_kind_index::function_editor_text) };
+    inline constexpr luil::ui_element_kind kind_function_editor_preview_step { detail::application_kind(detail::application_kind_index::function_editor_preview_step) };
+    inline constexpr luil::ui_element_kind kind_function_editor_apply { detail::application_kind(detail::application_kind_index::function_editor_apply) };
+    inline constexpr luil::ui_element_kind kind_function_editor_cancel { detail::application_kind(detail::application_kind_index::function_editor_cancel) };
 
     inline constexpr std::size_t application_kind_count { static_cast<std::size_t>(detail::application_kind_index::count) };
 
@@ -342,6 +382,24 @@ namespace gitman::ui {
         kind_function_bar_button,
         kind_function_bar_more,
         kind_function_bar_marker,
+        kind_function_editor_dialog,
+        kind_function_editor_panel,
+        kind_function_editor_list,
+        kind_function_editor_item,
+        kind_function_editor_form,
+        kind_function_editor_tool,
+        kind_function_editor_label_input,
+        kind_function_editor_program_input,
+        kind_function_editor_program_browse,
+        kind_function_editor_arguments_input,
+        kind_function_editor_working_directory_input,
+        kind_function_editor_timeout_input,
+        kind_function_editor_icon,
+        kind_function_editor_icons,
+        kind_function_editor_text,
+        kind_function_editor_preview_step,
+        kind_function_editor_apply,
+        kind_function_editor_cancel,
     };
 
     static_assert(application_kinds.size() == application_kind_count);
@@ -357,6 +415,8 @@ namespace gitman::ui {
     inline constexpr std::u8string_view scrollbar_owner_local_changes_diff { u8"local-changes-diff" };
     inline constexpr std::u8string_view scrollbar_owner_discovery_dialog { u8"discovery" };
     inline constexpr std::u8string_view scrollbar_owner_function_confirm_dialog { u8"function-confirm" };
+    inline constexpr std::u8string_view scrollbar_owner_function_editor_list { u8"function-editor-list" };
+    inline constexpr std::u8string_view scrollbar_owner_function_editor_form { u8"function-editor-form" };
 
     // luil `modal_host_element`(scrim 포함)가 쓰는 owner 문자열이다. dialog를 가른다
     // (설계 L6, D2-A). 본체 element의 kind(`kind_*_dialog`)는 그대로다.
@@ -369,6 +429,8 @@ namespace gitman::ui {
     inline constexpr std::u8string_view dialog_owner_local_changes { u8"local-changes" };
     // 기능 실행 확인 dialog다 (function-buttons-design 3.10). 신뢰 확인과 `confirm` 미리보기가 같은 owner다.
     inline constexpr std::u8string_view dialog_owner_function_confirm { u8"function-confirm" };
+    // 기능 편집 dialog다 (function-buttons-design 2.7).
+    inline constexpr std::u8string_view dialog_owner_function_editor { u8"function-editor" };
 
     // 카드 기능 버튼의 owner다. tree 안에서 카드마다 같은 버튼 id가 되풀이되므로 카드 id를 앞에 붙인다.
     // 버튼 id는 `[a-z0-9_-]`라 `:`가 없고 project id에는 있을 수 있으므로, 되돌릴 때는 **마지막** `:`에서 나눈다.

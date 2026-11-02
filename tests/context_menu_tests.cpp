@@ -660,8 +660,9 @@ TEST_CASE("A banner right click opens the document menu without changing the sel
     REQUIRE(view->context_menu->anchor_x == 40.0f);
     REQUIRE(view->context_menu->anchor_y == 50.0f);
 
-    // 셋째 항목은 `문서 다시 읽기`다 (function-buttons-design T11).
-    REQUIRE(view->context_menu->items.size() == 3u);
+    // 셋째 항목은 `문서 다시 읽기`(function-buttons-design T11), 넷째는 `기능 편집…`(T12)이다.
+    REQUIRE(view->context_menu->items.size() == 4u);
+    REQUIRE(view->context_menu->items[3].entry == gitman::context_menu_entry::edit_functions);
     REQUIRE(view->context_menu->items[2].entry == gitman::context_menu_entry::reload_document);
     REQUIRE(view->context_menu->items[0].entry == gitman::context_menu_entry::open_document_folder);
     REQUIRE(view->context_menu->items[0].enabled);

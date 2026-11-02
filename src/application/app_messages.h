@@ -368,6 +368,13 @@ namespace gitman {
         font_filter,
         // 새 문서 dialog의 문서 이름 칸이다 (F3).
         generate_document_name,
+        // 기능 편집 dialog의 다섯 칸이다 (function-buttons-design 2.7). 칸 수는 다섯으로 고정이다 — 칸 하나가 kind,
+        // 이 값, 편집 분기, 초안 필드를 하나씩 요구하므로 개수가 바뀌는 입력은 만들지 않는다.
+        function_editor_label,
+        function_editor_program,
+        function_editor_arguments,
+        function_editor_working_directory,
+        function_editor_timeout,
     };
 
     // 편집 명령의 어휘는 luil의 것이다 (`domain/text_edit.h`가 전달한다). 적용은
@@ -499,6 +506,87 @@ namespace gitman {
         project_id id {};
         std::size_t number { 0 };
     };
+
+    // 기능 편집 dialog를 연다 (function-buttons-design 2.7). 배너 메뉴·기능 메뉴·카드 메뉴의 `기능 편집…`은 버튼 id 없이,
+    // 배치 메뉴의 `기능 편집…`은 그 기능의 id를 싣고 그 기능을 고른 상태로 연다. 문서가 없으면 열지 않는다.
+    struct open_function_editor_intent
+    {
+        std::u8string button_id {};
+    };
+
+    // 기능 / 변수 탭이다. 초안은 그대로다.
+    struct select_function_editor_tab_intent
+    {
+        function_editor_tab tab { function_editor_tab::functions };
+    };
+
+    // 목록 행 선택이다. 접힌 선택기의 `<` `>`도 이웃 번호로 낸다.
+    struct select_function_editor_entry_intent
+    {
+        std::size_t index { 0 };
+    };
+
+    // 목록 아래 버튼과 `Alt+↑/↓`다. 추가(`[+]`)한 기능은 기본 배치 `menu`(D22-B)로 시작한다.
+    enum class function_editor_list_edit
+    {
+        add,
+        duplicate,
+        remove,
+        move_up,
+        move_down,
+    };
+
+    struct edit_function_editor_list_intent
+    {
+        function_editor_list_edit edit { function_editor_list_edit::add };
+    };
+
+    // 고른 항목의 텍스트 칸이 아닌 필드다. 선택 묶음·아이콘 목록이 값(문자열)을 싣는다 (luil `choice_item::value`와 같은
+    // 관례). `project`와 `confirm`은 켜고 끄는 토글이고, `program`은 찾아보기 dialog가 고른 경로다.
+    enum class function_editor_field
+    {
+        icon,
+        mode,
+        scope,
+        placement,
+        project,
+        confirm,
+        program,
+    };
+
+    struct set_function_editor_field_intent
+    {
+        function_editor_field field { function_editor_field::icon };
+        std::u8string value {};
+    };
+
+    // 미리보기 대상 카드의 `<` `>`다.
+    struct step_function_editor_preview_intent
+    {
+        bool forward { true };
+    };
+
+    // 목록과 폼의 세로 스크롤이다 (논리 픽셀).
+    enum class function_editor_scroll_region
+    {
+        list,
+        form,
+    };
+
+    struct function_editor_scroll_intent
+    {
+        function_editor_scroll_region region { function_editor_scroll_region::form };
+        float delta { 0.0f };
+    };
+
+    // Apply다 (2.7, 4.11). 모델을 바꾸기 전에 파서와 같은 규칙 함수로 모든 항목을 검증하고, 실행 중인 기능을 지우거나
+    // 범위 밖으로 만드는 고침을 거절한다. 통과하면 모델을 바꾸고 곧바로 저장한다.
+    struct apply_function_editor_intent
+    {};
+
+    // 취소·Esc다. 초안을 버린다.
+    struct cancel_function_editor_intent
+    {};
 
     // 배너(도구 막대) 우클릭이 여는 문서 컨텍스트 메뉴다
     // (theme-and-banner-menu-design T1). 좌표 규칙은 카드 메뉴와 같다. 열린 문서가
@@ -743,6 +831,8 @@ namespace gitman {
         // 저장이 성공하면 다음 저장의 기준이 되는 새 revision이다.
         std::optional<workspace_revision_token> revision {};
         std::vector<diagnostic> diagnostics {};
+        // 쓴 문서를 다시 읽은 기능 버튼 신뢰 해시 입력이다 (`project_store_save_result::function_digest_input`, T12).
+        std::optional<std::u8string> function_digest_input {};
     };
 
     // 변경 작업(update·switch)의 프로세스 출력 배치다. worker의 로그 sink가 모아
@@ -904,7 +994,9 @@ namespace gitman {
         clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
         local_changes_diff_scroll_intent, open_context_menu_intent, open_function_menu_intent, run_function_shortcut_intent, open_function_placement_menu_intent,
-        set_function_placement_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
+        set_function_placement_intent, open_function_editor_intent, select_function_editor_tab_intent, select_function_editor_entry_intent, edit_function_editor_list_intent,
+        set_function_editor_field_intent, step_function_editor_preview_intent, function_editor_scroll_intent, apply_function_editor_intent, cancel_function_editor_intent,
+        open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
         remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, reload_document_intent, request_exit_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,

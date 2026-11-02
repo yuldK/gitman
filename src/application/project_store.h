@@ -48,6 +48,10 @@ namespace gitman {
     {
         std::optional<workspace_revision_token> revision {};
         std::vector<diagnostic> diagnostics {};
+        // 저장에 성공했고 쓴 문서에 기능 버튼 절이 있으면, 쓴 글을 다시 읽어 만든 신뢰 해시 입력이다
+        // (`function_buttons_definition::source_digest_input`, function-buttons-design 3.10). 모델을 고쳐 저장한 뒤에는 읽을
+        // 때의 값이 낡으므로 logic이 이 값으로 바꾼다 (T12).
+        std::optional<std::u8string> function_digest_input {};
 
         [[nodiscard]] bool succeeded() const noexcept;
         [[nodiscard]] bool has_errors() const noexcept;

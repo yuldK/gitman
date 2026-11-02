@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string_view>
 
 namespace gitman::ui {
@@ -13,4 +14,10 @@ namespace gitman::ui {
     // 기능 버튼의 글리프다. D16의 20개만 찾고, 그 밖의 이름(메뉴 전용 이름 포함)은 기본 `play`이며 경고하지 않는다
     // (3.2 `icon`).
     [[nodiscard]] char32_t function_icon_glyph(std::u8string_view name) noexcept;
+
+    // D16의 기능 아이콘 이름 20개다 (표 순서). 편집 dialog의 아이콘 목록이 이 순서로 늘어놓는다 (2.7).
+    [[nodiscard]] std::span<const std::u8string_view> function_icon_names() noexcept;
+
+    // 아이콘 목록의 화면 읽기 이름이다 (`도구`, `재생` 등). 20개 밖의 이름은 그대로다.
+    [[nodiscard]] std::u8string_view function_icon_label(std::u8string_view name) noexcept;
 }

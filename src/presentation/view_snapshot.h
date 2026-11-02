@@ -306,7 +306,7 @@ namespace gitman {
     // 들고(function-buttons-design T8), 이 값은 고른 뒤의 동작만 가른다. 외부 열기는 popup이
     // UI thread의 앱 명령으로 곧바로 내고 나머지는 logic이 처리한다. 앞의 여섯은 카드 메뉴,
     // 그다음 둘은 배너(문서) 메뉴의 항목이고, 그 뒤는 기능 메뉴·카드 메뉴 기능 절의 항목이다
-    // (function-buttons-design T9). 기능 메뉴의 `기능 편집…` 자리(T12 전)는 `open_document_in_vscode`를 쓴다.
+    // (function-buttons-design T9). 네 메뉴의 `기능 편집…`은 `edit_functions`다 (T12).
     enum class context_menu_entry
     {
         open_repository,
@@ -335,11 +335,14 @@ namespace gitman {
         place_function_on_card,
         place_function_on_bar,
         place_function_in_menu,
+        // 기능 메뉴·카드 메뉴·배너 메뉴·배치 메뉴의 `기능 편집…`이다 (function-buttons-design 2.7). 배치 메뉴의 항목만
+        // argument에 버튼 id를 실어 그 기능을 고른 상태로 연다.
+        edit_functions,
     };
 
     // `context_menu_entry`의 값 수다. 키 표를 되돌리는 배열이 모든 값을 덮는지 묶는다 (popup의
     // `static_assert`). 새 값은 enum 끝에 더하고 이 값을 함께 고친다.
-    inline constexpr std::size_t context_menu_entry_count { static_cast<std::size_t>(context_menu_entry::place_function_in_menu) + 1 };
+    inline constexpr std::size_t context_menu_entry_count { static_cast<std::size_t>(context_menu_entry::edit_functions) + 1 };
 
     // 메뉴 항목 하나의 모양이다. radio는 하나만 고르는 무리(배치 메뉴의 세 배치,
     // function-buttons-design 2.2.5)이고 luil `menu_item_kind::radio`로 그린다.
@@ -462,6 +465,103 @@ namespace gitman {
         bool exit_application { false };
         // 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
         float scroll_offset { 0.0f };
+    };
+
+    // 기능 편집 dialog의 두 탭이다 (function-buttons-design 2.7). 변수 탭은 읽기 전용 나열이다.
+    enum class function_editor_tab
+    {
+        functions,
+        variables,
+    };
+
+    // 기능 편집 dialog 목록의 행 하나다. 검증에 실패해 원문만 든 항목은 경고 행이다.
+    struct function_editor_row_view
+    {
+        // 행 element id의 값이다. 통과 항목은 `button-<id>`, 경고 행은 `source-<열 때의 순번>`이다. 순서를 바꿔도 같은 항목에
+        // 같은 값이라 luil 초점이 그 항목을 따라간다 (intent는 순번을 싣는다).
+        std::u8string key {};
+        std::u8string label {};
+        // 아이콘 이름이다. 경고 행은 비어 있다.
+        std::u8string icon {};
+        // 지금 초안 목록으로 판정한 보이는 배치다 (2.2.2 규칙 4). 경고 행은 값이 없다.
+        std::optional<function_placement> placement {};
+        // 보이는 `card`면 `Alt+N`의 N이다. 아니면 0이다.
+        std::size_t shortcut { 0 };
+        bool warning { false };
+    };
+
+    // 적용 범위가 `저장소 목록`일 때의 카드 하나다.
+    struct function_editor_project_view
+    {
+        std::u8string id {};
+        std::u8string name {};
+        bool checked { false };
+    };
+
+    // 변수 탭의 행 하나다. `scope`가 비면 문서 변수, 아니면 그 project의 덮어쓰기다.
+    struct function_editor_variable_view
+    {
+        std::u8string scope {};
+        std::u8string name {};
+        std::u8string value {};
+        // 쓸 수 없는 변수(이름 규칙 위반, 예약 이름, 문자열이 아닌 값)다. 원문 그대로 둔다.
+        bool warning { false };
+    };
+
+    // 기능 편집 dialog의 불변 표시 모델이다 (function-buttons-design 2.7). 초안은 logic이 들고 있고, Apply 전까지 문서
+    // 모델을 바꾸지 않는다.
+    struct function_editor_view
+    {
+        // `기능 편집 · 문서 이름`이다.
+        std::u8string title {};
+        function_editor_tab tab { function_editor_tab::functions };
+        std::vector<function_editor_row_view> rows {};
+        std::optional<std::size_t> selected {};
+        // `기능 N개 · 카드 k/3`이다. N은 경고 행을 포함한 행 수, k는 보이는 `card` 수다.
+        std::u8string list_header {};
+
+        // 고른 항목의 폼이다. 경고 행을 고르면 `editable`이 꺼지고 사유와 원문을 보인다.
+        bool editable { false };
+        std::u8string warning_text {};
+        std::u8string warning_source {};
+        text_input_view label {};
+        text_input_view program {};
+        text_input_view arguments {};
+        text_input_view working_directory {};
+        text_input_view timeout {};
+        // 인자 칸 아래 줄이다. 닫히지 않은 따옴표면 경고(`arguments_error`)이고 Apply가 막힌다.
+        std::u8string arguments_message {};
+        bool arguments_error { false };
+        std::u8string icon {};
+        function_run_mode mode { function_run_mode::capture };
+        // 적용 범위 선택 묶음의 값이다: `all`·`git`·`svn`·`projects`.
+        std::u8string scope {};
+        std::vector<function_editor_project_view> projects {};
+        // 배치 선택 묶음이 고른 값이다 (보이는 배치).
+        function_placement placement { function_placement::menu };
+        // 카드에 두면 갖는 `Alt+N`이다. 고를 수 없으면 0이다.
+        std::size_t card_shortcut { 0 };
+        // 문서 전체의 보이는 `card`가 3개이고 이 기능이 그중 하나가 아니다. `카드` 라벨이 `카드 — 3개까지`가 된다.
+        bool card_full { false };
+        // 배치 묶음 아래 줄이다 (`카드 — 3개까지` 거절 등).
+        std::u8string placement_message {};
+        bool confirm { false };
+
+        // 미리보기다. 대상 카드를 `<` `>`로 바꾼다.
+        std::u8string preview_card {};
+        bool preview_can_step { false };
+        std::u8string preview_command {};
+        std::u8string preview_working_directory {};
+        std::vector<std::u8string> preview_warnings {};
+
+        std::vector<function_editor_variable_view> variables {};
+        // Apply 거절·검증 실패 사유다. 비어 있으면 그리지 않는다.
+        std::u8string message {};
+        // 문서의 기능 버튼 절을 편집기로 쓸 수 없다 (`function_buttons`가 object가 아니거나 `buttons`가 배열이 아님). Apply가
+        // 비활성이고 `message`가 사유다 — 쓰면 원문이 사라진다 (3.9).
+        bool locked { false };
+        float list_scroll { 0.0f };
+        float form_scroll { 0.0f };
     };
 
     // 알림 띠의 알림 하나다. 띠는 한 줄이라 `text`만 보이고, `details`는 띠 tooltip에서
@@ -662,6 +762,8 @@ namespace gitman {
         // 열린 문서가 없을 때의 시작 페이지다 (A1.3). 값이 있으면 카드 목록 자리를
         // 대신 채운다.
         std::optional<start_page_view> start_page {};
+        // 값이 있으면 기능 편집 dialog가 화면을 덮는다 (function-buttons-design 2.7).
+        std::optional<function_editor_view> function_editor {};
         // 값이 있으면 기능 실행 확인 dialog가 화면을 덮는다 (function-buttons-design 3.10).
         std::optional<function_confirm_dialog_view> function_confirm_dialog {};
         // 값이 있으면 알림 다이얼로그가 다른 dialog 위에 떠 있다 (A3.2).

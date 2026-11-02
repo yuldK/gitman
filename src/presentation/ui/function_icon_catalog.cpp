@@ -1,5 +1,7 @@
 #include "presentation/ui/function_icon_catalog.h"
 
+#include "presentation/function_editor_layout.h"
+
 #include "luil/generated/codicons.h"
 
 #include <array>
@@ -48,6 +50,68 @@ namespace gitman::ui {
             icon_name_glyph { u8"ellipsis", luil::codicons::icon_ellipsis },
         };
 
+        // 아이콘 목록이 쓰는 이름 표다. 위 표의 앞 20개와 같은 순서다.
+        constexpr std::array<std::u8string_view, function_icon_count> function_names {
+            u8"tools",
+            u8"play",
+            u8"debug-start",
+            u8"terminal",
+            u8"beaker",
+            u8"rocket",
+            u8"package",
+            u8"bug",
+            u8"build",
+            u8"code",
+            u8"window",
+            u8"folder-opened",
+            u8"file-code",
+            u8"sync",
+            u8"cloud-upload",
+            u8"cloud-download",
+            u8"trash",
+            u8"gear",
+            u8"link-external",
+            u8"run-all",
+        };
+
+        // 아이콘 목록의 화면 읽기 이름이다. `function_names`와 같은 순서다 — 영문 codicon 이름 대신 뜻을 읽는다.
+        constexpr std::array<std::u8string_view, function_icon_count> function_labels {
+            u8"도구",
+            u8"재생",
+            u8"디버그 시작",
+            u8"터미널",
+            u8"비커",
+            u8"로켓",
+            u8"꾸러미",
+            u8"벌레",
+            u8"빌드",
+            u8"코드",
+            u8"창",
+            u8"열린 폴더",
+            u8"코드 파일",
+            u8"동기화",
+            u8"클라우드 올리기",
+            u8"클라우드 내려받기",
+            u8"휴지통",
+            u8"톱니바퀴",
+            u8"외부 링크",
+            u8"모두 실행",
+        };
+
+        // 이름 표가 글리프 표의 앞 20개와 같은지다. 두 표가 갈리면 목록의 아이콘이 기본 `play`로 떨어진다.
+        consteval bool function_names_lead_icons()
+        {
+            for (std::size_t index = 0; index < function_icon_count; ++index)
+            {
+                if (function_names[index] != icons[index].name)
+                    return false;
+            }
+            return true;
+        }
+        static_assert(function_names_lead_icons());
+        // 편집 dialog의 배치(아이콘 줄 수)가 쓰는 개수와 같아야 한다.
+        static_assert(function_icon_count == function_editor_icon_count);
+
         char32_t find_glyph(const std::span<const icon_name_glyph> table, const std::u8string_view name) noexcept
         {
             if (name.empty())
@@ -64,6 +128,21 @@ namespace gitman::ui {
     char32_t icon_glyph_by_name(const std::u8string_view name) noexcept
     {
         return find_glyph(icons, name);
+    }
+
+    std::span<const std::u8string_view> function_icon_names() noexcept
+    {
+        return function_names;
+    }
+
+    std::u8string_view function_icon_label(const std::u8string_view name) noexcept
+    {
+        for (std::size_t index = 0; index < function_icon_count; ++index)
+        {
+            if (function_names[index] == name)
+                return function_labels[index];
+        }
+        return name;
     }
 
     char32_t function_icon_glyph(const std::u8string_view name) noexcept

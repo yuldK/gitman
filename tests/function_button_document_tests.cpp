@@ -1141,3 +1141,117 @@ TEST_CASE("A placement change keeps stated default fields and the trust digest",
     REQUIRE(occurrences(u8"\"confirm\": false") == 1u);
     REQUIRE(occurrences(u8"\"timeout_seconds\": 3600") == 1u);
 }
+
+TEST_CASE("A button added with the id of a failed item does not inherit its unknown keys", "[function_buttons][t12][store]")
+{
+    // 쓰기 함수의 template 대체를 좁혔다 (T10에서 넘어온 일, 3.9). 같은 id의 통과 항목이 없는 실패 항목 원문은 template이 되지 않는다.
+    const std::u8string source {
+        document_with(u8R"({"buttons":[{"id":"x","label":"엑스","program":"C:\\x.bat","future_key":1},{"id":"b","label":"비","program":"C:\\b.exe"}]})", u8R"([{"id":"alpha","path":"alpha"}])")
+    };
+    const saved_round_trip trip {
+        save_round_trip(source
+            , [](gitman::workspace_document& document)
+            {
+                gitman::function_button added {};
+                added.id = u8"x";
+                added.label = u8"새 엑스";
+                added.program = u8"C:\\x.exe";
+                document.function_buttons->buttons.emplace_back(added);
+            }
+        )
+    };
+    const gitman::function_buttons_definition& after { *trip.reloaded.document->function_buttons };
+    REQUIRE(after.buttons.size() == 3u);
+    REQUIRE(source_at(after, 0).json.find(u8"future_key") != std::u8string::npos);
+    REQUIRE(button_at(after, 2).label == u8"새 엑스");
+    std::size_t keys { 0 };
+    for (std::size_t position = trip.bytes.find(u8"future_key"); position != std::u8string::npos; position = trip.bytes.find(u8"future_key", position + 1))
+        ++keys;
+    REQUIRE(keys == 1u);
+}
+
+TEST_CASE("A duplicated id with the same text as its failed copy keeps its template", "[function_buttons][t12][store]")
+{
+    // 통과 항목과 실패 항목(중복 id의 뒤 항목)의 글이 같으면 실패 항목이 든 수만큼만 건너뛰고 남는 객체가 통과 항목의 template이다.
+    const std::u8string source {
+        document_with(u8R"({"buttons":[{"id":"a","label":"가","program":"C:\\a.exe","keep":true},{"id":"a","label":"가","program":"C:\\a.exe","keep":true}]})", u8R"([{"id":"alpha","path":"alpha"}])")
+    };
+    const saved_round_trip trip {
+        save_round_trip(source
+            , [](gitman::workspace_document& document)
+            {
+                mutable_button(document, u8"a").label = u8"가나";
+            }
+        )
+    };
+    const gitman::function_buttons_definition& after { *trip.reloaded.document->function_buttons };
+    REQUIRE(button_at(after, 0).label == u8"가나");
+    REQUIRE(std::holds_alternative<gitman::function_source_text>(after.buttons[1]));
+    std::size_t keeps { 0 };
+    for (std::size_t position = trip.bytes.find(u8"\"keep\": true"); position != std::u8string::npos; position = trip.bytes.find(u8"\"keep\": true", position + 1))
+        ++keeps;
+    REQUIRE(keeps == 2u);
+}
+
+TEST_CASE("The save result carries the digest input of the written section", "[function_buttons][t12][store][trust]")
+{
+    // 편집 dialog가 고친 정의는 저장 뒤 이 값으로 신뢰 해시를 다시 만든다 (3.10, 4.11). 다시 읽은 값과 같아야 한다.
+    const gitman::testing::scoped_scan_directory directory {};
+    REQUIRE(directory.available());
+    const std::u8string document_path { directory.path_of(u8"team.version-list") };
+    write_file(document_path, load_fixture("function-buttons.version-list"));
+    gitman::win32::workspace_document_file_system file_system {};
+    fake_project_path_resolver resolver {};
+    gitman::json_project_store store { file_system, resolver };
+    const gitman::project_store_load_result loaded { store.load(document_path) };
+    REQUIRE(loaded.document.has_value());
+
+    gitman::workspace_document display { *loaded.document };
+    mutable_button(display, u8"build").label = u8"새 이름";
+    mutable_button(display, u8"build").icon = std::u8string { u8"rocket" };
+    mutable_button(display, u8"build").placement = std::u8string { u8"menu" };
+    const gitman::project_store_save_result saved_display { store.save(document_path, display, loaded.revision) };
+    REQUIRE(saved_display.succeeded());
+    // 표시 필드만 바꾼 저장은 해시 입력이 그대로다 (2.7, 3.10).
+    REQUIRE(saved_display.function_digest_input == std::optional { loaded.document->function_buttons->source_digest_input });
+
+    gitman::workspace_document changed { display };
+    mutable_button(changed, u8"build").args.push_back(u8"--all");
+    const gitman::project_store_save_result saved_changed { store.save(document_path, changed, *saved_display.revision) };
+    REQUIRE(saved_changed.succeeded());
+    REQUIRE(saved_changed.function_digest_input != saved_display.function_digest_input);
+    const gitman::project_store_load_result reloaded { store.load(document_path) };
+    REQUIRE(saved_changed.function_digest_input == std::optional { reloaded.document->function_buttons->source_digest_input });
+
+    // 절이 없는 문서의 저장은 해시 입력이 없다.
+    const std::u8string plain_path { directory.path_of(u8"plain.version-list") };
+    write_file(plain_path, u8R"({"schema_version":1,"projects":[{"id":"alpha","path":"alpha"}]})");
+    const gitman::project_store_load_result plain { store.load(plain_path) };
+    const gitman::project_store_save_result saved_plain { store.save(plain_path, *plain.document, plain.revision) };
+    REQUIRE(saved_plain.succeeded());
+    REQUIRE(saved_plain.function_digest_input.has_value() == false);
+}
+
+TEST_CASE("A null button list takes the buttons the editor added", "[function_buttons][t12][store]")
+{
+    // `buttons: null`은 키가 없는 것처럼 빈 목록으로 읽힌다. 편집 dialog로 버튼을 더하면 null 자리에 써야 다시 열어도
+    // 남는다. 모델이 비었으면 null 원문 그대로다 (T10 test "Malformed function button subsections…").
+    const saved_round_trip trip {
+        save_round_trip(document_with(u8R"({"buttons":null,"extra":1})", u8R"([{"id":"alpha","path":"alpha"}])")
+            , [](gitman::workspace_document& document)
+            {
+                REQUIRE(document.function_buttons.has_value());
+                gitman::function_button button {};
+                button.id = u8"function-1";
+                button.label = u8"새 기능";
+                button.program = u8"C:\\x.exe";
+                document.function_buttons->buttons.emplace_back(std::move(button));
+            }
+        )
+    };
+    REQUIRE(trip.bytes.find(u8"\"buttons\": null") == std::u8string::npos);
+    REQUIRE(trip.bytes.find(u8"\"extra\": 1") != std::u8string::npos);
+    const gitman::function_buttons_definition& reloaded { *trip.reloaded.document->function_buttons };
+    REQUIRE(reloaded.buttons.size() == 1u);
+    REQUIRE(button_at(reloaded, 0).id == u8"function-1");
+}

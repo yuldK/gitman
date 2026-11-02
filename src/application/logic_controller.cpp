@@ -343,6 +343,35 @@ namespace gitman {
         // 않게 하고, 나머지는 개수로만 알린다. 항목별 확인은 편집 dialog의 경고 행(T12)이 맡는다.
         constexpr std::size_t maximum_function_notice_details { 20 };
 
+        // 기능 버튼 진단을 묶은 알림이다 (3.8). 없으면 값이 없다. 문서를 열 때와, 편집 dialog로 고친 저장이 쓴 글을 다시 읽은
+        // 진단으로 다시 만들 때 같은 규칙을 쓴다.
+        std::optional<notice_view_model> make_function_button_notice(const std::vector<diagnostic>& diagnostics)
+        {
+            notice_view_model notice {};
+            std::size_t warnings { 0 };
+            for (const diagnostic& value : diagnostics)
+            {
+                if (value.severity == diagnostic_severity::information || is_function_button_diagnostic(value) == false)
+                    continue;
+                if (++warnings <= maximum_function_notice_details)
+                    notice.details.push_back(value.message);
+            }
+            if (warnings == 0)
+                return std::nullopt;
+            const std::string count { std::to_string(warnings) };
+            notice.text = u8"기능 버튼 경고 ";
+            notice.text.append(count.begin(), count.end());
+            notice.text += u8"건";
+            if (warnings > maximum_function_notice_details)
+            {
+                const std::string rest { std::to_string(warnings - maximum_function_notice_details) };
+                std::u8string& more { notice.details.emplace_back(u8"(외 ") };
+                more.append(rest.begin(), rest.end());
+                more += u8"건)";
+            }
+            return notice;
+        }
+
         // 배너에 싣는 문서 진단 한 줄이다. project 하나에 걸린 진단은 메시지만으로는
         // 어느 카드의 일인지 알 수 없어 그 project의 표시 이름을 앞에 붙인다.
         std::u8string document_notice_text(const diagnostic& value, const workspace_document& document)
@@ -685,6 +714,28 @@ namespace gitman {
                     handle_open_function_placement_menu(value);
                 else if constexpr (std::is_same_v<value_type, set_function_placement_intent>)
                     handle_set_function_placement(value, std::nullopt);
+                else if constexpr (std::is_same_v<value_type, open_function_editor_intent>)
+                    handle_open_function_editor(value);
+                else if constexpr (std::is_same_v<value_type, select_function_editor_tab_intent>)
+                    handle_select_function_editor_tab(value);
+                else if constexpr (std::is_same_v<value_type, select_function_editor_entry_intent>)
+                    handle_select_function_editor_entry(value.index);
+                else if constexpr (std::is_same_v<value_type, edit_function_editor_list_intent>)
+                    handle_edit_function_editor_list(value.edit);
+                else if constexpr (std::is_same_v<value_type, set_function_editor_field_intent>)
+                    handle_set_function_editor_field(value);
+                else if constexpr (std::is_same_v<value_type, step_function_editor_preview_intent>)
+                    handle_step_function_editor_preview(value.forward);
+                else if constexpr (std::is_same_v<value_type, function_editor_scroll_intent>)
+                    handle_function_editor_scroll(value);
+                else if constexpr (std::is_same_v<value_type, apply_function_editor_intent>)
+                    handle_apply_function_editor();
+                else if constexpr (std::is_same_v<value_type, cancel_function_editor_intent>)
+                {
+                    function_editor_.reset();
+                    if (composition_.has_value() && is_function_editor_target(composition_->target))
+                        composition_.reset();
+                }
                 else if constexpr (std::is_same_v<value_type, open_document_context_menu_intent>)
                     handle_open_document_context_menu(value);
                 else if constexpr (std::is_same_v<value_type, set_theme_preference_intent>)
@@ -879,6 +930,7 @@ namespace gitman {
         revision_ = {};
         cards_.clear();
         notices_.clear();
+        function_button_notice_.reset();
         save_notice_.clear();
         selected_.reset();
         scroll_offset_ = 0.0f;
@@ -931,6 +983,7 @@ namespace gitman {
         if (event.document.has_value() == false)
         {
             notices_.clear();
+            function_button_notice_.reset();
             for (const diagnostic& value : event.diagnostics)
                 if (value.severity != diagnostic_severity::information)
                     notices_.push_back({ value.message });
@@ -952,6 +1005,7 @@ namespace gitman {
             // 실패는 현재 문서를 유지한 채 진단만 알린다. dialog는 열어 둔 채 사유를
             // 보여 주어 이름이나 위치를 고쳐 다시 시도할 수 있게 한다 (F3).
             notices_.clear();
+            function_button_notice_.reset();
             for (const diagnostic& value : event.diagnostics)
                 if (value.severity != diagnostic_severity::information)
                     notices_.push_back({ value.message });
@@ -996,35 +1050,39 @@ namespace gitman {
         // `(외 N건)` 뒤로 밀린다. 다른 진단 뒤에 알림 하나로 묶고 상세는 tooltip에 둔다
         // (function-buttons-design 3.8).
         notices_.clear();
-        notice_view_model function_button_notice {};
-        std::size_t function_button_warnings { 0 };
+        // 편집 dialog(T12)의 경고 행 사유와, 절을 편집기로 쓸 수 없는 사유다. 진단의 JSON pointer로 항목을 가른다.
+        function_button_problems_.assign(document.function_buttons.has_value() ? document.function_buttons->buttons.size() : 0, std::u8string {});
+        function_editor_lock_reason_.clear();
+        for (const diagnostic& value : diagnostics)
+        {
+            constexpr std::u8string_view button_pointer { u8"/function_buttons/buttons/" };
+            const std::u8string_view pointer { value.source.json_pointer };
+            if (value.code == diagnostic_code::invalid_function_buttons && (pointer == u8"/function_buttons" || pointer == u8"/function_buttons/buttons"))
+                function_editor_lock_reason_ = u8"문서의 function_buttons를 읽지 못해 편집기로 쓰지 않습니다. JSON을 고친 뒤 문서 다시 읽기로 불러오십시오.";
+            if (value.code == diagnostic_code::invalid_function_button && pointer.starts_with(button_pointer))
+            {
+                std::size_t index { 0 };
+                bool digits { pointer.size() > button_pointer.size() };
+                for (const char8_t digit : pointer.substr(button_pointer.size()))
+                {
+                    if (digit < u8'0' || digit > u8'9')
+                        digits = false;
+                    else
+                        index = index * 10 + static_cast<std::size_t>(digit - u8'0');
+                }
+                if (digits && index < function_button_problems_.size())
+                    function_button_problems_[index] = value.message;
+            }
+        }
         for (const diagnostic& value : diagnostics)
         {
             if (value.severity == diagnostic_severity::information)
                 continue;
             if (is_function_button_diagnostic(value) == false)
-            {
                 notices_.push_back({ document_notice_text(value, document) });
-                continue;
-            }
-            if (++function_button_warnings <= maximum_function_notice_details)
-                function_button_notice.details.push_back(value.message);
         }
-        if (function_button_warnings > 0)
-        {
-            const std::string count { std::to_string(function_button_warnings) };
-            function_button_notice.text = u8"기능 버튼 경고 ";
-            function_button_notice.text.append(count.begin(), count.end());
-            function_button_notice.text += u8"건";
-            if (function_button_warnings > maximum_function_notice_details)
-            {
-                const std::string rest { std::to_string(function_button_warnings - maximum_function_notice_details) };
-                std::u8string& more { function_button_notice.details.emplace_back(u8"(외 ") };
-                more.append(rest.begin(), rest.end());
-                more += u8"건)";
-            }
-            notices_.push_back(std::move(function_button_notice));
-        }
+        // 묶은 알림은 다른 진단 뒤에 선다. 편집 dialog로 고친 저장 뒤 다시 만들 수 있게 따로 둔다.
+        refresh_function_button_notice(diagnostics);
 
         save_notice_.clear();
         reload_notice_.reset();
@@ -1043,6 +1101,10 @@ namespace gitman {
         // 같은 id가 있으면 그 element로 초점이 갈 수 있다. 번호는 되돌리지 않는다 (luil이 같은 번호를 한 번만 이행한다).
         function_confirm_.reset();
         function_focus_.reset();
+        // 편집 dialog의 초안과 저장 뒤 신뢰 갱신은 이전 문서의 정의다.
+        function_editor_.reset();
+        function_trust_after_save_ = false;
+        function_notice_after_save_ = false;
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -1304,6 +1366,8 @@ namespace gitman {
                     save_notice_ = value.code == diagnostic_code::concurrent_modification ? std::u8string { save_conflict_notice } : value.message;
                     break;
                 }
+        // 편집 dialog가 고친 정의의 해시 입력과 신뢰 갱신이다 (4.11). 이어 낼 저장이 있는지 보므로 그 앞이다.
+        finish_function_editor_save(event);
 
         if (save_queued_)
         {
@@ -1832,8 +1896,8 @@ namespace gitman {
         // 해시 입력의 출처와 낡는 시점은 `function_trust.h`에 적었다. 여기서는 그때그때 지금 모델로
         // 만든다 — 누를 때와 확인할 때 두 번 부르고, 두 값이 다르면 확인한 정의가 아니다.
         //  - `source_digest_input`: 문서를 읽을 때(열기, T11의 다시 읽기) 파일 원문에서 만든 값이다.
-        //    배치 변경(T10)은 해시 입력이 아니라 그대로 맞다. 편집 dialog 저장(T12)은 모델을 고치므로
-        //    그 저장에서 이 값을 새로 만들어야 한다 (T3에서 넘어온 일, T12 몫).
+        //    배치 변경(T10)은 해시 입력이 아니라 그대로 맞다. 저장이 성공하면 store가 쓴 글을 다시 읽은 값으로
+        //    바뀐다 (`finish_function_editor_save`, T12). 편집 dialog가 고친 정의는 그 저장이 끝나기 전까지 앞 값이다.
         //  - project `{id, path.original, ${projectName} 값}`: 지금 `document_->projects`다. 등록으로 project가 늘면
         //    해시가 바뀌어 다시 묻는다.
         return function_trust_digest(*document_->function_buttons, document_->projects);
@@ -2499,6 +2563,7 @@ namespace gitman {
         revision_ = {};
         cards_.clear();
         notices_.clear();
+        function_button_notice_.reset();
         save_notice_.clear();
         selected_.reset();
         filter_.clear();
@@ -2510,9 +2575,14 @@ namespace gitman {
         settings_dialog_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
-        // 기능 실행 확인과 초점 옮기기 요청은 이전 문서의 카드와 정의를 가리킨다.
+        // 기능 실행 확인과 초점 옮기기 요청은 이전 문서의 카드와 정의를 가리킨다. 편집 dialog도 같다.
         function_confirm_.reset();
         function_focus_.reset();
+        function_editor_.reset();
+        function_trust_after_save_ = false;
+        function_notice_after_save_ = false;
+        function_button_problems_.clear();
+        function_editor_lock_reason_.clear();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -2529,6 +2599,11 @@ namespace gitman {
         pending_generation_operation_id_ = 0;
         // 문서를 닫으면 더 쌓을 로그가 없다. 파일은 그대로 두고 적재만 멈춘다.
         publish_log_targets();
+    }
+
+    void logic_controller::refresh_function_button_notice(const std::vector<diagnostic>& diagnostics)
+    {
+        function_button_notice_ = make_function_button_notice(diagnostics);
     }
 
     bool logic_controller::reload_available() const noexcept
@@ -3761,6 +3836,8 @@ namespace gitman {
             state = &font_dialog_->query;
         else if (intent.target == text_input_target::generate_document_name && generate_dialog_.has_value() && generate_dialog_->executing == false)
             state = &generate_dialog_->name;
+        else if (is_function_editor_target(intent.target))
+            state = function_editor_text(intent.target);
         if (state == nullptr)
             return;
 
@@ -3843,6 +3920,24 @@ namespace gitman {
         {
             if (state->text != before)
                 generate_dialog_->message.clear();
+            return;
+        }
+        if (is_function_editor_target(intent.target))
+        {
+            // 제한 시간은 숫자만 받는다. 최대값(86400)이 5자리라 그 이상은 버린다. 범위는 Apply의 규칙 함수가 본다.
+            if (intent.target == text_input_target::function_editor_timeout)
+            {
+                std::u8string digits {};
+                for (const char8_t value : state->text)
+                {
+                    if (value >= u8'0' && value <= u8'9' && digits.size() < 5)
+                        digits.push_back(value);
+                }
+                if (digits != state->text)
+                    text_edit_set_text(*state, digits, true);
+            }
+            if (state->text != before)
+                function_editor_->message.clear();
             return;
         }
         if (intent.target == text_input_target::settings_timeout)
@@ -4329,6 +4424,10 @@ namespace gitman {
             handle_set_function_placement(set_function_placement_intent { item.argument, placement }, focus_card);
             break;
         }
+        case context_menu_entry::edit_functions:
+            // 편집 dialog다 (2.7). 배치 메뉴에서 고르면 argument가 그 기능이다.
+            handle_open_function_editor(open_function_editor_intent { item.argument });
+            break;
         case context_menu_entry::open_repository:
         case context_menu_entry::open_in_vscode:
         case context_menu_entry::open_document_folder:
@@ -4429,14 +4528,20 @@ namespace gitman {
         return item;
     }
 
-    std::optional<context_menu_item_view> logic_controller::function_edit_menu_item() const
+    std::optional<context_menu_item_view> logic_controller::function_edit_menu_item(const std::u8string_view button_id) const
     {
-        // 편집 dialog(T12) 전에는 `기능 편집…` 자리가 문서 폴더를 VS Code로 여는 항목이다 (2.3.2). 배너 메뉴의
-        // `VSCode로 열기`와 같은 동작이라 같은 하위 동작을 쓰고 UI thread가 곧바로 연다.
-        const std::u8string folder { windows_parent_directory(document_path_) };
-        if (document_path_.empty() || folder.empty())
+        // `기능 편집…`은 편집 dialog를 연다 (2.7, T12). 배치 메뉴의 항목만 그 기능의 id를 실어 그 기능을 고른 상태로 연다.
+        if (document_.has_value() == false || document_path_.empty())
             return std::nullopt;
-        return context_menu_item_view { .entry = context_menu_entry::open_document_in_vscode, .label = u8"문서 폴더를 VS Code로 열기", .target_path = folder, .icon = u8"vscode" };
+        context_menu_item_view item { .entry = context_menu_entry::edit_functions, .label = u8"기능 편집…", .argument = std::u8string { button_id }, .icon = u8"gear" };
+        // 다시 읽기 결과를 기다리는 동안은 열지 않는다. 다시 읽기가 성공하면 문서를 바꾸며 초안을 버리고, 그 사이 낸 Apply의
+        // 저장도 버려진다 (4.9, T11).
+        if (pending_reload_operation_id_ != 0 || reload_after_save_)
+        {
+            item.label = u8"기능 편집… — 읽는 중";
+            item.enabled = false;
+        }
+        return item;
     }
 
     std::vector<context_menu_item_view> logic_controller::placement_context_menu_items(const card_state& card, const std::u8string_view button_id, const bool from_bar) const
@@ -4506,8 +4611,8 @@ namespace gitman {
         items.push_back(std::move(card_item));
         items.push_back(std::move(bar_item));
         items.push_back(std::move(menu_item));
-        // T12 전에는 `기능 편집…` 자리가 기능 메뉴와 같이 문서 폴더를 VS Code로 연다 (2.2.5).
-        if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
+        // `기능 편집…`은 그 기능을 고른 상태로 편집 dialog를 연다 (2.2.5).
+        if (std::optional<context_menu_item_view> edit { function_edit_menu_item(button_id) }; edit.has_value())
         {
             edit->separator_above = true;
             items.push_back(std::move(*edit));
@@ -4528,6 +4633,9 @@ namespace gitman {
         items.push_back({ .entry = context_menu_entry::open_document_in_vscode, .label = u8"VSCode로 열기", .target_path = folder, .icon = u8"vscode" });
         // 손으로 고친 문서를 불러오는 길이다 (function-buttons-design 4.9, 2.3.3). 기능 메뉴의 항목과 같은 동작이다.
         items.push_back(reload_menu_item());
+        // 편집 dialog다 (2.3.3, T12). 적용 기능이 0개인 카드에는 기능 절이 없으므로 정의가 0개인 문서의 진입은 여기뿐이다.
+        if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
+            items.push_back(std::move(*edit));
         return items;
     }
 
@@ -4820,7 +4928,7 @@ namespace gitman {
 
     bool logic_controller::has_notice() const noexcept
     {
-        return notices_.empty() == false || save_notice_.empty() == false || reload_notice_.has_value();
+        return notices_.empty() == false || function_button_notice_.has_value() || save_notice_.empty() == false || reload_notice_.has_value();
     }
 
     float logic_controller::list_viewport_height() const noexcept
@@ -5009,6 +5117,8 @@ namespace gitman {
         snapshot->selected = selected_;
         snapshot->filter_text = filter_;
         snapshot->notices = notices_;
+        if (function_button_notice_.has_value())
+            snapshot->notices.push_back(*function_button_notice_);
         // 다시 읽기 실패는 문서 진단보다 먼저 보인다. 띠가 첫 알림만 보이므로 묻히면 실패를 모른다.
         if (reload_notice_.has_value())
             snapshot->notices.insert(snapshot->notices.begin(), *reload_notice_);
@@ -5340,6 +5450,9 @@ namespace gitman {
             }
             snapshot->local_changes_dialog = { std::move(dialog) };
         }
+
+        if (function_editor_.has_value())
+            snapshot->function_editor = { build_function_editor_view() };
 
         // 긴 줄은 지금 창 폭으로 나눈다. 창 크기가 바뀌면 다음 snapshot이 다시 나눈다.
         if (function_confirm_.has_value())

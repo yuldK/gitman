@@ -468,6 +468,29 @@ namespace gitman {
         float anchor_y { 0.0f };
     };
 
+    // 카드의 `card` 버튼과 기능 줄의 `bar` 버튼이 여는 배치 메뉴다 (function-buttons-design 2.2.5). 활성 버튼의 우클릭과
+    // 기능 줄 버튼에 초점이 있을 때의 `Shift+F10`(luil이 초점 조상의 우클릭을 실행한다)이 낸다. 비활성 버튼은
+    // 우클릭을 받지 않는다. 좌표는 카드 메뉴와 같은 창 좌표(물리 픽셀) 앵커다. 카드 안 버튼이라 선택을 바꾸지 않는다.
+    struct open_function_placement_menu_intent
+    {
+        project_id id {};
+        std::u8string button_id {};
+        // 기능 줄 버튼에서 열었다. 그 버튼이 줄을 떠나면 초점을 옮긴다 (2.2.5) — 줄 버튼은 Tab 자리라 우클릭의
+        // 누름도 초점을 준다.
+        bool from_bar { false };
+        float anchor_x { 0.0f };
+        float anchor_y { 0.0f };
+    };
+
+    // 기능 하나의 배치를 바꾼다 (4.11). 배치 메뉴의 radio가 낸다. logic은 버튼이 모델에 있고 고른 값이 모델 값과
+    // 다를 때만, `card`면 문서 전체에 보이는 `card`가 3개 미만일 때(그 기능이 이미 보이는 `card`면 통과)만 바꾸고
+    // 곧바로 저장한다. 배치는 신뢰 해시 입력이 아니라 신뢰를 다시 묻지 않는다 (3.10).
+    struct set_function_placement_intent
+    {
+        std::u8string button_id {};
+        function_placement placement { function_placement::menu };
+    };
+
     // `Alt+1..3`이다 (2.3.4). `number`는 문서 전체의 보이는 `card` 배치 순서(1부터)이고, 버튼 id는 logic이
     // 정한다 — policy는 문서를 모른다. 그 기능이 카드의 범위 밖이거나 이미 실행 중이면 아무것도 하지 않는다.
     struct run_function_shortcut_intent
@@ -866,7 +889,8 @@ namespace gitman {
         confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
         clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
-        local_changes_diff_scroll_intent, open_context_menu_intent, open_function_menu_intent, run_function_shortcut_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
+        local_changes_diff_scroll_intent, open_context_menu_intent, open_function_menu_intent, run_function_shortcut_intent, open_function_placement_menu_intent,
+        set_function_placement_intent, open_document_context_menu_intent, close_context_menu_intent, select_context_menu_item_intent, set_theme_preference_intent, set_accent_intent,
         remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,

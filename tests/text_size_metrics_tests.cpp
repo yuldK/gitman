@@ -77,3 +77,18 @@ TEST_CASE("Text rows grow with the system text size and the scroll range follows
     REQUIRE(gitman::card_list_content_height(3, 1.0f) == content_at_100 + grown * 3.0f);
     REQUIRE(gitman::card_content_top(2, 1.0f) == gitman::layout_margin + 2.0f * (gitman::layout_card_height() + gitman::layout_card_gap));
 }
+
+TEST_CASE("The function bar grows with the system text size and the log body gives way", "[ui][metrics][text-size][function_buttons][t10]")
+{
+    // 100%에서 줄은 36이고 로그 pane 160 = 줄 36 + 헤더 26 + 본문 98이다 (function-buttons-design 2.2.4).
+    REQUIRE(gitman::layout_function_bar_height() == 36.0f);
+    REQUIRE(gitman::layout_log_pane_height - gitman::layout_function_bar_height() - gitman::layout_log_header_height() == 98.0f);
+
+    const text_size_scope scope { 1.5f };
+    REQUIRE(scope.applied());
+    // 줄은 버튼 라벨(12)이 자란 만큼 자라고, pane 높이는 상수라 그만큼 본문이 준다. 헤더도 자라 본문이 더 준다.
+    REQUIRE(gitman::layout_function_bar_height() == 36.0f + gitman::text_growth(gitman::layout_function_bar_label_size));
+    REQUIRE(gitman::layout_function_bar_height() == 42.0f);
+    const float body { gitman::layout_log_pane_height - gitman::layout_function_bar_height() - gitman::layout_log_header_height() };
+    REQUIRE(body == 98.0f - 6.0f - 11.5f * 0.5f);
+}

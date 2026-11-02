@@ -25,6 +25,17 @@ namespace gitman {
             }
             return text;
         }
+
+        std::u8string more_access_name(const std::u8string_view prefix, const std::u8string_view card_name, const std::size_t count)
+        {
+            std::u8string name { prefix };
+            name += u8", ";
+            name += card_name;
+            name += u8", ";
+            name += decimal_text(static_cast<std::int64_t>(count));
+            name += u8"개";
+            return name;
+        }
     }
 
     std::u8string function_exit_code_text(const std::int32_t code)
@@ -120,14 +131,31 @@ namespace gitman {
         return text;
     }
 
+    std::u8string function_bar_text(const card_function_view& function)
+    {
+        std::u8string text { function.label };
+        if (function.running)
+            text += u8" · 실행 중";
+        else if (function.failed)
+            text += u8" · 실패";
+        return text;
+    }
+
+    std::u8string function_bar_widest_text(const std::u8string_view label)
+    {
+        std::u8string text { label };
+        text += u8" · 실행 중";
+        return text;
+    }
+
     std::u8string function_more_access_name(const std::u8string_view card_name, const std::size_t count)
     {
-        std::u8string name { u8"기능 더 보기, " };
-        name += card_name;
-        name += u8", ";
-        name += decimal_text(static_cast<std::int64_t>(count));
-        name += u8"개";
-        return name;
+        return more_access_name(u8"기능 더 보기", card_name, count);
+    }
+
+    std::u8string function_bar_more_access_name(const std::u8string_view card_name, const std::size_t count)
+    {
+        return more_access_name(u8"기능 더 보기 (기능 줄)", card_name, count);
     }
 
     function_more_marker function_more_marker_state(const std::vector<card_function_view>& functions, const std::vector<bool>& on_card)

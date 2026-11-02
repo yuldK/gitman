@@ -1,6 +1,7 @@
 #include "application/project_path_resolver.h"
 #include "application/project_registration_service.h"
 #include "domain/discovery.h"
+#include "domain/function_trust.h"
 #include "helpers/discovery_test_doubles.h"
 #include "infrastructure/json_project_store.h"
 #include "infrastructure/json_workspace_document.h"
@@ -8,10 +9,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <span>
@@ -857,4 +860,284 @@ TEST_CASE("A program with variables passes the allow list when read", "[function
     REQUIRE(button_at(definition, 0).program == u8"${tools}\\run.bat");
     REQUIRE(button_at(definition, 1).program == u8"${env:SCRIPT}");
     REQUIRE(button_at(definition, 2).program == u8"${projectRoot}\\tools\\run");
+}
+
+namespace {
+    // 쓰기 함수(function-buttons-design 3.9, T10) test의 한 번 저장이다. 원문을 임시 파일로 쓰고 읽어 모델을 고친 뒤
+    // 저장하고 다시 읽는다. `change`가 없으면 기능 버튼과 무관한 변경(첫 카드 제외 토글)을 저장한다.
+    struct saved_round_trip
+    {
+        gitman::project_store_load_result loaded {};
+        std::u8string bytes {};
+        gitman::project_store_load_result reloaded {};
+    };
+
+    saved_round_trip save_round_trip(const std::u8string_view source, const std::function<void(gitman::workspace_document&)>& change = {})
+    {
+        const gitman::testing::scoped_scan_directory directory {};
+        REQUIRE(directory.available());
+        const std::u8string document_path { directory.path_of(u8"team.version-list") };
+        write_file(document_path, source);
+
+        gitman::win32::workspace_document_file_system file_system {};
+        fake_project_path_resolver resolver {};
+        gitman::json_project_store store { file_system, resolver };
+
+        saved_round_trip result {};
+        result.loaded = store.load(document_path);
+        REQUIRE(result.loaded.document.has_value());
+        REQUIRE_FALSE(result.loaded.has_errors());
+        gitman::workspace_document document { *result.loaded.document };
+        if (change != nullptr)
+            change(document);
+        else if (document.projects.empty() == false)
+            document.projects[0].enabled = document.projects[0].enabled == false;
+        const gitman::project_store_save_result saved { store.save(document_path, document, result.loaded.revision) };
+        REQUIRE(saved.succeeded());
+        result.bytes = read_file(document_path);
+        result.reloaded = store.load(document_path);
+        REQUIRE(result.reloaded.document.has_value());
+        REQUIRE_FALSE(result.reloaded.has_errors());
+        return result;
+    }
+
+    gitman::function_button& mutable_button(gitman::workspace_document& document, const std::u8string_view id)
+    {
+        REQUIRE(document.function_buttons.has_value());
+        gitman::function_button* found { nullptr };
+        for (gitman::function_button_entry& entry : document.function_buttons->buttons)
+        {
+            gitman::function_button* const button { std::get_if<gitman::function_button>(&entry) };
+            if (button != nullptr && button->id == id)
+                found = button;
+        }
+        REQUIRE(found != nullptr);
+        return *found;
+    }
+
+    std::vector<std::u8string> diagnostic_pointers(const std::span<const gitman::diagnostic> diagnostics)
+    {
+        std::vector<std::u8string> pointers {};
+        for (const gitman::diagnostic& value : diagnostics)
+            pointers.push_back(value.source.json_pointer);
+        std::ranges::sort(pointers);
+        return pointers;
+    }
+}
+
+TEST_CASE("The function button writer round trips the section", "[function_buttons][t10][store]")
+{
+    const saved_round_trip trip { save_round_trip(load_fixture("function-buttons.version-list")) };
+
+    // 다시 읽은 절이 쓰기 전과 같다 — 변수 순서, 실패 항목 자리, 신뢰 해시 입력까지 (`operator==`).
+    REQUIRE(trip.reloaded.document->function_buttons == trip.loaded.document->function_buttons);
+    REQUIRE_FALSE(trip.reloaded.has_warnings());
+    // 생략한 필드에 기본값 키를 새로 만들지 않는다. 만들면 다음 열기의 신뢰 해시가 바뀐다 (3.10).
+    REQUIRE(trip.bytes.find(u8"\"capture\"") == std::u8string::npos);
+    REQUIRE(trip.bytes.find(u8"\"confirm\": false") == std::u8string::npos);
+    REQUIRE(trip.bytes.find(u8"3600") == std::u8string::npos);
+    REQUIRE(trip.bytes.find(u8"\"icon\": \"play\"") == std::u8string::npos);
+    REQUIRE(trip.bytes.find(u8"\"placement\": \"menu\"") != std::u8string::npos);
+}
+
+TEST_CASE("Unknown placement values round trip until a placement is chosen", "[function_buttons][t10][store]")
+{
+    const std::u8string source {
+        document_with(
+            u8R"({"buttons":[)"
+            u8R"({"id":"a","label":"가","program":"C:\\x.exe","placement":"card"},)"
+            u8R"({"id":"b","label":"나","program":"C:\\x.exe","placement":"card"},)"
+            u8R"({"id":"c","label":"다","program":"C:\\x.exe","placement":"card"},)"
+            u8R"({"id":"d","label":"라","program":"C:\\x.exe","placement":"card"},)"
+            u8R"({"id":"side","label":"옆","program":"C:\\x.exe","placement":"sidebar"},)"
+            u8R"({"id":"number","label":"숫자","program":"C:\\x.exe","placement":5},)"
+            u8R"({"id":"null","label":"널","program":"C:\\x.exe","placement":null},)"
+            u8R"({"id":"object","label":"객체","program":"C:\\x.exe","placement":{"x":1}}]})"
+            , u8R"([{"id":"alpha","path":"alpha"}])"
+        )
+    };
+
+    SECTION("다른 일로 저장해도 파일의 값이 그대로다")
+    {
+        const saved_round_trip trip { save_round_trip(source) };
+        const gitman::function_buttons_definition& definition { *trip.reloaded.document->function_buttons };
+        // 4번째 `card`는 `bar`로 보이지만 파일에는 `card` 그대로다 (3.2).
+        REQUIRE(button_at(definition, 3).placement == std::optional<std::u8string> { u8"card" });
+        REQUIRE(button_at(definition, 4).placement == std::optional<std::u8string> { u8"sidebar" });
+        REQUIRE(button_at(definition, 5).placement == std::optional<std::u8string> { u8"5" });
+        REQUIRE(button_at(definition, 6).placement == std::optional<std::u8string> { u8"null" });
+        REQUIRE(button_at(definition, 7).placement == std::optional<std::u8string> { u8R"({"x":1})" });
+        REQUIRE(trip.bytes.find(u8"\"placement\": 5") != std::u8string::npos);
+        REQUIRE(trip.bytes.find(u8"\"placement\": null") != std::u8string::npos);
+        REQUIRE(diagnostic_pointers(trip.reloaded.diagnostics) == diagnostic_pointers(trip.loaded.diagnostics));
+    }
+
+    SECTION("배치를 고르면 그때 새 값으로 쓴다")
+    {
+        const saved_round_trip trip {
+            save_round_trip(source
+                , [](gitman::workspace_document& document)
+                {
+                    mutable_button(document, u8"number").placement = std::u8string { u8"bar" };
+                    mutable_button(document, u8"d").placement = std::u8string { u8"menu" };
+                }
+            )
+        };
+        const gitman::function_buttons_definition& definition { *trip.reloaded.document->function_buttons };
+        REQUIRE(button_at(definition, 3).placement == std::optional<std::u8string> { u8"menu" });
+        REQUIRE(button_at(definition, 5).placement == std::optional<std::u8string> { u8"bar" });
+        // 고르지 않은 알 수 없는 값은 그대로다.
+        REQUIRE(button_at(definition, 4).placement == std::optional<std::u8string> { u8"sidebar" });
+        REQUIRE(button_at(definition, 6).placement == std::optional<std::u8string> { u8"null" });
+    }
+}
+
+TEST_CASE("Failed items and unknown keys stay in place through the writer", "[function_buttons][t10][store]")
+{
+    const saved_round_trip trip { save_round_trip(load_fixture("function-buttons-invalid.version-list")) };
+    const gitman::function_buttons_definition& before { *trip.loaded.document->function_buttons };
+    const gitman::function_buttons_definition& after { *trip.reloaded.document->function_buttons };
+
+    // 실패 항목은 원문 그대로 같은 자리다. 통과 항목도 같은 자리다 (중복 id의 뒤 항목 포함).
+    REQUIRE(after.buttons.size() == before.buttons.size());
+    std::size_t failed { 0 };
+    for (std::size_t index = 0; index < before.buttons.size(); ++index)
+    {
+        REQUIRE(after.buttons[index].index() == before.buttons[index].index());
+        if (const gitman::function_source_text* const source { std::get_if<gitman::function_source_text>(&before.buttons[index]) }; source != nullptr)
+        {
+            REQUIRE(source_at(after, index) == *source);
+            ++failed;
+        }
+        else
+            REQUIRE(button_at(after, index) == button_at(before, index));
+    }
+    REQUIRE(failed > 5u);
+    // 쓸 수 없는 변수와 object가 아닌 덮어쓰기도 같은 자리다.
+    REQUIRE(after.variables == before.variables);
+    REQUIRE(after.project_variables == before.project_variables);
+
+    // 알 수 없는 키는 버튼 안(`future_key`)과 절 바로 아래(`future_section`) 모두 남아 같은 경고가 다시 난다.
+    REQUIRE(diagnostic_pointers(trip.reloaded.diagnostics) == diagnostic_pointers(trip.loaded.diagnostics));
+    REQUIRE(find_diagnostic(trip.reloaded.diagnostics, u8"/function_buttons/future_section") != nullptr);
+    REQUIRE(find_diagnostic(trip.reloaded.diagnostics, button_pointer(16) + u8"/future_key") != nullptr);
+    REQUIRE(trip.bytes.find(u8"\"keep\": true") != std::u8string::npos);
+    // 중복 id의 뒤 항목(실패)은 앞 항목의 template이 되지 않는다. 앞 항목은 알 수 없는 키 없이 그대로다.
+    REQUIRE(button_at(after, 0).program == u8"C:\\Tools\\build.exe");
+    REQUIRE(after.source_digest_input == before.source_digest_input);
+}
+
+TEST_CASE("A missing or non object function button section is left untouched", "[function_buttons][t10][store]")
+{
+    SECTION("키가 없으면 만들지 않는다")
+    {
+        const saved_round_trip trip { save_round_trip(u8R"({"schema_version":1,"projects":[{"id":"alpha","path":"alpha"}]})") };
+        REQUIRE(trip.bytes.find(u8"function_buttons") == std::u8string::npos);
+    }
+
+    SECTION("object가 아니면 원문 그대로다")
+    {
+        const saved_round_trip trip { save_round_trip(u8R"({"schema_version":1,"function_buttons":[1,"two"],"projects":[{"id":"alpha","path":"alpha"}]})") };
+        REQUIRE_FALSE(trip.reloaded.document->function_buttons.has_value());
+        REQUIRE(find_diagnostic(trip.reloaded.diagnostics, u8"/function_buttons")->code == gitman::diagnostic_code::invalid_function_buttons);
+        REQUIRE(trip.bytes.find(u8"\"two\"") != std::u8string::npos);
+    }
+
+    SECTION("null이면 null 그대로다")
+    {
+        const saved_round_trip trip { save_round_trip(u8R"({"schema_version":1,"function_buttons":null,"projects":[{"id":"alpha","path":"alpha"}]})") };
+        REQUIRE(trip.bytes.find(u8"\"function_buttons\": null") != std::u8string::npos);
+    }
+}
+
+TEST_CASE("Malformed function button subsections keep their source through the writer", "[function_buttons][t10][store]")
+{
+    // T3 "설계에서 달라진 것": 모델에 원문 자리가 없는 값은 쓰기 함수가 template의 원문 값을 되살린다.
+    const saved_round_trip trip {
+        save_round_trip(document_with(u8R"({"variables":[1],"project_variables":"x","buttons":{"id":"a"},"extra":{"y":2}})", u8R"([{"id":"alpha","path":"alpha"}])"))
+    };
+    REQUIRE(diagnostic_pointers(trip.reloaded.diagnostics) == diagnostic_pointers(trip.loaded.diagnostics));
+    REQUIRE(trip.bytes.find(u8"\"project_variables\": \"x\"") != std::u8string::npos);
+    REQUIRE(trip.bytes.find(u8"\"id\": \"a\"") != std::u8string::npos);
+    REQUIRE(trip.bytes.find(u8"\"y\": 2") != std::u8string::npos);
+
+    // null도 키가 없는 것과 같게 읽히지만 파일의 null은 그대로다.
+    const saved_round_trip nulls { save_round_trip(document_with(u8R"({"variables":null,"buttons":null})", u8R"([{"id":"alpha","path":"alpha"}])")) };
+    REQUIRE(nulls.bytes.find(u8"\"variables\": null") != std::u8string::npos);
+    REQUIRE(nulls.bytes.find(u8"\"buttons\": null") != std::u8string::npos);
+}
+
+TEST_CASE("A placement change saved and read again keeps the trust digest", "[function_buttons][t10][store][trust]")
+{
+    // 배치 메뉴(T10)는 모델의 배치만 바꿔 저장한다. 해시 입력은 파일 원문에서 만들므로, 쓴 뒤 다시 읽어도 같은
+    // 해시여야 재배치가 다음 열기에서 신뢰를 다시 묻지 않는다 (T7에서 넘어온 일, 3.10).
+    const saved_round_trip trip {
+        save_round_trip(load_fixture("function-buttons.version-list")
+            , [](gitman::workspace_document& document)
+            {
+                mutable_button(document, u8"test").placement = std::u8string { u8"card" };
+                mutable_button(document, u8"clean").placement = std::u8string { u8"bar" };
+                mutable_button(document, u8"status").placement = std::u8string { u8"bar" };
+            }
+        )
+    };
+    const gitman::workspace_document& before { *trip.loaded.document };
+    const gitman::workspace_document& after { *trip.reloaded.document };
+    REQUIRE(button_at(*after.function_buttons, 3).placement == std::optional<std::u8string> { u8"card" });
+    REQUIRE(button_at(*after.function_buttons, 4).placement == std::optional<std::u8string> { u8"bar" });
+    REQUIRE(after.function_buttons->source_digest_input == before.function_buttons->source_digest_input);
+    REQUIRE(gitman::function_trust_digest(*after.function_buttons, after.projects) == gitman::function_trust_digest(*before.function_buttons, before.projects));
+
+    // 실행에 쓰는 필드를 바꾸면 해시가 바뀐다 — 위의 같음이 우연이 아니다.
+    const saved_round_trip changed {
+        save_round_trip(load_fixture("function-buttons.version-list")
+            , [](gitman::workspace_document& document)
+            {
+                mutable_button(document, u8"test").args.push_back(u8"--all");
+            }
+        )
+    };
+    REQUIRE(changed.reloaded.document->function_buttons->source_digest_input != changed.loaded.document->function_buttons->source_digest_input);
+}
+
+TEST_CASE("A placement change keeps stated default fields and the trust digest", "[function_buttons][t10][store][trust]")
+{
+    // 기본값과 같은 값을 손으로 적은 문서다. 쓰기 함수는 원문에 있던 키를 기본값이어도 지우지 않는다 — 지우면 다시 읽은
+    // 해시 입력이 바뀌어 재배치 뒤 다음 열기가 신뢰를 다시 묻는다 (3.10, T7에서 넘어온 일).
+    const std::u8string source {
+        document_with(
+            u8R"({"buttons":[)"
+            u8R"({"id":"a","label":"가","program":"C:\\x.exe","args":[],"mode":"capture","confirm":false,"timeout_seconds":3600,"placement":"card"},)"
+            u8R"({"id":"b","label":"나","program":"C:\\x.exe"}]})"
+            , u8R"([{"id":"alpha","path":"alpha"}])"
+        )
+    };
+    const saved_round_trip trip {
+        save_round_trip(source
+            , [](gitman::workspace_document& document)
+            {
+                mutable_button(document, u8"a").placement = std::u8string { u8"bar" };
+                mutable_button(document, u8"b").placement = std::u8string { u8"card" };
+            }
+        )
+    };
+    const gitman::workspace_document& before { *trip.loaded.document };
+    const gitman::workspace_document& after { *trip.reloaded.document };
+    REQUIRE(button_at(*after.function_buttons, 0).placement == std::optional<std::u8string> { u8"bar" });
+    REQUIRE(button_at(*after.function_buttons, 1).placement == std::optional<std::u8string> { u8"card" });
+    REQUIRE(after.function_buttons->source_digest_input == before.function_buttons->source_digest_input);
+    REQUIRE(gitman::function_trust_digest(*after.function_buttons, after.projects) == gitman::function_trust_digest(*before.function_buttons, before.projects));
+
+    // 적었던 기본값 키는 파일에 남고, 적지 않았던 `b`에는 새로 생기지 않는다 (키가 하나씩만 있다).
+    const auto occurrences = [&](const std::u8string_view needle)
+    {
+        std::size_t count { 0 };
+        for (std::size_t position = trip.bytes.find(needle); position != std::u8string::npos; position = trip.bytes.find(needle, position + needle.size()))
+            ++count;
+        return count;
+    };
+    REQUIRE(occurrences(u8"\"args\": []") == 1u);
+    REQUIRE(occurrences(u8"\"mode\": \"capture\"") == 1u);
+    REQUIRE(occurrences(u8"\"confirm\": false") == 1u);
+    REQUIRE(occurrences(u8"\"timeout_seconds\": 3600") == 1u);
 }

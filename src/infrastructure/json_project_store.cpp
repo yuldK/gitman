@@ -14,7 +14,9 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace gitman {
@@ -196,6 +198,180 @@ namespace gitman {
             root["window"] = std::move(value);
         }
 
+        // 원문 JSON 글로 든 값(검증에 실패한 항목, 문자열이 아닌 변수 값)을 다시 값으로 되돌린다. 파서가 dump한 글이라
+        // 늘 파싱되지만, 그렇지 않으면 글자 그대로 문자열로 둔다 — 원문이 사라지는 것보다 낫다.
+        json parse_source_text(const std::u8string_view text)
+        {
+            const std::string_view bytes { as_bytes(text) };
+            json value = json::parse(bytes.begin(), bytes.end(), nullptr, false);
+            if (value.is_discarded())
+                return json(as_string(text));
+            return value;
+        }
+
+        json function_variables_json(const std::vector<function_variable>& variables)
+        {
+            // 쓸 수 없는 변수(이름 규칙 위반, 예약 이름, 문자열이 아닌 값)도 원문째 같은 자리에 쓴다 (3.9).
+            json value = json::object();
+            for (const function_variable& variable : variables)
+            {
+                const std::string name { as_string(variable.name) };
+                if (const std::u8string* const text { std::get_if<std::u8string>(&variable.value) }; text != nullptr)
+                    value[name] = as_string(*text);
+                else
+                    value[name] = parse_source_text(std::get<function_source_text>(variable.value).json);
+            }
+            return value;
+        }
+
+        json function_project_variables_json(const std::vector<function_project_variables>& entries)
+        {
+            json value = json::object();
+            for (const function_project_variables& entry : entries)
+            {
+                const std::string project { as_string(entry.project) };
+                if (const auto* const variables { std::get_if<std::vector<function_variable>>(&entry.variables) }; variables != nullptr)
+                    value[project] = function_variables_json(*variables);
+                else
+                    value[project] = parse_source_text(std::get<function_source_text>(entry.variables).json);
+            }
+            return value;
+        }
+
+        // 통과한 버튼의 template이다 (3.9). 버튼 `id`가 열쇠이고 읽을 때의 원문 객체다 — 알 수 없는 키와 알 수 없는
+        // `placement` 값을 여기서 되살린다. 같은 id의 객체가 여럿이면(중복 id는 뒤 항목이 실패 항목이 된다) 모델의
+        // 실패 항목 원문과 같은 객체를 건너뛰어, 실패한 뒤 항목이 앞 항목의 template이 되지 않게 한다.
+        std::unordered_map<std::string, json> function_button_templates(const json& buttons, const std::vector<function_button_entry>& entries)
+        {
+            std::unordered_map<std::string, json> templates {};
+            if (buttons.is_array() == false)
+                return templates;
+
+            std::unordered_set<std::string> failed {};
+            for (const function_button_entry& entry : entries)
+            {
+                if (const function_source_text* const source { std::get_if<function_source_text>(&entry) }; source != nullptr)
+                    failed.insert(as_string(source->json));
+            }
+
+            std::unordered_map<std::string, json> fallbacks {};
+            for (const json& item : buttons)
+            {
+                if (item.is_object() == false)
+                    continue;
+                const auto id { item.find("id") };
+                if (id == item.end() || id->is_string() == false)
+                    continue;
+                const std::string& key { id->get_ref<const std::string&>() };
+                fallbacks.try_emplace(key, item);
+                if (failed.contains(item.dump()) == false)
+                    templates.try_emplace(key, item);
+            }
+            // 같은 글의 객체가 통과 항목과 실패 항목에 모두 있으면 둘 다 건너뛰었다. 그때는 그 id의 첫 객체를 쓴다.
+            for (auto& [key, item] : fallbacks)
+                templates.try_emplace(key, std::move(item));
+            return templates;
+        }
+
+        // 통과한 버튼 하나다. 알려진 필드는 모델 값으로 쓰고, 생략한 문서에 기본값 키를 새로 만들지 않는다 — 다시 읽은
+        // 신뢰 해시 입력(3.10)이 쓰기 전과 같아야 재배치가 신뢰를 다시 묻지 않는다 (T7에서 넘어온 일).
+        json function_button_json(json value, const function_button& button)
+        {
+            if (value.is_object() == false)
+                value = json::object();
+            const bool had_args { value.contains("args") };
+            const bool had_mode { value.contains("mode") };
+            const bool had_confirm { value.contains("confirm") };
+            const bool had_timeout { value.contains("timeout_seconds") };
+
+            value["id"] = as_string(button.id);
+            value["label"] = as_string(button.label);
+            if (button.icon.has_value())
+                value["icon"] = as_string(*button.icon);
+            else
+                value.erase("icon");
+            value["program"] = as_string(button.program);
+            if (had_args || button.args.empty() == false)
+            {
+                json args = json::array();
+                for (const std::u8string& argument : button.args)
+                    args.push_back(as_string(argument));
+                value["args"] = std::move(args);
+            }
+            if (button.cwd.has_value())
+                value["cwd"] = as_string(*button.cwd);
+            else
+                value.erase("cwd");
+            if (had_mode || button.mode != function_run_mode::capture)
+                value["mode"] = as_string(function_run_mode_name(button.mode));
+            if (button.vcs != function_vcs_scope::any)
+                value["vcs"] = as_string(function_vcs_scope_name(button.vcs));
+            else
+                value.erase("vcs");
+            if (button.project_ids.has_value())
+            {
+                json ids = json::array();
+                for (const std::u8string& id : *button.project_ids)
+                    ids.push_back(as_string(id));
+                value["project_ids"] = std::move(ids);
+            }
+            else
+                value.erase("project_ids");
+            if (had_confirm || button.confirm)
+                value["confirm"] = button.confirm;
+            if (had_timeout || button.timeout_seconds != default_function_timeout_seconds)
+                value["timeout_seconds"] = button.timeout_seconds;
+
+            // 배치는 아는 값이면 모델 값이다. 알 수 없는 값(문자열이 아닌 원문 포함)은 template의 원문 값을 그대로 둔다 —
+            // 다른 일로 저장해도 파일의 값이 바뀌지 않는다. 사용자가 배치 메뉴로 고르면 모델이 아는 값이 되어 그때 쓴다 (3.2).
+            if (button.placement.has_value() == false)
+                value.erase("placement");
+            else if (parse_function_placement(*button.placement).has_value() || value.contains("placement") == false)
+                value["placement"] = as_string(*button.placement);
+            return value;
+        }
+
+        // `function_buttons`를 모델에서 다시 쓴다 (function-buttons-design 3.9, D12-A). 모델이 이해하지 못한 것은
+        // 원문째 되살린다: 실패 항목은 같은 자리에, 버튼 안과 절 바로 아래의 알 수 없는 키는 template에서, 모델에 자리가
+        // 없는 원문(object가 아닌 `variables`·`project_variables`, 배열이 아닌 `buttons`, `null`)은 그 키를 건드리지 않는다.
+        // 모델에 절이 없으면(키가 없었거나 object가 아니었다) 원문 그대로다.
+        void write_function_buttons(json& root, const std::optional<function_buttons_definition>& definition)
+        {
+            if (definition.has_value() == false)
+                return;
+
+            const auto existing { root.find("function_buttons") };
+            json value = existing != root.end() && existing->is_object() ? *existing : json::object();
+
+            const auto variables { value.find("variables") };
+            if (variables == value.end() ? definition->variables.empty() == false : variables->is_object())
+                value["variables"] = function_variables_json(definition->variables);
+
+            const auto project_variables { value.find("project_variables") };
+            if (project_variables == value.end() ? definition->project_variables.empty() == false : project_variables->is_object())
+                value["project_variables"] = function_project_variables_json(definition->project_variables);
+
+            const auto buttons { value.find("buttons") };
+            if (buttons == value.end() ? definition->buttons.empty() == false : buttons->is_array())
+            {
+                std::unordered_map<std::string, json> templates { function_button_templates(buttons == value.end() ? json::array() : *buttons, definition->buttons) };
+                json items = json::array();
+                for (const function_button_entry& entry : definition->buttons)
+                {
+                    if (const function_button* const button { std::get_if<function_button>(&entry) }; button != nullptr)
+                    {
+                        const auto found { templates.find(as_string(button->id)) };
+                        items.push_back(function_button_json(found == templates.end() ? json::object() : found->second, *button));
+                    }
+                    else
+                        items.push_back(parse_source_text(std::get<function_source_text>(entry).json));
+                }
+                value["buttons"] = std::move(items);
+            }
+
+            root["function_buttons"] = std::move(value);
+        }
+
         json project_json(json value, const project_definition& project)
         {
             if (value.is_object() == false)
@@ -273,6 +449,7 @@ namespace gitman {
             write_appearance(root, document.appearance);
             write_fonts(root, document.fonts);
             write_window(root, document.window);
+            write_function_buttons(root, document.function_buttons);
             root["projects"] = std::move(projects);
 
             serialized_workspace_document result {};

@@ -186,6 +186,11 @@ namespace gitman::ui {
         const luil::ui_element* const pane { tree.find(luil::ui_element_id { kind_log_pane }) };
         if (pane != nullptr && pane->visible() && pane->bounds().contains(event.x, event.y))
             return { make_logic_action(log_scroll_intent { scroll_delta }) };
+        // 기능 줄은 로그 pane 160 안 맨 위 36이다 (function-buttons-design 2.4). 줄이 pane 자리를 나눠 가졌을 뿐이라
+        // 그 위의 휠도 줄이 없을 때처럼 로그를 스크롤한다. 줄 자신은 스크롤할 것이 없다.
+        const luil::ui_element* const bar { tree.find(luil::ui_element_id { kind_function_bar }) };
+        if (bar != nullptr && bar->visible() && bar->bounds().contains(event.x, event.y))
+            return { make_logic_action(log_scroll_intent { scroll_delta }) };
 
         return { make_logic_action(scroll_intent { scroll_delta }) };
     }

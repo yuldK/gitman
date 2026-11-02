@@ -263,6 +263,8 @@ gitman_add_source_filter(gitman_lib_files "presentation/ui/workspace"
     presentation/ui/card_element.h
     presentation/ui/card_list_element.cpp
     presentation/ui/card_list_element.h
+    presentation/ui/function_bar_element.cpp
+    presentation/ui/function_bar_element.h
     presentation/ui/log_view_element.cpp
     presentation/ui/log_view_element.h
     presentation/ui/start_page_element.cpp

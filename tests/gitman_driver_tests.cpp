@@ -20,6 +20,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <variant>
@@ -329,6 +330,52 @@ TEST_CASE("An open context menu rides the frame as a popup", "[driver][frame][po
     // 닫으면 popup도 함께 빠진다.
     driver.handle(luil::app_message { gitman::logic_message { gitman::close_context_menu_intent {} } });
     REQUIRE(driver.make_frame()->popups.empty());
+}
+
+TEST_CASE("A bar button that leaves the bar rides the frame as a focus request", "[driver][frame][function_buttons][t10]")
+{
+    // 초점 옮기기의 대상은 driver가 지은 tree에서 고른다 (function-buttons-design 2.2.5). logic은 후보만 싣는다.
+    // 문서에 revision이 없어 배치 변경의 저장은 파일을 건드리지 않고 거절된다.
+    gitman::win32::gitman_driver driver {};
+    driver.handle(luil::app_message { gitman::logic_message { gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f } } });
+
+    gitman::document_loaded_event loaded {};
+    gitman::workspace_document document {};
+    document.document_path = u8"C:\\work\\p.version-list";
+    gitman::project_definition project {};
+    project.id.value = u8"alpha";
+    project.display_name = u8"alpha";
+    project.path.original = u8"C:\\work\\alpha";
+    project.path.normalized = project.path.original;
+    project.path.state = gitman::configured_path_state::available;
+    project.enabled = false;
+    document.projects.push_back(std::move(project));
+    gitman::function_buttons_definition definition {};
+    for (const std::u8string_view id : { std::u8string_view { u8"b" }, std::u8string_view { u8"c" } })
+    {
+        gitman::function_button button {};
+        button.id = id;
+        button.label = id;
+        button.program = u8"C:\\Tools\\run.exe";
+        button.placement = std::u8string { u8"bar" };
+        definition.buttons.emplace_back(std::move(button));
+    }
+    document.function_buttons = std::move(definition);
+    loaded.document = { std::move(document) };
+    driver.handle(luil::app_message { gitman::logic_message { std::move(loaded) } });
+    driver.handle(luil::app_message { gitman::logic_message { gitman::select_card_intent { gitman::project_id { u8"alpha" } } } });
+
+    // 요청이 없으면 frame에도 없다.
+    REQUIRE(driver.make_frame()->focus.has_value() == false);
+
+    driver.handle(luil::app_message { gitman::logic_message { gitman::open_function_placement_menu_intent { gitman::project_id { u8"alpha" }, u8"b", true, 0.0f, 0.0f } } });
+    driver.handle(luil::app_message { gitman::logic_message { gitman::select_context_menu_item_intent { gitman::context_menu_entry::place_function_in_menu, u8"b" } } });
+    const std::shared_ptr<const luil::win32::ui_frame> frame { driver.make_frame() };
+    REQUIRE(frame->focus.has_value());
+    REQUIRE(frame->focus->id == driver.last_view()->function_focus->id);
+    REQUIRE(frame->focus->surface.empty());
+    REQUIRE(frame->focus->target == luil::ui_element_id { gitman::ui::kind_function_bar_button, u8"alpha:c" });
+    REQUIRE(frame->tree->find(frame->focus->target) != nullptr);
 }
 
 TEST_CASE("Cancel shortens handling to the close message only", "[driver][shutdown]")

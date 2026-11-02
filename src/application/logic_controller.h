@@ -221,6 +221,16 @@ namespace gitman {
         void handle_open_function_menu(const open_function_menu_intent& intent);
         // `Alt+1..3`이다 (2.3.4). N번째 보이는 `card` 기능이 그 카드에 적용되면 실행 intent와 같다.
         void handle_run_function_shortcut(const run_function_shortcut_intent& intent);
+        // 활성 `card`·`bar` 버튼의 배치 메뉴다 (2.2.5). 카드 안 버튼이라 선택을 바꾸지 않는다.
+        void handle_open_function_placement_menu(const open_function_placement_menu_intent& intent);
+        // 배치를 바꾸고 곧바로 저장한다 (4.11). `focus_card`가 있으면 그 카드의 기능 줄 버튼에서 연 배치 메뉴로
+        // 고른 것이라, 그 버튼이 줄을 떠나면 초점 옮기기를 싣는다 (2.2.5).
+        void handle_set_function_placement(const set_function_placement_intent& intent, const std::optional<project_id>& focus_card);
+        // 문서의 카드 중 하나에라도 적용되는 `bar` 기능(보이는 배치 기준)이 있다 (2.2.2 규칙 5, D23-A). 그때만
+        // 기능 줄이 서고 로그 본문이 준다. 스크롤 한계와 view가 같은 판정을 쓴다.
+        [[nodiscard]] bool has_function_bar() const;
+        // 기능 줄의 표시 모델이다. `has_function_bar()`가 참일 때만 부른다.
+        [[nodiscard]] function_bar_view build_function_bar_view() const;
         // 모든 카드에서 풀 자리를 차지한 실행 수다. 풀의 상한과 같은 기준이다 (4.4).
         [[nodiscard]] std::size_t function_runs_in_flight() const noexcept;
         [[nodiscard]] static bool function_running(const card_state& card) noexcept;
@@ -365,7 +375,8 @@ namespace gitman {
         void handle_log_scroll(float delta);
         // 선택 카드 로그의 필터 적용 후 내용 높이다 (논리 픽셀).
         [[nodiscard]] float log_content_height() const noexcept;
-        [[nodiscard]] float log_viewport_height() const noexcept;
+        // 로그 본문 높이다 (논리 픽셀). 기능 줄 유무(`has_function_bar()`)는 카드를 훑는 판정이라 부르는 쪽이 한 번 구해 넘긴다.
+        [[nodiscard]] float log_viewport_height(bool function_bar) const noexcept;
         void reset_log_view_state() noexcept;
         // 스크롤 한계만 필요한 곳은 표시 모델을 만들지 않는다. 창 크기 변경처럼
         // 자주 오는 입력이 이 경로를 쓴다.
@@ -585,6 +596,8 @@ namespace gitman {
             document,
             // 카드의 `⋯`·`Alt+↓`·카드 메뉴의 `기능 더 보기…`가 연 기능 메뉴다 (function-buttons-design 2.3.2).
             functions,
+            // 활성 `card`·`bar` 버튼이 연 배치 메뉴다 (function-buttons-design 2.2.5). `button`이 그 기능이다.
+            placement,
         };
 
         struct context_menu_state
@@ -597,9 +610,16 @@ namespace gitman {
             // 기능 출력·조회 event마다 다시 지어지므로 지을 때의 시각을 쓰면 떠 있는 메뉴의 라벨과 접근 이름이
             // 불규칙하게 바뀐다 (function-buttons-design 2.3.4).
             std::chrono::steady_clock::time_point opened_at {};
+            // 배치 메뉴의 기능과, 그 메뉴를 기능 줄 버튼에서 열었는지다.
+            std::u8string button {};
+            bool from_bar { false };
         };
 
         std::optional<context_menu_state> context_menu_ {};
+        // 마지막 초점 옮기기 요청이다 (function-buttons-design 2.2.5). 번호가 같은 요청은 UI가 한 번만 이행하므로
+        // 이행한 뒤에도 남겨 두어도 된다. 번호는 문서를 바꿔도 되돌리지 않는다.
+        std::optional<function_focus_request> function_focus_ {};
+        std::uint64_t function_focus_revision_ { 0 };
 
         // 열린 메뉴의 항목 목록이다 (function-buttons-design T8). view와 고른 항목의 처리가 같은
         // 목록을 써서, 메뉴가 떠 있는 사이 바뀐 활성 여부를 고른 시점에 다시 본다. 대상이
@@ -614,6 +634,9 @@ namespace gitman {
         [[nodiscard]] static context_menu_item_view function_menu_item(const card_function_view& function, std::chrono::steady_clock::time_point opened_at);
         // T12 전의 `기능 편집…` 자리다. 배너 메뉴의 `VSCode로 열기`와 같은 동작이다 (2.3.2).
         [[nodiscard]] std::optional<context_menu_item_view> function_edit_menu_item() const;
+        // 배치 메뉴다 (2.2.5). `카드에 두기`·`기능 줄에 두기`·`메뉴에만 두기`(radio, 보이는 배치에 `checked`) → 구분선 →
+        // `기능 편집…` 자리다. 그 기능이 이 카드에 `card`나 `bar` 버튼으로 활성이 아니면 비어 있다(메뉴를 닫는다).
+        [[nodiscard]] std::vector<context_menu_item_view> placement_context_menu_items(const card_state& card, std::u8string_view button_id, bool from_bar) const;
         // 고른 항목의 하위 동작을 한다. 항목은 지금 활성인 것이다. 외부 열기는 UI thread가
         // 이미 처리했으므로 여기서는 하지 않는다.
         void run_context_menu_item(const context_menu_state& menu, const context_menu_item_view& item);

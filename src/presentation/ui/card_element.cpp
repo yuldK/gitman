@@ -170,6 +170,14 @@ namespace gitman::ui {
                 button->set_action(ui_trigger::left_click, make_logic_click(stop_function_intent { card_.id, function.button_id }));
             else
                 button->set_action(ui_trigger::left_click, make_logic_click(run_function_intent { card_.id, function.button_id }));
+            // 우클릭은 배치 메뉴다 (2.2.5). luil은 우클릭을 hit 요소에서만 실행하므로 카드 body의 카드 메뉴와 섞이지
+            // 않는다. 비활성 버튼은 받지 않는다. `card` 버튼은 Tab 자리가 아니라 `Shift+F10`은 카드 메뉴로 간다.
+            button->set_action(ui_trigger::right_click
+                , [id = card_.id, button_id = function.button_id](const ui_action_context& context) -> std::vector<input_action>
+                {
+                    return { make_logic_action(open_function_placement_menu_intent { id, button_id, false, context.x, context.y }) };
+                }
+            );
             if (function.enabled == false)
                 button->set_enabled(false);
             function_buttons_.push_back({ button.get(), nullptr, index });

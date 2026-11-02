@@ -82,6 +82,32 @@ namespace gitman {
         std::optional<std::chrono::steady_clock::time_point> running_function_started_at {};
     };
 
+    // 선택 카드 기능 줄의 표시 모델이다 (function-buttons-design 2.2.2 규칙 5, 2.4). 문서의 카드 중 하나에라도
+    // 적용되는 `bar` 기능(보이는 배치 기준)이 있으면 늘 있다 — 선택이 바뀔 때 로그 본문 높이가 튀지 않게 한다.
+    struct function_bar_view
+    {
+        // 선택 카드다. 선택이 없으면 비어 있고 줄의 `⋯`는 비활성이다.
+        project_id card {};
+        std::u8string card_name {};
+        // 선택 카드에 적용되는 `bar` 기능이다 (문서 순서, 판정은 카드 view와 같다).
+        std::vector<card_function_view> functions {};
+        // 선택 카드에 적용되는 기능 전체의 수다. 줄의 `⋯`가 여는 기능 메뉴의 기능 수라 그 접근 이름이 쓴다.
+        std::size_t total_functions { 0 };
+        // 버튼이 없을 때 그 자리에 보이는 안내다. 버튼이 있으면 비어 있다.
+        std::u8string hint {};
+    };
+
+    // 초점을 가진 기능 줄 버튼이 배치 변경으로 줄을 떠났을 때의 초점 옮기기다 (2.2.5). logic은 어떤 element가
+    // 그려지고 보이는지 모르므로 후보만 싣고, tree를 지은 쪽이 보이는 첫 후보를 고른다: 줄에서 그 버튼 뒤에 있던
+    // 버튼들(문서 순서) → 줄의 `⋯` → 카드의 `⋯`. 없으면 초점이 지워진 채로 둔다.
+    struct function_focus_request
+    {
+        // 요청 번호다. 바뀔 때만 새 요청이다 (luil `focus_request::id`).
+        std::uint64_t id { 0 };
+        project_id card {};
+        std::vector<std::u8string> next_buttons {};
+    };
+
     enum class view_empty_state
     {
         none,
@@ -304,11 +330,16 @@ namespace gitman {
         more_functions,
         // 기능 메뉴의 `문서 다시 읽기`다. 안전한 다시 읽기(4.9)는 T11이라 그때까지 비활성이다.
         reload_document,
+        // 배치 메뉴의 세 radio다 (function-buttons-design 2.2.5). argument가 버튼 id다. 항목 하나에 값이 둘(버튼 id,
+        // 배치) 필요해 배치마다 동작을 하나씩 둔다 — argument에 둘을 이어 담으면 늦은 클릭 판정이 나눠 읽어야 한다.
+        place_function_on_card,
+        place_function_on_bar,
+        place_function_in_menu,
     };
 
     // `context_menu_entry`의 값 수다. 키 표를 되돌리는 배열이 모든 값을 덮는지 묶는다 (popup의
     // `static_assert`). 새 값은 enum 끝에 더하고 이 값을 함께 고친다.
-    inline constexpr std::size_t context_menu_entry_count { static_cast<std::size_t>(context_menu_entry::reload_document) + 1 };
+    inline constexpr std::size_t context_menu_entry_count { static_cast<std::size_t>(context_menu_entry::place_function_in_menu) + 1 };
 
     // 메뉴 항목 하나의 모양이다. radio는 하나만 고르는 무리(배치 메뉴의 세 배치,
     // function-buttons-design 2.2.5)이고 luil `menu_item_kind::radio`로 그린다.
@@ -607,6 +638,11 @@ namespace gitman {
         bool document_generating { false };
         // 선택 카드가 있으면 그 카드의 로그 뷰다. 없으면 하단 pane을 그리지 않는다.
         std::optional<log_view_model> log {};
+        // 값이 있으면 로그 pane 안 맨 위에 기능 줄이 서고 로그 본문이 그만큼 준다 (function-buttons-design 2.4).
+        // 로그 pane이 있을 때만 값이 있다.
+        std::optional<function_bar_view> function_bar {};
+        // 배치 변경으로 초점을 가진 줄 버튼이 사라졌을 때의 초점 옮기기다 (2.2.5).
+        std::optional<function_focus_request> function_focus {};
         // 값이 있으면 switch dialog가 화면을 덮는다.
         std::optional<switch_dialog_view> switch_dialog {};
         // 값이 있으면 글꼴 선택 dialog가 환경설정 위에 뜬다 (F2.5).

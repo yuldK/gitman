@@ -6,6 +6,7 @@
 #include "presentation/ui/discovery_dialog_element.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/font_dialog_element.h"
+#include "presentation/ui/function_bar_element.h"
 #include "presentation/ui/function_confirm_dialog_element.h"
 #include "presentation/ui/generate_document_dialog_element.h"
 #include "presentation/ui/gitman_caption.h"
@@ -22,9 +23,11 @@
 #include "luil/ui/label_element.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace gitman::ui {
     namespace {
@@ -165,7 +168,17 @@ namespace gitman::ui {
                 {
                     const float scale { view.scale > 0.0f ? view.scale : 1.0f };
                     const list_layout layout { compute_list_layout(view.window_height, scale, view.notices.empty() == false, true) };
-                    float body_height { layout.log_height - layout_log_header_height() * scale };
+                    // 기능 줄은 로그 pane 160 안 맨 위를 가져간다 (function-buttons-design 2.4). 목록 viewport는
+                    // 그대로이고 로그 본문이 그만큼 준다. Tab 순서가 그리기 순서라 줄을 로그 헤더 앞에 둔다 (2.2.6).
+                    float bar_height { 0.0f };
+                    if (view.function_bar.has_value())
+                    {
+                        auto bar { std::make_unique<function_bar_element>(*view.function_bar) };
+                        function_bar_ = bar.get();
+                        add_child(std::move(bar));
+                        bar_height = layout_function_bar_height() * scale;
+                    }
+                    float body_height { layout.log_height - bar_height - layout_log_header_height() * scale };
                     if (body_height < 0.0f)
                         body_height = 0.0f;
                     auto log_pane { std::make_unique<log_view_element>(*view.log, body_height, scale) };
@@ -265,7 +278,17 @@ namespace gitman::ui {
                 notice_->arrange({ { 0.0f, notice_top, context.slot.width, layout_notice_height() * scale }, scale });
                 card_list_->arrange({ { 0.0f, layout.content_top, context.slot.width, layout.viewport_height }, scale, context.scroll_offset });
                 if (log_pane_ != nullptr)
-                    log_pane_->arrange({ { 0.0f, layout.log_top, context.slot.width, layout.log_height }, scale });
+                {
+                    // 기능 줄이 있으면 pane 위를 줄이 쓰고 로그 pane은 남은 높이다 (100%에서 36 + 124). 창이 아주 낮아
+                    // pane이 줄보다 낮으면 줄이 먼저 남는다. 줄은 배치의 측정기로 버튼 폭을 재므로 그대로 넘긴다.
+                    float bar_height { 0.0f };
+                    if (function_bar_ != nullptr)
+                    {
+                        bar_height = std::min(layout_function_bar_height() * scale, layout.log_height);
+                        function_bar_->arrange(context.for_child({ 0.0f, layout.log_top, context.slot.width, bar_height }));
+                    }
+                    log_pane_->arrange({ { 0.0f, layout.log_top + bar_height, context.slot.width, layout.log_height - bar_height }, scale });
+                }
                 // dialog host는 창 slot을 통째로 받는다 — scrim이 그것을 덮고 본체는
                 // host가 가운데에 놓는다 (설계 D2-A).
                 if (switch_dialog_ != nullptr)
@@ -307,6 +330,7 @@ namespace gitman::ui {
             ui_element* card_list_ { nullptr };
             ui_element* empty_label_ { nullptr };
             ui_element* start_page_ { nullptr };
+            ui_element* function_bar_ { nullptr };
             ui_element* log_pane_ { nullptr };
             ui_element* switch_dialog_ { nullptr };
             ui_element* settings_dialog_ { nullptr };
@@ -319,11 +343,31 @@ namespace gitman::ui {
         };
     } // namespace
 
-    std::shared_ptr<const ui_tree> build_ui_tree(const view_snapshot& view)
+    std::shared_ptr<const ui_tree> build_ui_tree(const view_snapshot& view, const text_measurer* const measurer)
     {
         auto root { std::make_unique<root_element>(view) };
         // 스크롤 값은 논리 픽셀이다 (설계 L4). 배율은 흘리는 컨테이너가 곱한다.
-        root->arrange({ { 0.0f, 0.0f, view.window_width, view.window_height }, view.scale, view.scroll_offset });
+        arrange_context context { { 0.0f, 0.0f, view.window_width, view.window_height }, view.scale, view.scroll_offset };
+        context.measurer = measurer;
+        root->arrange(context);
         return std::make_shared<const ui_tree>(std::move(root));
+    }
+
+    std::optional<ui_element_id> function_focus_target(const ui_tree& tree, const function_focus_request& request)
+    {
+        std::vector<ui_element_id> candidates {};
+        for (const std::u8string& button : request.next_buttons)
+            candidates.push_back({ kind_function_bar_button, card_function_owner(request.card.value, button) });
+        candidates.push_back({ kind_function_bar_more });
+        candidates.push_back({ kind_card_function_more, request.card.value });
+        // 보이지 않는(접힌) 버튼, 비활성 버튼(선택이 없는 줄의 `⋯` 등)은 초점을 받지 못한다. luil이 초점을 줄 때와
+        // 쥐고 있는 동안의 조건(활성, 조상까지 보임)과 같게 본다.
+        for (const ui_element_id& id : candidates)
+        {
+            const ui_element* const element { tree.find(id) };
+            if (element != nullptr && element->enabled() && element->tab_stop() && tree.visibly_contains(id))
+                return id;
+        }
+        return std::nullopt;
     }
 } // namespace gitman::ui

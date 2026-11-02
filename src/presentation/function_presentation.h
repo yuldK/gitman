@@ -35,8 +35,18 @@ namespace gitman {
     // 카드 `card` 버튼의 tooltip이다. 비활성이면 사유, 실행 중이면 중지 안내, 실패면 종료 코드다.
     [[nodiscard]] std::u8string function_button_tooltip(const card_function_view& function);
 
+    // 기능 줄 버튼의 보이는 글이다 (2.2.2 규칙 6). 글자 버튼의 접근 이름은 글뿐이라 상태를 글에 넣는다: 실행 중이면
+    // `빌드 · 실행 중`, 실패했으면 `빌드 · 실패`, 그 밖은 라벨이다. 경과 시간은 넣지 않는다 — 초마다 바뀌는 이름은
+    // 낭독을 되풀이시킨다.
+    [[nodiscard]] std::u8string function_bar_text(const card_function_view& function);
+    // 기능 줄 버튼 폭을 정하는 가장 긴 상태 글이다: `라벨 · 실행 중` (2.2.4).
+    [[nodiscard]] std::u8string function_bar_widest_text(std::u8string_view label);
+
     // `⋯`의 접근 이름이다: `기능 더 보기, 카드 이름, N개`.
     [[nodiscard]] std::u8string function_more_access_name(std::u8string_view card_name, std::size_t count);
+    // 기능 줄 `⋯`의 접근 이름이다: `기능 더 보기 (기능 줄), 카드 이름, N개`. 선택 카드의 `⋯`와 같은 메뉴를 열지만
+    // 한 tree에 둘이 함께 서므로 이름으로 가른다 — 같은 이름이면 낭독으로도 UIA 이름 찾기로도 구별되지 않는다.
+    [[nodiscard]] std::u8string function_bar_more_access_name(std::u8string_view card_name, std::size_t count);
 
     // `⋯` 점의 상태다 (2.3.5).
     enum class function_more_marker

@@ -85,6 +85,17 @@ namespace gitman::win32 {
         frame->window_placement_revision = view->window_placement_revision;
         if (view->window_placement_request.has_value())
             frame->window_placement_request = to_luil_placement(*view->window_placement_request);
+        // 배치 변경으로 초점을 가진 기능 줄 버튼이 사라졌으면 다음 자리로 초점을 옮긴다 (function-buttons-design 2.2.5).
+        // logic은 무엇이 보이는지 모르므로 지은 tree에서 고른다. 갈 곳이 없어도 같은 번호를 빈 대상으로 실어 요청을
+        // 끝낸다 — 그러지 않으면 나중에 다른 이유로 후보가 서는 순간 초점이 뜻밖에 옮겨 간다. 번호가 같은 요청은
+        // UI thread가 한 번만 이행한다.
+        if (view->function_focus.has_value())
+        {
+            luil::focus_request request {};
+            request.id = view->function_focus->id;
+            request.target = ui::function_focus_target(*frame->tree, *view->function_focus).value_or(luil::ui_element_id {});
+            frame->focus = { std::move(request) };
+        }
 
         // 게시 값만 lock 안에서 바꾼다. tree 짓기는 오래 걸리므로 밖에 둔다.
         const std::lock_guard<std::mutex> lock { frame_mutex_ };

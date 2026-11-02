@@ -116,6 +116,10 @@ namespace gitman::ui {
             card_function_more,
             card_function_marker,
             card_function_more_marker,
+            function_bar,
+            function_bar_button,
+            function_bar_more,
+            function_bar_marker,
             count,
         };
 
@@ -225,6 +229,13 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_card_function_more { detail::application_kind(detail::application_kind_index::card_function_more) };
     inline constexpr luil::ui_element_kind kind_card_function_marker { detail::application_kind(detail::application_kind_index::card_function_marker) };
     inline constexpr luil::ui_element_kind kind_card_function_more_marker { detail::application_kind(detail::application_kind_index::card_function_more_marker) };
+    // 선택 카드 기능 줄과 그 `bar` 버튼, 줄의 `⋯`, 실패 점이다 (function-buttons-design 2.4). 버튼과 점의 owner는
+    // `card_function_owner`(선택 카드 id + `:` + 버튼 id)이고 줄과 줄의 `⋯`는 owner가 없다 — 줄은 하나뿐이다. 카드의
+    // 버튼과 kind를 나눠 같은 기능이 두 자리에 있어도(선택 카드의 기능 메뉴 등) id가 겹치지 않는다.
+    inline constexpr luil::ui_element_kind kind_function_bar { detail::application_kind(detail::application_kind_index::function_bar) };
+    inline constexpr luil::ui_element_kind kind_function_bar_button { detail::application_kind(detail::application_kind_index::function_bar_button) };
+    inline constexpr luil::ui_element_kind kind_function_bar_more { detail::application_kind(detail::application_kind_index::function_bar_more) };
+    inline constexpr luil::ui_element_kind kind_function_bar_marker { detail::application_kind(detail::application_kind_index::function_bar_marker) };
 
     inline constexpr std::size_t application_kind_count { static_cast<std::size_t>(detail::application_kind_index::count) };
 
@@ -327,6 +338,10 @@ namespace gitman::ui {
         kind_card_function_more,
         kind_card_function_marker,
         kind_card_function_more_marker,
+        kind_function_bar,
+        kind_function_bar_button,
+        kind_function_bar_more,
+        kind_function_bar_marker,
     };
 
     static_assert(application_kinds.size() == application_kind_count);

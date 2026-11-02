@@ -676,6 +676,10 @@ namespace gitman {
                     handle_open_function_menu(value);
                 else if constexpr (std::is_same_v<value_type, run_function_shortcut_intent>)
                     handle_run_function_shortcut(value);
+                else if constexpr (std::is_same_v<value_type, open_function_placement_menu_intent>)
+                    handle_open_function_placement_menu(value);
+                else if constexpr (std::is_same_v<value_type, set_function_placement_intent>)
+                    handle_set_function_placement(value, std::nullopt);
                 else if constexpr (std::is_same_v<value_type, open_document_context_menu_intent>)
                     handle_open_document_context_menu(value);
                 else if constexpr (std::is_same_v<value_type, set_theme_preference_intent>)
@@ -986,8 +990,10 @@ namespace gitman {
         settings_dialog_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
-        // 기능 실행 확인은 이전 문서의 카드와 정의를 가리킨다.
+        // 기능 실행 확인은 이전 문서의 카드와 정의를 가리킨다. 초점 옮기기 요청도 이전 문서의 카드 id다 — 새 문서에
+        // 같은 id가 있으면 그 element로 초점이 갈 수 있다. 번호는 되돌리지 않는다 (luil이 같은 번호를 한 번만 이행한다).
         function_confirm_.reset();
+        function_focus_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -1145,12 +1151,14 @@ namespace gitman {
         return static_cast<float>(count) * layout_log_line_height() + layout_log_text_inset * 2.0f;
     }
 
-    float logic_controller::log_viewport_height() const noexcept
+    float logic_controller::log_viewport_height(const bool function_bar) const noexcept
     {
         // pane 높이는 창이 작으면 줄어든다. layout과 같은 함수로 계산해야 스크롤
         // 한계가 그리기와 일치한다.
+        // 기능 줄이 있으면 pane 맨 위를 줄이 가져간다 (function-buttons-design 2.4). tree의 배치와 같은 함수다.
         const list_layout layout { compute_list_layout(window_height_ / scale_, 1.0f, has_notice(), has_log_pane()) };
-        const float body { layout.log_height - layout_log_header_height() };
+        const float bar { function_bar ? layout_function_bar_height() : 0.0f };
+        const float body { layout.log_height - bar - layout_log_header_height() };
         return body > 0.0f ? body : 0.0f;
     }
 
@@ -1159,7 +1167,7 @@ namespace gitman {
         if (has_log_pane() == false)
             return;
 
-        float maximum { log_content_height() - log_viewport_height() };
+        float maximum { log_content_height() - log_viewport_height(has_function_bar()) };
         if (maximum < 0.0f)
             maximum = 0.0f;
         float offset { log_auto_scroll_ ? maximum : log_scroll_offset_ };
@@ -2409,8 +2417,9 @@ namespace gitman {
         settings_dialog_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
-        // 기능 실행 확인은 이전 문서의 카드와 정의를 가리킨다.
+        // 기능 실행 확인과 초점 옮기기 요청은 이전 문서의 카드와 정의를 가리킨다.
         function_confirm_.reset();
+        function_focus_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -3751,6 +3760,148 @@ namespace gitman {
         }
     }
 
+    void logic_controller::handle_open_function_placement_menu(const open_function_placement_menu_intent& intent)
+    {
+        if (shutting_down_)
+            return;
+        // 확인 dialog가 떠 있으면 열지 않는다 (기능 메뉴와 같다). 버튼이 이미 비활성이 됐거나 다른 자리로 옮겨 갔으면
+        // 늦게 온 우클릭이다 — 항목 builder가 같은 판정으로 빈 목록을 돌려준다.
+        const card_state* const card { find_card(intent.id) };
+        if (card == nullptr || function_confirm_.has_value() || placement_context_menu_items(*card, intent.button_id, intent.from_bar).empty())
+        {
+            context_menu_.reset();
+            return;
+        }
+        // 카드 안 버튼이라 선택과 로그 pane은 그대로다 (기능 메뉴와 같다, 2.2.6).
+        context_menu_ = { context_menu_state { context_menu_kind::placement, intent.id, intent.anchor_x, intent.anchor_y, std::chrono::steady_clock::now(), intent.button_id, intent.from_bar } };
+    }
+
+    void logic_controller::handle_set_function_placement(const set_function_placement_intent& intent, const std::optional<project_id>& focus_card)
+    {
+        if (shutting_down_ || document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return;
+        std::vector<function_button_entry>& buttons { document_->function_buttons->buttons };
+        std::size_t index { buttons.size() };
+        for (std::size_t candidate = 0; candidate < buttons.size(); ++candidate)
+        {
+            const function_button* const button { std::get_if<function_button>(&buttons[candidate]) };
+            if (button != nullptr && button->id == intent.button_id)
+            {
+                index = candidate;
+                break;
+            }
+        }
+        if (index == buttons.size())
+            return;
+
+        // 모델 값과 같으면 쓸 것이 없다. 생략한 배치는 `menu`다 (D22-B). 4번째 `card`와 알 수 없는 값은 보이는 배치가
+        // `bar`여도 모델 값이 다르므로 `기능 줄에 두기`를 고르면 `bar`로 쓴다 — 사용자가 고른 그때 새 값으로 쓴다 (3.2).
+        function_button& button { std::get<function_button>(buttons[index]) };
+        const std::u8string_view name { function_placement_name(intent.placement) };
+        const bool unchanged { button.placement.has_value() ? *button.placement == name : intent.placement == function_placement::menu };
+        if (unchanged)
+            return;
+
+        // `card`는 문서 전체에 보이는 `card`가 3개 미만일 때만이다. 그 기능이 이미 보이는 `card`면 통과한다. 메뉴에서
+        // 이미 비활성이라 여기 오는 것은 메뉴가 떠 있는 사이 다른 길로 바뀐 경우뿐이다.
+        const std::vector<std::optional<function_placement>> before { resolve_visible_placements(buttons) };
+        if (intent.placement == function_placement::card && before[index] != function_placement::card)
+        {
+            const auto visible_cards { std::ranges::count(before, std::optional<function_placement> { function_placement::card }) };
+            if (static_cast<std::size_t>(visible_cards) >= maximum_card_function_buttons)
+                return;
+        }
+
+        // 줄 버튼에서 연 메뉴로 그 버튼이 줄을 떠나면 초점을 옮긴다 (2.2.5). 후보는 바꾸기 전 줄에서 그 버튼 뒤에 있던
+        // 버튼들이다. 줄 버튼은 Tab 자리라 우클릭의 누름도, `Shift+F10`도 그 버튼에 초점이 있다.
+        std::optional<function_focus_request> focus {};
+        if (focus_card.has_value() && before[index] == function_placement::bar && intent.placement != function_placement::bar)
+        {
+            for (const card_state& card : cards_)
+            {
+                if ((card.project.id == *focus_card) == false)
+                    continue;
+                function_focus_request request {};
+                request.card = card.project.id;
+                bool after { false };
+                for (const card_function_view& function : card_function_views(card, before))
+                {
+                    if (function.placement != function_placement::bar)
+                        continue;
+                    if (after)
+                        request.next_buttons.push_back(function.button_id);
+                    after = after || function.button_id == intent.button_id;
+                }
+                focus = std::move(request);
+                break;
+            }
+        }
+
+        // 모델 값을 바꾸면 카드 열, 기능 줄, `Alt+N` 번호, 기능 줄 유무가 다음 view에서 바로 바뀐다. 실행 중인 그 기능은
+        // 계속 돌고 실행 중 표시가 새 자리로 옮겨 간다 (4.11). 신뢰 해시는 배치를 넣지 않아 다시 묻지 않는다 (3.10).
+        button.placement = std::u8string { name };
+        if (focus.has_value())
+        {
+            focus->id = ++function_focus_revision_;
+            function_focus_ = std::move(focus);
+        }
+        request_save();
+    }
+
+    bool logic_controller::has_function_bar() const
+    {
+        if (document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return false;
+        const std::vector<std::optional<function_placement>> placements { resolve_visible_placements(document_->function_buttons->buttons) };
+        // `bar` 배치가 없는 문서(배치를 적지 않은 문서 포함, D22-B)는 카드를 보지 않고 끝낸다.
+        if (std::ranges::find(placements, std::optional<function_placement> { function_placement::bar }) == placements.end())
+            return false;
+        // 카드 view와 같은 판정이다. `vcs` 한정 + `vcs_hint: auto`이고 조회 전인 카드는 비활성 버튼으로 적용되므로
+        // 센다. 어느 카드에도 적용되지 않는 `bar` 기능만으로는 줄을 두지 않는다 (D23-A).
+        for (const card_state& card : cards_)
+        {
+            for (const card_function_view& function : card_function_views(card, placements))
+            {
+                if (function.placement == function_placement::bar)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    function_bar_view logic_controller::build_function_bar_view() const
+    {
+        function_bar_view bar {};
+        const card_state* card { nullptr };
+        if (selected_.has_value())
+        {
+            for (const card_state& candidate : cards_)
+            {
+                if (candidate.project.id == *selected_)
+                    card = &candidate;
+            }
+        }
+        // 줄은 늘 선택 카드를 보인다 (2.2.6). 선택이 없으면 힌트만 있고 줄의 `⋯`는 비활성이다.
+        if (card == nullptr)
+        {
+            bar.hint = u8"카드를 선택하면 기능이 나옵니다";
+            return bar;
+        }
+
+        bar.card = card->project.id;
+        bar.card_name = card->project.display_name.empty() ? card->project.id.value : card->project.display_name;
+        const std::vector<card_function_view> functions { card_function_views(*card) };
+        bar.total_functions = functions.size();
+        for (const card_function_view& function : functions)
+        {
+            if (function.placement == function_placement::bar)
+                bar.functions.push_back(function);
+        }
+        if (bar.functions.empty())
+            bar.hint = functions.empty() ? u8"이 카드에 적용되는 기능이 없습니다" : u8"이 카드에는 기능 줄 항목이 없습니다 — ⋯에서 모든 기능을 봅니다";
+        return bar;
+    }
+
     void logic_controller::handle_open_document_context_menu(const open_document_context_menu_intent& intent)
     {
         if (shutting_down_)
@@ -3833,6 +3984,19 @@ namespace gitman {
         case context_menu_entry::reload_document:
             // 안전한 다시 읽기(4.9)는 T11이다. 그때까지 항목은 비활성이라 여기 오지 않는다.
             break;
+        case context_menu_entry::place_function_on_card:
+        case context_menu_entry::place_function_on_bar:
+        case context_menu_entry::place_function_in_menu: {
+            // 배치 메뉴의 radio다 (2.2.5, 4.11). 줄 버튼에서 연 메뉴면 그 버튼이 줄을 떠날 때 초점을 옮긴다.
+            function_placement placement { function_placement::menu };
+            if (item.entry == context_menu_entry::place_function_on_card)
+                placement = function_placement::card;
+            else if (item.entry == context_menu_entry::place_function_on_bar)
+                placement = function_placement::bar;
+            const std::optional<project_id> focus_card { menu.from_bar ? std::optional<project_id> { menu.card } : std::nullopt };
+            handle_set_function_placement(set_function_placement_intent { item.argument, placement }, focus_card);
+            break;
+        }
         case context_menu_entry::open_repository:
         case context_menu_entry::open_in_vscode:
         case context_menu_entry::open_document_folder:
@@ -3852,6 +4016,8 @@ namespace gitman {
                 continue;
             if (menu.kind == context_menu_kind::functions)
                 return function_context_menu_items(card, menu.opened_at);
+            if (menu.kind == context_menu_kind::placement)
+                return placement_context_menu_items(card, menu.button, menu.from_bar);
             return card_context_menu_items(card, menu.opened_at);
         }
         return {};
@@ -3939,6 +4105,82 @@ namespace gitman {
         if (document_path_.empty() || folder.empty())
             return std::nullopt;
         return context_menu_item_view { .entry = context_menu_entry::open_document_in_vscode, .label = u8"문서 폴더를 VS Code로 열기", .target_path = folder, .icon = u8"vscode" };
+    }
+
+    std::vector<context_menu_item_view> logic_controller::placement_context_menu_items(const card_state& card, const std::u8string_view button_id, const bool from_bar) const
+    {
+        // 메뉴는 활성 버튼에만 있다 — 비활성 버튼은 우클릭도 `Shift+F10`도 받지 않는다 (2.2.5). 카드 열의 `card` 버튼과
+        // 기능 줄의 `bar` 버튼이 연 자리 그대로인지 카드 view와 같은 판정으로 다시 본다.
+        if (document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return {};
+        const std::vector<std::optional<function_placement>> placements { resolve_visible_placements(document_->function_buttons->buttons) };
+        const function_placement expected { from_bar ? function_placement::bar : function_placement::card };
+        std::optional<card_function_view> function {};
+        for (card_function_view& candidate : card_function_views(card, placements))
+        {
+            if (candidate.button_id == button_id)
+                function = std::move(candidate);
+        }
+        if (function.has_value() == false || function->enabled == false || function->placement != expected)
+            return {};
+
+        // `카드에 두기`는 문서 전체에 보이는 `card`가 이미 3개이고 이 기능이 그중 하나가 아니면 비활성이고 사유를 붙인다.
+        // 단축키 열은 이 기능이 카드에 두면 갖는 `Alt+N`이다 — 보이는 `card`는 문서 순서의 앞 3개라, 3개 미만이면 이 기능
+        // 앞의 보이는 `card` 수 + 1이다.
+        const std::span<const function_button_entry> buttons { document_->function_buttons->buttons };
+        std::size_t visible_cards { 0 };
+        std::size_t cards_before { 0 };
+        bool reached { false };
+        for (std::size_t index = 0; index < buttons.size(); ++index)
+        {
+            const function_button* const button { std::get_if<function_button>(&buttons[index]) };
+            if (button != nullptr && button->id == button_id)
+                reached = true;
+            if (placements[index] != function_placement::card)
+                continue;
+            ++visible_cards;
+            if (reached == false)
+                ++cards_before;
+        }
+        const bool on_card { function->placement == function_placement::card };
+        const bool card_allowed { on_card || visible_cards < maximum_card_function_buttons };
+        const std::size_t number { on_card ? function->shortcut : cards_before + 1 };
+
+        context_menu_item_view card_item {
+            .entry = context_menu_entry::place_function_on_card,
+            .label = card_allowed ? u8"카드에 두기" : u8"카드에 두기 — 3개까지",
+            .enabled = card_allowed,
+            .argument = std::u8string { button_id },
+            .shortcut_text = card_allowed ? function_shortcut_text(number) : std::u8string {},
+            .kind = context_menu_item_kind::radio,
+            .checked = function->placement == function_placement::card,
+        };
+        context_menu_item_view bar_item {
+            .entry = context_menu_entry::place_function_on_bar,
+            .label = u8"기능 줄에 두기",
+            .argument = std::u8string { button_id },
+            .kind = context_menu_item_kind::radio,
+            .checked = function->placement == function_placement::bar,
+        };
+        // 버튼이 없는 `menu` 기능에는 이 메뉴가 없으므로 이 항목은 늘 꺼져 있다. 고르면 버튼이 사라진다.
+        context_menu_item_view menu_item {
+            .entry = context_menu_entry::place_function_in_menu,
+            .label = u8"메뉴에만 두기",
+            .argument = std::u8string { button_id },
+            .kind = context_menu_item_kind::radio,
+            .checked = function->placement == function_placement::menu,
+        };
+        std::vector<context_menu_item_view> items {};
+        items.push_back(std::move(card_item));
+        items.push_back(std::move(bar_item));
+        items.push_back(std::move(menu_item));
+        // T12 전에는 `기능 편집…` 자리가 기능 메뉴와 같이 문서 폴더를 VS Code로 연다 (2.2.5).
+        if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
+        {
+            edit->separator_above = true;
+            items.push_back(std::move(*edit));
+        }
+        return items;
     }
 
     std::vector<context_menu_item_view> logic_controller::document_context_menu_items() const
@@ -4528,6 +4770,8 @@ namespace gitman {
         // 값이라 렌더러는 그대로 그린다 (REQ-008).
         if (has_log_pane())
         {
+            // 기능 줄 유무는 문서의 카드를 훑는 판정이라 snapshot마다 한 번만 구해 스크롤 한계와 줄 view가 함께 쓴다.
+            const bool function_bar { has_function_bar() };
             // pane은 항상 열려 있다. 선택 카드가 없으면 제목만 있는 빈 모델을 게시하고,
             // 고르라는 안내는 본문이 한 번만 한다 (제목과 본문이 같은 말을 둘로 했다).
             log_view_model log {};
@@ -4567,13 +4811,17 @@ namespace gitman {
                     else
                         log.change_elapsed = card.change_elapsed;
 
-                    float maximum { log_content_height() - log_viewport_height() };
+                    float maximum { log_content_height() - log_viewport_height(function_bar) };
                     if (maximum < 0.0f)
                         maximum = 0.0f;
                     log.scroll_offset = log_auto_scroll_ ? maximum : (log_scroll_offset_ > maximum ? maximum : log_scroll_offset_);
                     break;
                 }
             snapshot->log = { std::move(log) };
+            // 기능 줄은 로그 pane 안 맨 위다 (function-buttons-design 2.4). 줄 유무는 선택과 상관없다 (D23-A).
+            if (function_bar)
+                snapshot->function_bar = { build_function_bar_view() };
+            snapshot->function_focus = function_focus_;
         }
 
         if (switch_dialog_.has_value())

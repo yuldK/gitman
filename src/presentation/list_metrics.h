@@ -5,6 +5,7 @@
 #include "luil/ui/layout_metrics.h"
 
 #include <cstddef>
+#include <span>
 
 namespace gitman {
     // 논리 픽셀 단위의 layout 상수다. 실제 좌표는 DPI 배율을 곱한다.
@@ -100,6 +101,87 @@ namespace gitman {
     {
         return slots.more_x - layout_card_function_slot * static_cast<float>(slots.visible_count - index);
     }
+    // 선택 카드 기능 줄의 치수다 (function-buttons-design 2.2.4, 2.4). 줄은 로그 pane 160 안 맨 위에 서고 그만큼
+    // 로그 본문이 준다 — `compute_list_layout`은 바꾸지 않아 목록 viewport가 그대로다. 줄 폭은 창 폭이다.
+    //  - 줄 높이는 버튼 28 + 위아래 4다. 버튼 라벨(luil 글자 버튼의 본문 글 12)이 시스템 글자 크기만큼 자라면 줄도
+    //    자라고 그만큼 로그 본문에서 가져간다.
+    //  - 카드 이름은 창 폭 640 이상이면 150, 560~639면 72, 560 미만이면 없다. 이름 뒤 13(6 + 구분선 1 + 6)이다.
+    //  - 버튼 폭은 `clamp(가장 긴 상태 글의 선호 폭, 64, 160)`, 간격 6이다. 버튼 영역 끝은 `W - 44`(`⋯` 28 + 앞
+    //    간격 6 + 오른쪽 여백 10)이고, 넘치는 버튼은 오른쪽부터 줄의 `⋯`로 접는다.
+    inline constexpr float layout_function_bar_label_size { 12.0f };
+    // 버튼 위아래 여백이다. 버튼 높이는 줄 높이에서 이것을 두 번 뺀 값이라 큰 글자에서는 버튼도 함께 자란다.
+    inline constexpr float layout_function_bar_inset { 4.0f };
+    inline constexpr float layout_function_bar_name_wide { 150.0f };
+    inline constexpr float layout_function_bar_name_narrow { 72.0f };
+    inline constexpr float layout_function_bar_wide_from { 640.0f };
+    inline constexpr float layout_function_bar_narrow_from { 560.0f };
+    inline constexpr float layout_function_bar_name_gap { 6.0f };
+    inline constexpr float layout_function_bar_button_minimum { 64.0f };
+    inline constexpr float layout_function_bar_button_maximum { 160.0f };
+    inline constexpr float layout_function_bar_trailing { layout_card_gap + layout_button_size + layout_margin };
+
+    // 100%에서 36.0이다.
+    [[nodiscard]] inline float layout_function_bar_height() noexcept
+    {
+        return 36.0f + text_growth(layout_function_bar_label_size);
+    }
+
+    // 기능 줄 버튼 하나의 폭이다. `preferred`는 가장 긴 상태 글(`라벨 · 실행 중`, 글리프 자리 포함)의 선호 폭이라
+    // 상태가 바뀌어도 폭이 같고, 옆 버튼이 접혔다 펴지지 않는다.
+    [[nodiscard]] inline float function_bar_button_width(const float preferred) noexcept
+    {
+        if (preferred < layout_function_bar_button_minimum)
+            return layout_function_bar_button_minimum;
+        return preferred > layout_function_bar_button_maximum ? layout_function_bar_button_maximum : preferred;
+    }
+
+    // 기능 줄의 가로 자리다 (줄 왼쪽 가장자리 기준 논리 px).
+    struct function_bar_slots
+    {
+        // 카드 이름 칸의 폭이다. 0이면 이름이 없다.
+        float name_width { 0.0f };
+        // 이름 뒤 구분선의 가운데 x다. 이름이 없으면 쓰지 않는다.
+        float separator_x { 0.0f };
+        // 버튼(또는 힌트)이 쓰는 영역이다.
+        float buttons_left { 0.0f };
+        float buttons_right { 0.0f };
+        // 줄의 `⋯` x다.
+        float more_x { 0.0f };
+    };
+
+    // `width` 폭 줄의 자리다. `with_name`이 거짓이면(선택이 없다) 이름 칸이 없다.
+    [[nodiscard]] inline function_bar_slots layout_function_bar_slots(const float width, const bool with_name) noexcept
+    {
+        function_bar_slots slots {};
+        if (with_name && width >= layout_function_bar_wide_from)
+            slots.name_width = layout_function_bar_name_wide;
+        else if (with_name && width >= layout_function_bar_narrow_from)
+            slots.name_width = layout_function_bar_name_narrow;
+        slots.buttons_left = layout_margin;
+        if (slots.name_width > 0.0f)
+        {
+            slots.separator_x = layout_margin + slots.name_width + layout_function_bar_name_gap;
+            slots.buttons_left = slots.separator_x + 1.0f + layout_function_bar_name_gap;
+        }
+        slots.buttons_right = width - layout_function_bar_trailing;
+        slots.more_x = width - layout_margin - layout_button_size;
+        return slots;
+    }
+
+    // 왼쪽부터 버튼을 놓아 영역 안에 다 들어가는 수다. 넘치는 버튼과 그 뒤는 줄의 `⋯`로 접힌다 (오른쪽부터 접힘).
+    [[nodiscard]] inline std::size_t function_bar_visible_count(const function_bar_slots& slots, const std::span<const float> widths) noexcept
+    {
+        float right { slots.buttons_left };
+        for (std::size_t index = 0; index < widths.size(); ++index)
+        {
+            const float next { (index == 0 ? right : right + layout_card_gap) + widths[index] };
+            if (next > slots.buttons_right)
+                return index;
+            right = next;
+        }
+        return widths.size();
+    }
+
     // 카드 세 번째 줄(상태 조각)의 높이다.
     // 100%에서 16.0이고, 상태 조각 글(10.5)이 시스템 글자 크기만큼 자란다.
     [[nodiscard]] inline float layout_card_status_height() noexcept

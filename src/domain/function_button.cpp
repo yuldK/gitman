@@ -71,6 +71,36 @@ namespace gitman {
             return folder;
         }
 
+        constexpr char8_t ascii_lower(const char8_t value) noexcept
+        {
+            if (value >= u8'A' && value <= u8'Z')
+                return static_cast<char8_t>(value + (u8'a' - u8'A'));
+            return value;
+        }
+
+        bool equal_ignoring_ascii_case(const std::u8string_view left, const std::u8string_view right) noexcept
+        {
+            return left.size() == right.size()
+                && std::equal(left.begin(), left.end(), right.begin()
+                    , [](const char8_t first, const char8_t second)
+                    {
+                        return ascii_lower(first) == ascii_lower(second);
+                    }
+                );
+        }
+
+        // `\`와 `/`를 모두 구분자로 본다. `is_absolute_windows_path`가 `C:/`도 받기 때문이다.
+        std::u8string_view last_path_component(const std::u8string_view path) noexcept
+        {
+            const std::size_t separator { path.find_last_of(u8"\\/") };
+            if (separator == std::u8string_view::npos)
+                return path;
+            return path.substr(separator + 1);
+        }
+
+        // cmd가 `/c` 뒤의 명령줄을 다시 파싱할 때 뜻을 갖는 문자다 (4.3).
+        constexpr std::u8string_view cmd_metacharacters { u8"%&|^<>\"\r\n" };
+
         // 원문을 글자 그대로의 조각과 참조로 나눈 결과다. `$${`는 이 단계에서 `${`로 바뀐다.
         struct template_token
         {
@@ -551,5 +581,92 @@ namespace gitman {
 
         const std::u8string joined { join(display_text(program), std::span<const std::u8string> { displayed_arguments }) };
         return mask(joined);
+    }
+
+    std::optional<function_program_rejection> check_function_program(const std::u8string_view program) noexcept
+    {
+        // PATH 탐색과 확장자 추론이 없으므로 상대 경로는 gitman의 현재 폴더에 따라
+        // 다른 프로그램을 가리킬 수 있다 (stage-3-plan.md:56).
+        if (is_absolute_windows_path(program) == false)
+            return function_program_rejection::not_absolute;
+
+        const std::u8string_view name { last_path_component(program) };
+        if (name.ends_with(u8'.') || name.ends_with(u8' '))
+            return function_program_rejection::trailing_dot_or_space;
+
+        // 확장자만 있는 이름(`.exe`)은 파일 이름이 비어 있어 받지 않는다.
+        constexpr std::size_t extension_length { 4 };
+        if (name.size() <= extension_length)
+            return function_program_rejection::extension_not_allowed;
+        const std::u8string_view extension { name.substr(name.size() - extension_length) };
+        if (equal_ignoring_ascii_case(extension, u8".exe") == false && equal_ignoring_ascii_case(extension, u8".com") == false)
+            return function_program_rejection::extension_not_allowed;
+        return std::nullopt;
+    }
+
+    std::u8string function_program_rejection_message(const function_program_rejection rejection)
+    {
+        switch (rejection)
+        {
+        case function_program_rejection::not_absolute:
+            return u8"program은 절대 경로여야 합니다.";
+        case function_program_rejection::trailing_dot_or_space:
+            return u8"program의 파일 이름이 점이나 공백으로 끝납니다.";
+        case function_program_rejection::extension_not_allowed:
+            return u8"program이 허용 목록에 없습니다 (.exe 또는 .com). "
+                u8"스크립트는 인터프리터를 program에 적습니다. 예: powershell.exe -NoProfile -File <ps1>, cmd.exe /d /c <bat>";
+        }
+        return u8"program이 허용 목록에 없습니다.";
+    }
+
+    bool is_cmd_program(const std::u8string_view program) noexcept
+    {
+        return equal_ignoring_ascii_case(last_path_component(program), u8"cmd.exe");
+    }
+
+    std::optional<cmd_injection_finding> find_cmd_injection(const variable_expansion& program, const std::span<const variable_expansion> arguments)
+    {
+        if (is_cmd_program(program.text) == false)
+            return std::nullopt;
+
+        const auto scan { [](const variable_expansion& expansion, const std::optional<std::size_t> argument) -> std::optional<cmd_injection_finding>
+            {
+                for (const expansion_segment& segment : expansion.segments)
+                {
+                    // 문서 출처와 글자 그대로의 구간은 문서 작성자가 쓴 것이고 신뢰 확인의 대상이다.
+                    if (segment.origin != variable_origin::runtime && segment.origin != variable_origin::environment)
+                        continue;
+
+                    const std::u8string_view text { std::u8string_view { expansion.text }.substr(segment.offset, segment.length) };
+                    const std::size_t found { text.find_first_of(cmd_metacharacters) };
+                    if (found != std::u8string_view::npos)
+                        return cmd_injection_finding { argument, segment.origin, segment.variable, text[found] };
+                }
+                return std::nullopt;
+            }
+        };
+
+        if (std::optional<cmd_injection_finding> finding { scan(program, std::nullopt) }; finding.has_value())
+            return finding;
+        for (std::size_t index = 0; index < arguments.size(); ++index)
+        {
+            if (std::optional<cmd_injection_finding> finding { scan(arguments[index], index) }; finding.has_value())
+                return finding;
+        }
+        return std::nullopt;
+    }
+
+    std::u8string cmd_injection_message(const cmd_injection_finding& finding)
+    {
+        std::u8string message { u8"cmd.exe에 넘기는 " };
+        message.append(finding.origin == variable_origin::environment ? u8"${env:" : u8"${");
+        message.append(finding.variable);
+        message.append(u8"} 값에 cmd가 다시 해석하는 문자(");
+        if (finding.character == u8'\r' || finding.character == u8'\n')
+            message.append(u8"줄바꿈");
+        else
+            message.push_back(finding.character);
+        message.append(u8")가 있어 실행하지 않습니다.");
+        return message;
     }
 } // namespace gitman

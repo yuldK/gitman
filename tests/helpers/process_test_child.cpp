@@ -272,6 +272,45 @@ namespace {
         return 0;
     }
 
+    // 출력 pipe가 없는 분리 실행 test용이다. 작업 폴더와 고른 환경 변수를 파일에 적는다.
+    // 다 쓴 뒤 이름을 바꿔, 파일을 기다리는 test가 반쯤 쓴 내용을 읽지 않게 한다.
+    int run_write_report(const int argc, wchar_t** const argv)
+    {
+        if (argc < 3)
+            return usage_exit_code;
+
+        std::wstring directory(32u * 1024u, L'\0');
+        const DWORD directory_length { GetCurrentDirectoryW(static_cast<DWORD>(directory.size()), directory.data()) };
+        if (directory_length == 0 || directory_length >= directory.size())
+            return 91;
+        directory.resize(static_cast<std::size_t>(directory_length));
+
+        std::string report { "cwd=" + to_utf8(directory) + "\n" };
+        for (int index = 3; index < argc; ++index)
+        {
+            std::wstring value(32u * 1024u, L'\0');
+            const DWORD length { GetEnvironmentVariableW(argv[index], value.data(), static_cast<DWORD>(value.size())) };
+            report.append(to_utf8(argv[index]) + "=");
+            if (length == 0)
+                report.append("<unset>");
+            else
+                report.append(to_utf8(std::wstring_view { value.data(), static_cast<std::size_t>(length) }));
+            report.push_back('\n');
+        }
+
+        const std::wstring target { argv[2] };
+        const std::wstring partial { target + L".partial" };
+        const HANDLE file { CreateFileW(partial.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr) };
+        if (file == INVALID_HANDLE_VALUE)
+            return 93;
+        DWORD written { 0 };
+        const BOOL wrote { WriteFile(file, report.data(), static_cast<DWORD>(report.size()), &written, nullptr) };
+        CloseHandle(file);
+        if (wrote == FALSE || written != report.size())
+            return 93;
+        return MoveFileExW(partial.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING) != FALSE ? 0 : 93;
+    }
+
     int run_read_stdin()
     {
         char buffer[64] {};
@@ -318,5 +357,7 @@ int wmain(const int argc, wchar_t** const argv)
         return run_spawn_detached(argc, argv);
     if (command == L"read-stdin")
         return run_read_stdin();
+    if (command == L"write-report")
+        return run_write_report(argc, argv);
     return unknown_command_exit_code;
 }

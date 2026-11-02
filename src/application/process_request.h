@@ -52,7 +52,20 @@ namespace gitman {
         process_text_encoding text_encoding { process_text_encoding::utf8 };
     };
 
+    // 분리 실행(`process_launcher`) 요청이다. 기다리지 않고 출력도 모으지 않으므로
+    // timeout과 캡처 상한이 없다. 나머지 계약(절대 경로, 셸 미사용)은 `process_request`와 같다.
+    struct process_launch_request
+    {
+        // 절대 경로만 허용한다. `lpApplicationName`으로 넘겨 PATH 탐색과 확장자 추론이 없다.
+        std::u8string executable {};
+        std::vector<std::u8string> arguments {};
+        std::u8string working_directory {};
+        std::vector<process_environment_override> environment_overrides {};
+    };
+
     // 요청 값만으로 판정할 수 있는 오류를 반환한다. filesystem 조회는 하지 않는다.
     [[nodiscard]] std::vector<diagnostic> validate_process_request(const process_request& request);
+    // 실행 파일·작업 폴더·인자·환경 override를 `validate_process_request`와 같은 규칙으로 본다.
+    [[nodiscard]] std::vector<diagnostic> validate_process_launch_request(const process_launch_request& request);
     [[nodiscard]] std::u8string_view process_text_encoding_name(process_text_encoding encoding) noexcept;
 } // namespace gitman

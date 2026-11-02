@@ -68,7 +68,8 @@ gitman_add_source_filter(gitman_lib_files "domain/settings"
     domain/app_settings.h
     domain/appearance.h)
 
-# 문서에 정의한 기능 버튼과 변수의 모델, 배치 판정, 변수 치환과 표시용 명령줄이다.
+# 문서에 정의한 기능 버튼과 변수의 모델, 배치 판정, 변수 치환과 표시용 명령줄,
+# 실행 파일 허용 목록과 cmd 방어 판정이다.
 gitman_add_source_filter(gitman_lib_files "domain/function_buttons"
     domain/function_button.cpp
     domain/function_button.h)
@@ -126,8 +127,9 @@ gitman_add_source_filter(gitman_lib_files "application/discovery"
     application/discovery_service.cpp
     application/discovery_service.h)
 
-# 외부 프로세스 요청과 실행기·출력 transcoder 계약이다.
+# 외부 프로세스 요청과 실행기·분리 실행기·출력 transcoder 계약이다.
 gitman_add_source_filter(gitman_lib_files "application/process"
+    application/process_launcher.h
     application/process_request.cpp
     application/process_request.h
     application/process_runner.h
@@ -194,6 +196,11 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/process"
     infrastructure/process_output_pipeline.h
     infrastructure/secret_masking.cpp
     infrastructure/secret_masking.h)
+
+# 기능 버튼 실행 요청 조립(캡처 상한·timeout·`GITMAN_*` 환경)이다. VCS 정책과 따로 둔다.
+gitman_add_source_filter(gitman_lib_files "infrastructure/function_buttons"
+    infrastructure/function_execution_policy.cpp
+    infrastructure/function_execution_policy.h)
 
 # 파일 로그 writer다.
 gitman_add_source_filter(gitman_lib_files "infrastructure/logging"
@@ -297,10 +304,14 @@ gitman_add_source_filter(gitman_lib_files "platform/file_system"
     platform/win32/workspace_document_file_system.cpp
     platform/win32/workspace_document_file_system.h)
 
-# 외부 프로세스 실행과 출력 code page 변환, UTF-8/UTF-16 경계다.
+# 외부 프로세스 실행·분리 실행과 환경 block, 출력 code page 변환, UTF-8/UTF-16 경계다.
 gitman_add_source_filter(gitman_lib_files "platform/process"
     platform/win32/utf8.cpp
     platform/win32/utf8.h
+    platform/win32/win32_environment_block.cpp
+    platform/win32/win32_environment_block.h
+    platform/win32/win32_process_launcher.cpp
+    platform/win32/win32_process_launcher.h
     platform/win32/win32_process_runner.cpp
     platform/win32/win32_process_runner.h
     platform/win32/win32_text_transcoder.cpp

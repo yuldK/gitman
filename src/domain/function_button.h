@@ -291,4 +291,43 @@ namespace gitman {
     // 부르지 않고 오류를 보인다. `join`과 `mask`는 비어 있지 않다. 비밀 가리기를 빼고
     // 부르는 길을 두지 않으려고 빈 함수를 받아 주지 않는다(비어 있으면 std::bad_function_call).
     [[nodiscard]] std::u8string build_display_command_line(const variable_expansion& program, std::span<const variable_expansion> arguments, const command_line_joiner& join, const secret_text_masker& mask);
+
+    // 치환한 `program`이 허용 목록(4.3)에 걸린 까닭이다. 두 실행 모드에 같게 적용한다.
+    enum class function_program_rejection
+    {
+        not_absolute,
+        // 마지막 구성 요소가 `.`이나 공백으로 끝난다. Windows가 이름을 정규화하며 지워
+        // `run.bat.`이 `run.bat`으로 실행되는 우회를 막는다.
+        trailing_dot_or_space,
+        // 확장자가 `.exe`·`.com`이 아니다. 스크립트는 인터프리터를 `program`에 적는다.
+        extension_not_allowed,
+    };
+
+    // 치환이 끝난 `program`을 본다. 절대 경로 → 끝 글자 → 확장자 순서이고 처음 걸린
+    // 까닭 하나를 돌려준다. 통과하면 값이 없다. filesystem은 보지 않는다.
+    [[nodiscard]] std::optional<function_program_rejection> check_function_program(std::u8string_view program) noexcept;
+    // 진단과 로그에 쓰는 문구다. `program`으로 시작하고 확장자 거부에는 인터프리터 예를 담는다.
+    [[nodiscard]] std::u8string function_program_rejection_message(function_program_rejection rejection);
+
+    // 치환한 `program`의 파일 이름이 `cmd.exe`인지다(대소문자 무시).
+    [[nodiscard]] bool is_cmd_program(std::u8string_view program) noexcept;
+
+    // cmd 방어(4.3)에 걸린 자리다.
+    struct cmd_injection_finding
+    {
+        // 값이 없으면 `program`이고, 있으면 그 번째 인자다.
+        std::optional<std::size_t> argument {};
+        variable_origin origin { variable_origin::runtime };
+        // 그 구간을 만든 변수 이름이다. env면 `env:`를 뺀 NAME이다.
+        std::u8string variable {};
+        char8_t character { u8'&' };
+
+        [[nodiscard]] bool operator==(const cmd_injection_finding&) const = default;
+    };
+
+    // `program`이 `cmd.exe`일 때 런타임 변수와 `${env:}`로 치환된 구간에서 cmd가 다시
+    // 해석하는 문자(`% & | ^ < > "`, 줄바꿈)를 찾는다. 문서 출처와 글자 그대로의 구간은
+    // 문서 작성자가 쓴 것이라 보지 않는다. `program`이 cmd가 아니면 늘 값이 없다.
+    [[nodiscard]] std::optional<cmd_injection_finding> find_cmd_injection(const variable_expansion& program, std::span<const variable_expansion> arguments);
+    [[nodiscard]] std::u8string cmd_injection_message(const cmd_injection_finding& finding);
 } // namespace gitman

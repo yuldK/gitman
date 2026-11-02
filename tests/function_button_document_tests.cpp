@@ -785,3 +785,76 @@ TEST_CASE("Each card over 20 functions gets one warning on its own 21st item", "
     REQUIRE(beta != nullptr);
     REQUIRE(beta->message.find(u8"beta 카드") != std::u8string::npos);
 }
+
+TEST_CASE("A static program outside the allow list skips only that button", "[function_buttons][t4]")
+{
+    const std::u8string source {
+        document_with(
+            u8R"({"buttons":[)"
+            u8R"({"id":"before","label":"앞","program":"C:\\Tools\\x.exe"},)"
+            u8R"({"id":"script","label":"스크립트","program":"C:\\Tools\\run.bat"},)"
+            u8R"({"id":"dot","label":"점","program":"C:\\Tools\\run.bat."},)"
+            u8R"({"id":"space","label":"공백","program":"C:\\Tools\\run.exe "},)"
+            u8R"({"id":"relative","label":"상대","program":"tools\\run.exe"},)"
+            u8R"({"id":"escaped","label":"이스케이프","program":"C:\\Tools\\$${x}.bat"},)"
+            u8R"({"id":"after","label":"뒤","program":"C:\\Tools\\RUN.EXE"}]})"
+            , u8R"([{"id":"alpha","path":"alpha"}])"
+        )
+    };
+    const gitman::workspace_document_parse_result result { parse(source) };
+    REQUIRE(result.document.has_value());
+    REQUIRE_FALSE(result.has_errors());
+    REQUIRE(result.document->projects.size() == 1u);
+    const gitman::function_buttons_definition& definition { *result.document->function_buttons };
+    REQUIRE(definition.buttons.size() == 7u);
+
+    REQUIRE(button_at(definition, 0).id == u8"before");
+    REQUIRE(button_at(definition, 6).id == u8"after");
+    REQUIRE(count_diagnostics(result.diagnostics, button_pointer(0)) == 0u);
+    REQUIRE(count_diagnostics(result.diagnostics, button_pointer(6)) == 0u);
+
+    struct case_entry
+    {
+        std::size_t index {};
+        std::u8string_view reason {};
+    };
+
+    constexpr std::array cases {
+        case_entry { 1, u8"허용 목록에 없습니다" },
+        case_entry { 2, u8"점이나 공백으로 끝납니다" },
+        case_entry { 3, u8"점이나 공백으로 끝납니다" },
+        case_entry { 4, u8"절대 경로여야 합니다" },
+        case_entry { 5, u8"허용 목록에 없습니다" },
+    };
+    for (const case_entry& entry : cases)
+    {
+        static_cast<void>(source_at(definition, entry.index));
+        REQUIRE(count_diagnostics(result.diagnostics, button_pointer(entry.index)) == 1u);
+        const gitman::diagnostic* const skipped { find_diagnostic(result.diagnostics, button_pointer(entry.index)) };
+        REQUIRE(skipped->code == gitman::diagnostic_code::invalid_function_button);
+        REQUIRE(skipped->severity == gitman::diagnostic_severity::warning);
+        REQUIRE(skipped->message.find(entry.reason) != std::u8string::npos);
+    }
+    REQUIRE(find_diagnostic(result.diagnostics, button_pointer(1))->message.find(u8"powershell.exe -NoProfile -File") != std::u8string::npos);
+    REQUIRE(source_at(definition, 1).json == u8R"({"id":"script","label":"스크립트","program":"C:\\Tools\\run.bat"})");
+    REQUIRE(result.diagnostics.size() == cases.size());
+}
+
+TEST_CASE("A program with variables passes the allow list when read", "[function_buttons][t4]")
+{
+    const gitman::workspace_document_parse_result result {
+        parse(document_with(
+            u8R"({"variables":{"tools":"C:\\Tools"},"buttons":[)"
+            u8R"({"id":"user","label":"사용자","program":"${tools}\\run.bat"},)"
+            u8R"({"id":"env","label":"환경","program":"${env:SCRIPT}"},)"
+            u8R"({"id":"root","label":"루트","program":"${projectRoot}\\tools\\run"}]})"
+            , u8R"([{"id":"alpha","path":"alpha"}])"
+        ))
+    };
+    REQUIRE(result.document.has_value());
+    REQUIRE(result.diagnostics.empty());
+    const gitman::function_buttons_definition& definition { *result.document->function_buttons };
+    REQUIRE(button_at(definition, 0).program == u8"${tools}\\run.bat");
+    REQUIRE(button_at(definition, 1).program == u8"${env:SCRIPT}");
+    REQUIRE(button_at(definition, 2).program == u8"${projectRoot}\\tools\\run");
+}

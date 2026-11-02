@@ -260,6 +260,22 @@ namespace gitman {
             return {};
         }
 
+        // 변수가 없는 program은 읽을 때 허용 목록을 본다 (4.3). 변수가 든 경로는 값이 클릭
+        // 시점에 정해지므로 그때 본다. `$${`는 글자로 풀린 뒤의 경로를 본다. 문법 오류는
+        // 앞선 정적 검사가 이미 걸렀다.
+        std::u8string check_static_program(const std::u8string_view program)
+        {
+            if (scan_variable_references(program).references.empty() == false)
+                return {};
+            const variable_expansion literal { expand_variables(program, variable_lookup {}) };
+            if (literal.succeeded() == false)
+                return {};
+            const std::optional<function_program_rejection> rejection { check_function_program(literal.text) };
+            if (rejection.has_value() == false)
+                return {};
+            return function_program_rejection_message(*rejection);
+        }
+
         bool read_string_array(const ordered_json& source, std::vector<std::u8string>& target)
         {
             if (source.is_array() == false)
@@ -386,6 +402,8 @@ namespace gitman {
                 button.placement = { placement->is_string() ? as_utf8(placement->get_ref<const std::string&>()) : dump_source(*placement) };
 
             if (std::u8string reason { check_variable_references(u8"program", button.program, user_variable_names) }; reason.empty() == false)
+                return reason;
+            if (std::u8string reason { check_static_program(button.program) }; reason.empty() == false)
                 return reason;
             for (std::size_t index = 0; index < button.args.size(); ++index)
             {

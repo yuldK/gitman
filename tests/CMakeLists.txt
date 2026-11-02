@@ -98,8 +98,12 @@ gitman_add_source_filter(gitman_test_files "infrastructure/process"
     process_output_pipeline_tests.cpp
     process_request_tests.cpp
     secret_masking_tests.cpp
+    win32_process_launcher_tests.cpp
     win32_process_runner_tests.cpp
     win32_text_transcoder_tests.cpp)
+
+gitman_add_source_filter(gitman_test_files "infrastructure/function_buttons"
+    function_execution_policy_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "infrastructure/logging"
     log_file_tests.cpp)

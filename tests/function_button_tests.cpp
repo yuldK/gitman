@@ -685,3 +685,156 @@ TEST_CASE("Fourth card and unknown placements are visible as bar", "[function_bu
     REQUIRE(promoted[4] == gitman::function_placement::card);
     REQUIRE(promoted[5] == gitman::function_placement::card);
 }
+
+TEST_CASE("Program allow list accepts absolute exe and com paths", "[function_buttons][t4]")
+{
+    const std::vector<std::u8string_view> programs {
+        u8"C:\\Tools\\run.exe",
+        u8"C:\\Tools\\RUN.EXE",
+        u8"C:\\Tools\\legacy.Com",
+        u8"C:/Tools/run.exe",
+        u8"\\\\server\\share\\tools\\run.exe",
+        u8"C:\\Program Files\\도구\\빌드.exe",
+    };
+    for (const std::u8string_view program : programs)
+    {
+        INFO(reinterpret_cast<const char*>(std::u8string { program }.c_str()));
+        REQUIRE_FALSE(gitman::check_function_program(program).has_value());
+    }
+}
+
+TEST_CASE("Program allow list rejects scripts trailing dots spaces and relative paths", "[function_buttons][t4]")
+{
+    struct case_entry
+    {
+        std::u8string_view program {};
+        gitman::function_program_rejection rejection { gitman::function_program_rejection::not_absolute };
+    };
+
+    const std::vector<case_entry> cases {
+        { u8"run.bat", gitman::function_program_rejection::not_absolute },
+        { u8"tools\\run.exe", gitman::function_program_rejection::not_absolute },
+        { u8"C:run.exe", gitman::function_program_rejection::not_absolute },
+        { u8"\\Tools\\run.exe", gitman::function_program_rejection::not_absolute },
+        { u8"C:\\Tools\\run.bat", gitman::function_program_rejection::extension_not_allowed },
+        { u8"C:\\Tools\\run.cmd", gitman::function_program_rejection::extension_not_allowed },
+        { u8"C:\\Tools\\clean.ps1", gitman::function_program_rejection::extension_not_allowed },
+        { u8"C:\\Tools\\run", gitman::function_program_rejection::extension_not_allowed },
+        { u8"C:\\Tools\\.exe", gitman::function_program_rejection::extension_not_allowed },
+        { u8"C:\\Tools\\", gitman::function_program_rejection::extension_not_allowed },
+        { u8"C:\\Tools\\run.exe.bat", gitman::function_program_rejection::extension_not_allowed },
+        { u8"C:\\Tools\\run.bat.", gitman::function_program_rejection::trailing_dot_or_space },
+        { u8"C:\\Tools\\run.exe.", gitman::function_program_rejection::trailing_dot_or_space },
+        { u8"C:\\Tools\\run.exe ", gitman::function_program_rejection::trailing_dot_or_space },
+        { u8"C:\\Tools\\run.bat . .", gitman::function_program_rejection::trailing_dot_or_space },
+    };
+
+    for (const case_entry& entry : cases)
+    {
+        INFO(reinterpret_cast<const char*>(std::u8string { entry.program }.c_str()));
+        const std::optional<gitman::function_program_rejection> rejection { gitman::check_function_program(entry.program) };
+        REQUIRE(rejection.has_value());
+        REQUIRE(*rejection == entry.rejection);
+    }
+}
+
+TEST_CASE("Allow list messages name the field and suggest an interpreter", "[function_buttons][t4]")
+{
+    const std::u8string extension { gitman::function_program_rejection_message(gitman::function_program_rejection::extension_not_allowed) };
+    REQUIRE(extension.starts_with(u8"program"));
+    REQUIRE(extension.find(u8".exe 또는 .com") != std::u8string::npos);
+    REQUIRE(extension.find(u8"powershell.exe -NoProfile -File") != std::u8string::npos);
+    REQUIRE(extension.find(u8"cmd.exe /d /c") != std::u8string::npos);
+    REQUIRE(gitman::function_program_rejection_message(gitman::function_program_rejection::not_absolute).starts_with(u8"program"));
+    REQUIRE(gitman::function_program_rejection_message(gitman::function_program_rejection::trailing_dot_or_space).starts_with(u8"program"));
+}
+
+TEST_CASE("Cmd defense rejects metacharacters from runtime variables", "[function_buttons][t4]")
+{
+    gitman::repository_snapshot snapshot { make_git_snapshot() };
+    snapshot.current_reference = u8"feature&calc";
+    const gitman::variable_lookup lookup { make_lookup(&snapshot) };
+
+    const gitman::variable_expansion program { expand(u8"C:\\Windows\\System32\\cmd.exe", lookup) };
+    const std::vector<gitman::variable_expansion> arguments {
+        expand(u8"/d", lookup),
+        expand(u8"/c", lookup),
+        expand(u8"${projectRoot}\\build.bat", lookup),
+        expand(u8"--branch=${branch}", lookup),
+    };
+
+    const std::optional<gitman::cmd_injection_finding> finding { gitman::find_cmd_injection(program, arguments) };
+    REQUIRE(finding.has_value());
+    REQUIRE(finding->argument == std::optional<std::size_t> { 3u });
+    REQUIRE(finding->origin == gitman::variable_origin::runtime);
+    REQUIRE(finding->variable == u8"branch");
+    REQUIRE(finding->character == u8'&');
+    REQUIRE(gitman::cmd_injection_message(*finding).find(u8"${branch}") != std::u8string::npos);
+    REQUIRE(gitman::cmd_injection_message(*finding).find(u8"(&)") != std::u8string::npos);
+}
+
+TEST_CASE("Cmd defense checks every metacharacter and environment values", "[function_buttons][t4]")
+{
+    const gitman::variable_expansion program { expand(u8"C:\\Windows\\System32\\CMD.EXE", make_lookup(nullptr)) };
+    for (const std::u8string_view value : { u8"a%PATH%", u8"a&b", u8"a|b", u8"a^b", u8"a<b", u8"a>b", u8"a\"b", u8"a\nb", u8"a\rb" })
+    {
+        INFO(reinterpret_cast<const char*>(std::u8string { value }.c_str()));
+        const gitman::variable_lookup lookup { make_lookup(nullptr, { { u8"TARGET", std::u8string { value } } }) };
+        const std::vector<gitman::variable_expansion> arguments { expand(u8"/c", lookup), expand(u8"${env:TARGET}", lookup) };
+        const std::optional<gitman::cmd_injection_finding> finding { gitman::find_cmd_injection(program, arguments) };
+        REQUIRE(finding.has_value());
+        REQUIRE(finding->origin == gitman::variable_origin::environment);
+        REQUIRE(finding->variable == u8"TARGET");
+        REQUIRE(gitman::cmd_injection_message(*finding).find(u8"${env:TARGET}") != std::u8string::npos);
+    }
+
+    const gitman::variable_lookup newline { make_lookup(nullptr, { { u8"TARGET", u8"a\nb" } }) };
+    const std::vector<gitman::variable_expansion> arguments { expand(u8"${env:TARGET}", newline) };
+    REQUIRE(gitman::cmd_injection_message(*gitman::find_cmd_injection(program, arguments)).find(u8"줄바꿈") != std::u8string::npos);
+}
+
+TEST_CASE("Cmd defense lets document and literal segments through", "[function_buttons][t4]")
+{
+    gitman::project_definition project { make_project() };
+    project.display_name = u8"Tom & Jerry";
+    gitman::variable_lookup lookup { make_lookup(nullptr) };
+    lookup.builtins = gitman::make_builtin_variables(u8"E:/repos/team.version-list", project, nullptr);
+    lookup.user = { { u8"flags", u8"a&b|c" } };
+
+    const gitman::variable_expansion program { expand(u8"C:\\Windows\\System32\\cmd.exe", lookup) };
+    const std::vector<gitman::variable_expansion> arguments {
+        expand(u8"/c", lookup),
+        expand(u8"echo a&b", lookup),
+        expand(u8"${projectName}", lookup),
+        expand(u8"${flags}", lookup),
+    };
+    REQUIRE_FALSE(gitman::find_cmd_injection(program, arguments).has_value());
+}
+
+TEST_CASE("Cmd defense follows runtime values through user variables", "[function_buttons][t4]")
+{
+    gitman::repository_snapshot snapshot { make_git_snapshot() };
+    snapshot.current_reference = u8"x|y";
+    gitman::variable_lookup lookup { make_lookup(&snapshot) };
+    lookup.user = { { u8"target", u8"refs/${branch}" } };
+
+    const gitman::variable_expansion program { expand(u8"C:\\Windows\\System32\\cmd.exe", lookup) };
+    const std::vector<gitman::variable_expansion> arguments { expand(u8"${target}", lookup) };
+    const std::optional<gitman::cmd_injection_finding> finding { gitman::find_cmd_injection(program, arguments) };
+    REQUIRE(finding.has_value());
+    REQUIRE(finding->variable == u8"branch");
+    REQUIRE(finding->character == u8'|');
+}
+
+TEST_CASE("Cmd defense applies only when the program is cmd", "[function_buttons][t4]")
+{
+    gitman::repository_snapshot snapshot { make_git_snapshot() };
+    snapshot.current_reference = u8"feature&calc";
+    const gitman::variable_lookup lookup { make_lookup(&snapshot) };
+    const std::vector<gitman::variable_expansion> arguments { expand(u8"${branch}", lookup) };
+
+    REQUIRE_FALSE(gitman::find_cmd_injection(expand(u8"C:\\Tools\\run.exe", lookup), arguments).has_value());
+    REQUIRE_FALSE(gitman::find_cmd_injection(expand(u8"C:\\Tools\\mycmd.exe", lookup), arguments).has_value());
+    REQUIRE(gitman::is_cmd_program(u8"C:/Windows/System32/Cmd.Exe"));
+    REQUIRE_FALSE(gitman::is_cmd_program(u8"C:\\Windows\\System32\\cmd.com"));
+}

@@ -1272,3 +1272,43 @@ TEST_CASE("The checked out branch is marked in the switch candidates", "[logic][
     REQUIRE(current->accessibility().name == u8"main (현재 브랜치)");
     REQUIRE(tree->find(gitman::ui::switch_dialog_item_id(0))->accessibility().name == u8"origin/main");
 }
+
+TEST_CASE("A checked out branch that tracks a remote is marked on its remote candidate", "[logic][ui][switch-ui]")
+{
+    // 원격을 추적하는 main은 local 후보로 따로 서지 않고 `origin/main`으로만 선다.
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    candidates.push_back(make_candidate(u8"origin/main", gitman::switch_candidate_kind::git_remote_branch));
+    candidates.back().remote_name = u8"origin";
+    candidates.back().local_branch = u8"main";
+    candidates.push_back(make_candidate(u8"origin/develop", gitman::switch_candidate_kind::git_remote_branch, true));
+    candidates.back().remote_name = u8"origin";
+    fixture.deliver_candidates(std::move(candidates));
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->current == std::optional<std::size_t> { 0u });
+    const auto tree { make_tree(*view) };
+    REQUIRE(tree->find(gitman::ui::switch_dialog_item_id(0))->accessibility().name == u8"origin/main (현재 브랜치)");
+
+    // 고르면 전환할 것이 없다고 알리고 확인을 막는다.
+    fixture.controller.handle(gitman::select_switch_candidate_intent { 0 });
+    const auto selected { fixture.controller.make_view_snapshot() };
+    REQUIRE(selected->switch_dialog->can_confirm == false);
+    REQUIRE(selected->switch_dialog->message == u8"이미 현재 참조입니다.");
+}
+
+TEST_CASE("A remote candidate is not current when the same local branch stands apart", "[logic][switch-ui]")
+{
+    // upstream이 다른 main은 local 후보로 따로 선다. 그때 `origin/main`을 고르면
+    // 전환이 아니라 tracking 충돌이라 현재로 표시하지 않는다.
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    candidates.push_back(make_candidate(u8"origin/main", gitman::switch_candidate_kind::git_remote_branch));
+    candidates.back().remote_name = u8"origin";
+    candidates.back().local_branch = u8"main";
+    candidates.push_back(make_candidate(u8"main", gitman::switch_candidate_kind::git_local_branch));
+    fixture.deliver_candidates(std::move(candidates));
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->switch_dialog->current == std::optional<std::size_t> { 1u });
+}

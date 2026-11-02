@@ -92,13 +92,23 @@ namespace gitman {
 
         // dialog 수준에서 곧바로 판정할 수 있는 검증이다. 존재·저장소 일치 같은
         // 나머지 검증은 provider가 실행 직전에 다시 수행한다 (REQ-007).
-        bool candidate_is_current(const repository_snapshot& snapshot, const switch_candidate& candidate) noexcept
+        //
+        // 원격을 추적하는 local branch는 local 후보로 따로 서지 않고 그 remote 후보
+        // (`origin/main`)로만 선다 (`build_git_switch_candidates`). 그래서 remote 후보도
+        // 대응하는 local branch가 체크아웃돼 있으면 현재다. 같은 이름의 local 후보가
+        // 따로 있으면 그 remote로는 닿지 않는 branch라 local 후보만 현재다.
+        bool candidate_is_current(const repository_snapshot& snapshot, const switch_candidate& candidate, const std::vector<switch_candidate>& candidates) noexcept
         {
             if (candidate.kind == switch_candidate_kind::git_local_branch)
                 return candidate.display_name == snapshot.current_reference;
             if (candidate.kind == switch_candidate_kind::subversion_url)
                 return candidate.target == snapshot.current_reference;
-            return false;
+            if (candidate.local_branch.empty() || candidate.local_branch != snapshot.current_reference)
+                return false;
+            for (const switch_candidate& other : candidates)
+                if (other.kind == switch_candidate_kind::git_local_branch && other.display_name == candidate.local_branch)
+                    return false;
+            return true;
         }
 
         // 환경설정 경로 초안의 형식 검증이다 (stage-8-plan 5.1). 파일 선택 dialog가
@@ -1983,7 +1993,7 @@ namespace gitman {
             target = switch_dialog_->candidates.candidates[visible[*switch_dialog_->selected]];
         }
 
-        if (switch_dialog_->svn_browser.has_value() == false && candidate_is_current(card->snapshot, target))
+        if (switch_dialog_->svn_browser.has_value() == false && candidate_is_current(card->snapshot, target, switch_dialog_->candidates.candidates))
         {
             switch_dialog_->message = u8"이미 현재 참조입니다. 다른 후보를 선택하세요.";
             return;
@@ -3167,7 +3177,7 @@ namespace gitman {
                 for (const std::size_t index : visible)
                 {
                     const switch_candidate& candidate { switch_dialog_->candidates.candidates[index] };
-                    if (candidate_is_current(card.snapshot, candidate))
+                    if (candidate_is_current(card.snapshot, candidate, switch_dialog_->candidates.candidates))
                         dialog.current = dialog.candidates.size();
                     dialog.candidates.push_back(candidate);
                 }
@@ -3223,7 +3233,7 @@ namespace gitman {
                 else if (switch_dialog_->loading == false && switch_dialog_->selected.has_value() && *switch_dialog_->selected < dialog.candidates.size() && switch_dialog_->executing == false)
                 {
                     const switch_candidate& candidate { dialog.candidates[*switch_dialog_->selected] };
-                    if (candidate_is_current(card.snapshot, candidate))
+                    if (candidate_is_current(card.snapshot, candidate, switch_dialog_->candidates.candidates))
                     {
                         dialog.can_confirm = false;
                         if (dialog.message.empty())

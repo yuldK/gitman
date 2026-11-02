@@ -156,6 +156,44 @@ namespace gitman {
         return true;
     }
 
+    bool is_function_definition_trusted(const app_settings& settings, const std::u8string_view document_path, const std::u8string_view digest)
+    {
+        if (digest.empty())
+            return false;
+        const std::u8string key { recent_document_key(document_path) };
+        return std::ranges::any_of(settings.trusted_function_definitions
+            , [&key, digest](const trusted_function_definition& value)
+            {
+                return value.digest == digest && recent_document_key(value.document_path) == key;
+            }
+        );
+    }
+
+    bool trust_function_definition(app_settings& settings, std::u8string document_path, std::u8string digest)
+    {
+        const std::u8string key { recent_document_key(document_path) };
+        const auto same_document = [&key](const trusted_function_definition& value)
+        {
+            return recent_document_key(value.document_path) == key;
+        };
+        // 손으로 고친 파일에 같은 문서 항목이 여럿이면 모두 지우고 하나로 남긴다. 하나뿐이고 해시가
+        // 같으면 바뀐 것이 없다.
+        std::vector<trusted_function_definition>& values { settings.trusted_function_definitions };
+        const auto found { std::ranges::find_if(values, same_document) };
+        if (found != values.end() && found->digest == digest && std::ranges::count_if(values, same_document) == 1)
+            return false;
+        if (found == values.end())
+        {
+            values.push_back({ std::move(document_path), std::move(digest) });
+            return true;
+        }
+        found->document_path = std::move(document_path);
+        found->digest = std::move(digest);
+        // `found`가 첫 항목이라 남은 같은 문서 항목은 모두 그 뒤에 있다.
+        values.erase(std::remove_if(found + 1, values.end(), same_document), values.end());
+        return true;
+    }
+
     std::u8string format_utc_timestamp(const std::chrono::system_clock::time_point time)
     {
         const std::time_t seconds { std::chrono::system_clock::to_time_t(time) };

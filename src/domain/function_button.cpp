@@ -424,13 +424,18 @@ namespace gitman {
         return std::holds_alternative<std::u8string>(variable.value) && is_function_variable_name(variable.name) && is_reserved_variable_name(variable.name) == false;
     }
 
+    std::u8string_view function_project_name(const project_definition& project) noexcept
+    {
+        return project.display_name.empty() ? std::u8string_view { project.id.value } : std::u8string_view { project.display_name };
+    }
+
     std::vector<variable_binding> make_builtin_variables(const std::u8string_view document_path, const project_definition& project, const repository_snapshot* const snapshot)
     {
         std::vector<variable_binding> result {};
         result.reserve(document_variable_names.size() + runtime_variable_names.size());
 
         const std::u8string_view root { project.path.normalized.empty() ? project.path.original : project.path.normalized };
-        const std::u8string_view name { project.display_name.empty() ? project.id.value : project.display_name };
+        const std::u8string_view name { function_project_name(project) };
         result.push_back({ u8"workspaceFolder", non_empty(workspace_folder(document_path)), variable_origin::document });
         result.push_back({ u8"workspaceFile", non_empty(with_backslashes(document_path)), variable_origin::document });
         result.push_back({ u8"projectRoot", non_empty(with_backslashes(root)), variable_origin::document });

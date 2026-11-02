@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 namespace gitman::ui {
@@ -15,6 +16,32 @@ namespace gitman::ui {
         [[nodiscard]] bool tree_has(const luil::ui_tree& tree, const luil::ui_element_kind kind)
         {
             return tree.find(luil::ui_element_id { kind }) != nullptr;
+        }
+
+        // 기능 실행 확인 dialog 목록의 스크롤 키다. 목록 항목은 Tab 자리가 아니라서 키보드만 쓰는
+        // 사용자는 이 키로 보이지 않는 항목에 닿는다 (function-buttons-design B6, T7).
+        [[nodiscard]] std::optional<function_confirm_scroll_step> function_confirm_key_step(const luil::key_pressed_event& event) noexcept
+        {
+            if (event.control || event.alt || event.shift)
+                return std::nullopt;
+            switch (event.key)
+            {
+            case luil::key_code::arrow_up:
+                return function_confirm_scroll_step::line_up;
+            case luil::key_code::arrow_down:
+                return function_confirm_scroll_step::line_down;
+            case luil::key_code::page_up:
+                return function_confirm_scroll_step::page_up;
+            case luil::key_code::page_down:
+                return function_confirm_scroll_step::page_down;
+            case luil::key_code::home:
+                return function_confirm_scroll_step::start;
+            case luil::key_code::end:
+                return function_confirm_scroll_step::end;
+            default:
+                break;
+            }
+            return std::nullopt;
         }
     } // namespace
 
@@ -102,6 +129,10 @@ namespace gitman::ui {
         if (tree.find(luil::ui_element_id { luil::ui_element_kind::menu }) != nullptr)
             return {};
 
+        // 기능 실행 확인 dialog는 카드 위의 다른 dialog보다 위에 뜬다. 휠은 그 목록을 스크롤한다.
+        if (tree_has(tree, kind_function_confirm_dialog))
+            return { make_logic_action(function_confirm_scroll_intent { scroll_delta }) };
+
         // 로컬 변경 dialog가 열려 있으면 휠은 diff pane 위에서는 diff를, 그 밖에서는
         // 목록을 스크롤한다.
         if (tree_has(tree, kind_local_changes_dialog))
@@ -143,6 +174,16 @@ namespace gitman::ui {
         // D1-B로 카드 body가 Tab 자리에서 빠졌으므로 카드를 클릭한 뒤의 Enter도
         // 활성 키에 걸리지 않고 여기까지 온다 — 아래 `enter` 가지가 `focused_card_`
         // 새로 고침을 낸다 (클릭은 `on_click`이 그 값을 세워 둔다).
+        //
+        // 기능 실행 확인 dialog가 떠 있으면 스크롤 키는 그 목록의 것이다. 방향키가 dialog 뒤의 카드
+        // 선택을 바꾸지 않게 여기서 끝낸다.
+        if (tree != nullptr && tree_has(*tree, kind_function_confirm_dialog))
+        {
+            const std::optional<function_confirm_scroll_step> step { function_confirm_key_step(event) };
+            if (step.has_value())
+                return { make_logic_action(function_confirm_scroll_intent { 0.0f, *step }) };
+        }
+
         switch (event.key)
         {
         case luil::key_code::arrow_down:

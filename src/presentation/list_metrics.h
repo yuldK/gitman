@@ -212,6 +212,79 @@ namespace gitman {
     }
     inline constexpr float layout_generate_dialog_label_width { 76.0f };
 
+    // 기능 실행 확인 dialog의 치수다 (function-buttons-design 3.10). 목록 스크롤 한계를 logic과
+    // element가 같은 값으로 계산하도록 여기에 둔다. 항목 높이는 줄 수로만 정해진다 — 긴 줄은 logic이
+    // 칸 수(`function_confirm_code_columns`)로 미리 나누므로 글 폭을 재지 않아도 된다.
+    inline constexpr float layout_function_confirm_dialog_width { 600.0f };
+    inline constexpr float layout_function_confirm_dialog_height { 480.0f };
+    inline constexpr float layout_function_confirm_padding { 16.0f };
+    inline constexpr float layout_function_confirm_title_height { 26.0f };
+    inline constexpr float layout_function_confirm_button_height { 28.0f };
+    inline constexpr float layout_function_confirm_item_padding { 6.0f };
+    inline constexpr float layout_function_confirm_item_gap { 6.0f };
+    // 안내·경고 줄이다. 100%에서 16.0이고 글(11)이 시스템 글자 크기만큼 자란다.
+    [[nodiscard]] inline float layout_function_confirm_text_line_height() noexcept
+    {
+        return 16.0f + text_growth(11.0f);
+    }
+    // 항목의 코드 줄이다. 100%에서 15.0이고 코드 글(10.5)이 자란다.
+    [[nodiscard]] inline float layout_function_confirm_code_line_height() noexcept
+    {
+        return 15.0f + text_growth(10.5f);
+    }
+    // 항목 머리(라벨과 실행 방식 배지)다. 100%에서 20.0이고 라벨(12)이 자란다.
+    [[nodiscard]] inline float layout_function_confirm_item_header_height() noexcept
+    {
+        return 20.0f + text_growth(12.0f);
+    }
+    [[nodiscard]] inline float layout_function_confirm_item_height(const std::size_t line_count) noexcept
+    {
+        return layout_function_confirm_item_padding * 2.0f + layout_function_confirm_item_header_height() + static_cast<float>(line_count) * layout_function_confirm_code_line_height();
+    }
+    // panel 위쪽부터 목록이 시작하는 거리다. 제목 아래 안내 줄 수만큼 내려간다.
+    [[nodiscard]] inline float function_confirm_list_top(const std::size_t description_lines) noexcept
+    {
+        return layout_function_confirm_padding + layout_function_confirm_title_height + static_cast<float>(description_lines) * layout_function_confirm_text_line_height() + 8.0f;
+    }
+    // 목록 아래(경고 줄과 버튼 줄)가 차지하는 높이다.
+    [[nodiscard]] inline float function_confirm_list_bottom(const std::size_t note_lines) noexcept
+    {
+        const float note { note_lines > 0 ? 8.0f + static_cast<float>(note_lines) * layout_function_confirm_text_line_height() : 0.0f };
+        return note + 12.0f + layout_function_confirm_button_height + layout_function_confirm_padding;
+    }
+    // panel 높이다. 창이 낮으면 위아래 여백을 남기고 줄인다 (`dialog_available_height`).
+    [[nodiscard]] inline float function_confirm_dialog_height(const float window_height) noexcept
+    {
+        const float available { dialog_available_height(window_height) };
+        return available < layout_function_confirm_dialog_height ? available : layout_function_confirm_dialog_height;
+    }
+    // 목록 영역의 높이다. 창이 아주 낮아도 코드 한 줄 높이는 남긴다.
+    [[nodiscard]] inline float function_confirm_list_height(const float window_height, const std::size_t description_lines, const std::size_t note_lines) noexcept
+    {
+        const float available { function_confirm_dialog_height(window_height) - function_confirm_list_top(description_lines) - function_confirm_list_bottom(note_lines) };
+        return available < layout_function_confirm_code_line_height() ? layout_function_confirm_code_line_height() : available;
+    }
+    // 항목 안쪽 좌우 여백이다.
+    inline constexpr float layout_function_confirm_item_inset { 10.0f };
+    // 이어지는 줄의 들여쓰기다 (코드 글자 칸 수).
+    inline constexpr std::size_t function_confirm_continuation_indent { 2 };
+    // 코드 줄 하나에 담을 글자 칸 수다. 확인 dialog는 보이는 글이 곧 확인할 내용이라 긴 인자의 뒤를
+    // 말줄임으로 숨기지 않고 logic이 이 칸 수로 줄을 나눈다 (T7). 항목 높이가 줄 수로만 정해져야
+    // logic이 글 폭을 재지 않고 스크롤 한계를 셀 수 있기 때문이다.
+    //  - 폭은 dialog 폭(창에 맞춰 줄인 값)에서 panel 여백, 항목 여백, 스크롤 막대, 이어지는 줄의
+    //    들여쓰기를 뺀 값이다.
+    //  - 글자 폭은 코드 글꼴(고정폭) 크기의 0.62배로 어림한다. Consolas(0.55)·Cascadia Mono(0.6)보다
+    //    넓게 잡아 줄이 넘치지 않는 쪽으로 틀린다. ASCII 밖의 글자는 두 칸으로 센다.
+    [[nodiscard]] inline std::size_t function_confirm_code_columns(const float window_width) noexcept
+    {
+        const float dialog_width { window_width < layout_function_confirm_dialog_width ? window_width : layout_function_confirm_dialog_width };
+        const float glyph_width { luil::scaled_font_size(10.5f) * 0.62f };
+        const float text_width { dialog_width - layout_function_confirm_padding * 2.0f - layout_function_confirm_item_inset * 2.0f - layout_scrollbar_hit_width };
+        const float columns { text_width / glyph_width - static_cast<float>(function_confirm_continuation_indent) };
+        constexpr std::size_t minimum_columns { 8 };
+        return columns > static_cast<float>(minimum_columns) ? static_cast<std::size_t>(columns) : minimum_columns;
+    }
+
     // 카드 컨텍스트 메뉴 popup의 너비다 (field-feedback-design 3장). 행 높이·여백은
     // luil `menu_element`의 것(`menu_item_height`·`menu_padding`)을 쓴다.
     inline constexpr float layout_context_menu_width { 190.0f };

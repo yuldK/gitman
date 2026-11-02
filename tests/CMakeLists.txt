@@ -34,6 +34,7 @@ gitman_add_source_filter(gitman_test_files "domain"
     discovery_domain_tests.cpp
     domain_model_tests.cpp
     function_button_tests.cpp
+    function_trust_tests.cpp
     local_changes_domain_tests.cpp
     operation_log_tests.cpp
     utf8_tests.cpp
@@ -47,6 +48,7 @@ gitman_add_source_filter(gitman_test_files "application/logic"
     logic_change_operation_tests.cpp
     logic_controller_tests.cpp
     logic_function_run_tests.cpp
+    logic_function_trust_tests.cpp
     process_cancellation_tests.cpp
     stabilization_tests.cpp
     task_scheduler_tests.cpp)

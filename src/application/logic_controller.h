@@ -160,9 +160,40 @@ namespace gitman {
         void handle_request_update(const request_update_intent& intent);
         void handle_request_switch(const request_switch_intent& intent);
         void handle_cancel_operation(const cancel_operation_intent& intent);
-        // 기능 버튼 실행이다 (4.5). 활성 재판정 → 치환 → 허용 목록·절대 경로·cmd 방어 →
-        // 풀 자리 → 제출 순서다. 신뢰 확인과 `confirm` 미리보기는 T7에서 이 사이에 들어간다.
+        // 클릭 시점에 치환과 검사를 마친 실행 값이다 (4.5). 확인 dialog를 열 때 하나를 들고, 확인할 때
+        // 다시 만들어 같은지 본다.
+        struct prepared_function_run
+        {
+            // 실제 argv에 들어갈 치환 결과다. env 값이 들어 있다.
+            variable_expansion program {};
+            std::vector<variable_expansion> arguments {};
+            variable_expansion working_directory {};
+            // 요청 조립이 `GITMAN_*`로 내보낼 내장 변수 표다.
+            std::vector<variable_binding> builtins {};
+            std::u8string display_command_line {};
+        };
+
+        // 기능 버튼 실행이다 (4.5). 활성 재판정 → 치환 → 허용 목록·절대 경로·cmd 방어 → 신뢰 확인
+        // 또는 `confirm` 미리보기 → 풀 자리 → 제출 순서다.
         void handle_run_function(const run_function_intent& intent);
+        // 활성 재판정과 클릭 시점 검사다. 걸리면 로그를 남기고(늦은 클릭은 아무것도 남기지 않고)
+        // 값이 없다.
+        [[nodiscard]] std::optional<prepared_function_run> prepare_function_run(card_state& card, const function_button& button);
+        // 풀 자리를 보고 제출한다. 확인 dialog를 거쳤으면 확인할 때 다시 만든 값이다.
+        void submit_function_run(card_state& card, const function_button& button, const prepared_function_run& prepared);
+        // 지금 문서의 신뢰 해시다 (3.10). 기능 버튼 절이 없으면 비어 있다. 입력은 `function_trust.h`
+        // 주석대로 읽을 때의 `source_digest_input`과 지금 project의 `{id, path.original, ${projectName} 값}`이다.
+        [[nodiscard]] std::u8string current_function_digest() const;
+        void open_function_confirm(function_confirm_mode mode, const card_state& card, const function_button& button, const prepared_function_run& prepared, std::u8string digest);
+        [[nodiscard]] function_confirm_dialog_view build_function_trust_view(const function_button& clicked, const prepared_function_run& prepared) const;
+        [[nodiscard]] function_confirm_dialog_view build_function_preview_view(const card_state& card, const function_button& button, const prepared_function_run& prepared) const;
+        // `confirm` 미리보기의 줄(표시용 명령줄, 치환한 작업 폴더)이다. 미리보기와, 신뢰하지 않은
+        // `confirm` 버튼의 신뢰 dialog가 같은 글을 쓴다.
+        [[nodiscard]] std::vector<function_confirm_line> function_preview_lines(const prepared_function_run& prepared, std::u8string_view command_prefix, std::u8string_view folder_prefix) const;
+        // 지금 창 폭으로 긴 줄을 나눈 dialog view다. snapshot과 스크롤 한계가 같은 값을 본다.
+        [[nodiscard]] function_confirm_dialog_view wrapped_function_confirm_view() const;
+        void handle_confirm_function_run();
+        void handle_function_confirm_scroll(const function_confirm_scroll_intent& intent);
         void handle_stop_function(const stop_function_intent& intent);
         void handle_function_started(const function_started_event& event);
         void handle_function_log(function_log_event event);
@@ -548,6 +579,25 @@ namespace gitman {
         };
 
         std::optional<context_menu_state> context_menu_ {};
+
+        // 기능 실행 확인 dialog의 상태다 (function-buttons-design 3.10, 4.5). 값이 있으면 dialog가
+        // 열려 있고, 그동안 다른 기능 실행 intent는 받지 않는다.
+        struct function_confirm_state
+        {
+            function_confirm_mode mode { function_confirm_mode::trust };
+            project_id card {};
+            std::u8string button_id {};
+            // dialog를 열 때의 신뢰 해시다. 신뢰 모드는 확인하면 이 값을 기록한다 — 사용자가 본
+            // 정의의 해시다.
+            std::u8string digest {};
+            // dialog를 열 때의 실행 값이다. 확인할 때 다시 만든 값과 다르면 실행하지 않는다.
+            prepared_function_run prepared {};
+            // 열 때 만든 표시 모델이다. 줄은 나누기 전의 글이고 스크롤 위치(`view.scroll_offset`)만
+            // 바뀐다. 창 폭에 맞춘 줄 나누기는 `wrapped_function_confirm_view`가 그때그때 한다.
+            function_confirm_dialog_view view {};
+        };
+
+        std::optional<function_confirm_state> function_confirm_ {};
         // 확인 버튼 하나짜리 알림 다이얼로그다 (app-shell-design A3.2). 값이
         // 있으면 다른 dialog 위에 떠 있다.
         std::optional<notice_dialog_view> notice_dialog_ {};

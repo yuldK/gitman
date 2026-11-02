@@ -6,6 +6,7 @@
 #include "presentation/ui/discovery_dialog_element.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/font_dialog_element.h"
+#include "presentation/ui/function_confirm_dialog_element.h"
 #include "presentation/ui/generate_document_dialog_element.h"
 #include "presentation/ui/gitman_caption.h"
 #include "presentation/ui/local_changes_dialog_element.h"
@@ -183,7 +184,7 @@ namespace gitman::ui {
                 // scrim·가운데 배치·초점 가둠·Esc를 맡고 gitman element는 그 안의
                 // content다. 그래서 **추가 순서가 곧 Esc 우선순위**다 — luil은 그리기
                 // 순서상 마지막 가둠에 Esc를 준다. 목표 우선순위(notice >
-                // local_changes > discovery > generate > font > settings > switch)를
+                // function_confirm > local_changes > discovery > generate > font > settings > switch)를
                 // 뒤집어 단다.
                 //
                 // factory에 넘기는 창 크기는 **논리 픽셀**이다 (설계 L4). host가
@@ -229,6 +230,13 @@ namespace gitman::ui {
                     local_changes_dialog_ = dialog.get();
                     add_child(std::move(dialog));
                 }
+                // 기능 실행 확인은 카드·메뉴·키에서 열린다. 알림만 그 위다 (function-buttons-design 3.10).
+                if (view.function_confirm_dialog.has_value())
+                {
+                    auto dialog { make_function_confirm_dialog(*view.function_confirm_dialog, logical_width, logical_height) };
+                    function_confirm_dialog_ = dialog.get();
+                    add_child(std::move(dialog));
+                }
                 // 알림은 다른 dialog 위다 (app-shell-design A3.2). 컨텍스트 메뉴는
                 // 주 tree에 없다 — 창 경계를 넘는 popup 창이다 (설계 D3-A,
                 // `build_context_menu_popup`).
@@ -272,6 +280,8 @@ namespace gitman::ui {
                     discovery_dialog_->arrange({ context.slot, scale });
                 if (local_changes_dialog_ != nullptr)
                     local_changes_dialog_->arrange({ context.slot, scale });
+                if (function_confirm_dialog_ != nullptr)
+                    function_confirm_dialog_->arrange({ context.slot, scale });
                 if (notice_dialog_ != nullptr)
                     notice_dialog_->arrange({ context.slot, scale });
                 if (start_page_ != nullptr)
@@ -304,6 +314,7 @@ namespace gitman::ui {
             ui_element* generate_dialog_ { nullptr };
             ui_element* discovery_dialog_ { nullptr };
             ui_element* local_changes_dialog_ { nullptr };
+            ui_element* function_confirm_dialog_ { nullptr };
             ui_element* notice_dialog_ { nullptr };
         };
     } // namespace

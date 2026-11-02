@@ -72,7 +72,9 @@ gitman_add_source_filter(gitman_lib_files "domain/settings"
 # 실행 파일 허용 목록과 cmd 방어 판정이다.
 gitman_add_source_filter(gitman_lib_files "domain/function_buttons"
     domain/function_button.cpp
-    domain/function_button.h)
+    domain/function_button.h
+    domain/function_trust.cpp
+    domain/function_trust.h)
 
 # 텍스트 편집 상태와 UTF-8 도우미의 전달 헤더다 (luil의 값 타입).
 gitman_add_source_filter(gitman_lib_files "domain/text"
@@ -264,12 +266,14 @@ gitman_add_source_filter(gitman_lib_files "presentation/ui/workspace"
     presentation/ui/toolbar_element.cpp
     presentation/ui/toolbar_element.h)
 
-# in-app dialog 본체 7종이다 (luil modal_host의 content).
+# in-app dialog 본체들이다 (luil modal_host의 content).
 gitman_add_source_filter(gitman_lib_files "presentation/ui/dialogs"
     presentation/ui/discovery_dialog_element.cpp
     presentation/ui/discovery_dialog_element.h
     presentation/ui/font_dialog_element.cpp
     presentation/ui/font_dialog_element.h
+    presentation/ui/function_confirm_dialog_element.cpp
+    presentation/ui/function_confirm_dialog_element.h
     presentation/ui/generate_document_dialog_element.cpp
     presentation/ui/generate_document_dialog_element.h
     presentation/ui/local_changes_dialog_element.cpp

@@ -107,6 +107,36 @@ namespace gitman {
         std::u8string button_id {};
     };
 
+    // 기능 실행 확인 dialog(신뢰 확인, `confirm` 미리보기)의 확인이다 (function-buttons-design
+    // 3.10, 4.5). logic은 다시 치환해 dialog를 열 때와 같은지 본 뒤에만 실행한다. 확인 한 번은 언제나
+    // 실행 한 번으로 끝나고 다른 dialog를 잇따라 열지 않으므로, 두 번 누른 확인이 다음 dialog를
+    // 지나가는 일이 없다 — 그래서 dialog를 가르는 번호를 싣지 않는다.
+    struct confirm_function_run_intent
+    {};
+
+    // 기능 실행 확인 dialog의 취소다. 취소 버튼·Esc·배경 클릭이 같은 intent를 낸다.
+    struct cancel_function_run_intent
+    {};
+
+    // 기능 실행 확인 dialog 목록의 스크롤 단위다. 휠·막대는 거리(`delta`)를 싣고, 키는 단위만 싣는다 —
+    // 한 쪽의 높이는 목록 높이를 아는 logic이 정한다.
+    enum class function_confirm_scroll_step
+    {
+        delta,
+        line_up,
+        line_down,
+        page_up,
+        page_down,
+        start,
+        end,
+    };
+
+    struct function_confirm_scroll_intent
+    {
+        float delta { 0.0f };
+        function_confirm_scroll_step step { function_confirm_scroll_step::delta };
+    };
+
     struct clear_log_intent
     {
         project_id id {};
@@ -805,7 +835,8 @@ namespace gitman {
     // logic thread의 단일 inbox payload다 (ADR-005 topology). 도착 순서 그대로
     // 처리된다.
     using logic_message = std::variant<open_document_intent, generate_document_intent, refresh_all_intent, refresh_card_intent, select_card_intent, set_filter_intent, toggle_path_display_intent,
-        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, run_function_intent, stop_function_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
+        reorder_card_intent, request_update_intent, request_switch_intent, cancel_operation_intent, run_function_intent, stop_function_intent, confirm_function_run_intent, cancel_function_run_intent,
+        function_confirm_scroll_intent, clear_log_intent, set_log_filter_intent, set_log_auto_scroll_intent, log_scroll_intent,
         begin_switch_intent, select_switch_candidate_intent, select_svn_browser_node_intent, toggle_svn_browser_node_intent, confirm_switch_intent, cancel_switch_dialog_intent,
         switch_dialog_scroll_intent, edit_text_input_intent, set_text_composition_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent,
         confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event, open_generate_document_intent, set_generate_scan_root_intent,

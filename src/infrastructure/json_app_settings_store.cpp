@@ -13,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace gitman {
     namespace {
@@ -270,6 +271,45 @@ namespace gitman {
             }
             return appearance;
         }
+
+        // 기능 버튼 신뢰 목록이다 (function-buttons-design 3.10). 읽을 수 없는 항목은 건너뛴다 —
+        // 그 문서의 기능을 누를 때 한 번 더 묻는 것으로 끝나고 시작을 막을 일이 아니다. 해시는
+        // SHA-256 소문자 16진수 64자만 받는다.
+        std::vector<trusted_function_definition> parse_trusted_function_definitions(const json& root, app_settings_load_result& result, const std::u8string_view path)
+        {
+            std::vector<trusted_function_definition> trusted {};
+            const auto source { root.find("trusted_function_definitions") };
+            if (source == root.end() || source->is_null())
+                return trusted;
+            if (source->is_array() == false)
+            {
+                result.diagnostics.push_back(
+                    make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 기능 버튼 신뢰 목록이 배열이 아니라 무시했습니다.", path));
+                return trusted;
+            }
+
+            for (const json& value : *source)
+            {
+                if (value.is_object() == false)
+                    continue;
+                trusted_function_definition entry {};
+                entry.document_path = read_string(value, "path");
+                entry.digest = read_string(value, "digest");
+                const bool hex_digest {
+                    entry.digest.size() == 64
+                    && std::ranges::all_of(entry.digest
+                        , [](const char8_t character)
+                        {
+                            return (character >= u8'0' && character <= u8'9') || (character >= u8'a' && character <= u8'f');
+                        }
+                    )
+                };
+                if (entry.document_path.empty() || hex_digest == false)
+                    continue;
+                trusted.push_back(std::move(entry));
+            }
+            return trusted;
+        }
     } // namespace
 
     std::u8string serialize_app_settings_json(const app_settings& settings, const std::u8string_view shadow_source_json)
@@ -329,6 +369,22 @@ namespace gitman {
             root["fonts"] = std::move(value);
         }
 
+        // 기능 버튼 신뢰 목록이다 (function-buttons-design 3.10). 신뢰한 적이 없으면 키를 만들지
+        // 않아 기능 버튼을 쓰지 않는 사용자의 파일 모양이 그대로다. 파일에 있던 값(형식이 틀린
+        // 값 포함)도 그때는 건드리지 않는다.
+        if (settings.trusted_function_definitions.empty() == false)
+        {
+            json trusted { json::array() };
+            for (const trusted_function_definition& value : settings.trusted_function_definitions)
+            {
+                json entry { json::object() };
+                entry["path"] = as_string(value.document_path);
+                entry["digest"] = as_string(value.digest);
+                trusted.push_back(std::move(entry));
+            }
+            root["trusted_function_definitions"] = std::move(trusted);
+        }
+
         // 값이 없으면 필드를 만들지 않고, 파일에 이미 있던 `window`는 지우지
         // 않는다 (문서 저장의 window 규칙과 동일).
         if (settings.window.has_value())
@@ -366,6 +422,7 @@ namespace gitman {
         result.settings.settings = parse_global_settings(root, result, path);
         result.settings.appearance = parse_appearance(root, result, path);
         result.settings.fonts = parse_fonts(root, result, path);
+        result.settings.trusted_function_definitions = parse_trusted_function_definitions(root, result, path);
 
         const auto recent { root.find("recent_documents") };
         if (recent == root.end())

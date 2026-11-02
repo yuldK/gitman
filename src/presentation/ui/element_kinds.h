@@ -106,6 +106,11 @@ namespace gitman::ui {
             discovery_dialog_item,
             discovery_dialog_confirm,
             discovery_dialog_cancel,
+            function_confirm_dialog,
+            function_confirm_dialog_panel,
+            function_confirm_dialog_item,
+            function_confirm_dialog_confirm,
+            function_confirm_dialog_cancel,
             count,
         };
 
@@ -203,6 +208,11 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_discovery_dialog_item { detail::application_kind(detail::application_kind_index::discovery_dialog_item) };
     inline constexpr luil::ui_element_kind kind_discovery_dialog_confirm { detail::application_kind(detail::application_kind_index::discovery_dialog_confirm) };
     inline constexpr luil::ui_element_kind kind_discovery_dialog_cancel { detail::application_kind(detail::application_kind_index::discovery_dialog_cancel) };
+    inline constexpr luil::ui_element_kind kind_function_confirm_dialog { detail::application_kind(detail::application_kind_index::function_confirm_dialog) };
+    inline constexpr luil::ui_element_kind kind_function_confirm_dialog_panel { detail::application_kind(detail::application_kind_index::function_confirm_dialog_panel) };
+    inline constexpr luil::ui_element_kind kind_function_confirm_dialog_item { detail::application_kind(detail::application_kind_index::function_confirm_dialog_item) };
+    inline constexpr luil::ui_element_kind kind_function_confirm_dialog_confirm { detail::application_kind(detail::application_kind_index::function_confirm_dialog_confirm) };
+    inline constexpr luil::ui_element_kind kind_function_confirm_dialog_cancel { detail::application_kind(detail::application_kind_index::function_confirm_dialog_cancel) };
 
     inline constexpr std::size_t application_kind_count { static_cast<std::size_t>(detail::application_kind_index::count) };
 
@@ -296,6 +306,11 @@ namespace gitman::ui {
         kind_discovery_dialog_item,
         kind_discovery_dialog_confirm,
         kind_discovery_dialog_cancel,
+        kind_function_confirm_dialog,
+        kind_function_confirm_dialog_panel,
+        kind_function_confirm_dialog_item,
+        kind_function_confirm_dialog_confirm,
+        kind_function_confirm_dialog_cancel,
     };
 
     static_assert(application_kinds.size() == application_kind_count);
@@ -310,8 +325,9 @@ namespace gitman::ui {
     inline constexpr std::u8string_view scrollbar_owner_local_changes_list { u8"local-changes-list" };
     inline constexpr std::u8string_view scrollbar_owner_local_changes_diff { u8"local-changes-diff" };
     inline constexpr std::u8string_view scrollbar_owner_discovery_dialog { u8"discovery" };
+    inline constexpr std::u8string_view scrollbar_owner_function_confirm_dialog { u8"function-confirm" };
 
-    // luil `modal_host_element`(scrim 포함)가 쓰는 owner 문자열이다. dialog 7종을 가른다
+    // luil `modal_host_element`(scrim 포함)가 쓰는 owner 문자열이다. dialog를 가른다
     // (설계 L6, D2-A). 본체 element의 kind(`kind_*_dialog`)는 그대로다.
     inline constexpr std::u8string_view dialog_owner_notice { u8"notice" };
     inline constexpr std::u8string_view dialog_owner_switch { u8"switch" };
@@ -320,4 +336,6 @@ namespace gitman::ui {
     inline constexpr std::u8string_view dialog_owner_font { u8"font" };
     inline constexpr std::u8string_view dialog_owner_discovery { u8"discovery" };
     inline constexpr std::u8string_view dialog_owner_local_changes { u8"local-changes" };
+    // 기능 실행 확인 dialog다 (function-buttons-design 3.10). 신뢰 확인과 `confirm` 미리보기가 같은 owner다.
+    inline constexpr std::u8string_view dialog_owner_function_confirm { u8"function-confirm" };
 } // namespace gitman::ui

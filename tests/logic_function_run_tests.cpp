@@ -2,6 +2,7 @@
 #include "application/function_execution_pool.h"
 #include "application/logic_controller.h"
 #include "application/process_request.h"
+#include "domain/function_trust.h"
 #include "infrastructure/function_execution_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -137,6 +138,15 @@ namespace {
                     }
                 )
             );
+
+            // 이 파일은 신뢰를 기록한 정의의 실행 경로를 본다. 신뢰 확인 dialog(T7)는
+            // `logic_function_trust_tests.cpp`가 본다. 앱 설정을 읽을 때 이 문서의 해시를 싣는다.
+            controller.start();
+            gitman::app_settings_loaded_event settings {};
+            settings.operation_id = submitter.requests.back().operation_id;
+            settings.settings.trusted_function_definitions.push_back({ std::u8string { document_path }, gitman::function_trust_digest(definition, projects) });
+            controller.handle(std::move(settings));
+
             controller.handle(gitman::open_document_intent { std::u8string { document_path } });
 
             gitman::document_loaded_event event {};

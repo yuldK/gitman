@@ -196,6 +196,9 @@ namespace gitman {
     // 내장 변수 표를 만든다 (3.3). 경로 출처 값은 구분자를 `\`로 통일한다.
     // `snapshot`이 null이면 로컬 조회 전이라 런타임 변수는 모두 풀리지 않는다.
     [[nodiscard]] std::vector<variable_binding> make_builtin_variables(std::u8string_view document_path, const project_definition& project, const repository_snapshot* snapshot);
+    // `${projectName}`(`GITMAN_PROJECT_NAME`)의 값이다. 표시 이름이 비면 id다. 신뢰 해시(T7)도 이 값을
+    // 넣어 실행 입력과 같은 규칙을 본다.
+    [[nodiscard]] std::u8string_view function_project_name(const project_definition& project) noexcept;
     // 문서 변수에 그 project의 덮어쓰기를 얹는다. 같은 이름이면 저장소 값이 이긴다.
     // 쓸 수 없는 항목(원문 항목, 이름 규칙 위반, 예약 이름)은 뺀다.
     [[nodiscard]] std::vector<user_variable> make_user_variables(const function_buttons_definition& definition, std::u8string_view project);

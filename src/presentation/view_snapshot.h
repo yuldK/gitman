@@ -296,6 +296,53 @@ namespace gitman {
         bool error { false };
     };
 
+    // 기능 실행 확인 dialog의 두 모드다 (function-buttons-design 3.10, 4.5). 같은 element를 쓴다.
+    enum class function_confirm_mode
+    {
+        // 신뢰를 기록하지 않은 정의에서 처음 누를 때다. 문서의 기능 정의 전체를 치환 전 원문으로 보인다.
+        trust,
+        // `confirm: true` 버튼의 실행 전 미리보기다. 그 버튼의 표시용 명령줄과 작업 폴더를 보인다.
+        preview,
+    };
+
+    // dialog 목록 항목의 코드 줄 하나다. 비밀 가리기를 거친 글이고, 제어 문자와 보이지 않는 글자는
+    // `<U+XXXX>`로 드러나 있다 (3.6, T7).
+    struct function_confirm_line
+    {
+        std::u8string text {};
+        // 변수 값 줄처럼 곁들인 정보는 흐리게 그린다.
+        bool dim { false };
+        // 앞 줄이 폭을 넘겨 이어지는 줄이다. element가 들여 그린다.
+        bool continuation { false };
+    };
+
+    // dialog 목록의 기능 하나다. 줄 수만큼 높이가 정해져 logic의 스크롤 한계와 element의 배치가
+    // 같은 함수(`layout_function_confirm_item_height`)를 쓴다. 긴 줄은 logic이 창 폭에 맞춰 여러 줄로
+    // 나눠 싣는다 (`function_confirm_code_columns`). 말줄임은 그 어림이 빗나갈 때의 마지막 방어다.
+    struct function_confirm_item_view
+    {
+        std::u8string label {};
+        // 실행 방식 배지다 (`출력을 로그로 받기`, `따로 실행`).
+        std::u8string mode_text {};
+        std::vector<function_confirm_line> lines {};
+    };
+
+    struct function_confirm_dialog_view
+    {
+        function_confirm_mode mode { function_confirm_mode::trust };
+        // 제목 바로 아래 한 줄이다. 신뢰 모드는 문서 경로, 미리보기는 카드 이름이다. 넘치면 앞을
+        // 줄여 끝(파일 이름)을 남긴다.
+        std::u8string subject {};
+        // 그 아래 흐린 안내 줄이다.
+        std::vector<std::u8string> description {};
+        std::vector<function_confirm_item_view> items {};
+        // 목록 아래 경고 줄이다 (신뢰가 덮지 않는 것). 비면 그리지 않는다.
+        std::vector<std::u8string> note {};
+        std::u8string confirm_label {};
+        // 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
+        float scroll_offset { 0.0f };
+    };
+
     // 알림 띠의 알림 하나다. 띠는 한 줄이라 `text`만 보이고, `details`는 띠 tooltip에서
     // 그 알림 아래 줄로 잇는다. 기능 버튼 경고처럼 여러 진단을 한 알림으로 묶을 때 쓴다
     // (function-buttons-design 3.8).
@@ -489,6 +536,8 @@ namespace gitman {
         // 열린 문서가 없을 때의 시작 페이지다 (A1.3). 값이 있으면 카드 목록 자리를
         // 대신 채운다.
         std::optional<start_page_view> start_page {};
+        // 값이 있으면 기능 실행 확인 dialog가 화면을 덮는다 (function-buttons-design 3.10).
+        std::optional<function_confirm_dialog_view> function_confirm_dialog {};
         // 값이 있으면 알림 다이얼로그가 다른 dialog 위에 떠 있다 (A3.2).
         std::optional<notice_dialog_view> notice_dialog {};
         // 값이 있으면 카드 컨텍스트 메뉴가 앵커 좌표에 떠 있다 (3장).

@@ -58,6 +58,7 @@ TEST_CASE("Scrollbar owners are distinct non empty strings", "[presentation][kin
         gitman::ui::scrollbar_owner_local_changes_list,
         gitman::ui::scrollbar_owner_local_changes_diff,
         gitman::ui::scrollbar_owner_discovery_dialog,
+        gitman::ui::scrollbar_owner_function_confirm_dialog,
     };
 
     for (const std::u8string_view owner : owners)

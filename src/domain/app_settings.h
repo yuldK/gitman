@@ -37,6 +37,18 @@ namespace gitman {
         [[nodiscard]] bool operator==(const recent_document&) const noexcept = default;
     };
 
+    // 사용자가 신뢰한 기능 버튼 정의 하나다 (function-buttons-design 3.10, D4-A). 문서 하나에
+    // 항목 하나이고, 다시 신뢰하면 해시를 바꾼다. 해시가 지금 정의와 다르면 다시 묻는다.
+    struct trusted_function_definition
+    {
+        // 문서의 절대 경로다. 비교는 `recent_document_key`로 한다.
+        std::u8string document_path {};
+        // `function_trust_digest`의 결과(SHA-256 소문자 16진수)다.
+        std::u8string digest {};
+
+        [[nodiscard]] bool operator==(const trusted_function_definition&) const noexcept = default;
+    };
+
     // 문서 밖에 남는 앱 단위 설정이다 (app-shell-design A1). 실행 파일과 같은 폴더의
     // JSON 파일 하나에 저장하며, 문서 `settings`와 달리 열린 문서와 무관하다.
     struct app_settings
@@ -57,6 +69,9 @@ namespace gitman {
         appearance_settings appearance {};
         // UI·코드 글꼴이다 (F1). `appearance`와 같이 문서가 덮어쓸 수 있다.
         font_settings fonts {};
+        // 기능 버튼을 신뢰한 문서와 그 정의의 해시다 (function-buttons-design 3.10). 저장에
+        // 실패해도 이 값은 메모리에 남아 그 실행 동안은 다시 묻지 않는다.
+        std::vector<trusted_function_definition> trusted_function_definitions {};
 
         [[nodiscard]] bool operator==(const app_settings&) const noexcept = default;
     };
@@ -76,6 +91,11 @@ namespace gitman {
     // 새 무리의 맨 앞에 선다 — 고정을 풀면 가장 최근에 연 문서로 친다 (2026-08-23
     // 지시). 비고정이 상한을 넘으면 뒤에서 버린다.
     bool set_recent_document_pinned(app_settings& settings, std::u8string_view path, bool pinned);
+    // 그 문서의 기능 정의를 이 해시로 신뢰했는지다. 해시가 비면 늘 false다.
+    [[nodiscard]] bool is_function_definition_trusted(const app_settings& settings, std::u8string_view document_path, std::u8string_view digest);
+    // 그 문서의 신뢰를 이 해시로 기록한다. 같은 문서의 옛 해시는 바꾼다 — 낡은 해시를 쌓지
+    // 않는다. 바뀐 것이 있으면 true다.
+    bool trust_function_definition(app_settings& settings, std::u8string document_path, std::u8string digest);
     // `2026-08-21T18:40:12Z` 형식의 UTC 문자열이다. 변환에 실패하면 빈 값이다.
     [[nodiscard]] std::u8string format_utc_timestamp(std::chrono::system_clock::time_point time);
 } // namespace gitman

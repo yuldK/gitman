@@ -4,6 +4,7 @@
 
 #include "application/function_execution_pool.h"
 #include "application/svn_repository_browser.h"
+#include "domain/function_trust.h"
 #include "domain/log_file_naming.h"
 #include "domain/path_syntax.h"
 #include "presentation/list_metrics.h"
@@ -119,6 +120,214 @@ namespace gitman {
         bool restates_function_end(const diagnostic& value) noexcept
         {
             return value.code == diagnostic_code::process_timed_out || value.code == diagnostic_code::process_cancelled;
+        }
+
+        // 확인 dialog의 실행 방식 배지다 (시안 `Trust.dc.html`).
+        std::u8string_view function_mode_text(const function_run_mode mode) noexcept
+        {
+            return mode == function_run_mode::detached ? std::u8string_view { u8"따로 실행" } : std::u8string_view { u8"출력을 로그로 받기" };
+        }
+
+        // 신뢰 dialog의 인자 줄이다. 치환 전 원문이라 실제 명령줄 인용(`command_line_joiner`)이 아니라
+        // 읽기 위한 인용이다. 비었거나 공백·따옴표가 든 인자만 따옴표로 감싸 인자 경계를 보인다.
+        std::u8string function_template_arguments(const std::vector<std::u8string>& arguments)
+        {
+            std::u8string text {};
+            for (const std::u8string& argument : arguments)
+            {
+                if (text.empty() == false)
+                    text.push_back(u8' ');
+                const bool quote { argument.empty() || argument.find_first_of(u8" \t\"") != std::u8string::npos };
+                if (quote == false)
+                {
+                    text += argument;
+                    continue;
+                }
+                text.push_back(u8'"');
+                for (const char8_t character : argument)
+                {
+                    if (character == u8'"')
+                        text.push_back(u8'\\');
+                    text.push_back(character);
+                }
+                text.push_back(u8'"');
+            }
+            return text;
+        }
+
+        // 원문이 참조하는 사용자 변수 이름이다 (내장 변수와 `${env:}`는 뺀다). 처음 나온 순서다.
+        std::vector<std::u8string> referenced_user_variables(const function_button& button)
+        {
+            std::vector<std::u8string_view> templates { button.program };
+            for (const std::u8string& argument : button.args)
+                templates.push_back(argument);
+            templates.push_back(button.working_directory());
+
+            std::vector<std::u8string> names {};
+            for (const std::u8string_view text : templates)
+            {
+                for (const variable_reference& reference : scan_variable_references(text).references)
+                {
+                    if (reference.environment || is_builtin_variable_name(reference.name) || std::ranges::find(names, reference.name) != names.end())
+                        continue;
+                    names.push_back(reference.name);
+                }
+            }
+            return names;
+        }
+
+        // 신뢰 dialog의 변수 줄이다. 문서 변수 값과 저장소별 덮어쓰기를 함께 보인다
+        // (`build_config = Debug (frontend: Release)`). 값은 치환 전 원문이다.
+        std::optional<std::u8string> function_variable_line(const function_buttons_definition& definition, const std::u8string_view name)
+        {
+            std::optional<std::u8string> value {};
+            for (const function_variable& variable : definition.variables)
+            {
+                const std::u8string* const text { std::get_if<std::u8string>(&variable.value) };
+                if (text != nullptr && variable.name == name && is_usable_function_variable(variable))
+                    value = *text;
+            }
+
+            std::u8string overrides {};
+            for (const function_project_variables& project : definition.project_variables)
+            {
+                const std::vector<function_variable>* const variables { std::get_if<std::vector<function_variable>>(&project.variables) };
+                if (variables == nullptr)
+                    continue;
+                for (const function_variable& variable : *variables)
+                {
+                    const std::u8string* const text { std::get_if<std::u8string>(&variable.value) };
+                    if (text == nullptr || variable.name != name || is_usable_function_variable(variable) == false)
+                        continue;
+                    if (overrides.empty() == false)
+                        overrides += u8", ";
+                    overrides += project.project + u8": " + *text;
+                }
+            }
+
+            if (value.has_value() == false && overrides.empty())
+                return std::nullopt;
+            std::u8string line { name };
+            line += u8" =";
+            if (value.has_value())
+                line += u8" " + *value;
+            if (overrides.empty() == false)
+                line += u8" (" + overrides + u8")";
+            return line;
+        }
+
+        // UTF-8 글자 하나를 읽는다. 깨진 byte는 그 byte 하나를 글자로 넘겨 멈추지 않는다.
+        struct utf8_character
+        {
+            std::uint32_t code_point { 0 };
+            std::size_t length { 1 };
+        };
+
+        utf8_character read_utf8_character(const std::u8string_view text, const std::size_t offset) noexcept
+        {
+            const auto lead { static_cast<std::uint32_t>(static_cast<unsigned char>(text[offset])) };
+            std::size_t length { 1 };
+            std::uint32_t code_point { lead };
+            if ((lead & 0xE0u) == 0xC0u)
+            {
+                length = 2;
+                code_point = lead & 0x1Fu;
+            }
+            else if ((lead & 0xF0u) == 0xE0u)
+            {
+                length = 3;
+                code_point = lead & 0x0Fu;
+            }
+            else if ((lead & 0xF8u) == 0xF0u)
+            {
+                length = 4;
+                code_point = lead & 0x07u;
+            }
+            if (length == 1 || offset + length > text.size())
+                return { lead, 1 };
+            for (std::size_t index = 1; index < length; ++index)
+            {
+                const auto next { static_cast<std::uint32_t>(static_cast<unsigned char>(text[offset + index])) };
+                if ((next & 0xC0u) != 0x80u)
+                    return { lead, 1 };
+                code_point = (code_point << 6) | (next & 0x3Fu);
+            }
+            return { code_point, length };
+        }
+
+        // 화면에 보이지 않거나 줄·방향을 바꾸는 글자다. 확인 dialog에서 원문 일부를 숨길 수 있다.
+        bool is_invisible_code_point(const std::uint32_t code_point) noexcept
+        {
+            return code_point < 0x20u
+                || (code_point >= 0x7Fu && code_point <= 0x9Fu)
+                || code_point == 0xADu
+                || code_point == 0x61Cu
+                || code_point == 0x180Eu
+                || (code_point >= 0x200Bu && code_point <= 0x200Fu)
+                || (code_point >= 0x2028u && code_point <= 0x202Eu)
+                || (code_point >= 0x2060u && code_point <= 0x206Fu)
+                || code_point == 0xFEFFu
+                || (code_point >= 0xFFF9u && code_point <= 0xFFFBu);
+        }
+
+        // 확인 dialog의 글에서 제어 문자, 줄 바꿈, 방향 바꿈, 폭 없는 글자를 `<U+XXXX>`로 드러낸다.
+        // 이 dialog는 보이는 글이 곧 확인할 내용이라 원문의 `\n`이나 U+202E로 뒷부분을 숨기지 못하게 한다.
+        std::u8string visible_confirm_text(const std::u8string_view text)
+        {
+            constexpr std::u8string_view digits { u8"0123456789ABCDEF" };
+            std::u8string result {};
+            result.reserve(text.size());
+            for (std::size_t offset = 0; offset < text.size();)
+            {
+                const utf8_character character { read_utf8_character(text, offset) };
+                if (is_invisible_code_point(character.code_point))
+                {
+                    result += u8"<U+";
+                    const int top_shift { character.code_point > 0xFFFFu ? 20 : 12 };
+                    for (int shift = top_shift; shift >= 0; shift -= 4)
+                        result.push_back(digits[(character.code_point >> shift) & 0xFu]);
+                    result.push_back(u8'>');
+                }
+                else
+                {
+                    result += text.substr(offset, character.length);
+                }
+                offset += character.length;
+            }
+            return result;
+        }
+
+        // 확인 dialog의 코드 줄을 `columns` 칸씩 나눈다 (`function_confirm_code_columns`). ASCII 밖의
+        // 글자는 두 칸이다. 칸이 넘치는 자리 앞쪽 절반 뒤에 공백이 있으면 그 공백 뒤에서 나눠 인자 경계를
+        // 살린다. 글자 중간에서는 나누지 않는다.
+        std::vector<std::u8string> wrap_confirm_text(const std::u8string_view text, const std::size_t columns)
+        {
+            std::vector<std::u8string> chunks {};
+            std::size_t start { 0 };
+            while (start < text.size())
+            {
+                std::size_t offset { start };
+                std::size_t used { 0 };
+                std::size_t space_break { 0 };
+                while (offset < text.size())
+                {
+                    const utf8_character character { read_utf8_character(text, offset) };
+                    const std::size_t width { character.code_point < 0x80u ? std::size_t { 1 } : std::size_t { 2 } };
+                    if (used + width > columns && offset > start)
+                        break;
+                    used += width;
+                    offset += character.length;
+                    if (character.code_point == u8' ' && used * 2 > columns)
+                        space_break = offset;
+                }
+                if (offset < text.size() && space_break > start)
+                    offset = space_break;
+                chunks.emplace_back(text.substr(start, offset - start));
+                start = offset;
+            }
+            if (chunks.empty())
+                chunks.emplace_back();
+            return chunks;
         }
 
         // 끝 줄의 종료 코드다. runner가 `0xC0000005` 같은 bit 값을 부호 있는 수로 보존하므로
@@ -372,6 +581,12 @@ namespace gitman {
                     handle_run_function(value);
                 else if constexpr (std::is_same_v<value_type, stop_function_intent>)
                     handle_stop_function(value);
+                else if constexpr (std::is_same_v<value_type, confirm_function_run_intent>)
+                    handle_confirm_function_run();
+                else if constexpr (std::is_same_v<value_type, cancel_function_run_intent>)
+                    function_confirm_.reset();
+                else if constexpr (std::is_same_v<value_type, function_confirm_scroll_intent>)
+                    handle_function_confirm_scroll(value);
                 else if constexpr (std::is_same_v<value_type, clear_log_intent>)
                 {
                     card_state* const card { find_card(value.id) };
@@ -636,6 +851,9 @@ namespace gitman {
         // 이전 문서에서 진행 중인 변경 작업은 결과가 버려질 것이므로 프로세스도
         // 계속 둘 이유가 없다. 카드가 사라지기 전에 취소를 전파한다.
         cancel_running_changes();
+        // 기능 실행 확인은 이전 문서의 정의를 가리킨다. 남겨 두면 확인할 때 새 문서 경로에 이전
+        // 정의의 해시를 기록하게 된다.
+        function_confirm_.reset();
 
         document_path_ = intent.path;
         document_.reset();
@@ -774,6 +992,8 @@ namespace gitman {
         settings_dialog_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
+        // 기능 실행 확인은 이전 문서의 카드와 정의를 가리킨다.
+        function_confirm_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -1319,100 +1539,135 @@ namespace gitman {
     {
         if (shutting_down_)
             return;
+        // 확인 dialog가 떠 있는 동안에는 다른 실행을 받지 않는다. dialog가 클릭을 막지만 `Alt+N`처럼
+        // 키로 오는 intent도 있다.
+        if (function_confirm_.has_value())
+            return;
         card_state* const card { find_card(intent.id) };
         const function_button* const button { find_function_button(intent.button_id) };
         if (card == nullptr || button == nullptr)
             return;
 
+        const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button) };
+        if (prepared.has_value() == false)
+            return;
+
+        // 신뢰를 기록하지 않은 정의는 확인 없이 실행하지 않는다 (B9, 3.10). 해시는 누른 이 순간의
+        // 문서 모델로 만든다 (`current_function_digest`). 신뢰한 정의라도 `confirm` 버튼은 미리보기를 거친다.
+        // 신뢰하지 않은 `confirm` 버튼은 신뢰 dialog 하나가 미리보기 줄까지 함께 보인다. 두 dialog를
+        // 잇따라 열면 같은 자리의 확인 버튼을 두 번 누른 것(더블클릭, Enter 반복)이 미리보기를 지나간다.
+        std::u8string digest { current_function_digest() };
+        if (is_function_definition_trusted(app_settings_, document_path_, digest) == false)
+        {
+            open_function_confirm(function_confirm_mode::trust, *card, *button, *prepared, std::move(digest));
+            return;
+        }
+        if (button->confirm)
+        {
+            open_function_confirm(function_confirm_mode::preview, *card, *button, *prepared, std::move(digest));
+            return;
+        }
+        submit_function_run(*card, *button, *prepared);
+    }
+
+    std::optional<logic_controller::prepared_function_run> logic_controller::prepare_function_run(card_state& card, const function_button& button)
+    {
         // 버튼을 그릴 때와 같은 판정을 다시 한다. 클릭과 상태 변화가 엇갈린 늦은 클릭이다 (4.8).
         // 범위 밖이면 그 카드에 버튼이 없다. 이미 실행 중이면 `Alt+N`이 중지하지 않도록 아무것도
         // 하지 않는다 (2.3.4).
-        const std::optional<function_button_state> state { evaluate_function(*card, *button) };
+        const std::optional<function_button_state> state { evaluate_function(card, button) };
         if (state.has_value() == false || state->running)
-            return;
+            return std::nullopt;
         if (state->enabled == false)
         {
-            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, state->disabled_reason));
-            return;
+            append_lifecycle_log(card, diagnostic_severity::warning, function_log_text(button.label, state->disabled_reason));
+            return std::nullopt;
         }
         if (function_submitter_ == nullptr)
         {
-            append_lifecycle_log(*card, diagnostic_severity::error, function_log_text(button->label, u8"기능 실행 경로가 없어 실행하지 않습니다"));
-            return;
+            append_lifecycle_log(card, diagnostic_severity::error, function_log_text(button.label, u8"기능 실행 경로가 없어 실행하지 않습니다"));
+            return std::nullopt;
         }
 
-        // 클릭 시점의 값으로 치환하고 검사한다 (3.7). 실제 argv에는 env 값이 들어가고, 로그에는
-        // 표시용 명령줄만 남는다 (3.6).
-        const variable_lookup lookup { make_function_lookup(*card, function_services_.environment) };
-        const variable_expansion program { expand_variables(button->program, lookup) };
-        std::vector<variable_expansion> arguments {};
-        arguments.reserve(button->args.size());
-        for (const std::u8string& argument : button->args)
-            arguments.push_back(expand_variables(argument, lookup));
-        const variable_expansion working_directory { expand_variables(button->working_directory(), lookup) };
+        // 클릭 시점의 값으로 치환하고 검사한다 (3.7). 실제 argv에는 env 값이 들어가고, 로그와
+        // 확인 dialog에는 표시용 명령줄만 남는다 (3.6).
+        variable_lookup lookup { make_function_lookup(card, function_services_.environment) };
+        prepared_function_run prepared {};
+        prepared.program = expand_variables(button.program, lookup);
+        prepared.arguments.reserve(button.args.size());
+        for (const std::u8string& argument : button.args)
+            prepared.arguments.push_back(expand_variables(argument, lookup));
+        prepared.working_directory = expand_variables(button.working_directory(), lookup);
 
-        std::optional<expansion_error> error { program.error };
-        for (const variable_expansion& argument : arguments)
+        std::optional<expansion_error> error { prepared.program.error };
+        for (const variable_expansion& argument : prepared.arguments)
         {
             if (error.has_value() == false)
                 error = argument.error;
         }
         if (error.has_value() == false)
-            error = working_directory.error;
+            error = prepared.working_directory.error;
         if (error.has_value())
         {
-            reject_function_run(*card, *button, function_expansion_reason(*error, card->has_local_result, card->project.enabled == false));
-            return;
+            reject_function_run(card, button, function_expansion_reason(*error, card.has_local_result, card.project.enabled == false));
+            return std::nullopt;
         }
 
-        const std::optional<function_program_rejection> rejection { check_function_program(program.text) };
+        const std::optional<function_program_rejection> rejection { check_function_program(prepared.program.text) };
         if (rejection.has_value())
         {
-            reject_function_run(*card, *button, function_program_rejection_message(*rejection));
-            return;
+            reject_function_run(card, button, function_program_rejection_message(*rejection));
+            return std::nullopt;
         }
         // stage-3 시작 계약이다 (stage-3-plan.md:59). 드라이브 루트 문서의 `${workspaceFolder}\x`처럼
         // 구분자가 겹친 경로도 Windows 경로로는 같은 곳이라 그대로 받는다.
-        if (is_absolute_windows_path(working_directory.text) == false)
+        if (is_absolute_windows_path(prepared.working_directory.text) == false)
         {
-            reject_function_run(*card, *button, u8"작업 폴더(cwd)가 절대 경로가 아닙니다");
-            return;
+            reject_function_run(card, button, u8"작업 폴더(cwd)가 절대 경로가 아닙니다");
+            return std::nullopt;
         }
-        const std::optional<cmd_injection_finding> injection { find_cmd_injection(program, arguments) };
+        const std::optional<cmd_injection_finding> injection { find_cmd_injection(prepared.program, prepared.arguments) };
         if (injection.has_value())
         {
-            reject_function_run(*card, *button, cmd_injection_message(*injection));
-            return;
+            reject_function_run(card, button, cmd_injection_message(*injection));
+            return std::nullopt;
         }
 
+        prepared.display_command_line = build_display_command_line(prepared.program, prepared.arguments, function_services_.join, function_services_.mask);
+        prepared.builtins = std::move(lookup.builtins);
+        return prepared;
+    }
+
+    void logic_controller::submit_function_run(card_state& card, const function_button& button, const prepared_function_run& prepared)
+    {
         // 풀이 꽉 찼으면 대기열에 넣지 않고 거절한다. 보이지 않는 대기열을 두지 않는다 (4.4).
         if (function_runs_in_flight() >= function_execution_capacity)
         {
-            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, function_capacity_message()));
+            append_lifecycle_log(card, diagnostic_severity::warning, function_log_text(button.label, function_capacity_message()));
             return;
         }
 
         function_command command {};
-        command.program = program.text;
-        command.arguments.reserve(arguments.size());
-        for (const variable_expansion& argument : arguments)
+        command.program = prepared.program.text;
+        command.arguments.reserve(prepared.arguments.size());
+        for (const variable_expansion& argument : prepared.arguments)
             command.arguments.push_back(argument.text);
-        command.working_directory = working_directory.text;
+        command.working_directory = prepared.working_directory.text;
 
         function_run_state run {};
         run.run_id = next_operation_id_++;
-        run.button_id = button->id;
-        run.label = button->label;
-        run.mode = button->mode;
-        run.timeout_seconds = button->timeout_seconds;
-        run.phase = button->mode == function_run_mode::capture ? function_run_phase::queued : function_run_phase::launching;
-        run.display_command_line = build_display_command_line(program, arguments, function_services_.join, function_services_.mask);
+        run.button_id = button.id;
+        run.label = button.label;
+        run.mode = button.mode;
+        run.timeout_seconds = button.timeout_seconds;
+        run.phase = button.mode == function_run_mode::capture ? function_run_phase::queued : function_run_phase::launching;
+        run.display_command_line = prepared.display_command_line;
 
         function_run_request request {};
-        request.id = card->project.id;
+        request.id = card.project.id;
         request.run_id = run.run_id;
-        request.command = function_services_.make_command(std::move(command), button->mode, button->timeout_seconds, lookup.builtins);
-        if (button->mode == function_run_mode::capture)
+        request.command = function_services_.make_command(std::move(command), button.mode, button.timeout_seconds, prepared.builtins);
+        if (button.mode == function_run_mode::capture)
         {
             // 카드 단위로 중지할 수 있고, 종료 취소가 logic thread를 거치지 않게 등록한다 (4.10).
             run.cancellation.emplace();
@@ -1425,26 +1680,278 @@ namespace gitman {
             request.token = cancellation_source_.token();
         }
 
-        card->function_runs.push_back(std::move(run));
+        card.function_runs.push_back(std::move(run));
         if (function_submitter_->submit(std::move(request)) == false)
         {
             // 남는 run이 없게 되돌린다. source가 사라지면 registry의 손잡이도 정리된다.
-            card->function_runs.pop_back();
-            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, function_capacity_message()));
+            card.function_runs.pop_back();
+            append_lifecycle_log(card, diagnostic_severity::warning, function_log_text(button.label, function_capacity_message()));
             return;
         }
 
         // 실패 점은 그 기능을 다시 실행하면 지운다 (2.3.5).
-        std::erase_if(card->function_results
-            , [button](const function_result_state& result)
+        std::erase_if(card.function_results
+            , [&button](const function_result_state& result)
             {
-                return result.button_id == button->id;
+                return result.button_id == button.id;
             }
         );
 
         // 분리 실행의 `시작:` 줄은 결과를 받은 뒤에 남긴다 (2.3.6).
-        if (button->mode == function_run_mode::capture)
-            append_lifecycle_log(*card, diagnostic_severity::information, function_log_text(button->label, u8"실행: " + card->function_runs.back().display_command_line));
+        if (button.mode == function_run_mode::capture)
+            append_lifecycle_log(card, diagnostic_severity::information, function_log_text(button.label, u8"실행: " + card.function_runs.back().display_command_line));
+    }
+
+    std::u8string logic_controller::current_function_digest() const
+    {
+        if (document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return {};
+        // 해시 입력의 출처와 낡는 시점은 `function_trust.h`에 적었다. 여기서는 그때그때 지금 모델로
+        // 만든다 — 누를 때와 확인할 때 두 번 부르고, 두 값이 다르면 확인한 정의가 아니다.
+        //  - `source_digest_input`: 문서를 읽을 때(열기, T11의 다시 읽기) 파일 원문에서 만든 값이다.
+        //    배치 변경(T10)은 해시 입력이 아니라 그대로 맞다. 편집 dialog 저장(T12)은 모델을 고치므로
+        //    그 저장에서 이 값을 새로 만들어야 한다 (T3에서 넘어온 일, T12 몫).
+        //  - project `{id, path.original, ${projectName} 값}`: 지금 `document_->projects`다. 등록으로 project가 늘면
+        //    해시가 바뀌어 다시 묻는다.
+        return function_trust_digest(*document_->function_buttons, document_->projects);
+    }
+
+    void logic_controller::open_function_confirm(const function_confirm_mode mode, const card_state& card, const function_button& button, const prepared_function_run& prepared, std::u8string digest)
+    {
+        function_confirm_state state {};
+        state.mode = mode;
+        state.card = card.project.id;
+        state.button_id = button.id;
+        state.digest = std::move(digest);
+        state.prepared = prepared;
+        state.view = mode == function_confirm_mode::trust ? build_function_trust_view(button, prepared) : build_function_preview_view(card, button, prepared);
+        // 열린 메뉴가 dialog 뒤에 남지 않게 한다 (카드 메뉴의 기능 절에서 연 경우, T9).
+        context_menu_.reset();
+        function_confirm_ = { std::move(state) };
+    }
+
+    function_confirm_dialog_view logic_controller::build_function_trust_view(const function_button& clicked, const prepared_function_run& prepared) const
+    {
+        function_confirm_dialog_view view {};
+        view.mode = function_confirm_mode::trust;
+        view.subject = document_path_;
+        // 안내·경고 줄은 480 폭 창과 글 크기 150%에서도 말줄임되지 않게 짧게 나눈다. 경고는 가장 중요한
+        // 것(스크립트 내용은 덮지 않음)을 앞에 둔다.
+        view.description = {
+            u8"이 문서의 기능 정의를 아직 신뢰하지 않았습니다.",
+            u8"신뢰하면 아래 프로그램이 이 PC에서 실행됩니다.",
+        };
+        view.note = {
+            u8"신뢰는 스크립트 파일의 내용을 확인하지 않습니다.",
+            u8"기능 정의나 저장소 경로·이름이 바뀌면 다시 묻습니다.",
+        };
+        view.confirm_label = u8"신뢰하고 실행";
+        if (document_.has_value() == false || document_->function_buttons.has_value() == false)
+            return view;
+
+        // 신뢰는 문서의 정의 전체에 걸리므로 검증을 통과한 기능을 모두 보인다. 누른 기능이 맨 앞이고
+        // 나머지는 문서 순서다. 값은 치환 전 원문이다. 원문에 적은 비밀도 표시용 명령줄과 같은
+        // 가리기를 거친다 (1.3의 NFR-008).
+        const function_buttons_definition& definition { *document_->function_buttons };
+        const auto mask = [this](const std::u8string_view text)
+        {
+            return function_services_.mask ? function_services_.mask(text) : std::u8string { text };
+        };
+        const auto add_item = [&](const function_button& button)
+        {
+            function_confirm_item_view item {};
+            item.label = button.label;
+            item.mode_text = function_mode_text(button.mode);
+            item.lines.push_back({ mask(button.program), false });
+            if (button.args.empty() == false)
+                item.lines.push_back({ mask(function_template_arguments(button.args)), false });
+            item.lines.push_back({ mask(u8"작업 폴더 " + std::u8string { button.working_directory() }), false });
+            for (const std::u8string& name : referenced_user_variables(button))
+            {
+                const std::optional<std::u8string> line { function_variable_line(definition, name) };
+                if (line.has_value())
+                    item.lines.push_back({ mask(*line), true });
+            }
+            view.items.push_back(std::move(item));
+        };
+
+        add_item(clicked);
+        // 누른 기능이 `confirm`이면 미리보기 줄을 그 항목에 잇는다. 확인 한 번으로 신뢰와 미리보기를 함께
+        // 끝내므로 두 번째 dialog가 없다 — 이어 뜬 dialog의 같은 자리 버튼을 더블클릭이나 Enter 반복이
+        // 지나가는 일을 없앤다. 다음 실행부터는 신뢰한 정의라 미리보기 dialog만 뜬다 (3.10의 "별개").
+        if (clicked.confirm)
+        {
+            for (function_confirm_line& line : function_preview_lines(prepared, u8"실행할 명령 ", u8"실행할 작업 폴더 "))
+                view.items.front().lines.push_back(std::move(line));
+        }
+        for (const function_button_entry& entry : definition.buttons)
+        {
+            const function_button* const button { std::get_if<function_button>(&entry) };
+            if (button != nullptr && button->id != clicked.id)
+                add_item(*button);
+        }
+        return view;
+    }
+
+    function_confirm_dialog_view logic_controller::build_function_preview_view(const card_state& card, const function_button& button, const prepared_function_run& prepared) const
+    {
+        function_confirm_dialog_view view {};
+        view.mode = function_confirm_mode::preview;
+        view.subject = function_project_name(card.project);
+        view.description = {
+            u8"실행 전 확인을 켠 기능입니다.",
+            u8"아래 명령을 이 PC에서 실행합니다.",
+        };
+        view.confirm_label = u8"실행";
+
+        function_confirm_item_view item {};
+        item.label = button.label;
+        item.mode_text = function_mode_text(button.mode);
+        item.lines = function_preview_lines(prepared, {}, u8"작업 폴더 ");
+        view.items.push_back(std::move(item));
+        return view;
+    }
+
+    std::vector<function_confirm_line> logic_controller::function_preview_lines(const prepared_function_run& prepared, const std::u8string_view command_prefix, const std::u8string_view folder_prefix) const
+    {
+        // 로그 시작 줄과 같은 표시용 명령줄이다. env 값은 이름으로 남고 비밀은 가린다 (3.6). 작업
+        // 폴더도 같은 가리기를 거친다.
+        std::u8string command { command_prefix };
+        command += prepared.display_command_line;
+        std::u8string folder { folder_prefix };
+        folder += display_text(prepared.working_directory);
+        if (function_services_.mask)
+            folder = function_services_.mask(folder);
+        return { { std::move(command), false }, { std::move(folder), false } };
+    }
+
+    function_confirm_dialog_view logic_controller::wrapped_function_confirm_view() const
+    {
+        function_confirm_dialog_view view { function_confirm_->view };
+        // 창 폭이 오기 전이면 dialog 기본 폭으로 센다.
+        const float scale { scale_ > 0.0f ? scale_ : 1.0f };
+        const float width { window_width_ > 0.0f ? window_width_ / scale : layout_function_confirm_dialog_width };
+        const std::size_t columns { function_confirm_code_columns(width) };
+        for (function_confirm_item_view& item : view.items)
+        {
+            item.label = visible_confirm_text(item.label);
+            std::vector<function_confirm_line> lines {};
+            lines.reserve(item.lines.size());
+            for (const function_confirm_line& line : item.lines)
+            {
+                const std::vector<std::u8string> chunks { wrap_confirm_text(visible_confirm_text(line.text), columns) };
+                for (std::size_t index = 0; index < chunks.size(); ++index)
+                    lines.push_back({ chunks[index], line.dim, index > 0 });
+            }
+            item.lines = std::move(lines);
+        }
+        return view;
+    }
+
+    void logic_controller::handle_confirm_function_run()
+    {
+        if (function_confirm_.has_value() == false)
+            return;
+        const function_confirm_state pending { std::move(*function_confirm_) };
+        function_confirm_.reset();
+
+        // 사용자가 본 정의의 해시를 기록한다. 저장에 실패해도 `app_settings_`에 남아 이 실행 동안은
+        // 다시 묻지 않는다 (3.10, `docs/user-manual.md:96`의 앱 설정 규칙).
+        if (pending.mode == function_confirm_mode::trust && document_path_.empty() == false && pending.digest.empty() == false)
+        {
+            if (trust_function_definition(app_settings_, document_path_, pending.digest))
+                request_app_settings_save();
+        }
+
+        card_state* const card { find_card(pending.card) };
+        const function_button* const button { find_function_button(pending.button_id) };
+        if (shutting_down_ || card == nullptr || button == nullptr)
+            return;
+
+        // 확인한 것과 같은 것만 실행한다 (4.5). dialog가 떠 있는 동안 조회 결과(`${branch}`)나 정의가
+        // 바뀌었을 수 있으므로 처음부터 다시 판정하고 치환한다.
+        const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button) };
+        if (prepared.has_value() == false)
+            return;
+        // 지금은 dialog가 떠 있는 동안 정의나 project가 바뀌는 길이 없다 (문서 열기·교체·닫기는 dialog를
+        // 닫는다). T11의 다시 읽기나 T12의 저장이 그 길을 열 때를 위한 방어다.
+        if (current_function_digest() != pending.digest)
+        {
+            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"확인한 뒤 기능 정의가 바뀌어 실행하지 않습니다"));
+            return;
+        }
+        const auto texts_of = [](const std::vector<variable_expansion>& values)
+        {
+            std::vector<std::u8string> texts {};
+            texts.reserve(values.size());
+            for (const variable_expansion& value : values)
+                texts.push_back(value.text);
+            return texts;
+        };
+        // 실제 argv와 작업 폴더까지 비교한다. 표시용 명령줄만 보면 env 값이 바뀐 것을 놓친다.
+        // 내보내는 `GITMAN_*` 환경(`prepared.builtins`)은 비교하지 않는다. dialog에 보이지 않는 값이고,
+        // 조회로 바뀌는 런타임 값(`${branch}` 등)은 인자에 쓰였으면 위 비교가 잡는다.
+        const bool same {
+            prepared->program.text == pending.prepared.program.text
+            && texts_of(prepared->arguments) == texts_of(pending.prepared.arguments)
+            && prepared->working_directory.text == pending.prepared.working_directory.text
+            && prepared->display_command_line == pending.prepared.display_command_line
+        };
+        if (same == false)
+        {
+            append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"확인한 뒤 실행 값이 바뀌어 실행하지 않습니다"));
+            return;
+        }
+        submit_function_run(*card, *button, *prepared);
+    }
+
+    void logic_controller::handle_function_confirm_scroll(const function_confirm_scroll_intent& intent)
+    {
+        if (function_confirm_.has_value() == false)
+            return;
+
+        // 스크롤 한계는 element와 같은 줄 나누기로 센다.
+        const function_confirm_dialog_view view { wrapped_function_confirm_view() };
+        float content { 0.0f };
+        for (std::size_t index = 0; index < view.items.size(); ++index)
+        {
+            if (index > 0)
+                content += layout_function_confirm_item_gap;
+            content += layout_function_confirm_item_height(view.items[index].lines.size());
+        }
+        const float scale { scale_ > 0.0f ? scale_ : 1.0f };
+        const float viewport { function_confirm_list_height(window_height_ / scale, view.description.size() + 1, view.note.size()) };
+
+        // 키 스크롤이다 (B6, 키보드만으로 모든 항목에 닿는다). 방향키는 코드 세 줄, 쪽 키는 목록 높이에서
+        // 한 줄을 남긴 만큼, Home·End는 끝까지다.
+        const float line { layout_function_confirm_code_line_height() * 3.0f };
+        const float page_rest { viewport - layout_function_confirm_code_line_height() };
+        const float page { page_rest > line ? page_rest : line };
+        float delta { intent.delta };
+        switch (intent.step)
+        {
+        case function_confirm_scroll_step::delta:
+            break;
+        case function_confirm_scroll_step::line_up:
+            delta = -line;
+            break;
+        case function_confirm_scroll_step::line_down:
+            delta = line;
+            break;
+        case function_confirm_scroll_step::page_up:
+            delta = -page;
+            break;
+        case function_confirm_scroll_step::page_down:
+            delta = page;
+            break;
+        case function_confirm_scroll_step::start:
+            delta = -content;
+            break;
+        case function_confirm_scroll_step::end:
+            delta = content;
+            break;
+        }
+        function_confirm_->view.scroll_offset = clamp_scroll_offset(function_confirm_->view.scroll_offset + delta, content, viewport);
     }
 
     void logic_controller::handle_stop_function(const stop_function_intent& intent)
@@ -1847,6 +2354,8 @@ namespace gitman {
         settings_dialog_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
+        // 기능 실행 확인은 이전 문서의 카드와 정의를 가리킨다.
+        function_confirm_.reset();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -1886,6 +2395,9 @@ namespace gitman {
         // 읽기 전에 이미 받은 창 배치(시작 직후 종료의 드문 경로)도 파일 값보다
         // 최신이라 보존한다.
         const std::optional<window_placement> pending_window { app_settings_window_dirty_ ? app_settings_.window : std::nullopt };
+        // 읽기 전에 신뢰한 기능 정의도 파일 값보다 최신이다 (function-buttons-design 3.10). 덮어쓰면
+        // 방금 신뢰한 문서를 다시 묻고, 뒤따르는 저장이 그 항목 없이 파일을 쓴다.
+        const std::vector<trusted_function_definition> pending_trust { std::move(app_settings_.trusted_function_definitions) };
         app_settings_ = std::move(event.settings);
         app_settings_shadow_ = std::move(event.shadow_source_json);
         app_settings_loaded_ = true;
@@ -1895,6 +2407,12 @@ namespace gitman {
         {
             const recent_document& value { pending[index - 1] };
             touch_recent_document(app_settings_, value.path, value.opened_at);
+        }
+        bool trust_changed { false };
+        for (const trusted_function_definition& value : pending_trust)
+        {
+            if (trust_function_definition(app_settings_, value.document_path, value.digest))
+                trust_changed = true;
         }
 
         for (const diagnostic& value : event.diagnostics)
@@ -1909,7 +2427,7 @@ namespace gitman {
             ++window_placement_revision_;
         }
 
-        if (pending.empty() == false || app_settings_save_queued_)
+        if (pending.empty() == false || trust_changed || app_settings_save_queued_)
         {
             app_settings_save_queued_ = false;
             request_app_settings_save();
@@ -3995,6 +4513,10 @@ namespace gitman {
             }
             snapshot->local_changes_dialog = { std::move(dialog) };
         }
+
+        // 긴 줄은 지금 창 폭으로 나눈다. 창 크기가 바뀌면 다음 snapshot이 다시 나눈다.
+        if (function_confirm_.has_value())
+            snapshot->function_confirm_dialog = { wrapped_function_confirm_view() };
 
         if (notice_dialog_.has_value())
             snapshot->notice_dialog = notice_dialog_;

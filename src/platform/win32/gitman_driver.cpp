@@ -28,6 +28,7 @@ namespace gitman::win32 {
         executor_.bind_app_settings(app_settings_store_, app_settings_file_path());
         // worker 결과는 relay 큐가 정본이다 (설계 L3). scheduler는 sink만 안다.
         scheduler_ = std::make_unique<task_scheduler>(executor_, [this](logic_message message) { relay_.post(std::move(message)); }, default_worker_count());
+        function_pool_ = std::make_unique<function_execution_pool>(function_executor_, [this](logic_message message) { relay_.post(std::move(message)); });
         controller_ = std::make_unique<logic_controller>(*scheduler_, log_writer_, registry_);
     }
 
@@ -108,6 +109,7 @@ namespace gitman::win32 {
     void gitman_driver::stop_workers()
     {
         scheduler_->shutdown();
+        function_pool_->shutdown();
         relay_.unbind();
     }
 

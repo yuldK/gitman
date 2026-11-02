@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/process_cancellation.h"
+#include "application/process_request.h"
 #include "application/project_store.h"
 #include "application/repository_provider.h"
 #include "domain/app_settings.h"
@@ -12,6 +13,7 @@
 #include "domain/vcs_operation.h"
 #include "presentation/view_snapshot.h"
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -582,6 +584,22 @@ namespace gitman {
         process_cancellation_token token {};
     };
 
+    // 기능 버튼 실행 요청이다 (function-buttons-design 4.5). `operation_request`와
+    // `operation_kind`를 쓰지 않고 기능 전용 실행 풀에 직접 제출한다. 그래서 기능 실행이
+    // scheduler와 VCS executor로 샐 길이 형식 수준에서 없다. 치환·허용 목록·cmd 방어는
+    // logic이 마쳤고, 실행 쪽은 다시 치환하지 않는다.
+    struct function_run_request
+    {
+        project_id id {};
+        // logic이 발급한다. 늦게 온 event를 버리는 기준이다.
+        std::uint64_t run_id { 0 };
+        // 출력 수집은 `process_request`, 분리 실행은 `process_launch_request`다.
+        // 모드를 따로 들지 않아 모드와 요청 형식이 어긋날 수 없다.
+        std::variant<process_request, process_launch_request> command {};
+        // 대기 중 취소도 이 token으로 본다. 분리 실행은 취소가 없어 빈 token이어도 된다.
+        process_cancellation_token token {};
+    };
+
     // worker가 돌려주는 결과다. generation 검사는 logic이 한다 (ADR-005 7.2).
     struct document_loaded_event
     {
@@ -716,6 +734,54 @@ namespace gitman {
         std::vector<diagnostic> diagnostics {};
     };
 
+    // 출력 수집 실행이 runner를 부르기 직전에 나간다 (4.5). 경과 시간과 소요 시간의
+    // 기준점이라 대기 시간이 섞이지 않는다. 분리 실행과 대기 중 취소에는 없다.
+    struct function_started_event
+    {
+        project_id id {};
+        std::uint64_t run_id { 0 };
+        std::chrono::steady_clock::time_point started_at {};
+    };
+
+    // 출력 수집 실행의 출력 묶음이다. forwarder가 16건마다, 그리고 출력이 없어도
+    // 250ms마다 보낸다 (4.6). 항목은 마스킹을 마친 값이다.
+    struct function_log_event
+    {
+        project_id id {};
+        std::uint64_t run_id { 0 };
+        std::vector<operation_log_entry> entries {};
+    };
+
+    enum class function_run_outcome
+    {
+        // 출력 수집 실행이 끝났다. 종료 코드가 있다.
+        exited,
+        timed_out,
+        // 실행 중 취소와 대기 중 취소를 함께 뜻한다.
+        cancelled,
+        start_failed,
+        // 요청 값이 계약을 어겼거나 대기·수집이 실패해 결과를 믿을 수 없다.
+        failed,
+        // 분리 실행이 시작됐다. 종료 코드와 소요 시간이 없다.
+        launched,
+    };
+
+    // 기능 실행 하나의 마지막 event다. 어떤 경로에서도 반드시 한 번 나가야 logic의
+    // `function_runs`에서 그 항목이 빠진다 (4.5).
+    struct function_completed_event
+    {
+        project_id id {};
+        std::uint64_t run_id { 0 };
+        function_run_outcome outcome { function_run_outcome::failed };
+        // `exited`일 때만 값이 있다.
+        std::optional<std::int32_t> exit_code {};
+        // `function_started_event`부터 잰 시간이다. started가 없는 결과는 0이다.
+        std::chrono::milliseconds duration {};
+        bool output_truncated { false };
+        // runner나 launcher가 남긴 진단이다. 실패 줄의 사유가 된다.
+        std::vector<diagnostic> diagnostics {};
+    };
+
     struct shutdown_message
     {};
 
@@ -734,7 +800,8 @@ namespace gitman {
         remove_recent_document_intent, toggle_recent_document_pin_intent, close_document_intent, show_notice_intent, dismiss_notice_intent, window_metrics_intent, scroll_intent, window_placement_intent, close_intent,
         startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
-        local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event, shutdown_message>;
+        local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event,
+        function_started_event, function_log_event, function_completed_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.
@@ -749,5 +816,21 @@ namespace gitman {
         virtual ~operation_submitter() = default;
 
         [[nodiscard]] virtual bool submit(operation_request request) = 0;
+    };
+
+    // logic이 기능 실행을 전용 실행 풀로 넘기는 경계다 (function-buttons-design 4.4).
+    // false는 풀이 꽉 찼거나 닫혔다는 뜻이고, logic은 자기 판정의 거절과 같게 처리한다.
+    // test는 기록 대역을 주입한다.
+    class function_run_submitter
+    {
+    public:
+        function_run_submitter() = default;
+        function_run_submitter(const function_run_submitter&) = delete;
+        function_run_submitter(function_run_submitter&&) = delete;
+        function_run_submitter& operator=(const function_run_submitter&) = delete;
+        function_run_submitter& operator=(function_run_submitter&&) = delete;
+        virtual ~function_run_submitter() = default;
+
+        [[nodiscard]] virtual bool submit(function_run_request request) = 0;
     };
 } // namespace gitman

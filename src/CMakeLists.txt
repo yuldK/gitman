@@ -89,6 +89,9 @@ gitman_add_source_filter(gitman_lib_files "application/logic"
     application/application_options.h
     application/cancellation_registry.cpp
     application/cancellation_registry.h
+    application/function_execution_pool.cpp
+    application/function_execution_pool.h
+    application/function_executor.h
     application/logic_controller.cpp
     application/logic_controller.h
     application/operation_executor.h
@@ -188,19 +191,23 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/vcs"
     infrastructure/vcs_version.cpp
     infrastructure/vcs_version.h)
 
-# 명령줄 조립, 출력 파이프라인, 비밀 마스킹이다.
+# 명령줄 조립, 출력 파이프라인, 출력의 로그 묶음 전달, 비밀 마스킹이다.
 gitman_add_source_filter(gitman_lib_files "infrastructure/process"
     infrastructure/command_line_builder.cpp
     infrastructure/command_line_builder.h
+    infrastructure/operation_log_forwarder.cpp
+    infrastructure/operation_log_forwarder.h
     infrastructure/process_output_pipeline.cpp
     infrastructure/process_output_pipeline.h
     infrastructure/secret_masking.cpp
     infrastructure/secret_masking.h)
 
-# 기능 버튼 실행 요청 조립(캡처 상한·timeout·`GITMAN_*` 환경)이다. VCS 정책과 따로 둔다.
+# 기능 버튼 실행 요청 조립(캡처 상한·timeout·`GITMAN_*` 환경)과 기능 실행 executor다. VCS 정책과 따로 둔다.
 gitman_add_source_filter(gitman_lib_files "infrastructure/function_buttons"
     infrastructure/function_execution_policy.cpp
-    infrastructure/function_execution_policy.h)
+    infrastructure/function_execution_policy.h
+    infrastructure/function_process_executor.cpp
+    infrastructure/function_process_executor.h)
 
 # 파일 로그 writer다.
 gitman_add_source_filter(gitman_lib_files "infrastructure/logging"

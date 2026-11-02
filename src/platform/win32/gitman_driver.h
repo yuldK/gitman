@@ -3,12 +3,15 @@
 #include "application/app_messages.h"
 #include "application/cancellation_registry.h"
 #include "application/directory_enumerator.h"
+#include "application/function_execution_pool.h"
 #include "application/logic_controller.h"
+#include "application/process_launcher.h"
 #include "application/process_runner.h"
 #include "application/project_path_resolver.h"
 #include "application/task_scheduler.h"
 #include "application/vcs_file_probe.h"
 #include "infrastructure/file_log_writer.h"
+#include "infrastructure/function_process_executor.h"
 #include "infrastructure/json_app_settings_store.h"
 #include "infrastructure/json_project_store.h"
 #include "infrastructure/vcs_operation_executor.h"
@@ -16,6 +19,7 @@
 #include "platform/win32/project_file_system.h"
 #include "platform/win32/win32_directory_enumerator.h"
 #include "platform/win32/win32_log_file_system.h"
+#include "platform/win32/win32_process_launcher.h"
 #include "platform/win32/win32_process_runner.h"
 #include "platform/win32/win32_vcs_file_probe.h"
 #include "platform/win32/workspace_document_file_system.h"
@@ -67,6 +71,7 @@ namespace gitman::win32 {
         workspace_document_file_system file_system_ {};
         std::unique_ptr<project_path_resolver> resolver_ { make_project_path_resolver() };
         std::unique_ptr<process_runner> runner_ { make_process_runner() };
+        std::unique_ptr<process_launcher> launcher_ { make_process_launcher() };
         std::unique_ptr<vcs_file_probe> probe_ { make_vcs_file_probe() };
         std::unique_ptr<directory_enumerator> enumerator_ { make_directory_enumerator() };
         json_project_store store_ { file_system_, *resolver_ };
@@ -79,6 +84,10 @@ namespace gitman::win32 {
         cancellation_registry registry_ {};
         operation_result_relay relay_ {};
         std::unique_ptr<task_scheduler> scheduler_ {};
+        // 기능 버튼 전용 실행 풀이다 (function-buttons-design 4.4). scheduler와 따로 돈다.
+        // logic 연결은 T6에서 한다.
+        function_process_executor function_executor_ { *runner_, *launcher_ };
+        std::unique_ptr<function_execution_pool> function_pool_ {};
         std::unique_ptr<logic_controller> controller_ {};
 
         // 종료가 시작됐다. UI thread의 `cancel()`이 세우고 logic thread가 읽는다.

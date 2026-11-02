@@ -5,6 +5,7 @@
 #include "application/version_list_generation_service.h"
 #include "domain/discovery.h"
 #include "infrastructure/git_repository_provider.h"
+#include "infrastructure/operation_log_forwarder.h"
 #include "infrastructure/svn_repository_provider.h"
 
 #include <chrono>
@@ -26,52 +27,6 @@ namespace gitman {
             event.result = std::move(result);
             return event;
         }
-
-        // 배치 하나로 보내는 로그 record 수다. record마다 메시지를 만들면 대용량
-        // 출력에서 logic inbox가 넘치므로 모아서 보낸다 (stage-7-plan 4.1).
-        constexpr std::size_t operation_log_flush_count { 16 };
-
-        // provider의 log sink 자리에 꽂혀 프로세스 출력을 operation_log_event로
-        // 옮기는 sink다. runner가 호출을 직렬화하므로 스스로 동기화하지 않는다.
-        class operation_log_forwarder final : public process_output_sink
-        {
-        public:
-            operation_log_forwarder(const operation_request& request, const std::function<void(logic_message)>& emit) noexcept
-                : request_ { &request }
-                , emit_ { &emit }
-            {}
-
-            void on_record(const process_output_record& record) override
-            {
-                operation_log_entry entry {};
-                entry.kind = record.stream == process_stream::standard_error ? log_entry_kind::standard_error : log_entry_kind::standard_output;
-                entry.severity = diagnostic_severity::information;
-                entry.text = record.text;
-                entry.progress = record.progress;
-                entry.time = std::chrono::system_clock::now();
-                entries_.push_back(std::move(entry));
-                if (entries_.size() >= operation_log_flush_count)
-                    flush();
-            }
-
-            void flush()
-            {
-                if (entries_.empty())
-                    return;
-
-                operation_log_event event {};
-                event.operation_id = request_->operation_id;
-                event.id = request_->project.id;
-                event.entries = std::move(entries_);
-                entries_ = {};
-                (*emit_)(std::move(event));
-            }
-
-        private:
-            const operation_request* request_ { nullptr };
-            const std::function<void(logic_message)>* emit_ { nullptr };
-            std::vector<operation_log_entry> entries_ {};
-        };
 
         change_completed_event make_change_event(const operation_request& request, repository_change_result result)
         {
@@ -369,7 +324,15 @@ namespace gitman {
         }
 
         // 사전 검사 조회를 포함한 이 작업의 모든 프로세스 출력이 카드 로그로 간다.
-        operation_log_forwarder log { request, emit };
+        // 변경 작업은 주기 flush를 켜지 않는다. 기존처럼 16건마다와 끝에서만 보낸다.
+        const auto forward_batch = [&request, &emit](std::vector<operation_log_entry> entries) {
+            operation_log_event event {};
+            event.operation_id = request.operation_id;
+            event.id = request.project.id;
+            event.entries = std::move(entries);
+            emit(std::move(event));
+        };
+        operation_log_forwarder log { forward_batch };
         repository_change_result result {};
         if (kind == repository_kind::subversion)
         {

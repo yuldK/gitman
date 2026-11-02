@@ -261,7 +261,7 @@ namespace gitman {
         // 마지막 load 또는 save가 확인한 문서 revision이다. save의 낙관적 잠금 기준이다.
         workspace_revision_token revision_ {};
         std::vector<card_state> cards_ {};
-        std::vector<std::u8string> notices_ {};
+        std::vector<notice_view_model> notices_ {};
         // 마지막 저장 실패의 요약이다. 성공하면 비워지고 view notices의 맨 앞에 실린다.
         std::u8string save_notice_ {};
         std::optional<project_id> selected_ {};

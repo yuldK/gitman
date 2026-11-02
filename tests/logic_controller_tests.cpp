@@ -288,7 +288,85 @@ TEST_CASE("Document diagnostics surface as notices", "[logic][app]")
     const auto view { controller.make_view_snapshot() };
     REQUIRE(view->empty_state == gitman::view_empty_state::no_document);
     REQUIRE(view->notices.size() == 1u);
-    REQUIRE(view->notices.front() == u8"문서를 찾을 수 없습니다.");
+    REQUIRE(view->notices.front().text == u8"문서를 찾을 수 없습니다.");
+}
+
+TEST_CASE("Function button warnings collapse into one notice", "[logic][app][function_buttons][t3]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.version-list" });
+
+    gitman::document_loaded_event loaded { make_loaded_document({ make_project(u8"alpha") }) };
+    const auto add_warning { [&loaded](const std::u8string_view pointer, const std::u8string_view message)
+        {
+            gitman::diagnostic value {};
+            value.severity = gitman::diagnostic_severity::warning;
+            value.message = message;
+            value.source.json_pointer = pointer;
+            loaded.diagnostics.push_back(std::move(value));
+        }
+    };
+    add_warning(u8"/function_buttons/buttons/2", u8"function_buttons.buttons[2] (\"빌드\"): id 규칙을 어겼습니다.");
+    add_warning(u8"/future_top", u8"알 수 없는 top-level 필드를 보존합니다.");
+    add_warning(u8"/function_buttons/variables/count", u8"function_buttons.variables.count: 값은 문자열이어야 합니다.");
+    add_warning(u8"/function_buttons", u8"function_buttons는 object여야 합니다.");
+    controller.handle(std::move(loaded));
+
+    // 기능 버튼 경고는 하나로 묶여 다른 문서 진단 뒤에 선다. 상세는 묶음에 싣는다 (3.8).
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE(view->notices.size() == 2u);
+    REQUIRE(view->notices[0].text == u8"알 수 없는 top-level 필드를 보존합니다.");
+    REQUIRE(view->notices[0].details.empty());
+    REQUIRE(view->notices[1].text == u8"기능 버튼 경고 3건");
+    REQUIRE(view->notices[1].details
+        == std::vector<std::u8string> {
+            u8"function_buttons.buttons[2] (\"빌드\"): id 규칙을 어겼습니다.",
+            u8"function_buttons.variables.count: 값은 문자열이어야 합니다.",
+            u8"function_buttons는 object여야 합니다.",
+        }
+    );
+}
+
+TEST_CASE("The function button notice keeps at most 20 details", "[logic][app][function_buttons][t3]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.version-list" });
+
+    gitman::document_loaded_event loaded { make_loaded_document({ make_project(u8"alpha") }) };
+    for (std::size_t index = 0; index < 23; ++index)
+    {
+        std::u8string message { u8"function_buttons.buttons[" };
+        for (const char digit : std::to_string(index))
+            message.push_back(static_cast<char8_t>(digit));
+        message.append(u8"]: 경고");
+
+        gitman::diagnostic value {};
+        value.severity = gitman::diagnostic_severity::warning;
+        value.message = message;
+        value.source.json_pointer = u8"/function_buttons/buttons/0";
+        loaded.diagnostics.push_back(std::move(value));
+    }
+    controller.handle(std::move(loaded));
+
+    // 글은 전체 개수를 세고, 상세는 앞의 20건과 나머지 개수 한 줄이다.
+    const auto view { controller.make_view_snapshot() };
+    REQUIRE(view->notices.size() == 1u);
+    REQUIRE(view->notices[0].text == u8"기능 버튼 경고 23건");
+    REQUIRE(view->notices[0].details.size() == 21u);
+    REQUIRE(view->notices[0].details[0] == u8"function_buttons.buttons[0]: 경고");
+    REQUIRE(view->notices[0].details[19] == u8"function_buttons.buttons[19]: 경고");
+    REQUIRE(view->notices[0].details[20] == u8"(외 3건)");
+}
+
+TEST_CASE("Documents without function button warnings add no bundle notice", "[logic][app][function_buttons][t3]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::open_document_intent { u8"C:\\work\\projects.version-list" });
+    controller.handle(make_loaded_document({ make_project(u8"alpha") }));
+    REQUIRE(controller.make_view_snapshot()->notices.empty());
 }
 
 TEST_CASE("Reordering a card rewrites document order and saves", "[logic][app][reorder]")
@@ -374,7 +452,7 @@ TEST_CASE("Saves are serialized, coalesced, and report failures as a notice", "[
     controller.handle(std::move(failed));
 
     REQUIRE(submitter.requests.size() == 2u);
-    REQUIRE(controller.make_view_snapshot()->notices.front() == u8"문서를 저장하지 못했습니다.");
+    REQUIRE(controller.make_view_snapshot()->notices.front().text == u8"문서를 저장하지 못했습니다.");
 
     // 최신 순서가 저장 내용이다: gamma, alpha, beta.
     const gitman::operation_request& queued { submitter.requests.back() };
@@ -458,7 +536,7 @@ TEST_CASE("A failed generation keeps the current document and surfaces the diagn
     REQUIRE_FALSE(view->document_generating);
     REQUIRE(view->document_path == u8"C:\\work\\p.version-list");
     REQUIRE(view->cards.size() == 1u);
-    REQUIRE(view->notices.front() == u8"하위 폴더에서 저장소를 찾지 못해 문서를 만들지 않았습니다.");
+    REQUIRE(view->notices.front().text == u8"하위 폴더에서 저장소를 찾지 못해 문서를 만들지 않았습니다.");
 }
 
 TEST_CASE("A late generation result after opening another document is discarded", "[logic][app][generation]")

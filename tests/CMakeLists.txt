@@ -52,6 +52,7 @@ gitman_add_source_filter(gitman_test_files "application/logic"
 
 gitman_add_source_filter(gitman_test_files "application/documents"
     app_settings_tests.cpp
+    function_button_document_tests.cpp
     json_project_store_tests.cpp
     path_display_tests.cpp
     project_path_tests.cpp

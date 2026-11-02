@@ -73,6 +73,15 @@ namespace gitman {
         app_settings_read_failed,
         app_settings_invalid,
         app_settings_write_failed,
+        // 기능 버튼 진단이다 (function-buttons-design 3.8). 모두 warning이라 저장을 막지 않는다.
+        // 절이나 그 하위 묶음의 모양이 잘못되었다.
+        invalid_function_buttons,
+        // 버튼 항목 하나가 검증에 실패해 실행과 화면에서 빠진다. 원문은 남는다.
+        invalid_function_button,
+        // 사용자 변수 하나를 쓸 수 없어 치환에서 빠진다. 원문은 남는다.
+        invalid_function_variable,
+        // 항목은 그대로 쓰되 알려 둘 것이다 (4번째 card, 알 수 없는 배치, 카드당 상한 등).
+        function_button_warning,
     };
 
     struct diagnostic_source

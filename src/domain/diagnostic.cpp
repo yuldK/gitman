@@ -133,6 +133,14 @@ namespace gitman {
             return u8"app_settings_invalid";
         case diagnostic_code::app_settings_write_failed:
             return u8"app_settings_write_failed";
+        case diagnostic_code::invalid_function_buttons:
+            return u8"invalid_function_buttons";
+        case diagnostic_code::invalid_function_button:
+            return u8"invalid_function_button";
+        case diagnostic_code::invalid_function_variable:
+            return u8"invalid_function_variable";
+        case diagnostic_code::function_button_warning:
+            return u8"function_button_warning";
         }
         return u8"unknown";
     }

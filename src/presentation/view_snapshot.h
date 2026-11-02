@@ -296,6 +296,15 @@ namespace gitman {
         bool error { false };
     };
 
+    // 알림 띠의 알림 하나다. 띠는 한 줄이라 `text`만 보이고, `details`는 띠 tooltip에서
+    // 그 알림 아래 줄로 잇는다. 기능 버튼 경고처럼 여러 진단을 한 알림으로 묶을 때 쓴다
+    // (function-buttons-design 3.8).
+    struct notice_view_model
+    {
+        std::u8string text {};
+        std::vector<std::u8string> details {};
+    };
+
     // 시작 페이지의 최근 항목 한 행이다 (app-shell-design A1.3).
     struct recent_document_view
     {
@@ -445,7 +454,7 @@ namespace gitman {
         std::u8string filter_text {};
         view_empty_state empty_state { view_empty_state::no_document };
         // 문서 수준 진단의 한국어 요약이다.
-        std::vector<std::u8string> notices {};
+        std::vector<notice_view_model> notices {};
         float window_width { 0.0f };
         float window_height { 0.0f };
         float scale { 1.0f };

@@ -20,6 +20,7 @@
 #include "luil/ui/caption_element.h"
 #include "luil/ui/label_element.h"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -86,22 +87,42 @@ namespace gitman::ui {
                 add_child(std::move(toolbar));
 
                 // 배너는 한 줄이라 첫 알림만 싣는다. 나머지는 개수로 알리고, 툴팁이
-                // 전부를 보인다 — 잘린 알림이 없었던 것처럼 보이지 않게 한다.
+                // 전부를 보인다 — 잘린 알림이 없었던 것처럼 보이지 않게 한다. 묶은
+                // 알림의 상세는 띠에 보이지 않으므로 알림이 하나여도 툴팁에 싣는다
+                // (function-buttons-design 3.8).
                 luil::label_config notice_config {};
                 std::u8string notice_tooltip {};
                 if (view.notices.empty() == false)
                 {
-                    notice_config.text = view.notices.front();
+                    notice_config.text = view.notices.front().text;
                     if (view.notices.size() > 1)
                     {
                         notice_config.text += u8" (외 ";
                         notice_config.text += count_digits(view.notices.size() - 1);
                         notice_config.text += u8"건)";
-                        for (const std::u8string& notice : view.notices)
+                    }
+
+                    const bool has_details {
+                        std::ranges::any_of(view.notices
+                            , [](const notice_view_model& notice)
+                            {
+                                return notice.details.empty() == false;
+                            }
+                        )
+                    };
+
+                    if (view.notices.size() > 1 || has_details)
+                    {
+                        for (const notice_view_model& notice : view.notices)
                         {
                             if (notice_tooltip.empty() == false)
                                 notice_tooltip += u8"\n";
-                            notice_tooltip += notice;
+                            notice_tooltip += notice.text;
+                            for (const std::u8string& detail : notice.details)
+                            {
+                                notice_tooltip += u8"\n  ";
+                                notice_tooltip += detail;
+                            }
                         }
                     }
                 }

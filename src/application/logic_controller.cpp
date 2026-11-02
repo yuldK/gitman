@@ -30,6 +30,17 @@ namespace gitman {
             return u8"";
         }
 
+        // 문서의 `function_buttons` 절에서 나온 진단이다. 파서가 위치를 JSON pointer로 단다.
+        bool is_function_button_diagnostic(const diagnostic& value) noexcept
+        {
+            const std::u8string_view pointer { value.source.json_pointer };
+            return pointer == u8"/function_buttons" || pointer.starts_with(u8"/function_buttons/");
+        }
+
+        // 묶은 기능 버튼 알림의 상세 상한이다. 버튼이 많은 문서에서 tooltip이 화면을 덮지
+        // 않게 하고, 나머지는 개수로만 알린다. 항목별 확인은 편집 dialog의 경고 행(T12)이 맡는다.
+        constexpr std::size_t maximum_function_notice_details { 20 };
+
         // 배너에 싣는 문서 진단 한 줄이다. project 하나에 걸린 진단은 메시지만으로는
         // 어느 카드의 일인지 알 수 없어 그 project의 표시 이름을 앞에 붙인다.
         std::u8string document_notice_text(const diagnostic& value, const workspace_document& document)
@@ -533,7 +544,7 @@ namespace gitman {
             notices_.clear();
             for (const diagnostic& value : event.diagnostics)
                 if (value.severity != diagnostic_severity::information)
-                    notices_.push_back(value.message);
+                    notices_.push_back({ value.message });
             return;
         }
 
@@ -554,11 +565,11 @@ namespace gitman {
             notices_.clear();
             for (const diagnostic& value : event.diagnostics)
                 if (value.severity != diagnostic_severity::information)
-                    notices_.push_back(value.message);
+                    notices_.push_back({ value.message });
             if (generate_dialog_.has_value())
             {
                 generate_dialog_->executing = false;
-                generate_dialog_->message = notices_.empty() ? std::u8string { u8"문서를 만들지 못했습니다." } : notices_.front();
+                generate_dialog_->message = notices_.empty() ? std::u8string { u8"문서를 만들지 못했습니다." } : notices_.front().text;
             }
             return;
         }
@@ -582,10 +593,39 @@ namespace gitman {
         // 작업을 취소해야 한다.
         cancel_running_changes();
 
+        // 기능 버튼 진단은 버튼마다 하나씩 생겨 따로 늘어놓으면 문서·저장 진단이 띠의
+        // `(외 N건)` 뒤로 밀린다. 다른 진단 뒤에 알림 하나로 묶고 상세는 tooltip에 둔다
+        // (function-buttons-design 3.8).
         notices_.clear();
+        notice_view_model function_button_notice {};
+        std::size_t function_button_warnings { 0 };
         for (const diagnostic& value : diagnostics)
-            if (value.severity != diagnostic_severity::information)
-                notices_.push_back(document_notice_text(value, document));
+        {
+            if (value.severity == diagnostic_severity::information)
+                continue;
+            if (is_function_button_diagnostic(value) == false)
+            {
+                notices_.push_back({ document_notice_text(value, document) });
+                continue;
+            }
+            if (++function_button_warnings <= maximum_function_notice_details)
+                function_button_notice.details.push_back(value.message);
+        }
+        if (function_button_warnings > 0)
+        {
+            const std::string count { std::to_string(function_button_warnings) };
+            function_button_notice.text = u8"기능 버튼 경고 ";
+            function_button_notice.text.append(count.begin(), count.end());
+            function_button_notice.text += u8"건";
+            if (function_button_warnings > maximum_function_notice_details)
+            {
+                const std::string rest { std::to_string(function_button_warnings - maximum_function_notice_details) };
+                std::u8string& more { function_button_notice.details.emplace_back(u8"(외 ") };
+                more.append(rest.begin(), rest.end());
+                more += u8"건)";
+            }
+            notices_.push_back(std::move(function_button_notice));
+        }
 
         save_notice_.clear();
         selected_.reset();
@@ -1266,7 +1306,7 @@ namespace gitman {
 
         for (const diagnostic& value : event.diagnostics)
             if (value.severity != diagnostic_severity::information)
-                notices_.push_back(value.message);
+                notices_.push_back({ value.message });
 
         // 아직 어떤 배치도 적용되지 않았으면 앱 설정의 마지막 배치를 복원한다 (G1).
         // 문서가 자기 배치를 이미 적용했으면(=revision이 올라갔으면) 문서가 우선이다.
@@ -1299,7 +1339,7 @@ namespace gitman {
             for (const diagnostic& value : event.diagnostics)
                 if (value.severity != diagnostic_severity::information)
                 {
-                    notices_.push_back(value.message);
+                    notices_.push_back({ value.message });
                     break;
                 }
         }
@@ -3029,7 +3069,7 @@ namespace gitman {
         snapshot->notices = notices_;
         // 저장 실패는 문서 진단보다 먼저 보인다. UI는 첫 notice만 표시한다.
         if (save_notice_.empty() == false)
-            snapshot->notices.insert(snapshot->notices.begin(), save_notice_);
+            snapshot->notices.insert(snapshot->notices.begin(), notice_view_model { save_notice_ });
         snapshot->window_width = window_width_;
         snapshot->window_height = window_height_;
         snapshot->scale = scale_;

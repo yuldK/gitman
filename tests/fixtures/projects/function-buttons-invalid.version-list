@@ -1,0 +1,64 @@
+{
+    "schema_version": 1,
+    "function_buttons": {
+        "future_section": { "keep": true },
+        "variables": {
+            "tools": "C:\\Tools",
+            "bad name": "C:\\Bad",
+            "projectRoot": "C:\\Override",
+            "count": 3
+        },
+        "project_variables": {
+            "alpha": { "tools": "D:\\Tools", "sdk": "C:\\Sdk" },
+            "ghost": { "tools": "E:\\Tools" },
+            "beta": "not-an-object"
+        },
+        "buttons": [
+            { "id": "build", "label": "빌드", "program": "C:\\Tools\\build.exe", "placement": "card" },
+            { "id": "open", "label": "열기", "program": "C:\\Tools\\open.exe", "placement": "card" },
+            { "id": "pack", "label": "묶기", "program": "C:\\Tools\\pack.exe", "placement": "card" },
+            { "id": "deploy", "label": "배포", "program": "C:\\Tools\\deploy.exe", "placement": "card" },
+            { "id": "lint", "label": "린트", "program": "C:\\Tools\\lint.exe", "placement": "sidebar" },
+            { "id": "Bad Id", "label": "잘못된 id", "program": "C:\\Tools\\x.exe" },
+            { "id": "build", "label": "중복", "program": "C:\\Tools\\dup.exe" },
+            { "id": "nolabel", "program": "C:\\Tools\\x.exe" },
+            { "id": "noprogram", "label": "프로그램 없음" },
+            { "id": "badargs", "label": "인자", "program": "C:\\Tools\\x.exe", "args": ["a", 1] },
+            { "id": "badmode", "label": "모드", "program": "C:\\Tools\\x.exe", "mode": "hidden" },
+            { "id": "badtimeout", "label": "시간", "program": "C:\\Tools\\x.exe", "timeout_seconds": 90000 },
+            { "id": "undefined-var", "label": "미정의", "program": "${missing}\\x.exe" },
+            { "id": "unterminated", "label": "닫히지 않음", "program": "C:\\Tools\\x.exe", "args": ["${projectRoot"] },
+            { "id": "uses-dropped", "label": "빠진 변수", "program": "C:\\Tools\\x.exe", "args": ["${count}"] },
+            "not an object",
+            {
+                "id": "future",
+                "label": "미래",
+                "icon": "rocket",
+                "program": "${tools}\\future.exe",
+                "project_ids": ["alpha", "ghost"],
+                "mode": "detached",
+                "timeout_seconds": 10,
+                "future_key": 1
+            },
+            { "id": "long-label", "label": "A label that is deliberately longer than forty characters", "program": "C:\\Tools\\x.exe" },
+            { "id": "fill-01", "label": "채움 1", "program": "C:\\Tools\\x.exe", "args": ["${sdk}"], "project_ids": ["alpha"] },
+            { "id": "fill-02", "label": "채움 2", "program": "C:\\Tools\\x.exe", "args": ["${env:GITMAN_UNDEFINED_AT_READ}"], "project_ids": ["alpha"] },
+            { "id": "fill-03", "label": "채움 3", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-04", "label": "채움 4", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-05", "label": "채움 5", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-06", "label": "채움 6", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-07", "label": "채움 7", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-08", "label": "채움 8", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-09", "label": "채움 9", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-10", "label": "채움 10", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-11", "label": "채움 11", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-12", "label": "채움 12", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-13", "label": "채움 13", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] },
+            { "id": "fill-14", "label": "채움 14", "program": "C:\\Tools\\x.exe", "project_ids": ["alpha"] }
+        ]
+    },
+    "projects": [
+        { "id": "alpha", "path": "C:\\repositories\\alpha" },
+        { "id": "beta", "path": "C:\\repositories\\beta" }
+    ]
+}

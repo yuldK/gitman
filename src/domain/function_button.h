@@ -48,6 +48,8 @@ namespace gitman {
     inline constexpr std::int32_t default_function_timeout_seconds { 3600 };
     inline constexpr std::int32_t maximum_function_timeout_seconds { 86400 };
     inline constexpr std::size_t maximum_function_button_id_length { 64 };
+    // label은 이 코드 포인트 수를 넘으면 경고만 하고 그대로 쓴다. 넘치는 글은 말줄임된다.
+    inline constexpr std::size_t maximum_function_label_length { 40 };
     inline constexpr std::u8string_view default_function_icon { u8"play" };
     inline constexpr std::u8string_view default_function_working_directory { u8"${projectRoot}" };
 
@@ -117,6 +119,10 @@ namespace gitman {
         std::vector<function_variable> variables {};
         std::vector<function_project_variables> project_variables {};
         std::vector<function_button_entry> buttons {};
+        // 신뢰 해시 입력이다 (3.10). shadow는 project_store만 읽으므로 파서가 문서를 읽을 때
+        // `function_buttons` 원문에서 버튼마다 표시 필드(`label`, `icon`, `placement`)를 뺀
+        // 뒤 다시 직렬화해 싣는다. logic이 project `{id, path}`와 합쳐 해시를 만든다.
+        std::u8string source_digest_input {};
 
         [[nodiscard]] bool operator==(const function_buttons_definition&) const = default;
     };

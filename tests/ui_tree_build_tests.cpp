@@ -292,13 +292,31 @@ TEST_CASE("An empty card list is not read aloud", "[ui][tree][accessibility]")
 TEST_CASE("The notice banner counts the notices it cannot show", "[ui][tree]")
 {
     gitman::view_snapshot view { make_view(1) };
-    view.notices = { u8"alpha: 저장소 경로가 존재하지 않습니다.", u8"beta: 저장소 경로에 접근할 수 없습니다." };
+    view.notices = { { u8"alpha: 저장소 경로가 존재하지 않습니다." }, { u8"beta: 저장소 경로에 접근할 수 없습니다." } };
     const auto tree { make_tree(view) };
 
     const luil::ui_element* const notice { find(*tree, ui::kind_notice) };
     REQUIRE(notice->visible());
     REQUIRE(notice->accessibility().name == u8"alpha: 저장소 경로가 존재하지 않습니다. (외 1건)");
     REQUIRE(notice->tooltip() == u8"alpha: 저장소 경로가 존재하지 않습니다.\nbeta: 저장소 경로에 접근할 수 없습니다.");
+}
+
+TEST_CASE("The notice banner tooltip lists the details under their notice", "[ui][tree][function_buttons][t3]")
+{
+    // 기능 버튼 경고는 한 알림으로 묶이고 상세는 tooltip에서 그 알림 아래 줄로 잇는다 (3.8).
+    gitman::view_snapshot view { make_view(1) };
+    view.notices = { { u8"기능 버튼 경고 2건", { u8"function_buttons.buttons[0]: 첫째", u8"function_buttons.buttons[1]: 둘째" } } };
+    const auto single { make_tree(view) };
+    const luil::ui_element* const notice { find(*single, ui::kind_notice) };
+    REQUIRE(notice->visible());
+    REQUIRE(notice->accessibility().name == u8"기능 버튼 경고 2건");
+    REQUIRE(notice->tooltip() == u8"기능 버튼 경고 2건\n  function_buttons.buttons[0]: 첫째\n  function_buttons.buttons[1]: 둘째");
+
+    view.notices.insert(view.notices.begin(), { u8"문서를 저장하지 못했습니다." });
+    const auto both { make_tree(view) };
+    const luil::ui_element* const banner { find(*both, ui::kind_notice) };
+    REQUIRE(banner->accessibility().name == u8"문서를 저장하지 못했습니다. (외 1건)");
+    REQUIRE(banner->tooltip() == u8"문서를 저장하지 못했습니다.\n기능 버튼 경고 2건\n  function_buttons.buttons[0]: 첫째\n  function_buttons.buttons[1]: 둘째");
 }
 
 TEST_CASE("Toolbar buttons that need a document are disabled without one", "[ui][tree]")

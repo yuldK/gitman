@@ -1,0 +1,64 @@
+{
+    "schema_version": 1,
+    "settings": { "git_executable": "C:\\Program Files\\Git\\cmd\\git.exe" },
+    "function_buttons": {
+        "variables": {
+            "unity": "C:\\Program Files\\Unity\\Hub\\Editor\\6000.0.1f1\\Editor\\Unity.exe",
+            "build_config": "Debug"
+        },
+        "project_variables": {
+            "frontend": { "build_config": "Release" }
+        },
+        "buttons": [
+            {
+                "id": "build",
+                "label": "빌드",
+                "icon": "tools",
+                "program": "C:\\Program Files\\CMake\\bin\\cmake.exe",
+                "args": ["--build", "${projectRoot}\\build", "--config", "${build_config}"],
+                "timeout_seconds": 1800,
+                "project_ids": ["frontend", "backend"],
+                "placement": "card"
+            },
+            {
+                "id": "open-unity",
+                "label": "Unity로 열기",
+                "icon": "window",
+                "program": "${unity}",
+                "args": ["-projectPath", "${projectRoot}"],
+                "mode": "detached",
+                "placement": "card"
+            },
+            {
+                "id": "clean",
+                "label": "정리 스크립트",
+                "icon": "trash",
+                "program": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "args": ["-NoProfile", "-File", "${workspaceFolder}\\tools\\clean.ps1", "-Root", "${projectRoot}"],
+                "vcs": "git",
+                "confirm": true,
+                "placement": "menu"
+            },
+            {
+                "id": "test",
+                "label": "테스트",
+                "icon": "beaker",
+                "program": "C:\\Tools\\test.exe",
+                "args": ["${projectRoot}"],
+                "project_ids": ["frontend"],
+                "placement": "bar"
+            },
+            {
+                "id": "status",
+                "label": "상태 기록",
+                "program": "C:\\Tools\\status.exe",
+                "args": ["--branch", "${branch}", "--token", "${env:GITMAN_TEST_TOKEN}"],
+                "cwd": "${workspaceFolder}"
+            }
+        ]
+    },
+    "projects": [
+        { "id": "frontend", "path": "frontend" },
+        { "id": "backend", "path": "backend" }
+    ]
+}

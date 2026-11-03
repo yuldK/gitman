@@ -389,6 +389,7 @@ namespace gitman::ui {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_local_changes_list } },
                 luil::scrollbar_config {
                     .scroll = [](const float delta) -> input_action { return make_logic_action(local_changes_scroll_intent { delta }); },
+                    .scroll_to = [](const float offset) -> input_action { return make_logic_action(local_changes_scroll_intent { 0.0f, offset }); },
                     .content_height = list_content,
                     .viewport_height = layout_local_changes_list_height,
                     .scroll_offset = dialog_.list_scroll,
@@ -396,6 +397,8 @@ namespace gitman::ui {
         };
         // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
         list_bar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        list_bar->set_access_name(std::u8string { scrollbar_access_name(list_bar->id().owner) });
         list_bar->set_visible(list_content > layout_local_changes_list_height);
         list_scrollbar_ = list_bar.get();
         add_child(std::move(list_bar));
@@ -405,6 +408,7 @@ namespace gitman::ui {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_local_changes_diff } },
                 luil::scrollbar_config {
                     .scroll = [](const float delta) -> input_action { return make_logic_action(local_changes_diff_scroll_intent { delta }); },
+                    .scroll_to = [](const float offset) -> input_action { return make_logic_action(local_changes_diff_scroll_intent { 0.0f, offset }); },
                     .content_height = diff_content,
                     .viewport_height = layout_local_changes_diff_height,
                     .scroll_offset = dialog_.diff_scroll,
@@ -412,6 +416,8 @@ namespace gitman::ui {
         };
         // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
         diff_bar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        diff_bar->set_access_name(std::u8string { scrollbar_access_name(diff_bar->id().owner) });
         diff_bar->set_visible(diff_content > layout_local_changes_diff_height);
         diff_scrollbar_ = diff_bar.get();
         add_child(std::move(diff_bar));

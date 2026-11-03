@@ -1312,3 +1312,33 @@ TEST_CASE("A remote candidate is not current when the same local branch stands a
     const auto view { fixture.controller.make_view_snapshot() };
     REQUIRE(view->switch_dialog->current == std::optional<std::size_t> { 1u });
 }
+
+TEST_CASE("Assistive technology sets the switch candidate scrollbar", "[function_buttons][s4][ui][switch-ui]")
+{
+    dialog_fixture fixture {};
+    std::vector<gitman::switch_candidate> candidates {};
+    for (std::size_t index = 0; index < 40; ++index)
+    {
+        const std::string digits { std::to_string(index) };
+        std::u8string name { u8"branch-" };
+        name.append(digits.begin(), digits.end());
+        candidates.push_back(make_candidate(name, gitman::switch_candidate_kind::git_local_branch));
+    }
+    fixture.deliver_candidates(std::move(candidates));
+
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_switch_dialog) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+    const float maximum { bar->accessibility().range->maximum };
+    const std::vector<luil::input_action> actions { gitman::testing::set_scroll_value(*bar, 60.0f) };
+    const auto* const intent { as_intent<gitman::switch_dialog_scroll_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->offset == std::optional<float> { 60.0f });
+
+    fixture.controller.handle(*intent);
+    fixture.controller.handle(*intent);
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->scroll_offset == 60.0f);
+    fixture.controller.handle(gitman::switch_dialog_scroll_intent { 0.0f, 100000.0f });
+    REQUIRE(fixture.controller.make_view_snapshot()->switch_dialog->scroll_offset == maximum);
+}

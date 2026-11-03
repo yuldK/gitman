@@ -1807,3 +1807,54 @@ TEST_CASE("A composing font query narrows the list and falls back to the committ
         REQUIRE(view->font_dialog->names[0] == u8"Consolas");
     }
 }
+
+TEST_CASE("Assistive technology sets the settings and font dialog scrollbars", "[function_buttons][s4][ui][settings-ui][scroll]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(gitman::window_metrics_intent { 1280.0f, 320.0f, 1.0f });
+    controller.handle(gitman::open_settings_intent {});
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+
+    const auto tree { gitman::testing::make_tree(*controller.make_view_snapshot()) };
+    const luil::ui_element* const bar { settings_scrollbar(*tree) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+    const float maximum { bar->accessibility().range->maximum };
+    REQUIRE(maximum > 30.0f);
+    const std::vector<luil::input_action> actions { gitman::testing::set_scroll_value(*bar, 30.0f) };
+    const auto* const intent { gitman::testing::as_intent<gitman::settings_scroll_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->offset == std::optional<float> { 30.0f });
+    controller.handle(*intent);
+    controller.handle(*intent);
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 30.0f);
+    controller.handle(gitman::settings_scroll_intent { 0.0f, 100000.0f });
+    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == maximum);
+
+    // 글꼴 dialog의 목록도 같다.
+    controller.handle(gitman::open_font_dialog_intent { false });
+    std::vector<std::u8string> families {};
+    for (std::size_t index = 0; index < 60; ++index)
+    {
+        const std::string digits { std::to_string(index) };
+        std::u8string name { u8"Font " };
+        name.append(digits.begin(), digits.end());
+        families.push_back(std::move(name));
+    }
+    controller.handle(gitman::font_families_event { std::move(families) });
+    const auto font_tree { gitman::testing::make_tree(*controller.make_view_snapshot()) };
+    const luil::ui_element* const font_bar { gitman::testing::find(*font_tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_font_dialog) };
+    REQUIRE(font_bar != nullptr);
+    REQUIRE(font_bar->visible());
+    const float font_maximum { font_bar->accessibility().range->maximum };
+    const std::vector<luil::input_action> font_actions { gitman::testing::set_scroll_value(*font_bar, 50.0f) };
+    const auto* const font_intent { gitman::testing::as_intent<gitman::font_dialog_scroll_intent>(font_actions) };
+    REQUIRE(font_intent != nullptr);
+    REQUIRE(font_intent->offset == std::optional<float> { 50.0f });
+    controller.handle(*font_intent);
+    controller.handle(*font_intent);
+    REQUIRE(controller.make_view_snapshot()->font_dialog->scroll_offset == 50.0f);
+    controller.handle(gitman::font_dialog_scroll_intent { 0.0f, 100000.0f });
+    REQUIRE(controller.make_view_snapshot()->font_dialog->scroll_offset == font_maximum);
+}

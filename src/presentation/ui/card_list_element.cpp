@@ -108,12 +108,17 @@ namespace gitman::ui {
         // 막대는 카드보다 뒤에 둔다. 위에 그려지고 hit test에서도 먼저 걸린다.
         luil::scrollbar_config config {};
         config.scroll = [](const float delta) -> input_action { return make_logic_action(scroll_intent { delta }); };
+        // 보조 기술이 막대 값을 정하면(UIA RangeValue `SetValue`) 그 절대 자리로 간다. 비워 두면 막대가 읽기 전용으로 선다
+        // (function-buttons-design S4). 다른 목록·dialog의 막대도 같다.
+        config.scroll_to = [](const float offset) -> input_action { return make_logic_action(scroll_intent { 0.0f, offset }); };
         config.content_height = logical_content;
         config.viewport_height = logical_viewport;
         config.scroll_offset = logical_scroll;
         auto scrollbar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_cards } }, std::move(config)) };
         // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
         scrollbar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        scrollbar->set_access_name(std::u8string { scrollbar_access_name(scrollbar->id().owner) });
         scrollbar->set_visible(content > layout.viewport_height);
         scrollbar_ = scrollbar.get();
         add_child(std::move(scrollbar));

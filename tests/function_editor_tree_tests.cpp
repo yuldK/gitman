@@ -295,3 +295,48 @@ TEST_CASE("The editor exposes its drawn text to assistive technology", "[functio
     REQUIRE(message.role == luil::access_role::alert);
     REQUIRE(message.name == u8"\"마\": 인자에 닫히지 않은 큰따옴표가 있습니다.");
 }
+
+TEST_CASE("Assistive technology sets the editor list and form scrollbars", "[function_buttons][s4][ui][tree]")
+{
+    std::vector<gitman::function_button> buttons {};
+    for (int index = 0; index < 30; ++index)
+    {
+        const std::string digits { std::to_string(index) };
+        std::u8string id { u8"f" };
+        id.append(digits.begin(), digits.end());
+        buttons.push_back(make_function_card_button(id, id));
+    }
+    // 1280×400 창에서는 목록이 30줄을 다 담지 못하고 폼도 보이는 높이보다 길다.
+    function_card_fixture fixture { make_function_card_projects(2), std::move(buttons), 1280.0f, 400.0f };
+    open_editor(fixture);
+    const auto tree { fixture.tree() };
+
+    const luil::ui_element* const list_bar { find(*tree, ui::kind_scrollbar, ui::scrollbar_owner_function_editor_list) };
+    REQUIRE(list_bar != nullptr);
+    REQUIRE(shown(*tree, ui::kind_scrollbar, ui::scrollbar_owner_function_editor_list));
+    const float list_maximum { list_bar->accessibility().range->maximum };
+    const std::vector<luil::input_action> list_actions { set_scroll_value(*list_bar, 40.0f) };
+    const auto* const list_intent { as_intent<gitman::function_editor_scroll_intent>(list_actions) };
+    REQUIRE(list_intent != nullptr);
+    REQUIRE(list_intent->region == gitman::function_editor_scroll_region::list);
+    REQUIRE(list_intent->offset == std::optional<float> { 40.0f });
+    fixture.controller.handle(*list_intent);
+    fixture.controller.handle(*list_intent);
+    REQUIRE(fixture.snapshot()->function_editor->list_scroll == 40.0f);
+    fixture.controller.handle(gitman::function_editor_scroll_intent { gitman::function_editor_scroll_region::list, 0.0f, 100000.0f });
+    REQUIRE(fixture.snapshot()->function_editor->list_scroll == list_maximum);
+
+    const luil::ui_element* const form_bar { find(*tree, ui::kind_scrollbar, ui::scrollbar_owner_function_editor_form) };
+    REQUIRE(form_bar != nullptr);
+    REQUIRE(shown(*tree, ui::kind_scrollbar, ui::scrollbar_owner_function_editor_form));
+    const std::vector<luil::input_action> form_actions { set_scroll_value(*form_bar, 20.0f) };
+    const auto* const form_intent { as_intent<gitman::function_editor_scroll_intent>(form_actions) };
+    REQUIRE(form_intent != nullptr);
+    REQUIRE(form_intent->region == gitman::function_editor_scroll_region::form);
+    REQUIRE(form_intent->offset == std::optional<float> { 20.0f });
+    fixture.controller.handle(*form_intent);
+    fixture.controller.handle(*form_intent);
+    REQUIRE(fixture.snapshot()->function_editor->form_scroll == 20.0f);
+    // 목록 자리는 그대로다.
+    REQUIRE(fixture.snapshot()->function_editor->list_scroll == list_maximum);
+}

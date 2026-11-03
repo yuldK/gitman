@@ -525,12 +525,15 @@ namespace gitman::ui {
         const float bar_viewport { switch_dialog_list_height(dialog_.svn_browser, window_height_) };
         luil::scrollbar_config bar_config {};
         bar_config.scroll = [](const float delta) -> input_action { return make_logic_action(switch_dialog_scroll_intent { delta }); };
+        bar_config.scroll_to = [](const float offset) -> input_action { return make_logic_action(switch_dialog_scroll_intent { 0.0f, offset }); };
         bar_config.content_height = bar_content;
         bar_config.viewport_height = bar_viewport;
         bar_config.scroll_offset = dialog_.scroll_offset;
         auto bar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_switch_dialog } }, std::move(bar_config)) };
         // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
         bar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        bar->set_access_name(std::u8string { scrollbar_access_name(bar->id().owner) });
         bar->set_visible(bar_content > bar_viewport);
         scrollbar_ = bar.get();
         add_child(std::move(bar));

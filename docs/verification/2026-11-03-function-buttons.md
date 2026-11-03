@@ -302,7 +302,7 @@ CTest 등록 수는 9.3의 1112에서 1134로 22개 늘었다(R4에서 더한 te
 
 찾은 것(고치지 않고 기록만 함):
 
-- **확인 dialog의 스크롤 막대를 UIA로 움직일 수 없다.** 막대가 `range_read_only`이고 항목에 ScrollItem 패턴이 없어, 보조 기술은 화면 밖으로 넘친 보정·경고 줄로 스크롤할 수 없다(항목 이름에는 전체 글이 있음). 원인은 `scrollbar_config::scroll_to`(절대 위치 intent)를 비워 둔 것으로, gitman의 모든 dialog·목록이 같다(luil 이식 설계 부록 B의 후속, 설계 문서 T12 검토 남김 항목). 절대 위치 스크롤 intent를 새로 두는 설계 결정이라 R4에서 고치지 않았다.
+- **확인 dialog의 스크롤 막대를 UIA로 움직일 수 없다.** 막대가 `range_read_only`이고 항목에 ScrollItem 패턴이 없어, 보조 기술은 화면 밖으로 넘친 보정·경고 줄로 스크롤할 수 없다(항목 이름에는 전체 글이 있음). 원인은 `scrollbar_config::scroll_to`(절대 위치 intent)를 비워 둔 것으로, gitman의 모든 dialog·목록이 같다(luil 이식 설계 부록 B의 후속, 설계 문서 T12 검토 남김 항목). 절대 위치 스크롤 intent를 새로 두는 설계 결정이라 R4에서 고치지 않았다. (5차 검수에서 고치기로 골라 S4에서 고침: 모든 막대가 값 정하기를 받고 이름이 있다. 설계 문서 "구현 결과" S4)
 - **`GITMAN_REPOSITORY_ROOT` 경고 값의 대소문자가 작업 폴더와 다르다(겉모양).** 경고 값은 git이 돌려준 저장소 루트(`snapshot->repository_root`)이고 작업 폴더는 문서의 project 경로다. 시험 폴더의 실제 이름이 `e--Programming-…`(소문자)이고 문서 경로는 `E--…`로 적혀 있었다(`git rev-parse --show-toplevel`과 `cmd /c cd`로 확인). R4 전부터 같은 값이었고, R4 경고가 값을 보이면서 드러났다.
 - **신뢰 dialog의 버튼 다섯이 모두 UIA에 나오는지 확인하지 못했다.** 처음 화면에 넷, (6) 화면에 셋만 보였다. 목록이 보이는 항목만 짓는 것으로 보이며 R4 범위 밖이라 더 보지 않았다.
 

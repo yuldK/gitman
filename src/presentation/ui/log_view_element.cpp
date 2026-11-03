@@ -16,9 +16,12 @@
 #include "include/core/SkTypeface.h"
 
 #include <chrono>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -37,6 +40,101 @@ namespace gitman::ui {
                 return palette.primary_foreground;
             return with_alpha(palette.primary_foreground, 0.85f);
         }
+
+        // 그려진 로그 줄 하나를 보조 기술에 내는 자리다 (그리지 않는다, function-buttons-design S4). 누를 것이 없어 hit
+        // test는 지나가고 빈 곳 클릭은 지금처럼 pane이 받는다.
+        class log_line_element final : public ui_element
+        {
+        public:
+            log_line_element(const std::u8string_view card, const log_display_line& line, const std::size_t index)
+                : ui_element { ui_element_id { kind_log_line, log_line_owner(card, line.record.sequence) } }
+                , name_ { log_line_access_name(line) }
+                , index_ { index }
+            {
+                set_tab_stop(false);
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                set_bounds(context.slot);
+            }
+
+            void draw(draw_context&, const interaction_snapshot&) const override
+            {
+            }
+
+            [[nodiscard]] access_info accessibility() const override
+            {
+                return { .role = access_role::list_item, .name = name_ };
+            }
+
+            [[nodiscard]] std::size_t index() const noexcept
+            {
+                return index_;
+            }
+
+        private:
+            std::u8string name_ {};
+            std::size_t index_ { 0 };
+        };
+
+        // 로그 본문의 줄 목록이다 (그리지 않는다, S4). 그리기는 pane이 하고(`draw_records`), 이 목록은 같은 줄을 보조 기술에
+        // 목록 항목으로 낸다. 창에 걸치는 줄만 항목으로 세운다 — 카드 목록과 같고, 화면 밖 줄은 막대 값을 정해 흘리면
+        // 들어온다. 헤더 버튼은 이 목록 밖이다. id가 줄의 자리(순번)가 아니라 record의 sequence라 오래된 줄이 지워지거나
+        // 필터가 바뀌어도 같은 줄은 같은 id다.
+        class log_lines_element final : public ui_element
+        {
+        public:
+            // `viewport_height`는 본문 높이의 논리 픽셀 값이다.
+            log_lines_element(const log_view_model& log, const float viewport_height)
+                : ui_element { ui_element_id { kind_log_lines, log.card.value } }
+                , name_ { log_list_access_name(log) }
+                , scroll_offset_ { log.scroll_offset }
+            {
+                set_tab_stop(false);
+                // 걸친 줄은 본문 위로 한 줄 높이까지 나간다. 자르지 않으면 그 사각형(UIA BoundingRectangle)이 헤더와 겹치고,
+                // 좌표 질의(`access_element_at`)가 자식을 뒤에서부터 훑어 헤더 단추 아래쪽에서 단추 대신 줄을 잡는다 (S4 검토).
+                // 카드 목록과 같다. 이 목록은 그리지 않고 줄도 누를 것이 없어 hit test는 그대로다.
+                set_clip_children(true);
+                // 줄 자리는 `draw_records`와 같은 식이다: 본문 위 안쪽 여백에서 스크롤만큼 올라간 자리부터 한 줄씩.
+                const float line_height { layout_log_line_height() };
+                for (std::size_t index = 0; index < log.lines.size(); ++index)
+                {
+                    const float top { layout_log_text_inset - scroll_offset_ + static_cast<float>(index) * line_height };
+                    if (top + line_height < 0.0f || top > viewport_height)
+                        continue;
+                    add_child(std::make_unique<log_line_element>(log.card.value, log.lines[index], index));
+                }
+            }
+
+            void arrange(const arrange_context& context) override
+            {
+                const float scale { context.scale > 0.0f ? context.scale : 1.0f };
+                set_bounds(context.slot);
+                const float inset { layout_log_text_inset * scale };
+                const float line_height { layout_log_line_height() * scale };
+                const float width { context.slot.width - inset * 2.0f > 0.0f ? context.slot.width - inset * 2.0f : 0.0f };
+                for (const std::unique_ptr<ui_element>& child : children())
+                {
+                    const std::size_t index { static_cast<const log_line_element&>(*child).index() };
+                    const float top { context.slot.y + inset - scroll_offset_ * scale + static_cast<float>(index) * line_height };
+                    child->arrange({ { context.slot.x + inset, top, width, line_height }, scale });
+                }
+            }
+
+            void draw(draw_context&, const interaction_snapshot&) const override
+            {
+            }
+
+            [[nodiscard]] access_info accessibility() const override
+            {
+                return { .role = access_role::list, .name = name_ };
+            }
+
+        private:
+            std::u8string name_ {};
+            float scroll_offset_ { 0.0f };
+        };
     } // namespace
 
     log_view_element::log_view_element(const log_view_model& log, const float body_viewport_height, const float scale)
@@ -99,8 +197,19 @@ namespace gitman::ui {
         const float effective_scale { scale > 0.0f ? scale : 1.0f };
         const float content_height { static_cast<float>(log_.lines.size()) * layout_log_line_height() + layout_log_text_inset * 2.0f };
         const float viewport_height { body_viewport_height / effective_scale };
+        // 그린 줄을 보조 기술에 목록 항목으로 낸다 (S4). 막대보다 앞이라 접근 순서도 헤더 버튼, 줄, 막대다.
+        auto lines { std::make_unique<log_lines_element>(log_, viewport_height) };
+        lines_ = lines.get();
+        add_child(std::move(lines));
+
         luil::scrollbar_config scrollbar_config {
             .scroll = [](const float delta) -> input_action { return make_logic_action(log_scroll_intent { delta }); },
+            // 끝으로 정한 값은 끝을 뜻한다 (S4). 따라가는 동안 줄이 늘면 이 발행본의 끝은 logic의 끝보다 앞이라, 그 값을
+            // 그대로 보내면 끝에 닿지 못하고 따라가기가 꺼진다. 휠이 끝을 넘으면 끝에서 잘리는 것과 같게 한다.
+            .scroll_to = [end = content_height > viewport_height ? content_height - viewport_height : 0.0f](const float offset) -> input_action
+            {
+                return make_logic_action(log_scroll_intent { 0.0f, offset >= end - 0.5f ? std::numeric_limits<float>::max() : offset });
+            },
             .content_height = content_height,
             .viewport_height = viewport_height,
             .scroll_offset = log_.scroll_offset,
@@ -108,6 +217,8 @@ namespace gitman::ui {
         auto scrollbar { std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_log } }, std::move(scrollbar_config)) };
         // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
         scrollbar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        scrollbar->set_access_name(std::u8string { scrollbar_access_name(scrollbar->id().owner) });
         scrollbar->set_visible(content_height > viewport_height && viewport_height > 0.0f);
         scrollbar_ = scrollbar.get();
         add_child(std::move(scrollbar));
@@ -174,6 +285,8 @@ namespace gitman::ui {
             track_height = 0.0f;
         scrollbar_->arrange({ { track_left, body_.y + vertical_inset, hit_width, track_height }, scale });
         scrollbar_reserved_ = scrollbar_->visible() ? hit_width + inset : 0.0f;
+        // 줄 목록은 글자가 그려지는 자리와 같다 (막대가 보이면 그만큼 좁다).
+        lines_->arrange({ { body_.x, body_.y, body_.width - scrollbar_reserved_ > 0.0f ? body_.width - scrollbar_reserved_ : 0.0f, body_.height }, scale });
     }
 
     void log_view_element::draw(draw_context& context, const interaction_snapshot& interaction) const
@@ -231,11 +344,8 @@ namespace gitman::ui {
         {
             SkPaint dim { solid_paint(context.palette.primary_foreground) };
             dim.setAlphaf(0.5f);
-            std::u8string_view hint { u8"필터와 일치하는 로그가 없습니다." };
-            if (log_.card.value.empty())
-                hint = u8"카드를 선택하면 그 카드에서 실행한 작업의 로그가 여기에 표시됩니다.";
-            else if (log_.filter == log_stream_filter::all)
-                hint = u8"이 카드에서 실행한 작업의 로그가 여기에 표시됩니다.";
+            // 같은 안내가 줄 목록의 접근 이름에도 붙는다 (S4 검토).
+            const std::u8string_view hint { log_empty_hint(log_) };
             // 안내는 본문 위쪽 첫 줄 자리다. 세로 가운데에 두면 높은 pane에서 글이
             // 아래로 떠 보였다.
             const float line_height { layout_log_line_height() * scale };
@@ -265,21 +375,8 @@ namespace gitman::ui {
             const SkPaint text_paint { solid_paint(record_color(context.palette, line.record.entry)) };
             const float text_left { body.x + inset + time_width };
             // 접힌 진행 표시는 마지막 줄 뒤에 접힌 수를 붙여 한 줄로 보인다
-            // (stage-8-plan 5.3). buffer에는 원본이 남아 복사·진단이 보존된다.
-            std::u8string text { line.record.entry.text };
-            if (line.collapsed > 0)
-            {
-                text += u8" (진행 표시 ";
-                std::u8string digits {};
-                std::size_t remaining { line.collapsed };
-                do
-                {
-                    digits.insert(digits.begin(), static_cast<char8_t>(u8'0' + remaining % 10));
-                    remaining /= 10;
-                } while (remaining > 0);
-                text += digits;
-                text += u8"줄 접힘)";
-            }
+            // (stage-8-plan 5.3). buffer에는 원본이 남아 복사·진단이 보존된다. 줄 목록의 접근 이름도 같은 글이다 (S4).
+            const std::u8string text { format_log_line_text(line) };
             draw_text_line(context, text, { text_left, line_top, text_limit - text_left, line_height }, text_paint, code);
         }
         context.canvas.restore();

@@ -1090,6 +1090,7 @@ namespace gitman::ui {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_settings_dialog } },
                 luil::scrollbar_config {
                     .scroll = [](const float delta) -> input_action { return make_logic_action(settings_scroll_intent { delta }); },
+                    .scroll_to = [](const float offset) -> input_action { return make_logic_action(settings_scroll_intent { 0.0f, offset }); },
                     .content_height = metrics_.content_height,
                     .viewport_height = metrics_.viewport_height,
                     .scroll_offset = dialog_.scroll_offset,
@@ -1097,6 +1098,8 @@ namespace gitman::ui {
         };
         // 목록에 딸린 막대는 Tab 자리가 아니다 (luil list_element와 같은 관례, D1-B).
         bar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        bar->set_access_name(std::u8string { scrollbar_access_name(bar->id().owner) });
         bar->set_visible(metrics_.maximum_scroll > 0.0f);
         scrollbar_ = bar.get();
         add_child(std::move(bar));

@@ -35,6 +35,8 @@ namespace gitman::ui {
         ui_element* copy_ { nullptr };
         ui_element* clear_ { nullptr };
         ui_element* scrollbar_ { nullptr };
+        // 그린 줄을 보조 기술에 내는 목록이다 (그리지 않는다, function-buttons-design S4).
+        ui_element* lines_ { nullptr };
         // arrange가 정하는 본문 영역이다 (헤더 아래).
         rect_f body_ {};
         // 막대가 보일 때 본문 글자가 막대를 피해 줄어드는 폭이다 (물리 픽셀).

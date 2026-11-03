@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -443,4 +444,34 @@ TEST_CASE("Escape closes the discovery dialog and the wheel scrolls its list", "
     const auto* const wheel_intent { as_intent<gitman::discovery_dialog_scroll_intent>(wheel) };
     REQUIRE(wheel_intent != nullptr);
     REQUIRE(wheel_intent->delta > 0.0f);
+}
+
+TEST_CASE("Assistive technology sets the discovery list scrollbar", "[function_buttons][s4][ui][discovery-ui]")
+{
+    discovery_fixture fixture {};
+    std::vector<gitman::discovery_candidate> candidates {};
+    for (std::size_t index = 0; index < 30; ++index)
+    {
+        const std::string digits { std::to_string(index) };
+        std::u8string name { u8"repo-" };
+        name.append(digits.begin(), digits.end());
+        candidates.push_back(make_candidate(name, gitman::repository_kind::git));
+    }
+    fixture.deliver_candidates(std::move(candidates));
+
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_discovery_dialog) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+    const float maximum { bar->accessibility().range->maximum };
+    const std::vector<luil::input_action> actions { gitman::testing::set_scroll_value(*bar, 40.0f) };
+    const auto* const intent { as_intent<gitman::discovery_dialog_scroll_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->offset == std::optional<float> { 40.0f });
+
+    fixture.controller.handle(*intent);
+    fixture.controller.handle(*intent);
+    REQUIRE(fixture.controller.make_view_snapshot()->discovery_dialog->scroll_offset == 40.0f);
+    fixture.controller.handle(gitman::discovery_dialog_scroll_intent { 0.0f, 100000.0f });
+    REQUIRE(fixture.controller.make_view_snapshot()->discovery_dialog->scroll_offset == maximum);
 }

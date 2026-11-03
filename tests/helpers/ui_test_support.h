@@ -10,15 +10,18 @@
 #include "presentation/ui/gitman_policy.h"
 #include "presentation/view_snapshot.h"
 
+#include "luil/ui/accessibility.h"
 #include "luil/ui/ui_events.h"
 #include "luil/ui/ui_interaction.h"
 #include "luil/ui/ui_tree.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -171,6 +174,32 @@ namespace gitman::testing {
         if (actions.size() != 1u)
             return nullptr;
         return std::get_if<luil::app_ui_command>(&actions.front());
+    }
+
+    // 그 id가 접근 tree에 서는가다 (구조 접기와 숨김을 지난 발행본, luil `make_access_snapshot`). 화면 읽기와 UIA 자동화가
+    // 보는 것이 이 목록이다.
+    [[nodiscard]] inline bool in_access_tree(const luil::ui_tree& tree, const luil::ui_element_id& id)
+    {
+        const luil::access_snapshot snapshot { luil::make_access_snapshot(tree) };
+        return std::ranges::any_of(snapshot.entries, [&id](const luil::access_snapshot_entry& entry) { return entry.id == id; });
+    }
+
+    // 스크롤 막대가 보조 기술의 값 정하기(UIA RangeValue `SetValue`)를 받는지 확인하고, `value`로 정하면 내는 액션을
+    // 돌려준다 (function-buttons-design S4). 읽기 전용 판정은 luil provider의 `get_IsReadOnly`와 같은 술어(지금 값으로 세운
+    // 계획이 있는가)다. `value`는 범위 안이고 지금 값과 달라야 한다.
+    [[nodiscard]] inline std::vector<luil::input_action> set_scroll_value(const luil::ui_element& bar, const float value)
+    {
+        const luil::access_info info { bar.accessibility() };
+        REQUIRE(info.role == luil::access_role::scroll_bar);
+        // 이름이 비면 보조 기술은 어느 목록의 막대인지 모른다.
+        REQUIRE(info.name.empty() == false);
+        REQUIRE(info.range.has_value());
+        REQUIRE(luil::plan_access_request(bar, luil::access_request { luil::access_command::set_value, info.range->value }).has_value());
+        REQUIRE(value >= info.range->minimum);
+        REQUIRE(value <= info.range->maximum);
+        const std::optional<std::vector<luil::input_action>> planned { luil::plan_access_request(bar, luil::access_request { luil::access_command::set_value, value }) };
+        REQUIRE(planned.has_value());
+        return *planned;
     }
 
     // luil의 불투명 앱 메시지에서 logic 메시지를 되돌린다 (driver 경계와 같은 걸음).

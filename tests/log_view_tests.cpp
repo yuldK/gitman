@@ -9,7 +9,9 @@
 
 #include <chrono>
 #include <deque>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -439,4 +441,218 @@ TEST_CASE("The wheel over the log pane scrolls the log instead of the list", "[l
     // 카드 목록 위는 기존 목록 스크롤이다.
     const std::vector<luil::input_action> list_actions { harness.process(luil::mouse_wheel_event { 400.0f, 200.0f, -120.0f, at(0) }) };
     REQUIRE(as_intent<gitman::scroll_intent>(list_actions) != nullptr);
+}
+
+namespace {
+    // 로그 줄 element의 owner다: 카드 id + `:` + 그 줄 record의 sequence(10진). 로그 fixture의 카드는 `alpha`다.
+    std::u8string log_line_owner(const gitman::log_display_line& line)
+    {
+        const std::string digits { std::to_string(line.record.sequence) };
+        return std::u8string { u8"alpha:" } + std::u8string { digits.begin(), digits.end() };
+    }
+
+    // 60줄 출력 뒤에 오류 한 줄을 더한 긴 로그다. 자동 스크롤이라 맨 아래를 보고 있다.
+    void add_long_log(log_fixture& fixture)
+    {
+        gitman::operation_log_event bulk {};
+        bulk.operation_id = fixture.submitter.requests.back().operation_id;
+        bulk.id.value = u8"alpha";
+        for (int index = 0; index < 60; ++index)
+        {
+            const std::string digits { std::to_string(index) };
+            std::u8string text { u8"line " };
+            text.append(digits.begin(), digits.end());
+            bulk.entries.push_back(make_entry(text, gitman::log_entry_kind::standard_output));
+        }
+        bulk.entries.push_back(make_entry(u8"실패", gitman::log_entry_kind::standard_error, gitman::diagnostic_severity::error));
+        fixture.controller.handle(std::move(bulk));
+    }
+} // namespace
+
+TEST_CASE("Assistive technology sets the log scrollbar and following resumes at the end", "[function_buttons][s4][log][ui]")
+{
+    log_fixture fixture {};
+    add_long_log(fixture);
+
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+    const float maximum { bar->accessibility().range->maximum };
+    REQUIRE(bar->accessibility().range->value == maximum);
+
+    const std::vector<luil::input_action> actions { set_scroll_value(*bar, 0.0f) };
+    const auto* const intent { as_intent<gitman::log_scroll_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->offset == std::optional<float> { 0.0f });
+
+    // 맨 위로 정하면 따라가기가 꺼진다. 지금 자리를 보지 않는 절대 자리다.
+    fixture.controller.handle(*intent);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == 0.0f);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->auto_scroll == false);
+    fixture.controller.handle(gitman::log_scroll_intent { 0.0f, 50.0f });
+    fixture.controller.handle(gitman::log_scroll_intent { 0.0f, 50.0f });
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == 50.0f);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->auto_scroll == false);
+
+    // 끝으로 정하면 휠로 끝에 닿을 때처럼 다시 따라간다.
+    fixture.controller.handle(gitman::log_scroll_intent { 0.0f, maximum });
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == maximum);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->auto_scroll);
+}
+
+TEST_CASE("Log lines stand in the access tree as list items", "[function_buttons][s4][log][ui]")
+{
+    log_fixture fixture {};
+    add_long_log(fixture);
+
+    const auto view { fixture.controller.make_view_snapshot() };
+    const auto tree { make_tree(*view) };
+    const std::vector<gitman::log_display_line>& lines { view->log->lines };
+    REQUIRE(lines.size() > 60u);
+
+    // 본문은 목록이다. 이름은 `로그: 카드 이름, N줄`이라 카드 항목과 갈리고, 보이는 항목만 세는 보조 기술에 전체 줄 수를
+    // 말한다 (S4 검토). 헤더 버튼은 그 목록 밖이다.
+    const luil::ui_element* const list { find(*tree, gitman::ui::kind_log_lines, u8"alpha") };
+    REQUIRE(list != nullptr);
+    REQUIRE(list->accessibility().role == luil::access_role::list);
+    const std::string count { std::to_string(lines.size()) };
+    REQUIRE(list->accessibility().name == u8"로그: " + view->log->title + u8", " + std::u8string { count.begin(), count.end() } + u8"줄");
+    REQUIRE(in_access_tree(*tree, list->id()));
+    const luil::ui_element* const filter_parent { luil::access_parent(*tree, luil::ui_element_id { gitman::ui::kind_log_filter, std::u8string { u8"alpha" } }) };
+    REQUIRE((filter_parent == nullptr || filter_parent->id() != list->id()));
+
+    // 맨 아래를 보고 있으므로 마지막 줄이 항목으로 서고 첫 줄은 없다. 항목 이름은 그려진 글 그대로이고, 색으로만 보이던
+    // 오류 줄은 이름이 오류라고 말한다.
+    const gitman::log_display_line& last { lines.back() };
+    const luil::ui_element* const last_item { find(*tree, gitman::ui::kind_log_line, log_line_owner(last)) };
+    REQUIRE(last_item != nullptr);
+    REQUIRE(last_item->accessibility().role == luil::access_role::list_item);
+    REQUIRE(last_item->accessibility().name == gitman::format_log_timestamp(last.record.entry.time) + u8" 오류: 실패");
+    REQUIRE(in_access_tree(*tree, last_item->id()));
+    REQUIRE(luil::access_parent(*tree, last_item->id()) == list);
+    const gitman::log_display_line& before_last { lines[lines.size() - 2u] };
+    REQUIRE(find(*tree, gitman::ui::kind_log_line, log_line_owner(before_last))->accessibility().name == gitman::format_log_timestamp(before_last.record.entry.time) + u8" line 59");
+    REQUIRE(find(*tree, gitman::ui::kind_log_line, log_line_owner(lines.front())) == nullptr);
+    // 항목은 누를 것이 없고 Tab 자리도 아니다. 빈 곳 클릭은 지금처럼 pane이 받는다.
+    REQUIRE(last_item->action(luil::ui_trigger::left_click) == nullptr);
+    REQUIRE(last_item->tab_stop() == false);
+    REQUIRE(tree->hit_test(last_item->bounds().x + 5.0f, last_item->bounds().y + 2.0f)->id().kind == gitman::ui::kind_log_pane);
+
+    // 맨 위로 흘리면 첫 줄이 서고 마지막 줄은 빠진다.
+    fixture.controller.handle(gitman::log_scroll_intent { -100000.0f });
+    const auto top_view { fixture.controller.make_view_snapshot() };
+    const auto top { make_tree(*top_view) };
+    REQUIRE(find(*top, gitman::ui::kind_log_line, log_line_owner(top_view->log->lines.front())) != nullptr);
+    REQUIRE(find(*top, gitman::ui::kind_log_line, log_line_owner(top_view->log->lines.back())) == nullptr);
+}
+
+TEST_CASE("A log line half above the body is clipped to the body", "[function_buttons][s4][log][ui]")
+{
+    log_fixture fixture {};
+    add_long_log(fixture);
+    // 첫 줄이 본문 위로 10px 나가게 흘린다 (줄 높이 안이라 항목으로 남는다).
+    fixture.controller.handle(gitman::log_scroll_intent { 0.0f, gitman::layout_log_text_inset + 10.0f });
+    const auto view { fixture.controller.make_view_snapshot() };
+    const auto tree { make_tree(*view) };
+    const luil::ui_element* const list { find(*tree, gitman::ui::kind_log_lines, u8"alpha") };
+    REQUIRE(list != nullptr);
+    const float body_top { list->bounds().y };
+    const luil::ui_element* const first { find(*tree, gitman::ui::kind_log_line, log_line_owner(view->log->lines.front())) };
+    REQUIRE(first != nullptr);
+    REQUIRE(first->bounds().y < body_top);
+
+    // 보조 기술이 보는 사각형(UIA BoundingRectangle)은 본문 안으로 잘린다 (S4 검토).
+    const std::optional<luil::rect_f> visible { tree->visible_bounds(*first) };
+    REQUIRE(visible.has_value());
+    REQUIRE(visible->y >= body_top);
+
+    // 헤더 단추 아래쪽을 짚으면 걸친 줄이 아니라 그 단추다.
+    const luil::ui_element* const copy { find(*tree, gitman::ui::kind_log_copy, u8"alpha") };
+    REQUIRE(copy != nullptr);
+    const float probe_y { copy->bounds().y + copy->bounds().height - 1.0f };
+    REQUIRE(probe_y > first->bounds().y);
+    const luil::ui_element* const at { luil::access_element_at(*tree, copy->bounds().x + copy->bounds().width / 2.0f, probe_y) };
+    REQUIRE(at != nullptr);
+    REQUIRE(at->id() == copy->id());
+}
+
+TEST_CASE("Log line ids carry the card so switching cards makes new items", "[function_buttons][s4][log][ui]")
+{
+    // sequence는 카드마다 1부터 센다. owner에 카드가 없으면 카드를 바꿀 때 같은 id가 다른 줄을 가리킨다 (S4 검토).
+    REQUIRE(gitman::ui::log_line_owner(u8"alpha", 5u) == u8"alpha:5");
+    REQUIRE(gitman::ui::log_line_owner(u8"beta", 5u) == u8"beta:5");
+    REQUIRE(gitman::ui::log_line_owner(u8"a:b", 0u) == u8"a:b:0");
+    REQUIRE(gitman::ui::log_line_owner(u8"x", 1234567890123u) == u8"x:1234567890123");
+}
+
+TEST_CASE("An empty log has an empty line list", "[function_buttons][s4][log][ui]")
+{
+    const gitman::view_snapshot view { make_view_with_log(false) };
+    const auto tree { make_tree(view) };
+    const luil::ui_element* const list { find(*tree, gitman::ui::kind_log_lines, u8"alpha") };
+    REQUIRE(list != nullptr);
+    REQUIRE(list->accessibility().role == luil::access_role::list);
+    REQUIRE(tree->ids_of_kind(gitman::ui::kind_log_line).empty());
+    // 비었을 때 그려지는 안내는 목록 이름이 말한다 (S4 검토). 오래된 줄이 지워졌으면 제목처럼 그것도 말한다.
+    REQUIRE(list->accessibility().name == u8"로그: " + view.log->title + u8", 이 카드에서 실행한 작업의 로그가 여기에 표시됩니다.");
+
+    gitman::log_view_model none {};
+    none.title = u8"로그";
+    REQUIRE(gitman::log_list_access_name(none) == u8"로그, 카드를 선택하면 그 카드에서 실행한 작업의 로그가 여기에 표시됩니다.");
+    gitman::log_view_model trimmed { *view.log };
+    trimmed.truncated = true;
+    trimmed.filter = gitman::log_stream_filter::errors;
+    REQUIRE(gitman::log_list_access_name(trimmed) == u8"로그: " + view.log->title + u8" (오래된 로그 제거됨), 필터와 일치하는 로그가 없습니다.");
+}
+
+TEST_CASE("Setting a published log scrollbar to its own end follows even after more lines arrive", "[function_buttons][s4][log][ui]")
+{
+    log_fixture fixture {};
+    add_long_log(fixture);
+    fixture.controller.handle(gitman::log_scroll_intent { 0.0f, 0.0f });
+    REQUIRE(fixture.controller.make_view_snapshot()->log->auto_scroll == false);
+
+    // 같은 발행본 안에서다: 그 막대의 끝은 그 사이 logic에 줄이 더 와도 끝을 뜻한다. luil은 값 정하기를 받은 때의 최신
+    // 발행본에서 막대를 찾으므로, 실제 앱에서 이 길은 읽기와 정하기 사이에 새 발행본이 없을 때만이다 (아래 한계).
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->accessibility().name == u8"로그 스크롤");
+    const float stale_end { bar->accessibility().range->maximum };
+    add_long_log(fixture);
+
+    const std::vector<luil::input_action> actions { set_scroll_value(*bar, stale_end) };
+    const auto* const intent { as_intent<gitman::log_scroll_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    fixture.controller.handle(*intent);
+    const auto view { fixture.controller.make_view_snapshot() };
+    REQUIRE(view->log->auto_scroll);
+    REQUIRE(view->log->scroll_offset > stale_end);
+
+    // 끝이 아닌 값은 그 자리다.
+    const std::vector<luil::input_action> middle_actions { set_scroll_value(*bar, stale_end - 40.0f) };
+    const auto* const middle { as_intent<gitman::log_scroll_intent>(middle_actions) };
+    REQUIRE(middle != nullptr);
+    REQUIRE(middle->offset == std::optional<float> { stale_end - 40.0f });
+
+    // 한계(S4 검토, luil 요청 후보): 보조 기술이 옛 발행본에서 읽은 끝을 새 발행본의 막대에 정하면 그 값은 끝보다 앞이라
+    // 그 자리에 서고 따라가기가 꺼진다. 막대 값만으로는 "끝"을 실을 수 없다 — luil에 Scroll 패턴(`SetScrollPercent`)이 없다.
+    fixture.controller.handle(gitman::log_scroll_intent { 0.0f, 0.0f });
+    const auto read_tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const float read_end { find(*read_tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log)->accessibility().range->maximum };
+    add_long_log(fixture);
+    const auto latest_tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const latest_bar { find(*latest_tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log) };
+    REQUIRE(latest_bar->accessibility().range->maximum > read_end);
+    const std::vector<luil::input_action> late_actions { set_scroll_value(*latest_bar, read_end) };
+    const auto* const late { as_intent<gitman::log_scroll_intent>(late_actions) };
+    REQUIRE(late != nullptr);
+    fixture.controller.handle(*late);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->auto_scroll == false);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == read_end);
+
+    // 값을 정하는 길이 NaN을 보내도 스크롤 값에 남지 않는다 (S4 검토). luil의 범위 확인은 NaN을 거르지 않는다.
+    fixture.controller.handle(gitman::log_scroll_intent { 0.0f, std::numeric_limits<float>::quiet_NaN() });
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == read_end);
 }

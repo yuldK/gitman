@@ -142,6 +142,8 @@ namespace gitman {
     {
         float delta { 0.0f };
         function_confirm_scroll_step step { function_confirm_scroll_step::delta };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다). 있으면 `step`도 보지 않는다.
+        std::optional<float> offset {};
     };
 
     struct clear_log_intent
@@ -165,6 +167,8 @@ namespace gitman {
     struct log_scroll_intent
     {
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     // 카드의 switch 버튼이 여는 switch dialog다. Git은 remote-first 후보 조회를,
@@ -202,6 +206,8 @@ namespace gitman {
     struct switch_dialog_scroll_intent
     {
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     // Enter와 SVN의 이동 버튼이다. Git은 걸러진 첫 후보를 고르고, SVN은 박스의
@@ -267,6 +273,8 @@ namespace gitman {
     struct font_dialog_scroll_intent
     {
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     // toolbar 탐색 버튼이 여는 탐색 후보 선택 등록 dialog다 (REQ-004, stage-8-plan
@@ -293,6 +301,8 @@ namespace gitman {
     struct discovery_dialog_scroll_intent
     {
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     // toolbar의 환경설정 버튼이 여는 환경설정 dialog다 (REQ-017, stage-8-plan
@@ -354,6 +364,8 @@ namespace gitman {
     struct settings_scroll_intent
     {
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     // 초점을 받을 수 있는 텍스트 박스다 (switch-dialog-query-bar-design R2.2).
@@ -454,11 +466,15 @@ namespace gitman {
     struct local_changes_scroll_intent
     {
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     struct local_changes_diff_scroll_intent
     {
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     // 카드 body 우클릭이 여는 컨텍스트 메뉴다 (field-feedback-design 3장). 좌표는
@@ -583,6 +599,8 @@ namespace gitman {
     {
         function_editor_scroll_region region { function_editor_scroll_region::form };
         float delta { 0.0f };
+        // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
+        std::optional<float> offset {};
     };
 
     // Apply다 (2.7, 4.11). 모델을 바꾸기 전에 파서와 같은 규칙 함수로 모든 항목을 검증하고, 실행 중인 기능을 지우거나
@@ -689,6 +707,9 @@ namespace gitman {
     {
         // 논리 픽셀 단위의 스크롤 변화량이다. 양수가 아래로 이동이다.
         float delta { 0.0f };
+        // 보조 기술이 막대 값으로 정한 절대 자리다 (논리 픽셀, UIA RangeValue `SetValue`, function-buttons-design S4). 있으면
+        // 변화량을 보지 않는다 — 지난 발행본의 막대 값으로 변화량을 환산하면 겹쳐 쌓인다 (luil `scrollbar_config::scroll_to`).
+        std::optional<float> offset {};
     };
 
     // UI thread가 종료 직전에 읽은 창 배치다. logic이 현재 문서에 반영하고 종료

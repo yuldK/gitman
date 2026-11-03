@@ -138,6 +138,8 @@ namespace gitman::ui {
             function_editor_preview_step,
             function_editor_apply,
             function_editor_cancel,
+            log_lines,
+            log_line,
             count,
         };
 
@@ -276,6 +278,10 @@ namespace gitman::ui {
     inline constexpr luil::ui_element_kind kind_function_editor_preview_step { detail::application_kind(detail::application_kind_index::function_editor_preview_step) };
     inline constexpr luil::ui_element_kind kind_function_editor_apply { detail::application_kind(detail::application_kind_index::function_editor_apply) };
     inline constexpr luil::ui_element_kind kind_function_editor_cancel { detail::application_kind(detail::application_kind_index::function_editor_cancel) };
+    // 로그 본문의 줄 목록이다 (그리지 않는다, function-buttons-design S4). 그려진 로그 줄을 보조 기술에 목록 항목으로 낸다.
+    inline constexpr luil::ui_element_kind kind_log_lines { detail::application_kind(detail::application_kind_index::log_lines) };
+    // 로그 줄 하나다. owner는 `log_line_owner`(카드 id + `:` + 그 줄 record의 sequence, 10진)다.
+    inline constexpr luil::ui_element_kind kind_log_line { detail::application_kind(detail::application_kind_index::log_line) };
 
     inline constexpr std::size_t application_kind_count { static_cast<std::size_t>(detail::application_kind_index::count) };
 
@@ -400,6 +406,8 @@ namespace gitman::ui {
         kind_function_editor_preview_step,
         kind_function_editor_apply,
         kind_function_editor_cancel,
+        kind_log_lines,
+        kind_log_line,
     };
 
     static_assert(application_kinds.size() == application_kind_count);
@@ -417,6 +425,35 @@ namespace gitman::ui {
     inline constexpr std::u8string_view scrollbar_owner_function_confirm_dialog { u8"function-confirm" };
     inline constexpr std::u8string_view scrollbar_owner_function_editor_list { u8"function-editor-list" };
     inline constexpr std::u8string_view scrollbar_owner_function_editor_form { u8"function-editor-form" };
+
+    // 막대의 접근 이름이다 (function-buttons-design S4). luil 막대는 글을 세우지 않아 이름을 주지 않으면 비고, 보조 기술은
+    // 어느 목록의 막대인지 모른다. 모르는 owner는 `스크롤`이다.
+    [[nodiscard]] constexpr std::u8string_view scrollbar_access_name(const std::u8string_view owner) noexcept
+    {
+        if (owner == scrollbar_owner_cards)
+            return u8"카드 목록 스크롤";
+        if (owner == scrollbar_owner_log)
+            return u8"로그 스크롤";
+        if (owner == scrollbar_owner_switch_dialog)
+            return u8"전환 후보 스크롤";
+        if (owner == scrollbar_owner_settings_dialog)
+            return u8"환경설정 항목 스크롤";
+        if (owner == scrollbar_owner_font_dialog)
+            return u8"글꼴 목록 스크롤";
+        if (owner == scrollbar_owner_local_changes_list)
+            return u8"변경 파일 목록 스크롤";
+        if (owner == scrollbar_owner_local_changes_diff)
+            return u8"diff 스크롤";
+        if (owner == scrollbar_owner_discovery_dialog)
+            return u8"탐색 후보 스크롤";
+        if (owner == scrollbar_owner_function_confirm_dialog)
+            return u8"실행 확인 목록 스크롤";
+        if (owner == scrollbar_owner_function_editor_list)
+            return u8"기능 목록 스크롤";
+        if (owner == scrollbar_owner_function_editor_form)
+            return u8"기능 속성 스크롤";
+        return u8"스크롤";
+    }
 
     // luil `modal_host_element`(scrim 포함)가 쓰는 owner 문자열이다. dialog를 가른다
     // (설계 L6, D2-A). 본체 element의 kind(`kind_*_dialog`)는 그대로다.
@@ -448,5 +485,21 @@ namespace gitman::ui {
     {
         const std::size_t separator { owner.rfind(u8':') };
         return separator == std::u8string_view::npos ? owner : owner.substr(0, separator);
+    }
+
+    // 로그 줄의 owner다 (function-buttons-design S4). sequence는 카드마다 1부터 세므로 카드 id를 앞에 붙인다 — sequence만
+    // 쓰면 선택 카드를 바꿀 때 같은 id가 다른 줄을 가리켜, luil의 변경 비교가 새 항목 대신 같은 항목의 이름 바뀜으로 알린다.
+    [[nodiscard]] inline std::u8string log_line_owner(const std::u8string_view card, std::uint64_t sequence)
+    {
+        std::u8string digits {};
+        do
+        {
+            digits.insert(digits.begin(), static_cast<char8_t>(u8'0' + sequence % 10));
+            sequence /= 10;
+        } while (sequence > 0);
+        std::u8string owner { card };
+        owner += u8':';
+        owner += digits;
+        return owner;
     }
 } // namespace gitman::ui

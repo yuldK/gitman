@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -330,4 +331,18 @@ TEST_CASE("Toolbar buttons that need a document are disabled without one", "[ui]
     const auto opened { make_tree(1) };
     REQUIRE(find(*opened, ui::kind_toolbar_refresh_all)->enabled());
     REQUIRE(find(*opened, ui::kind_toolbar_toggle_path_display)->enabled());
+}
+
+TEST_CASE("Assistive technology sets the card list scrollbar to an absolute offset", "[function_buttons][s4][ui][tree]")
+{
+    // 막대가 읽기 전용으로 서면 보조 기술이 화면 밖 카드로 흘릴 수 없다. 값 정하기는 지금 자리를 보지 않는 절대 자리로
+    // 나간다 — 변화량으로 바꾸면 지난 발행본 기준의 양이 겹쳐 쌓인다.
+    const auto tree { make_tree(make_view(300)) };
+    const luil::ui_element* const bar { find(*tree, ui::kind_scrollbar, ui::scrollbar_owner_cards) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+    const std::vector<luil::input_action> actions { set_scroll_value(*bar, 400.0f) };
+    const auto* const intent { as_intent<gitman::scroll_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->offset == std::optional<float> { 400.0f });
 }

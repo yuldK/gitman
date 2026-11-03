@@ -4,7 +4,9 @@
 #include "luil/ui/font_scale.h"
 #include "luil/ui/layout_metrics.h"
 
+#include <cmath>
 #include <cstddef>
+#include <optional>
 #include <span>
 
 namespace gitman {
@@ -497,6 +499,16 @@ namespace gitman {
     [[nodiscard]] constexpr float clamp_scroll_offset(const float offset, const float content_height, const float viewport_height) noexcept
     {
         return luil::clamp_scroll(content_height, viewport_height, offset);
+    }
+
+    // 스크롤 intent가 가리키는 다음 자리다 (한계로 자르기 전, 논리 픽셀). `offset`이 있으면 보조 기술이 막대 값으로 정한
+    // 절대 자리라 지금 자리와 변화량을 보지 않는다 — 지난 발행본의 막대 값으로 변화량을 환산하면 겹쳐 쌓인다 (luil
+    // `scrollbar_config::scroll_to`, function-buttons-design S4). 없으면 지금 자리에 변화량을 더한다 (휠·끌기·키).
+    // 유한하지 않은 값(NaN·무한)은 없는 것으로 본다 — luil의 범위 확인과 `clamp_scroll`은 NaN을 걸러내지 않아, 규격을 어긴
+    // 보조 기술이 보낸 NaN이 스크롤 값으로 남으면 휠로도 되돌아오지 않는다 (S4 검토).
+    [[nodiscard]] inline float scroll_target(const float current, const float delta, const std::optional<float> offset) noexcept
+    {
+        return offset.has_value() && std::isfinite(*offset) ? *offset : current + delta;
     }
 
     // 카드 drag 중의 삽입 위치다. `dragged_index`를 뺀 나머지 목록 기준의 위치

@@ -297,7 +297,7 @@ namespace gitman {
         // 문서를 성공적으로 연 뒤 최근 목록 맨 앞으로 올리고 저장을 예약한다.
         void record_recent_document();
         void request_app_settings_save();
-        void handle_discovery_dialog_scroll(float delta);
+        void handle_discovery_dialog_scroll(float delta, std::optional<float> offset = std::nullopt);
         void handle_open_settings();
         void handle_open_context_menu(const open_context_menu_intent& intent);
         void handle_open_document_context_menu(const open_document_context_menu_intent& intent);
@@ -308,13 +308,13 @@ namespace gitman {
         void handle_select_local_change(std::size_t index);
         void handle_local_changes(local_changes_event event);
         void handle_file_diff(file_diff_event event);
-        void handle_local_changes_scroll(float delta);
-        void handle_local_changes_diff_scroll(float delta);
+        void handle_local_changes_scroll(float delta, std::optional<float> offset = std::nullopt);
+        void handle_local_changes_diff_scroll(float delta, std::optional<float> offset = std::nullopt);
         void request_selected_file_diff();
         void handle_set_settings_executable(set_settings_executable_intent intent);
         void handle_clear_settings_executable(const clear_settings_executable_intent& intent);
         void handle_select_settings_tab(const select_settings_tab_intent& intent);
-        void handle_settings_scroll(float delta);
+        void handle_settings_scroll(float delta, std::optional<float> offset = std::nullopt);
         // 환경설정 dialog의 표시 모델이다. snapshot 게시와 스크롤 한계 계산이 같은
         // 값을 봐야 하므로 한곳에서 만든다 (E1.3).
         [[nodiscard]] settings_dialog_view build_settings_dialog_view() const;
@@ -327,7 +327,7 @@ namespace gitman {
         void handle_confirm_switch();
         void handle_switch_candidates(switch_candidates_event event);
         void handle_svn_directory(svn_directory_event event);
-        void handle_switch_dialog_scroll(float delta);
+        void handle_switch_dialog_scroll(float delta, std::optional<float> offset = std::nullopt);
         // 초점을 가진 텍스트 박스의 편집이다 (switch-dialog-query-bar-design R2.2).
         // 대상별 초안을 고른 뒤 순수 편집 모델에 맡기고, 그 대상의 규칙(숫자만,
         // 필터 재적용)을 뒤에 덧붙인다.
@@ -363,7 +363,7 @@ namespace gitman {
         void handle_open_font_dialog(const open_font_dialog_intent& intent);
         void handle_select_font_family(std::size_t index);
         void handle_confirm_font_dialog();
-        void handle_font_dialog_scroll(float delta);
+        void handle_font_dialog_scroll(float delta, std::optional<float> offset = std::nullopt);
         // 필터를 통과한 글꼴 index다. 첫 항목은 항상 `(기본 글꼴)`을 뜻하는 빈 이름이다.
         [[nodiscard]] std::vector<std::u8string> filtered_font_families() const;
         void handle_submit_switch_query();
@@ -427,7 +427,7 @@ namespace gitman {
         // 선택 카드가 있어 하단 로그 pane이 보이는 상태다. layout 계산과 view 구성이
         // 같은 판정을 써야 스크롤 한계가 어긋나지 않는다.
         [[nodiscard]] bool has_log_pane() const noexcept;
-        void handle_log_scroll(float delta);
+        void handle_log_scroll(float delta, std::optional<float> offset = std::nullopt);
         // 선택 카드 로그의 필터 적용 후 내용 높이다 (논리 픽셀).
         [[nodiscard]] float log_content_height() const noexcept;
         // 로그 본문 높이다 (논리 픽셀). 기능 줄 유무(`has_function_bar()`)는 카드를 훑는 판정이라 부르는 쪽이 한 번 구해 넘긴다.

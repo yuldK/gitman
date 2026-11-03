@@ -84,20 +84,25 @@ namespace gitman::ui {
         auto more { std::make_unique<luil::button_element>(ui_element_id { kind_function_bar_more }, luil::button_config { .glyph = codicons::icon_ellipsis }) };
         more->set_tooltip(u8"기능 더 보기");
         // 선택 카드의 기능 메뉴다 (2.3.2와 같은 메뉴). 선택이 없으면 비활성이다 (2.2.2 규칙 5).
+        //  - 비활성이어도 액션을 단다 (S4). luil은 비활성 element의 액션을 실행하지 않고, 액션이 있어야 접근 tree에 단추로
+        //    서서 사유가 읽힌다. 선택이 없을 때의 카드 id는 비어 있어 logic도 메뉴를 열지 않는다 (`handle_open_function_menu`).
+        const ui_element* const anchor { more.get() };
+        more->set_action(ui_trigger::left_click
+            , [card = bar_.card, anchor](const ui_action_context&) -> std::vector<input_action>
+            {
+                const rect_f box { anchor->bounds() };
+                return { make_logic_action(open_function_menu_intent { card, box.x, box.y + box.height }) };
+            }
+        );
         if (bar_.card.value.empty() == false)
-        {
             more->set_access_name(function_bar_more_access_name(bar_.card_name, bar_.total_functions));
-            const ui_element* const anchor { more.get() };
-            more->set_action(ui_trigger::left_click
-                , [card = bar_.card, anchor](const ui_action_context&) -> std::vector<input_action>
-                {
-                    const rect_f box { anchor->bounds() };
-                    return { make_logic_action(open_function_menu_intent { card, box.x, box.y + box.height }) };
-                }
-            );
-        }
         else
+        {
+            // 이름은 무엇인지만, 막힌 사유는 tooltip(UIA HelpText)이다. 사유는 줄이 그리는 힌트와 같다.
+            more->set_access_name(u8"기능 더 보기 (기능 줄)");
+            more->set_tooltip(bar_.hint);
             more->set_enabled(false);
+        }
         more_ = more.get();
         add_child(std::move(more));
 

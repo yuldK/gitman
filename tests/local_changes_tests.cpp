@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -318,4 +319,48 @@ TEST_CASE("Scrollbars appear only when the list or diff overflows", "[ui][local-
     const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
     REQUIRE(find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_local_changes_list)->visible());
     REQUIRE(find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_local_changes_diff)->visible());
+}
+
+TEST_CASE("Assistive technology sets the local changes list and diff scrollbars", "[function_buttons][s4][ui][local-changes]")
+{
+    dialog_fixture fixture {};
+    fixture.controller.handle(gitman::open_local_changes_intent { gitman::project_id { u8"alpha" } });
+    std::vector<gitman::local_change_entry> many {};
+    for (int index = 0; index < 20; ++index)
+        many.push_back({ gitman::local_change_kind::modified, u8"a.txt" });
+    fixture.controller.handle(make_list_event(fixture.submitter.requests[0].operation_id, many));
+    gitman::file_diff_event diff {};
+    diff.operation_id = fixture.submitter.requests[1].operation_id;
+    diff.id.value = u8"alpha";
+    for (int index = 0; index < 40; ++index)
+        diff.result.lines.push_back(u8"+line");
+    fixture.controller.handle(std::move(diff));
+
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const list_bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_local_changes_list) };
+    const luil::ui_element* const diff_bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_local_changes_diff) };
+    REQUIRE(list_bar != nullptr);
+    REQUIRE(diff_bar != nullptr);
+    const float list_maximum { list_bar->accessibility().range->maximum };
+    const float diff_maximum { diff_bar->accessibility().range->maximum };
+
+    const std::vector<luil::input_action> list_actions { gitman::testing::set_scroll_value(*list_bar, 30.0f) };
+    const auto* const list_intent { as_intent<gitman::local_changes_scroll_intent>(list_actions) };
+    REQUIRE(list_intent != nullptr);
+    REQUIRE(list_intent->offset == std::optional<float> { 30.0f });
+    const std::vector<luil::input_action> diff_actions { gitman::testing::set_scroll_value(*diff_bar, 20.0f) };
+    const auto* const diff_intent { as_intent<gitman::local_changes_diff_scroll_intent>(diff_actions) };
+    REQUIRE(diff_intent != nullptr);
+    REQUIRE(diff_intent->offset == std::optional<float> { 20.0f });
+
+    fixture.controller.handle(*list_intent);
+    fixture.controller.handle(*list_intent);
+    fixture.controller.handle(*diff_intent);
+    fixture.controller.handle(*diff_intent);
+    REQUIRE(fixture.controller.make_view_snapshot()->local_changes_dialog->list_scroll == 30.0f);
+    REQUIRE(fixture.controller.make_view_snapshot()->local_changes_dialog->diff_scroll == 20.0f);
+    fixture.controller.handle(gitman::local_changes_scroll_intent { 0.0f, 100000.0f });
+    fixture.controller.handle(gitman::local_changes_diff_scroll_intent { 0.0f, 100000.0f });
+    REQUIRE(fixture.controller.make_view_snapshot()->local_changes_dialog->list_scroll == list_maximum);
+    REQUIRE(fixture.controller.make_view_snapshot()->local_changes_dialog->diff_scroll == diff_maximum);
 }

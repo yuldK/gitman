@@ -630,7 +630,7 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, set_log_auto_scroll_intent>)
                     log_auto_scroll_ = value.enabled;
                 else if constexpr (std::is_same_v<value_type, log_scroll_intent>)
-                    handle_log_scroll(value.delta);
+                    handle_log_scroll(value.delta, value.offset);
                 else if constexpr (std::is_same_v<value_type, begin_switch_intent>)
                     handle_begin_switch(value);
                 else if constexpr (std::is_same_v<value_type, select_switch_candidate_intent>)
@@ -644,7 +644,7 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, cancel_switch_dialog_intent>)
                     switch_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, switch_dialog_scroll_intent>)
-                    handle_switch_dialog_scroll(value.delta);
+                    handle_switch_dialog_scroll(value.delta, value.offset);
                 else if constexpr (std::is_same_v<value_type, set_text_composition_intent>)
                     handle_set_text_composition(value);
                 else if constexpr (std::is_same_v<value_type, edit_text_input_intent>)
@@ -695,7 +695,7 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, cancel_font_dialog_intent>)
                     font_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, font_dialog_scroll_intent>)
-                    handle_font_dialog_scroll(value.delta);
+                    handle_font_dialog_scroll(value.delta, value.offset);
                 else if constexpr (std::is_same_v<value_type, font_families_event>)
                     font_families_ = std::move(value.families);
                 else if constexpr (std::is_same_v<value_type, begin_discovery_intent>)
@@ -707,7 +707,7 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, cancel_discovery_dialog_intent>)
                     handle_cancel_discovery_dialog();
                 else if constexpr (std::is_same_v<value_type, discovery_dialog_scroll_intent>)
-                    handle_discovery_dialog_scroll(value.delta);
+                    handle_discovery_dialog_scroll(value.delta, value.offset);
                 else if constexpr (std::is_same_v<value_type, open_context_menu_intent>)
                     handle_open_context_menu(value);
                 else if constexpr (std::is_same_v<value_type, open_function_menu_intent>)
@@ -771,9 +771,9 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, cancel_local_changes_dialog_intent>)
                     local_changes_dialog_.reset();
                 else if constexpr (std::is_same_v<value_type, local_changes_scroll_intent>)
-                    handle_local_changes_scroll(value.delta);
+                    handle_local_changes_scroll(value.delta, value.offset);
                 else if constexpr (std::is_same_v<value_type, local_changes_diff_scroll_intent>)
-                    handle_local_changes_diff_scroll(value.delta);
+                    handle_local_changes_diff_scroll(value.delta, value.offset);
                 else if constexpr (std::is_same_v<value_type, local_changes_event>)
                     handle_local_changes(std::move(value));
                 else if constexpr (std::is_same_v<value_type, file_diff_event>)
@@ -789,7 +789,7 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, select_settings_tab_intent>)
                     handle_select_settings_tab(value);
                 else if constexpr (std::is_same_v<value_type, settings_scroll_intent>)
-                    handle_settings_scroll(value.delta);
+                    handle_settings_scroll(value.delta, value.offset);
                 else if constexpr (std::is_same_v<value_type, toggle_settings_submodules_intent>)
                 {
                     // 값을 건드리면 문서 모드에서는 그 행이 "문서에 정의됨"이 된다
@@ -831,7 +831,7 @@ namespace gitman {
                 }
                 else if constexpr (std::is_same_v<value_type, scroll_intent>)
                 {
-                    scroll_offset_ += value.delta;
+                    scroll_offset_ = scroll_target(scroll_offset_, value.delta, value.offset);
                     clamp_scroll();
                 }
                 else if constexpr (std::is_same_v<value_type, window_placement_intent>)
@@ -1327,7 +1327,7 @@ namespace gitman {
         return body > 0.0f ? body : 0.0f;
     }
 
-    void logic_controller::handle_log_scroll(const float delta)
+    void logic_controller::handle_log_scroll(const float delta, const std::optional<float> offset)
     {
         if (has_log_pane() == false)
             return;
@@ -1335,15 +1335,15 @@ namespace gitman {
         float maximum { log_content_height() - log_viewport_height(has_function_bar()) };
         if (maximum < 0.0f)
             maximum = 0.0f;
-        float offset { log_auto_scroll_ ? maximum : log_scroll_offset_ };
-        offset += delta;
-        if (offset < 0.0f)
-            offset = 0.0f;
-        if (offset > maximum)
-            offset = maximum;
-        log_scroll_offset_ = offset;
+        // 따라가는 중이면 지금 자리는 끝이다. 막대 값으로 정한 절대 자리(`offset`)는 그것을 보지 않는다 (S4).
+        float next { scroll_target(log_auto_scroll_ ? maximum : log_scroll_offset_, delta, offset) };
+        if (next < 0.0f)
+            next = 0.0f;
+        if (next > maximum)
+            next = maximum;
+        log_scroll_offset_ = next;
         // 맨 아래에 닿으면 자동 스크롤로 돌아간다. 위로 올리면 꺼진다.
-        log_auto_scroll_ = offset >= maximum - 0.5f;
+        log_auto_scroll_ = next >= maximum - 0.5f;
     }
 
     void logic_controller::handle_toggle_path_display()
@@ -2557,7 +2557,8 @@ namespace gitman {
             delta = content;
             break;
         }
-        function_confirm_->view.scroll_offset = clamp_scroll_offset(function_confirm_->view.scroll_offset + delta, content, viewport);
+        // 막대 값으로 정한 절대 자리(`offset`)는 키 단위보다 먼저다 (S4).
+        function_confirm_->view.scroll_offset = clamp_scroll_offset(scroll_target(function_confirm_->view.scroll_offset, delta, intent.offset), content, viewport);
     }
 
     void logic_controller::handle_stop_function(const stop_function_intent& intent)
@@ -3630,7 +3631,7 @@ namespace gitman {
         discovery_dialog_.reset();
     }
 
-    void logic_controller::handle_discovery_dialog_scroll(const float delta)
+    void logic_controller::handle_discovery_dialog_scroll(const float delta, const std::optional<float> offset)
     {
         if (discovery_dialog_.has_value() == false)
             return;
@@ -3639,12 +3640,12 @@ namespace gitman {
         float maximum { content - layout_discovery_dialog_list_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
-        float offset { discovery_dialog_->scroll_offset + delta };
-        if (offset < 0.0f)
-            offset = 0.0f;
-        if (offset > maximum)
-            offset = maximum;
-        discovery_dialog_->scroll_offset = offset;
+        float next { scroll_target(discovery_dialog_->scroll_offset, delta, offset) };
+        if (next < 0.0f)
+            next = 0.0f;
+        if (next > maximum)
+            next = maximum;
+        discovery_dialog_->scroll_offset = next;
     }
 
     std::vector<std::u8string> logic_controller::filtered_font_families() const
@@ -3779,7 +3780,7 @@ namespace gitman {
         font_dialog_.reset();
     }
 
-    void logic_controller::handle_font_dialog_scroll(const float delta)
+    void logic_controller::handle_font_dialog_scroll(const float delta, const std::optional<float> offset)
     {
         if (font_dialog_.has_value() == false)
             return;
@@ -3788,12 +3789,12 @@ namespace gitman {
         float maximum { content - layout_font_dialog_list_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
-        float offset { font_dialog_->scroll_offset + delta };
-        if (offset < 0.0f)
-            offset = 0.0f;
-        if (offset > maximum)
-            offset = maximum;
-        font_dialog_->scroll_offset = offset;
+        float next { scroll_target(font_dialog_->scroll_offset, delta, offset) };
+        if (next < 0.0f)
+            next = 0.0f;
+        if (next > maximum)
+            next = maximum;
+        font_dialog_->scroll_offset = next;
     }
 
     void logic_controller::handle_open_settings()
@@ -3951,7 +3952,7 @@ namespace gitman {
         dialog.can_confirm = git_error.empty() && svn_error.empty() && timeout_error.empty();
         return dialog;
     }
-    void logic_controller::handle_settings_scroll(const float delta)
+    void logic_controller::handle_settings_scroll(const float delta, const std::optional<float> offset)
     {
         if (settings_dialog_.has_value() == false)
             return;
@@ -3959,12 +3960,12 @@ namespace gitman {
         // element와 같은 함수로 한계를 구한다. 다르면 휠이 헛돌거나 마지막 항목이
         // 잘린다 (E1.3).
         const float maximum { ui::settings_dialog_metrics(build_settings_dialog_view(), window_height_ / scale_).maximum_scroll };
-        float offset { settings_dialog_->scroll_offset + delta };
-        if (offset < 0.0f)
-            offset = 0.0f;
-        if (offset > maximum)
-            offset = maximum;
-        settings_dialog_->scroll_offset = offset;
+        float next { scroll_target(settings_dialog_->scroll_offset, delta, offset) };
+        if (next < 0.0f)
+            next = 0.0f;
+        if (next > maximum)
+            next = maximum;
+        settings_dialog_->scroll_offset = next;
     }
 
     void logic_controller::handle_clear_settings_override(const clear_settings_override_intent& intent)
@@ -4782,7 +4783,7 @@ namespace gitman {
         return visible;
     }
 
-    void logic_controller::handle_switch_dialog_scroll(const float delta)
+    void logic_controller::handle_switch_dialog_scroll(const float delta, const std::optional<float> offset)
     {
         if (switch_dialog_.has_value() == false)
             return;
@@ -4792,12 +4793,12 @@ namespace gitman {
         float maximum { content - viewport };
         if (maximum < 0.0f)
             maximum = 0.0f;
-        float offset { switch_dialog_->scroll_offset + delta };
-        if (offset < 0.0f)
-            offset = 0.0f;
-        if (offset > maximum)
-            offset = maximum;
-        switch_dialog_->scroll_offset = offset;
+        float next { scroll_target(switch_dialog_->scroll_offset, delta, offset) };
+        if (next < 0.0f)
+            next = 0.0f;
+        if (next > maximum)
+            next = maximum;
+        switch_dialog_->scroll_offset = next;
     }
 
     void logic_controller::handle_open_context_menu(const open_context_menu_intent& intent)
@@ -5461,7 +5462,7 @@ namespace gitman {
         local_changes_dialog_->diff_notice = std::move(notice);
     }
 
-    void logic_controller::handle_local_changes_scroll(const float delta)
+    void logic_controller::handle_local_changes_scroll(const float delta, const std::optional<float> offset)
     {
         if (local_changes_dialog_.has_value() == false)
             return;
@@ -5470,15 +5471,15 @@ namespace gitman {
         float maximum { content - layout_local_changes_list_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
-        float offset { local_changes_dialog_->list_scroll + delta };
-        if (offset < 0.0f)
-            offset = 0.0f;
-        if (offset > maximum)
-            offset = maximum;
-        local_changes_dialog_->list_scroll = offset;
+        float next { scroll_target(local_changes_dialog_->list_scroll, delta, offset) };
+        if (next < 0.0f)
+            next = 0.0f;
+        if (next > maximum)
+            next = maximum;
+        local_changes_dialog_->list_scroll = next;
     }
 
-    void logic_controller::handle_local_changes_diff_scroll(const float delta)
+    void logic_controller::handle_local_changes_diff_scroll(const float delta, const std::optional<float> offset)
     {
         if (local_changes_dialog_.has_value() == false)
             return;
@@ -5487,12 +5488,12 @@ namespace gitman {
         float maximum { content - layout_local_changes_diff_height };
         if (maximum < 0.0f)
             maximum = 0.0f;
-        float offset { local_changes_dialog_->diff_scroll + delta };
-        if (offset < 0.0f)
-            offset = 0.0f;
-        if (offset > maximum)
-            offset = maximum;
-        local_changes_dialog_->diff_scroll = offset;
+        float next { scroll_target(local_changes_dialog_->diff_scroll, delta, offset) };
+        if (next < 0.0f)
+            next = 0.0f;
+        if (next > maximum)
+            next = maximum;
+        local_changes_dialog_->diff_scroll = next;
     }
 
     void logic_controller::append_lifecycle_log(card_state& card, const diagnostic_severity severity, std::u8string text)

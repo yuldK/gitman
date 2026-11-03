@@ -14,9 +14,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 // 결정안의 카드 부분(function-buttons-design 2.3)을 tree에서 본다 (6.1 T9 `ui_tree_build_tests` 항목). 카드 view는
@@ -651,4 +653,111 @@ TEST_CASE("Disabled card function buttons still read their name", "[function_but
     REQUIRE(deploy->enabled() == false);
     REQUIRE(deploy->accessibility().name == u8"배포, p00");
     REQUIRE(deploy->tooltip() == u8"배포 — 저장소를 조회한 뒤에 쓸 수 있습니다");
+}
+
+TEST_CASE("Disabled update and switch buttons stay in the access tree with their reason", "[function_buttons][s4][ui][tree]")
+{
+    function_card_fixture fixture { make_function_card_projects(3), sample_buttons() };
+    fixture.query(u8"p00");
+    fixture.query(u8"p01");
+    fixture.run(u8"p00", u8"build");
+    REQUIRE(fixture.functions.requests.size() == 1u);
+    fixture.started(fixture.functions.requests[0], std::chrono::steady_clock::now());
+
+    const auto tree { fixture.tree() };
+    interaction_harness harness { tree };
+
+    // p00은 출력 수집 기능이 실행 중이라, p02는 처음 조회가 끝나지 않아 막혔다. 누를 수 없어도 접근 tree에 단추로 남고,
+    // 이름은 누를 수 있는 p01의 단추와 같아 상태가 바뀌어도 흔들리지 않는다. 막힌 사유는 tooltip(UIA HelpText)이 말한다.
+    const std::vector<std::pair<std::u8string_view, std::u8string_view>> blocked {
+        { u8"p00", u8"기능 \"빌드\"가 실행 중입니다" },
+        { u8"p02", u8"카드 상태 조회가 끝난 뒤" },
+    };
+    for (const auto& [owner, reason] : blocked)
+    {
+        const luil::ui_element* const update { find(*tree, ui::kind_card_update, owner) };
+        REQUIRE(update != nullptr);
+        REQUIRE(update->enabled() == false);
+        REQUIRE(update->accessibility().role == luil::access_role::button);
+        REQUIRE(update->accessibility().name == u8"업데이트 (git pull --ff-only)");
+        REQUIRE(update->tooltip().starts_with(reason));
+        REQUIRE(in_access_tree(*tree, update->id()));
+        REQUIRE(click(harness, update->bounds()).empty());
+
+        const luil::ui_element* const switch_button { find(*tree, ui::kind_card_switch, owner) };
+        REQUIRE(switch_button != nullptr);
+        REQUIRE(switch_button->enabled() == false);
+        REQUIRE(switch_button->accessibility().role == luil::access_role::button);
+        REQUIRE(switch_button->accessibility().name == u8"브랜치 전환 (git switch)");
+        REQUIRE(switch_button->tooltip().starts_with(reason));
+        REQUIRE(in_access_tree(*tree, switch_button->id()));
+        REQUIRE(click(harness, switch_button->bounds()).empty());
+        // 액션이 생겨도 막힌 버튼은 Tab 자리가 아니다 (luil `focusable`이 비활성을 거른다).
+        const std::vector<luil::ui_element_id> order { tree->focus_order() };
+        REQUIRE(std::ranges::find(order, update->id()) == order.end());
+        REQUIRE(std::ranges::find(order, switch_button->id()) == order.end());
+    }
+
+    REQUIRE(find(*tree, ui::kind_card_update, u8"p01")->enabled());
+    REQUIRE(find(*tree, ui::kind_card_update, u8"p01")->accessibility().name == u8"업데이트 (git pull --ff-only)");
+    REQUIRE(find(*tree, ui::kind_card_switch, u8"p01")->accessibility().name == u8"브랜치 전환 (git switch)");
+    REQUIRE(find(*tree, ui::kind_card_update, u8"p02")->tooltip() == u8"카드 상태 조회가 끝난 뒤 업데이트할 수 있습니다");
+    REQUIRE(find(*tree, ui::kind_card_switch, u8"p02")->tooltip() == u8"카드 상태 조회가 끝난 뒤 전환할 수 있습니다");
+
+    // 업데이트가 실행 중인 카드의 전환은 그 작업을 사유로 말한다 (S4 검토: 예전에는 모두 `카드가 준비된 뒤`였다).
+    // 업데이트 단추는 그때 취소 단추라 누를 수 있다.
+    fixture.controller.handle(gitman::request_update_intent { gitman::project_id { u8"p01" }, {} });
+    const auto updating { fixture.tree() };
+    const luil::ui_element* const cancel { find(*updating, ui::kind_card_update, u8"p01") };
+    REQUIRE(cancel->enabled());
+    REQUIRE(cancel->tooltip() == u8"실행 중인 작업 취소");
+    const luil::ui_element* const blocked_switch { find(*updating, ui::kind_card_switch, u8"p01") };
+    REQUIRE(blocked_switch->enabled() == false);
+    REQUIRE(blocked_switch->tooltip() == u8"실행 중인 변경 작업이 끝난 뒤 전환할 수 있습니다");
+}
+
+TEST_CASE("Disabled projects say why update and switch are blocked", "[function_buttons][s4][ui][tree]")
+{
+    // 비활성 프로젝트는 기다려도 풀리지 않는다 (S4 검토).
+    std::vector<gitman::project_definition> projects { make_function_card_projects(2) };
+    projects[1].enabled = false;
+    function_card_fixture fixture { std::move(projects), {} };
+    const auto tree { fixture.tree() };
+    REQUIRE(find(*tree, ui::kind_card_update, u8"p01")->tooltip() == u8"비활성 프로젝트라 업데이트할 수 없습니다");
+    REQUIRE(find(*tree, ui::kind_card_switch, u8"p01")->tooltip() == u8"비활성 프로젝트라 전환할 수 없습니다");
+    REQUIRE(find(*tree, ui::kind_card_switch, u8"p01")->accessibility().name == u8"브랜치 전환 (git switch)");
+}
+
+TEST_CASE("An absolute card list offset scrolls there within the limit", "[function_buttons][s4][logic]")
+{
+    function_card_fixture fixture { make_function_card_projects(30), {} };
+    const auto tree { fixture.tree() };
+    const luil::ui_element* const bar { find(*tree, ui::kind_scrollbar, ui::scrollbar_owner_cards) };
+    REQUIRE(bar != nullptr);
+    const float maximum { bar->accessibility().range->maximum };
+    REQUIRE(maximum > 300.0f);
+
+    fixture.controller.handle(gitman::scroll_intent { 0.0f, 300.0f });
+    REQUIRE(fixture.snapshot()->scroll_offset == 300.0f);
+    // 변화량을 보지 않는다. 같은 자리를 거듭 정해도 쌓이지 않는다.
+    fixture.controller.handle(gitman::scroll_intent { 50.0f, 120.0f });
+    fixture.controller.handle(gitman::scroll_intent { 0.0f, 120.0f });
+    REQUIRE(fixture.snapshot()->scroll_offset == 120.0f);
+    fixture.controller.handle(gitman::scroll_intent { 0.0f, 100000.0f });
+    REQUIRE(fixture.snapshot()->scroll_offset == maximum);
+    fixture.controller.handle(gitman::scroll_intent { 0.0f, -10.0f });
+    REQUIRE(fixture.snapshot()->scroll_offset == 0.0f);
+    // 변화량만 실은 휠은 그대로다.
+    fixture.controller.handle(gitman::scroll_intent { 48.0f });
+    REQUIRE(fixture.snapshot()->scroll_offset == 48.0f);
+
+    // 유한하지 않은 자리는 없는 것으로 본다 (S4 검토). luil의 범위 확인과 `clamp_scroll`은 NaN을 거르지 않아, 남으면 휠로도
+    // 되돌아오지 않는다.
+    fixture.controller.handle(gitman::scroll_intent { 2.0f, std::numeric_limits<float>::quiet_NaN() });
+    REQUIRE(fixture.snapshot()->scroll_offset == 50.0f);
+    fixture.controller.handle(gitman::scroll_intent { 0.0f, std::numeric_limits<float>::infinity() });
+    REQUIRE(fixture.snapshot()->scroll_offset == 50.0f);
+    REQUIRE(gitman::scroll_target(10.0f, 5.0f, std::numeric_limits<float>::quiet_NaN()) == 15.0f);
+    REQUIRE(gitman::scroll_target(10.0f, 5.0f, -std::numeric_limits<float>::infinity()) == 15.0f);
+    REQUIRE(gitman::scroll_target(10.0f, 5.0f, 0.0f) == 0.0f);
 }

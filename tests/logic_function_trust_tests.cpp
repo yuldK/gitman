@@ -1511,3 +1511,32 @@ TEST_CASE("A cmd run whose batch check does not answer is dropped after a time l
     REQUIRE(fixture.answer_cmd_inspection());
     REQUIRE(fixture.functions.requests.size() == 1u);
 }
+
+TEST_CASE("Assistive technology sets the confirm dialog scrollbar", "[function_buttons][s4][ui]")
+{
+    trust_fixture fixture {};
+    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 400.0f, 1.0f });
+    fixture.load_settings();
+    std::vector<gitman::function_button> buttons {};
+    for (char8_t index = u8'a'; index <= u8'h'; ++index)
+        buttons.push_back(make_button(std::u8string { u8"tool-" } + index, std::u8string { u8"도구 " } + index));
+    fixture.open({ make_project(u8"alpha") }, make_definition(std::move(buttons)));
+    fixture.run(u8"alpha", u8"tool-a");
+
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const bar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_function_confirm_dialog) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(bar->visible());
+    const float maximum { bar->accessibility().range->maximum };
+    const std::vector<luil::input_action> actions { gitman::testing::set_scroll_value(*bar, 30.0f) };
+    const auto* const intent { as_intent<gitman::function_confirm_scroll_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->offset == std::optional<float> { 30.0f });
+
+    fixture.controller.handle(*intent);
+    fixture.controller.handle(*intent);
+    REQUIRE(fixture.dialog()->scroll_offset == 30.0f);
+    // 절대 자리는 키 단위(`step`)보다 먼저다.
+    fixture.controller.handle(gitman::function_confirm_scroll_intent { 0.0f, gitman::function_confirm_scroll_step::start, 100000.0f });
+    REQUIRE(fixture.dialog()->scroll_offset == maximum);
+}

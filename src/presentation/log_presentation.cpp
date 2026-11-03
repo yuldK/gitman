@@ -1,5 +1,6 @@
 #include "presentation/log_presentation.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
@@ -151,5 +152,67 @@ namespace gitman {
             text += u8"\r\n";
         }
         return text;
+    }
+
+    std::u8string format_log_line_text(const log_display_line& line)
+    {
+        std::u8string text { line.record.entry.text };
+        if (line.collapsed == 0)
+            return text;
+        text += u8" (진행 표시 ";
+        std::u8string digits {};
+        std::size_t remaining { line.collapsed };
+        do
+        {
+            digits.insert(digits.begin(), static_cast<char8_t>(u8'0' + remaining % 10));
+            remaining /= 10;
+        } while (remaining > 0);
+        text += digits;
+        text += u8"줄 접힘)";
+        return text;
+    }
+
+    std::u8string log_line_access_name(const log_display_line& line)
+    {
+        std::u8string name { format_log_timestamp(line.record.entry.time) };
+        name += u8" ";
+        if (line.record.entry.severity == diagnostic_severity::error)
+            name += u8"오류: ";
+        else if (line.record.entry.severity == diagnostic_severity::warning)
+            name += u8"경고: ";
+        name += format_log_line_text(line);
+        return name;
+    }
+
+    std::u8string_view log_empty_hint(const log_view_model& log) noexcept
+    {
+        if (log.card.value.empty())
+            return u8"카드를 선택하면 그 카드에서 실행한 작업의 로그가 여기에 표시됩니다.";
+        if (log.filter == log_stream_filter::all)
+            return u8"이 카드에서 실행한 작업의 로그가 여기에 표시됩니다.";
+        return u8"필터와 일치하는 로그가 없습니다.";
+    }
+
+    std::u8string log_list_access_name(const log_view_model& log)
+    {
+        std::u8string name { u8"로그" };
+        // 선택이 없을 때의 제목은 `로그` 그대로라 되풀이하지 않는다.
+        if (log.card.value.empty() == false)
+        {
+            name += u8": ";
+            name += log.title;
+            if (log.truncated)
+                name += u8" (오래된 로그 제거됨)";
+        }
+        name += u8", ";
+        if (log.records.empty())
+        {
+            name += log_empty_hint(log);
+            return name;
+        }
+        const std::string digits { std::to_string(log.lines.size()) };
+        name.append(digits.begin(), digits.end());
+        name += u8"줄";
+        return name;
     }
 } // namespace gitman

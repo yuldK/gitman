@@ -4,6 +4,7 @@
 #include "domain/function_editor.h"
 #include "domain/function_trust.h"
 #include "presentation/function_editor_layout.h"
+#include "presentation/list_metrics.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -565,7 +566,8 @@ namespace gitman {
         }
         const float maximum { function_editor_maximum_scroll(content, viewport) };
         float& offset { intent.region == function_editor_scroll_region::list ? function_editor_->list_scroll : function_editor_->form_scroll };
-        offset = std::clamp(offset + intent.delta, 0.0f, maximum);
+        // 막대 값으로 정한 절대 자리(`intent.offset`)는 지금 자리를 보지 않는다 (S4).
+        offset = std::clamp(scroll_target(offset, intent.delta, intent.offset), 0.0f, maximum);
     }
 
     void logic_controller::handle_apply_function_editor()

@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <optional>
@@ -530,4 +531,30 @@ TEST_CASE("The bar grows with the system text size and takes it from the log bod
     // 로그 본문은 헤더(26 + 11.5 × 0.5)까지 빼고 남은 높이다.
     const float body { 160.0f - bar_height - gitman::layout_log_header_height() };
     REQUIRE(bounds_of(*tree, ui::kind_scrollbar, ui::scrollbar_owner_log).height == body - 12.0f);
+}
+
+TEST_CASE("The bar more button stays in the access tree without a selection", "[function_buttons][s4][ui][tree]")
+{
+    std::vector<gitman::function_button> buttons { make_function_card_button(u8"a", u8"가", u8"card"), make_function_card_button(u8"b", u8"나", u8"bar") };
+    function_card_fixture fixture { make_function_card_projects(2), std::move(buttons) };
+
+    // 선택이 없으면 누를 수 없지만 접근 tree에 단추로 남아 무엇이고 왜 막혔는지를 읽힌다. 사유는 줄의 힌트와 같다.
+    const auto tree { fixture.tree() };
+    const luil::ui_element* const more { find(*tree, ui::kind_function_bar_more) };
+    REQUIRE(more != nullptr);
+    REQUIRE(more->enabled() == false);
+    REQUIRE(more->accessibility().role == luil::access_role::button);
+    REQUIRE(more->accessibility().name == u8"기능 더 보기 (기능 줄)");
+    REQUIRE(more->tooltip() == u8"카드를 선택하면 기능이 나옵니다");
+    REQUIRE(in_access_tree(*tree, more->id()));
+    interaction_harness harness { tree };
+    REQUIRE(click(harness, more->bounds()).empty());
+    const std::vector<luil::ui_element_id> order { tree->focus_order() };
+    REQUIRE(std::ranges::find(order, more->id()) == order.end());
+
+    // 선택하면 지금처럼 카드 이름과 수를 읽는다.
+    select(fixture, u8"p00");
+    const auto selected { fixture.tree() };
+    REQUIRE(find(*selected, ui::kind_function_bar_more)->enabled());
+    REQUIRE(find(*selected, ui::kind_function_bar_more)->accessibility().name == u8"기능 더 보기 (기능 줄), p00, 2개");
 }

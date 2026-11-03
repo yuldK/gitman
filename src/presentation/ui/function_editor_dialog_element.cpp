@@ -871,20 +871,26 @@ namespace gitman::ui {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_function_editor_list } },
                 luil::scrollbar_config {
                     .scroll = [](const float delta) -> input_action { return make_logic_action(function_editor_scroll_intent { function_editor_scroll_region::list, delta }); },
+                    .scroll_to = [](const float offset) -> input_action { return make_logic_action(function_editor_scroll_intent { function_editor_scroll_region::list, 0.0f, offset }); },
                     .scroll_offset = dialog_.list_scroll,
                 }),
         };
         list_bar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        list_bar->set_access_name(std::u8string { scrollbar_access_name(list_bar->id().owner) });
         list_scrollbar_ = list_bar.get();
         add_child(std::move(list_bar));
         auto form_bar {
             std::make_unique<luil::scrollbar_element>(ui_element_id { kind_scrollbar, std::u8string { scrollbar_owner_function_editor_form } },
                 luil::scrollbar_config {
                     .scroll = [](const float delta) -> input_action { return make_logic_action(function_editor_scroll_intent { function_editor_scroll_region::form, delta }); },
+                    .scroll_to = [](const float offset) -> input_action { return make_logic_action(function_editor_scroll_intent { function_editor_scroll_region::form, 0.0f, offset }); },
                     .scroll_offset = dialog_.form_scroll,
                 }),
         };
         form_bar->set_tab_stop(false);
+        // 막대도 이름이 있어야 보조 기술이 어느 목록의 막대인지 읽는다 (S4).
+        form_bar->set_access_name(std::u8string { scrollbar_access_name(form_bar->id().owner) });
         form_scrollbar_ = form_bar.get();
         add_child(std::move(form_bar));
 

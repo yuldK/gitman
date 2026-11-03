@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -53,6 +54,42 @@ namespace gitman::ui {
             return palette.primary_foreground;
         }
 
+        // 막힌 업데이트·전환의 사유다 (S4 검토). S4부터 막힌 버튼이 접근 tree에 남아 이 글이 HelpText로 읽히므로 실제 사유를
+        // 고른다. 순서는 logic `change_allowed`의 조건을 view에 있는 칸으로 되짚은 것이다: 프로젝트 비활성, 변경 작업 실행 중
+        // (업데이트 버튼은 그때 취소 버튼이라 전환만 닿는다), 출력 수집 기능 실행 중, 조회 중(`busy`: 처음 조회·새로 고침),
+        // 로컬 조회 전. 나머지는 저장소를 쓸 수 없을 때다 — `can_change`가 거짓이고 앞의 어느 것도 아니면
+        // `availability`가 준비가 아니다.
+        std::u8string change_blocked_reason(const card_view_model& card, const bool update)
+        {
+            if (card.enabled && card.change_running == false && card.function_running)
+                return function_running_reason(card.running_function_label);
+
+            // 기다리면 풀리는 사유는 `…한 뒤 업데이트할 수 있습니다`, 기다려도 풀리지 않는 사유는 `…라 업데이트할 수 없습니다`다.
+            std::u8string_view lead { u8"저장소를 쓸 수 없는 상태라 " };
+            bool waits { false };
+            if (card.enabled == false)
+                lead = u8"비활성 프로젝트라 ";
+            else if (card.change_running)
+            {
+                lead = u8"실행 중인 변경 작업이 끝난 뒤 ";
+                waits = true;
+            }
+            else if (card.busy)
+            {
+                lead = u8"카드 상태 조회가 끝난 뒤 ";
+                waits = true;
+            }
+            else if (card.state == card_view_state::loading)
+            {
+                lead = u8"로컬 상태를 조회한 뒤 ";
+                waits = true;
+            }
+
+            std::u8string text { lead };
+            text += update ? std::u8string_view { u8"업데이트" } : std::u8string_view { u8"전환" };
+            text += waits ? std::u8string_view { u8"할 수 있습니다" } : std::u8string_view { u8"할 수 없습니다" };
+            return text;
+        }
     } // namespace
 
     card_element::card_element(card_view_model card)
@@ -164,36 +201,42 @@ namespace gitman::ui {
         luil::button_config update_config {};
         update_config.glyph = card_.change_running ? codicons::icon_stop_circle : codicons::icon_repo_pull;
         auto update { std::make_unique<luil::button_element>(ui_element_id { kind_card_update, card_.id.value }, update_config) };
+        const std::u8string update_name { card_.kind == repository_kind::subversion ? u8"업데이트 (svn update)" : u8"업데이트 (git pull --ff-only)" };
         if (card_.change_running)
         {
             update->set_tooltip(u8"실행 중인 작업 취소");
             update->set_action(ui_trigger::left_click, make_logic_click(cancel_operation_intent { card_.id }));
         }
-        else if (card_.can_change)
+        else
         {
             // 확인 overlay 없이 곧바로 실행한다 (2026-08-20 검수). submodule 갱신
             // 여부는 문서 settings가 정하고 logic이 채운다.
-            update->set_tooltip(card_.kind == repository_kind::subversion ? std::u8string { u8"업데이트 (svn update)" } : std::u8string { u8"업데이트 (git pull --ff-only)" });
+            update->set_tooltip(update_name);
+            // 막힌 버튼에도 같은 액션을 단다 (function-buttons-design S4). luil은 비활성 element의 액션을 실행하지 않고, 액션이
+            // 있어야 접근 tree에 단추로 서서 무엇이 왜 막혔는지가 읽힌다. 이름은 누를 수 있을 때와 같게 고정하고 사유는 tooltip
+            // (UIA HelpText)이 말한다. busy와 출력 수집 기능 실행은 logic도 누른 시점에 다시 막는다 (`begin_change`).
             update->set_action(ui_trigger::left_click, make_logic_click(request_update_intent { card_.id, {} }));
-        }
-        else
-        {
-            // 같은 카드의 출력 수집 기능과 서로 막는다 (4.7, D6-A). 사유를 그 기능 이름으로 알린다.
-            update->set_tooltip(card_.function_running ? function_running_reason(card_.running_function_label) : std::u8string { u8"카드가 준비된 뒤 업데이트할 수 있습니다" });
-            update->set_enabled(false);
+            update->set_access_name(update_name);
+            if (card_.can_change == false)
+            {
+                // 같은 카드의 출력 수집 기능과 서로 막는다 (4.7, D6-A). 그때 사유는 그 기능 이름이다.
+                update->set_tooltip(change_blocked_reason(card_, true));
+                update->set_enabled(false);
+            }
         }
         update_ = update.get();
         add_child(std::move(update));
 
         auto switch_button { std::make_unique<luil::button_element>(ui_element_id { kind_card_switch, card_.id.value }, luil::button_config { .glyph = codicons::icon_source_control }) };
-        if (card_.can_change)
+        const std::u8string switch_name { card_.kind == repository_kind::subversion ? u8"URL 전환 (svn switch)" : u8"브랜치 전환 (git switch)" };
+        // update와 같이 막힌 버튼에도 액션과 고정 이름을 단다 (S4). switch dialog를 연 뒤의 실행은 busy와 출력 수집 기능
+        // 실행이면 `begin_change`가 다시 막는다.
+        switch_button->set_tooltip(switch_name);
+        switch_button->set_access_name(switch_name);
+        switch_button->set_action(ui_trigger::left_click, make_logic_click(begin_switch_intent { card_.id }));
+        if (card_.can_change == false)
         {
-            switch_button->set_tooltip(card_.kind == repository_kind::subversion ? std::u8string { u8"URL 전환 (svn switch)" } : std::u8string { u8"브랜치 전환 (git switch)" });
-            switch_button->set_action(ui_trigger::left_click, make_logic_click(begin_switch_intent { card_.id }));
-        }
-        else
-        {
-            switch_button->set_tooltip(card_.function_running ? function_running_reason(card_.running_function_label) : std::u8string { u8"카드가 준비된 뒤 전환할 수 있습니다" });
+            switch_button->set_tooltip(change_blocked_reason(card_, false));
             switch_button->set_enabled(false);
         }
         switch_ = switch_button.get();

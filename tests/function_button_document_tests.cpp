@@ -435,21 +435,77 @@ TEST_CASE("Function button diagnostic code names are stable", "[function_buttons
     REQUIRE(gitman::diagnostic_code_name(gitman::diagnostic_code::function_button_warning) == std::u8string_view { u8"function_button_warning" });
 }
 
-TEST_CASE("Trust digest input ignores display fields", "[function_buttons][t3]")
+TEST_CASE("Trust digest input leaves out only placement", "[function_buttons][t3][r3]")
 {
     const std::u8string base { digest_input_of(digest_document(u8"빌드", u8"tools", u8"card", u8"C:\\\\Tools\\\\build.exe")) };
     REQUIRE(base.empty() == false);
-    REQUIRE(base.find(u8"\"label\"") == std::u8string::npos);
-    REQUIRE(base.find(u8"\"icon\"") == std::u8string::npos);
+    REQUIRE(base.find(u8"\"label\"") != std::u8string::npos);
+    REQUIRE(base.find(u8"\"icon\"") != std::u8string::npos);
     REQUIRE(base.find(u8"\"placement\"") == std::u8string::npos);
     REQUIRE(base.find(u8"build.exe") != std::u8string::npos);
     REQUIRE(base.find(u8"\"variables\"") != std::u8string::npos);
 
-    // 실패해 원문으로 든 항목의 표시 필드도 뺀다.
-    REQUIRE(digest_input_of(digest_document(u8"빌드 다시", u8"rocket", u8"bar", u8"C:\\\\Tools\\\\build.exe")) == base);
+    // 배치만 해시 입력이 아니다. 실패해 원문으로 든 항목의 배치도 뺀다 (D29).
     REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"menu", u8"C:\\\\Tools\\\\build.exe")) == base);
+    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"bar", u8"C:\\\\Tools\\\\build.exe")) == base);
+    // `label`(신뢰 dialog가 명령과 쌍으로 보인 이름)과 `icon`(`card` 버튼에 보이는 유일한 표시)은 해시 입력이다 (D29).
+    REQUIRE(digest_input_of(digest_document(u8"빌드 다시", u8"tools", u8"card", u8"C:\\\\Tools\\\\build.exe")) != base);
+    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"rocket", u8"card", u8"C:\\\\Tools\\\\build.exe")) != base);
     // 실행에 쓰는 필드는 해시 입력을 바꾼다.
     REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"card", u8"C:\\\\Tools\\\\other.exe")) != base);
+}
+
+TEST_CASE("Filling the label of a failed function item changes the trust digest", "[function_buttons][r3][trust]")
+{
+    // label이 없거나 비어 검증에 실패한 항목은 신뢰 dialog에 보이지 않는다. 신뢰한 뒤 label만 채워 그 항목이 유효 버튼이
+    // 되면 한 번도 보이지 않은 program이 확인 없이 돌 수 있으므로, 실패 항목의 원문은 배치 말고 모두 해시에 남는다 (D29).
+    constexpr std::u8string_view projects { u8R"([{"id":"alpha","path":"alpha"}])" };
+    constexpr std::u8string_view valid { u8R"({"id":"build","label":"빌드","program":"C:\\Tools\\build.exe"})" };
+    const auto document_of = [&](const std::u8string_view failed)
+    {
+        std::u8string section { u8R"({"buttons":[)" };
+        section.append(valid);
+        section.push_back(u8',');
+        section.append(failed);
+        section.append(u8"]}");
+        return document_with(section, projects);
+    };
+    const auto parsed_of = [](const std::u8string& source)
+    {
+        const gitman::workspace_document_parse_result result { parse(source) };
+        REQUIRE(result.document.has_value());
+        REQUIRE(result.document->function_buttons.has_value());
+        return *result.document;
+    };
+
+    const std::u8string_view filled { u8R"({"id":"clean","label":"정리","program":"C:\\Tools\\wipe.exe","args":["-all"]})" };
+    const gitman::workspace_document after { parsed_of(document_of(filled)) };
+    REQUIRE(std::holds_alternative<gitman::function_button>(after.function_buttons->buttons[1]));
+    const std::u8string after_digest { gitman::function_trust_digest(*after.function_buttons, after.projects) };
+
+    SECTION("label이 없던 항목")
+    {
+        const gitman::workspace_document before { parsed_of(document_of(u8R"({"id":"clean","program":"C:\\Tools\\wipe.exe","args":["-all"]})")) };
+        REQUIRE(std::holds_alternative<gitman::function_source_text>(before.function_buttons->buttons[1]));
+        REQUIRE(before.function_buttons->source_digest_input != after.function_buttons->source_digest_input);
+        REQUIRE(gitman::function_trust_digest(*before.function_buttons, before.projects) != after_digest);
+    }
+
+    SECTION("label이 비어 있던 항목")
+    {
+        const gitman::workspace_document before { parsed_of(document_of(u8R"({"id":"clean","label":"","program":"C:\\Tools\\wipe.exe","args":["-all"]})")) };
+        REQUIRE(std::holds_alternative<gitman::function_source_text>(before.function_buttons->buttons[1]));
+        REQUIRE(before.function_buttons->source_digest_input != after.function_buttons->source_digest_input);
+        REQUIRE(gitman::function_trust_digest(*before.function_buttons, before.projects) != after_digest);
+    }
+
+    SECTION("배치만 다른 실패 항목은 같은 해시")
+    {
+        const gitman::workspace_document left { parsed_of(document_of(u8R"({"id":"clean","label":"","placement":"card","program":"C:\\Tools\\wipe.exe"})")) };
+        const gitman::workspace_document right { parsed_of(document_of(u8R"({"id":"clean","label":"","placement":"menu","program":"C:\\Tools\\wipe.exe"})")) };
+        REQUIRE(std::holds_alternative<gitman::function_source_text>(left.function_buttons->buttons[1]));
+        REQUIRE(left.function_buttons->source_digest_input == right.function_buttons->source_digest_input);
+    }
 }
 
 TEST_CASE("Invalid function button items survive a normal save", "[function_buttons][t3]")
@@ -1196,7 +1252,7 @@ TEST_CASE("A duplicated id with the same text as its failed copy keeps its templ
     REQUIRE(keeps == 2u);
 }
 
-TEST_CASE("The save result carries the digest input of the written section", "[function_buttons][t12][store][trust]")
+TEST_CASE("The save result carries the digest input of the written section", "[function_buttons][t12][r3][store][trust]")
 {
     // 편집 dialog가 고친 정의는 저장 뒤 이 값으로 신뢰 해시를 다시 만든다 (3.10, 4.11). 다시 읽은 값과 같아야 한다.
     const gitman::testing::scoped_scan_directory directory {};
@@ -1209,20 +1265,28 @@ TEST_CASE("The save result carries the digest input of the written section", "[f
     const gitman::project_store_load_result loaded { store.load(document_path) };
     REQUIRE(loaded.document.has_value());
 
-    gitman::workspace_document display { *loaded.document };
-    mutable_button(display, u8"build").label = u8"새 이름";
-    mutable_button(display, u8"build").icon = std::u8string { u8"rocket" };
-    mutable_button(display, u8"build").placement = std::u8string { u8"menu" };
-    const gitman::project_store_save_result saved_display { store.save(document_path, display, loaded.revision) };
-    REQUIRE(saved_display.succeeded());
-    // 표시 필드만 바꾼 저장은 해시 입력이 그대로다 (2.7, 3.10).
-    REQUIRE(saved_display.function_digest_input == std::optional { loaded.document->function_buttons->source_digest_input });
+    gitman::workspace_document placed { *loaded.document };
+    mutable_button(placed, u8"build").placement = std::u8string { u8"menu" };
+    const gitman::project_store_save_result saved_placed { store.save(document_path, placed, loaded.revision) };
+    REQUIRE(saved_placed.succeeded());
+    // 배치만 바꾼 저장은 해시 입력이 그대로다 (2.7, 3.10, D29).
+    REQUIRE(saved_placed.function_digest_input == std::optional { loaded.document->function_buttons->source_digest_input });
 
-    gitman::workspace_document changed { display };
+    // 이름과 아이콘은 해시 입력이다 (D29). 저장 결과의 값이 다시 읽은 값과 같아야 편집 dialog가 그 해시로 신뢰를 갱신한다.
+    gitman::workspace_document renamed { placed };
+    mutable_button(renamed, u8"build").label = u8"새 이름";
+    mutable_button(renamed, u8"build").icon = std::u8string { u8"rocket" };
+    const gitman::project_store_save_result saved_renamed { store.save(document_path, renamed, *saved_placed.revision) };
+    REQUIRE(saved_renamed.succeeded());
+    REQUIRE(saved_renamed.function_digest_input != saved_placed.function_digest_input);
+    const gitman::project_store_load_result renamed_reloaded { store.load(document_path) };
+    REQUIRE(saved_renamed.function_digest_input == std::optional { renamed_reloaded.document->function_buttons->source_digest_input });
+
+    gitman::workspace_document changed { renamed };
     mutable_button(changed, u8"build").args.push_back(u8"--all");
-    const gitman::project_store_save_result saved_changed { store.save(document_path, changed, *saved_display.revision) };
+    const gitman::project_store_save_result saved_changed { store.save(document_path, changed, *saved_renamed.revision) };
     REQUIRE(saved_changed.succeeded());
-    REQUIRE(saved_changed.function_digest_input != saved_display.function_digest_input);
+    REQUIRE(saved_changed.function_digest_input != saved_renamed.function_digest_input);
     const gitman::project_store_load_result reloaded { store.load(document_path) };
     REQUIRE(saved_changed.function_digest_input == std::optional { reloaded.document->function_buttons->source_digest_input });
 

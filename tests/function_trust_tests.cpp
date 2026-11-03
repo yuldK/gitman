@@ -7,6 +7,7 @@
 
 #include <string>
 #include <string_view>
+#include <variant>
 
 // 기능 버튼 신뢰의 해시와 앱 설정 필드다 (function-buttons-design 3.10, 6.1 T7). logic 흐름(dialog,
 // 확인 뒤 다시 치환)은 `logic_function_trust_tests.cpp`에 있다.
@@ -62,18 +63,26 @@ TEST_CASE("SHA-256 matches the FIPS 180-4 examples", "[function_buttons][t7]")
         == u8"cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1");
 }
 
-TEST_CASE("The trust digest changes with the definition and project paths and names but not with display fields", "[function_buttons][t7]")
+TEST_CASE("The trust digest changes with the definition and project paths and names but not with placement", "[function_buttons][t7][r3]")
 {
     const digest_document base {};
     const std::u8string digest { base.digest() };
     REQUIRE(digest.size() == 64u);
 
-    // 표시 필드(`label`, `icon`, `placement`)는 해시 입력이 아니다. 재배치·이름 변경은 다시 묻지 않는다.
-    digest_document display { base };
-    display.label = u8"빌드 다시";
-    display.icon = u8"rocket";
-    display.placement = u8"bar";
-    REQUIRE(display.digest() == digest);
+    // 배치(`placement`)는 해시 입력이 아니다. 재배치는 다시 묻지 않는다 (D29).
+    digest_document placed { base };
+    placed.placement = u8"bar";
+    REQUIRE(placed.digest() == digest);
+    placed.placement = u8"menu";
+    REQUIRE(placed.digest() == digest);
+
+    // 이름은 신뢰 dialog가 명령과 쌍으로 보인 것이고 아이콘은 `card` 버튼에 보이는 유일한 표시라, 바뀌면 다시 묻는다 (D29).
+    digest_document renamed { base };
+    renamed.label = u8"빌드 다시";
+    REQUIRE(renamed.digest() != digest);
+    digest_document iconed { base };
+    iconed.icon = u8"rocket";
+    REQUIRE(iconed.digest() != digest);
 
     // 카드 순서 변경과 제외 토글도 해시를 바꾸지 않는다.
     digest_document reordered { base };
@@ -95,6 +104,30 @@ TEST_CASE("The trust digest changes with the definition and project paths and na
     digest_document named { base };
     named.alpha_name = u8"알파";
     REQUIRE(named.digest() != digest);
+}
+
+TEST_CASE("Swapping the labels or icons of two functions changes the trust digest", "[function_buttons][r3][trust]")
+{
+    // 신뢰한 뒤 손 편집이나 pull로 두 버튼의 이름을 맞바꾸면 사용자가 고른 것과 다른 명령이 그 이름으로 돈다. 다시 묻는다 (D29).
+    const auto digest_of = [](const std::u8string_view first_label, const std::u8string_view first_icon, const std::u8string_view second_label, const std::u8string_view second_icon)
+    {
+        std::u8string source { u8R"({"schema_version":1,"function_buttons":{"buttons":[)" };
+        source += u8R"({"id":"build","label":")" + std::u8string { first_label } + u8R"(","icon":")" + std::u8string { first_icon };
+        source += u8R"(","placement":"card","program":"C:\\Tools\\build.exe"},)";
+        source += u8R"({"id":"wipe","label":")" + std::u8string { second_label } + u8R"(","icon":")" + std::u8string { second_icon };
+        source += u8R"(","placement":"card","program":"C:\\Tools\\wipe.exe","args":["--all"]}]},"projects":[{"id":"alpha","path":"alpha"}]})";
+        const gitman::workspace_document_parse_result result { gitman::parse_workspace_document_json(source, document_path) };
+        REQUIRE(result.document.has_value());
+        REQUIRE(result.document->function_buttons.has_value());
+        REQUIRE(result.document->function_buttons->buttons.size() == 2u);
+        REQUIRE(std::holds_alternative<gitman::function_button>(result.document->function_buttons->buttons[1]));
+        return gitman::function_trust_digest(*result.document->function_buttons, result.document->projects);
+    };
+
+    const std::u8string digest { digest_of(u8"빌드", u8"tools", u8"지우기", u8"trash") };
+    REQUIRE(digest_of(u8"지우기", u8"tools", u8"빌드", u8"trash") != digest);
+    REQUIRE(digest_of(u8"빌드", u8"trash", u8"지우기", u8"tools") != digest);
+    REQUIRE(digest_of(u8"지우기", u8"trash", u8"빌드", u8"tools") != digest);
 }
 
 TEST_CASE("The trust digest input separates fields by length", "[function_buttons][t7]")

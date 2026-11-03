@@ -479,8 +479,11 @@ namespace gitman {
             }
         }
 
-        // 신뢰 해시 입력이다 (3.10). 표시 필드를 뺀 원문을 다시 직렬화한다. 키를 정렬하는
-        // json으로 만들어, gitman 저장이 키 순서를 바꿔 써도 같은 정의면 같은 입력이 된다.
+        // 신뢰 해시 입력이다 (3.10). 버튼마다 `placement`만 뺀 원문을 다시 직렬화한다. 키를
+        // 정렬하는 json으로 만들어, 손으로 키 순서만 바꾼 같은 정의는 같은 입력이 된다.
+        // `label`은 신뢰 dialog가 명령과 쌍으로 보인 이름이고, `icon`은 `card` 버튼이 아이콘만
+        // 보여 사용자가 그 그림으로 명령을 알아보므로 넣는다 (D29). 검증에 실패한 항목도 같은
+        // 규칙이라, 신뢰한 뒤 label만 채워 유효 버튼이 되면 해시가 바뀐다.
         std::u8string function_digest_input(const json& section)
         {
             json digest { section };
@@ -488,11 +491,8 @@ namespace gitman {
             {
                 for (json& item : *buttons)
                 {
-                    if (item.is_object() == false)
-                        continue;
-                    item.erase("label");
-                    item.erase("icon");
-                    item.erase("placement");
+                    if (item.is_object())
+                        item.erase("placement");
                 }
             }
             return as_utf8(digest.dump());

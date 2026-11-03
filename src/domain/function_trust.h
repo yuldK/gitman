@@ -13,8 +13,8 @@ namespace gitman {
     //
     // 해시 입력은 두 가지다.
     //  - `function_buttons_definition::source_digest_input`: 파서가 문서를 **읽을 때** 파일 원문의
-    //    `function_buttons`에서 버튼마다 표시 필드(`label`, `icon`, `placement`)를 빼고 키를 정렬해
-    //    다시 직렬화한 글이다 (T3). 그래서 재배치·이름·아이콘 변경은 해시를 바꾸지 않는다.
+    //    `function_buttons`에서 버튼마다 `placement`만 빼고 키를 정렬해 다시 직렬화한 글이다 (T3, D29).
+    //    그래서 재배치는 해시를 바꾸지 않고, 이름·아이콘 변경과 실패 항목의 고침은 바꾼다.
     //  - 문서의 project마다 `{id, path.original, ${projectName} 값}`: `${projectRoot}`가 가리키는 곳이나
     //    `${projectName}`(`GITMAN_PROJECT_NAME`)이 바뀌면 다시 묻는다. 둘 다 프로그램에 들어가는 실행
     //    입력이다. id 순으로 정렬해 카드 순서 변경과 표시 토글은 해시를 바꾸지 않는다.

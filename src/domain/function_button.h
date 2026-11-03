@@ -122,8 +122,8 @@ namespace gitman {
         std::vector<function_project_variables> project_variables {};
         std::vector<function_button_entry> buttons {};
         // 신뢰 해시 입력이다 (3.10). shadow는 project_store만 읽으므로 파서가 문서를 읽을 때
-        // `function_buttons` 원문에서 버튼마다 표시 필드(`label`, `icon`, `placement`)를 뺀
-        // 뒤 다시 직렬화해 싣는다. logic이 project `{id, path}`와 합쳐 해시를 만든다.
+        // `function_buttons` 원문에서 버튼마다 `placement`만 뺀 뒤 다시 직렬화해 싣는다
+        // (`label`·`icon`은 넣는다, D29). logic이 project `{id, path}`와 합쳐 해시를 만든다.
         std::u8string source_digest_input {};
 
         [[nodiscard]] bool operator==(const function_buttons_definition&) const = default;

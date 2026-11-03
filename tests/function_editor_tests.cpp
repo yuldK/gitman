@@ -9,6 +9,7 @@
 #include "platform/win32/workspace_document_file_system.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <cstddef>
 #include <filesystem>
@@ -837,10 +838,12 @@ TEST_CASE("Cancel and document changes drop the draft", "[function_buttons][t12]
     REQUIRE(fixture.snapshot()->function_editor.has_value() == false);
 }
 
-TEST_CASE("A display only edit saved through the store keeps the trust digest", "[function_buttons][t12][logic][store][trust]")
+TEST_CASE("Editor saves keep trust for placement and renew it for renames and command changes", "[function_buttons][t12][r3][logic][store][trust]")
 {
-    // 실제 store로 읽고 쓴다. 표시 필드(`label`, `icon`, `placement`)만 바꾼 Apply는 저장한 글의 해시 입력이 같아 신뢰가
-    // 그대로이고, 실행에 쓰는 필드를 바꾸면 해시가 바뀐다 (2.7, 3.10).
+    // 실제 store로 읽고 쓴다. 배치만 바꾼 Apply는 저장한 글의 해시 입력이 같아 신뢰가 그대로이고, 이름·아이콘이나 실행에
+    // 쓰는 필드를 바꾸면 해시가 바뀌지만 편집 전에 신뢰했으므로 새 해시로 신뢰를 갱신한다 (2.7, 3.10, D24-A, D29).
+    // `icon` 키가 없는 정의로도 돌린다. 배치만 바꾼 저장이 기본 아이콘 키를 더해 쓰면 해시가 바뀌기 때문이다.
+    const bool with_icon { GENERATE(true, false) };
     const scoped_scan_directory directory {};
     REQUIRE(directory.available());
     const std::u8string root { directory.make_directory(u8"alpha") };
@@ -850,9 +853,11 @@ TEST_CASE("A display only edit saved through the store keeps the trust digest", 
         root_json.push_back(value == u8'\\' ? '/' : static_cast<char>(value));
     {
         std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary };
-        stream << "{\"schema_version\":1,\"function_buttons\":{\"buttons\":[{\"id\":\"build\",\"label\":\"빌드\",\"icon\":\"tools\",\"program\":\"C:\\\\Tools\\\\run.exe\",\"args\":[\"a b\"],\"placement\":\"card\"}]},"
+        stream << "{\"schema_version\":1,\"function_buttons\":{\"buttons\":[{\"id\":\"build\",\"label\":\"빌드\","
+            << (with_icon ? "\"icon\":\"tools\"," : "")
+            << "\"program\":\"C:\\\\Tools\\\\run.exe\",\"args\":[\"a b\"],\"placement\":\"card\"}]},"
                   "\"projects\":[{\"id\":\"alpha\",\"path\":\""
-            + root_json + "\"}]}";
+            << root_json << "\"}]}";
     }
 
     gitman::win32::workspace_document_file_system file_system {};
@@ -935,49 +940,73 @@ TEST_CASE("A display only edit saved through the store keeps the trust digest", 
         return gitman::function_trust_digest(*now.document->function_buttons, now.document->projects);
     };
 
+    // 누르면 확인 없이 곧바로 실행되고 끝난다.
+    const auto run_without_asking = [&](const std::size_t count)
+    {
+        controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"build" });
+        REQUIRE(controller.make_view_snapshot()->function_confirm_dialog.has_value() == false);
+        REQUIRE(functions.requests.size() == count);
+        gitman::function_completed_event completed {};
+        completed.id = functions.requests.back().id;
+        completed.run_id = functions.requests.back().run_id;
+        completed.outcome = gitman::function_run_outcome::exited;
+        completed.exit_code = 0;
+        controller.handle(std::move(completed));
+    };
+    // 저장이 끝난 뒤 낸 앱 설정 저장이 신뢰한 해시로 `digest` 하나를 싣는다.
+    const auto require_trust_saved = [&](const std::u8string& digest)
+    {
+        const gitman::operation_request* app_save { nullptr };
+        for (const gitman::operation_request& request : submitter.requests)
+        {
+            if (request.kind == gitman::operation_kind::save_app_settings)
+                app_save = &request;
+        }
+        REQUIRE(app_save != nullptr);
+        REQUIRE(app_save->app_settings_payload->trusted_function_definitions.size() == 1u);
+        REQUIRE(app_save->app_settings_payload->trusted_function_definitions[0].digest == digest);
+        finish_settings_save(submitter, controller);
+    };
+
+    // 배치만 바꾼 Apply는 저장한 글의 해시 입력이 같아 신뢰가 그대로다 (D29).
+    controller.handle(gitman::open_function_editor_intent {});
+    controller.handle(gitman::set_function_editor_field_intent { function_editor_field::placement, u8"bar" });
+    controller.handle(gitman::apply_function_editor_intent {});
+    const gitman::project_store_save_result placed { save_through_store() };
+    REQUIRE(placed.function_digest_input == std::optional { loaded.document->function_buttons->source_digest_input });
+    REQUIRE(digest_now() == digest_before);
+    gitman::project_store_load_result after_place { store.load(document_path) };
+    REQUIRE(std::get<gitman::function_button>(after_place.document->function_buttons->buttons[0]).placement == std::optional<std::u8string> { u8"bar" });
+    REQUIRE(std::get<gitman::function_button>(after_place.document->function_buttons->buttons[0]).icon.has_value() == with_icon);
+    run_without_asking(1u);
+
+    // 이름과 아이콘은 해시 입력이라 해시가 바뀐다. 편집 전에 신뢰했으므로 저장한 정의로 신뢰를 갱신해 다시 묻지 않는다
+    // (D24-A, D29).
     controller.handle(gitman::open_function_editor_intent {});
     controller.handle(gitman::edit_text_input_intent { gitman::text_input_target::function_editor_label, gitman::text_edit_command::select_all });
     controller.handle(gitman::edit_text_input_intent { gitman::text_input_target::function_editor_label, gitman::text_edit_command::insert, u8"새 이름" });
     controller.handle(gitman::set_function_editor_field_intent { function_editor_field::icon, u8"rocket" });
-    controller.handle(gitman::set_function_editor_field_intent { function_editor_field::placement, u8"bar" });
     controller.handle(gitman::apply_function_editor_intent {});
-    const gitman::project_store_save_result display { save_through_store() };
-    REQUIRE(display.function_digest_input == std::optional { loaded.document->function_buttons->source_digest_input });
-    REQUIRE(digest_now() == digest_before);
+    save_through_store();
+    const std::u8string digest_renamed { digest_now() };
+    REQUIRE(digest_renamed != digest_before);
     // 인자 칸을 건드리지 않았으므로 공백이 든 인자의 원래 배열이 그대로다.
-    gitman::project_store_load_result after_display { store.load(document_path) };
-    REQUIRE(std::get<gitman::function_button>(after_display.document->function_buttons->buttons[0]).args == arguments({ u8"a b" }));
-    // 신뢰가 그대로라 다시 묻지 않는다.
-    controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"build" });
-    REQUIRE(controller.make_view_snapshot()->function_confirm_dialog.has_value() == false);
-    REQUIRE(functions.requests.size() == 1u);
-    gitman::function_completed_event completed {};
-    completed.id = functions.requests[0].id;
-    completed.run_id = functions.requests[0].run_id;
-    completed.outcome = gitman::function_run_outcome::exited;
-    completed.exit_code = 0;
-    controller.handle(std::move(completed));
+    gitman::project_store_load_result after_rename { store.load(document_path) };
+    REQUIRE(std::get<gitman::function_button>(after_rename.document->function_buttons->buttons[0]).label == u8"새 이름");
+    REQUIRE(std::get<gitman::function_button>(after_rename.document->function_buttons->buttons[0]).args == arguments({ u8"a b" }));
+    require_trust_saved(digest_renamed);
+    run_without_asking(2u);
 
-    // 실행에 쓰는 필드를 바꾸면 해시가 바뀌고, 편집 전에 신뢰했으므로 저장한 정의로 신뢰를 갱신한다 (D24-A).
+    // 실행에 쓰는 필드를 바꿔도 같다.
     controller.handle(gitman::open_function_editor_intent {});
     controller.handle(gitman::edit_text_input_intent { gitman::text_input_target::function_editor_arguments, gitman::text_edit_command::select_all });
     controller.handle(gitman::edit_text_input_intent { gitman::text_input_target::function_editor_arguments, gitman::text_edit_command::insert, u8"--all" });
     controller.handle(gitman::apply_function_editor_intent {});
     save_through_store();
     const std::u8string digest_after { digest_now() };
-    REQUIRE(digest_after != digest_before);
-    const gitman::operation_request* app_save { nullptr };
-    for (const gitman::operation_request& request : submitter.requests)
-    {
-        if (request.kind == gitman::operation_kind::save_app_settings)
-            app_save = &request;
-    }
-    REQUIRE(app_save != nullptr);
-    REQUIRE(app_save->app_settings_payload->trusted_function_definitions.size() == 1u);
-    REQUIRE(app_save->app_settings_payload->trusted_function_definitions[0].digest == digest_after);
-    controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"build" });
-    REQUIRE(controller.make_view_snapshot()->function_confirm_dialog.has_value() == false);
-    REQUIRE(functions.requests.size() == 2u);
+    REQUIRE(digest_after != digest_renamed);
+    require_trust_saved(digest_after);
+    run_without_asking(3u);
 }
 
 TEST_CASE("Duplicating a card function keeps the three card limit", "[function_buttons][t12][logic]")

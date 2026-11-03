@@ -367,14 +367,14 @@ TEST_CASE("The trust is asked again when the definition or a project path or nam
     REQUIRE(fixture.functions.requests.size() == 1u);
     fixture.functions.requests.clear();
 
-    SECTION("same definition with display fields changed and cards reordered")
+    SECTION("same digest input with placement changed and cards reordered")
     {
-        // 해시 입력(파서가 표시 필드를 뺀 원문, project `{id, path, 표시 이름}`)이 같으면 묻지 않는다. 표시 필드가
-        // 원문에서 빠지는 것은 `function_trust_tests.cpp`가 파서로 확인한다.
-        gitman::function_button renamed { make_button(u8"build", u8"빌드 다시") };
-        renamed.placement = u8"bar";
-        renamed.icon = u8"rocket";
-        fixture.open({ projects[1], projects[0] }, make_definition({ renamed }));
+        // 해시 입력(파서가 `placement`만 뺀 원문, project `{id, path, 표시 이름}`)이 같으면 묻지 않는다. 이 fixture는
+        // 해시 입력을 고정 값으로 넣으므로 모델에서는 배치만 바꾼다. 원문에서 `placement`만 빠지고 `label`·`icon`이
+        // 남는 것은 `function_trust_tests.cpp`가 파서로 확인한다 (D29).
+        gitman::function_button placed { make_button(u8"build", u8"빌드") };
+        placed.placement = u8"bar";
+        fixture.open({ projects[1], projects[0] }, make_definition({ placed }));
         fixture.run(u8"alpha", u8"build");
         REQUIRE_FALSE(fixture.dialog().has_value());
         REQUIRE(fixture.functions.requests.size() == 1u);

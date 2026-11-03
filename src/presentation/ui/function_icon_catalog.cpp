@@ -16,12 +16,15 @@ namespace gitman::ui {
             char32_t glyph { 0 };
         };
 
-        // 앞 20개가 D16의 기능 아이콘 이름이고, 뒤는 메뉴 항목이 쓰는 이름이다. 이름은 codicon 이름 그대로다.
+        // 앞 20개가 D16의 기능 아이콘 이름이고, 뒤는 메뉴 항목이 쓰는 이름이다. 이름은 codicon 이름 그대로이고 글리프도
+        // 그 이름의 것이다. 하나만 다르다: `debug-start`는 codicon `debug-start`가 `play`와 거의 같은 삼각형이라 아이콘
+        // 줄에서 둘을 가를 수 없어 재생 + 벌레 모양인 `debug-alt`로 그린다 (S2). 이름은 그대로 두어 이미 그 이름을 쓴
+        // 문서가 그대로 읽히고 `play`로 떨어지지 않는다.
         constexpr std::size_t function_icon_count { 20 };
         constexpr std::array<icon_name_glyph, 28> icons {
             icon_name_glyph { u8"tools", luil::codicons::icon_tools },
             icon_name_glyph { u8"play", luil::codicons::icon_play },
-            icon_name_glyph { u8"debug-start", luil::codicons::icon_debug_start },
+            icon_name_glyph { u8"debug-start", luil::codicons::icon_debug_alt },
             icon_name_glyph { u8"terminal", luil::codicons::icon_terminal },
             icon_name_glyph { u8"beaker", luil::codicons::icon_beaker },
             icon_name_glyph { u8"rocket", luil::codicons::icon_rocket },

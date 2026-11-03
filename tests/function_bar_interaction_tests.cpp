@@ -596,19 +596,120 @@ TEST_CASE("The wheel over the function bar scrolls the log", "[function_buttons]
     REQUIRE(as_intent<gitman::scroll_intent>(above) != nullptr);
 }
 
-TEST_CASE("Esc that clears the selection drops the focus of a bar button", "[function_buttons][t10][ui][interaction]")
+TEST_CASE("Esc that clears the selection hands the focus of the bar to the card more button", "[function_buttons][s2][ui][interaction]")
 {
+    // D33: `Esc`로 선택이 풀리면 줄에 버튼이 없고 줄의 `⋯`는 비활성이 된다. 초점을 쥔 줄 버튼(줄의 `⋯` 포함)이 그렇게
+    // 사라지면 해제 직전 선택 카드의 `⋯`로 옮긴다 (2.2.5). 후보 순서는 배치 변경 때와 같다(줄의 다음 버튼 → 줄의 `⋯` →
+    // 카드의 `⋯`)이고 앞 둘은 서지 않으므로 카드의 `⋯`다.
+    const auto escape_from = [](const luil::ui_element_kind kind, const std::u8string_view owner) {
+        function_card_fixture fixture { make_function_card_projects(2), sample_buttons() };
+        select(fixture, u8"p00");
+        interaction_harness harness { fixture.tree() };
+        tab_to(harness, kind, owner);
+
+        const auto actions { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
+        const auto* const intent { as_intent<gitman::select_card_intent>(actions) };
+        REQUIRE(intent != nullptr);
+        REQUIRE(intent->id.has_value() == false);
+        REQUIRE(intent->focus_left_function_bar);
+        REQUIRE(forward(fixture, actions));
+        const auto view { fixture.snapshot() };
+        REQUIRE(view->selected.has_value() == false);
+        REQUIRE(view->function_bar.has_value());
+        REQUIRE(view->function_focus.has_value());
+        REQUIRE(view->function_focus->card.value == u8"p00");
+        REQUIRE(view->function_focus->next_buttons.empty());
+
+        // luil이 사라진 초점을 먼저 거두고, UI thread가 하듯 고른 자리에 초점을 세운다.
+        const std::shared_ptr<const luil::ui_tree> tree { make_tree(*view) };
+        harness.controller.set_tree(tree);
+        REQUIRE(harness.snapshot().focused == luil::ui_element_id {});
+        const std::optional<luil::ui_element_id> target { ui::function_focus_target(*tree, *view->function_focus) };
+        REQUIRE(target == luil::ui_element_id { ui::kind_card_function_more, u8"p00" });
+        static_cast<void>(harness.process(luil::access_focus_event { *target, u8"", at(0) }));
+        REQUIRE(harness.snapshot().focused == luil::ui_element_id { ui::kind_card_function_more, u8"p00" });
+    };
+
+    SECTION("줄 버튼")
+    {
+        escape_from(ui::kind_function_bar_button, bar_owner(u8"c"));
+    }
+
+    SECTION("줄의 `⋯`")
+    {
+        escape_from(ui::kind_function_bar_more, u8"");
+    }
+}
+
+TEST_CASE("Esc with the focus outside the bar asks for no focus move", "[function_buttons][s2][ui][interaction]")
+{
+    // 초점이 카드 버튼에 있으면 `Esc` 뒤에도 그 버튼이 남는다. 옮길 것이 없다.
     function_card_fixture fixture { make_function_card_projects(2), sample_buttons() };
     select(fixture, u8"p00");
     interaction_harness harness { fixture.tree() };
-    tab_to(harness, ui::kind_function_bar_button, bar_owner(u8"c"));
+    tab_to(harness, ui::kind_card_refresh, u8"p01");
+    const auto actions { harness.process(luil::key_pressed_event { luil::key_code::escape }) };
+    const auto* const intent { as_intent<gitman::select_card_intent>(actions) };
+    REQUIRE(intent != nullptr);
+    REQUIRE(intent->focus_left_function_bar == false);
+    REQUIRE(forward(fixture, actions));
+    REQUIRE(fixture.snapshot()->selected.has_value() == false);
+    REQUIRE(fixture.snapshot()->function_focus.has_value() == false);
 
-    REQUIRE(forward(fixture, harness.process(luil::key_pressed_event { luil::key_code::escape })));
+    // 선택이 없을 때의 늦은 요청(이미 풀린 선택)도 옮길 카드가 없어 요청을 내지 않는다.
+    fixture.controller.handle(gitman::select_card_intent { std::nullopt, true });
+    REQUIRE(fixture.snapshot()->function_focus.has_value() == false);
+}
+
+TEST_CASE("Esc from the bar still finishes the focus request when the card more is gone", "[function_buttons][s2][ui][interaction]")
+{
+    // 해제 직전 카드가 목록에서 빠졌으면(필터) 그 `⋯`가 tree에 없다. 요청은 내되 대상이 없어 초점은 지워진 채다 — 번호를
+    // 남겨 두지 않으면 나중에 후보가 서는 순간 초점이 뜻밖에 옮겨 간다 (T10 규칙).
+    function_card_fixture fixture { make_function_card_projects(2), sample_buttons() };
+    select(fixture, u8"p00");
+    fixture.controller.handle(gitman::set_filter_intent { u8"p01" });
+    fixture.controller.handle(gitman::select_card_intent { std::nullopt, true });
     const auto view { fixture.snapshot() };
-    REQUIRE(view->selected.has_value() == false);
-    // 줄은 남지만 버튼이 없고 `⋯`는 비활성이며 선택 카드도 없어 갈 곳이 없다. 초점은 지워진다.
-    REQUIRE(view->function_bar.has_value());
-    REQUIRE(view->function_focus.has_value() == false);
-    harness.controller.set_tree(make_tree(*view));
+    REQUIRE(view->function_focus.has_value());
+    REQUIRE(view->function_focus->card.value == u8"p00");
+    const auto tree { make_tree(*view) };
+    REQUIRE(find(*tree, ui::kind_card_function_more, u8"p00") == nullptr);
+    REQUIRE(ui::function_focus_target(*tree, *view->function_focus).has_value() == false);
+}
+
+TEST_CASE("Alt keys on the focused bar act on the bar's card even after another card button was pressed", "[function_buttons][s2][ui][interaction]")
+{
+    // D32로 다른 카드의 `card` 버튼을 누르면 초점 카드(`focused_card_`)가 그 카드가 되어 선택과 갈린다. 그 뒤 기능 줄에
+    // Tab 초점이 있으면 `Alt+N`·`Alt+↓`은 보고 있는 줄의 카드(선택 카드)다 (2.2.6). 줄 버튼은 owner의 카드, 줄의 `⋯`는
+    // 선택 카드다.
+    function_card_fixture fixture { make_function_card_projects(2), sample_buttons() };
+    select(fixture, u8"p00");
+    const auto tree { fixture.tree() };
+    interaction_harness harness { tree };
+    REQUIRE(forward(fixture, click(harness, bounds_of(*tree, ui::kind_card_function, u8"p01:a"))));
+    REQUIRE(harness.policy.focused_card() == std::optional<gitman::project_id> { gitman::project_id { u8"p01" } });
+    REQUIRE(fixture.snapshot()->selected == std::optional<gitman::project_id> { gitman::project_id { u8"p00" } });
+
+    const auto alt_target = [&harness](const luil::key_code key) -> std::optional<std::u8string> {
+        luil::key_pressed_event event { key };
+        event.alt = true;
+        const auto actions { harness.process(event) };
+        if (const auto* const run { as_intent<gitman::run_function_shortcut_intent>(actions) }; run != nullptr)
+            return run->id.value;
+        if (const auto* const menu { as_intent<gitman::open_function_menu_intent>(actions) }; menu != nullptr)
+            return menu->id.value;
+        return std::nullopt;
+    };
+
+    // Tab 초점이 없으면 D32대로 누른 카드다 (`Alt+↓`은 p01의 `⋯`에 연다).
     REQUIRE(harness.snapshot().focused == luil::ui_element_id {});
+    REQUIRE(alt_target(luil::key_code::arrow_down) == std::optional<std::u8string> { u8"p01" });
+
+    tab_to(harness, ui::kind_function_bar_button, bar_owner(u8"b"));
+    REQUIRE(alt_target(luil::key_code::key_1) == std::optional<std::u8string> { u8"p00" });
+    REQUIRE(alt_target(luil::key_code::arrow_down) == std::optional<std::u8string> { u8"p00" });
+
+    tab_to(harness, ui::kind_function_bar_more, u8"");
+    REQUIRE(alt_target(luil::key_code::key_1) == std::optional<std::u8string> { u8"p00" });
+    REQUIRE(alt_target(luil::key_code::arrow_down) == std::optional<std::u8string> { u8"p00" });
 }

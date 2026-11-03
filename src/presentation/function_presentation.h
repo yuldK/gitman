@@ -42,13 +42,27 @@ namespace gitman {
     // 기능 줄 버튼 폭을 정하는 가장 긴 상태 글이다: `라벨 · 실행 중` (2.2.4).
     [[nodiscard]] std::u8string function_bar_widest_text(std::u8string_view label);
 
-    // `⋯`의 접근 이름이다: `기능 더 보기, 카드 이름, N개`.
-    [[nodiscard]] std::u8string function_more_access_name(std::u8string_view card_name, std::size_t count);
+    // `⋯` 표식이 맡는 기능(카드 열에 버튼이 없는 것: `bar`·`menu`, 접힌 `card`)의 실행 중·실패 수다 (2.3.5, D35).
+    struct function_more_status
+    {
+        std::size_t running { 0 };
+        std::size_t failed { 0 };
+    };
+
+    // `on_card`는 `functions`와 같은 순서로 카드 열에 보이는 버튼인지다. 카드 열의 버튼은 자기 이름이 상태를 말하므로
+    // 세지 않는다.
+    [[nodiscard]] function_more_status function_more_status_of(const std::vector<card_function_view>& functions, const std::vector<bool>& on_card);
+
+    // `⋯`의 접근 이름이다: `기능 더 보기, 카드 이름, N개[, 실행 중 k개][, 실패 k개]`. 표식이 색과 모양으로 보이는 상태를
+    // 화면 읽기에도 준다 (D35). 0인 상태는 붙이지 않는다.
+    [[nodiscard]] std::u8string function_more_access_name(std::u8string_view card_name, std::size_t count, const function_more_status& status = {});
+    // `⋯`의 tooltip이다: `기능 더 보기 (Alt+↓)[ — 실행 중 k개, 실패 k개]`.
+    [[nodiscard]] std::u8string function_more_tooltip(const function_more_status& status);
     // 기능 줄 `⋯`의 접근 이름이다: `기능 더 보기 (기능 줄), 카드 이름, N개`. 선택 카드의 `⋯`와 같은 메뉴를 열지만
     // 한 tree에 둘이 함께 서므로 이름으로 가른다 — 같은 이름이면 낭독으로도 UIA 이름 찾기로도 구별되지 않는다.
     [[nodiscard]] std::u8string function_bar_more_access_name(std::u8string_view card_name, std::size_t count);
 
-    // `⋯` 점의 상태다 (2.3.5).
+    // `⋯` 표식의 상태다 (2.3.5).
     enum class function_more_marker
     {
         none,
@@ -56,9 +70,10 @@ namespace gitman {
         failed,
     };
 
-    // `⋯` 점이 맡는 기능(카드 열에 버튼이 없는 것: `bar`·`menu`, 접힌 `card`)의 상태다. `on_card`는 `functions`와
-    // 같은 순서로 카드 열에 보이는 버튼인지다. 실패가 있으면 실패다 — 실행 중임은 상태 아이콘 회전과 3번째 줄
-    // 칩으로도 보이지만 실패는 이 점뿐이다.
+    // `⋯` 표식이 맡는 기능의 상태다. 실패한 기능이 있으면 실패다 — 실행 중임은 상태 아이콘 회전과 3번째 줄 칩으로도
+    // 보이지만 실패는 이 표식뿐이다. 수(`function_more_status_of`)에서만 만들어, 표식 모양과 `⋯` 이름이 같은 기준으로
+    // 센다 — 한 기능은 실행 중이면 실행 중으로만 센다.
+    [[nodiscard]] function_more_marker function_more_marker_state(const function_more_status& status) noexcept;
     [[nodiscard]] function_more_marker function_more_marker_state(const std::vector<card_function_view>& functions, const std::vector<bool>& on_card);
 
     // 출력 수집 기능이 실행 중이라 update·switch가 막힌 사유다: `기능 "빌드"가 실행 중입니다` (4.7).

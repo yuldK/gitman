@@ -336,9 +336,6 @@ namespace gitman {
             return chunks;
         }
 
-        // 기능 메뉴가 카드 메뉴 기능 절에 싣는 앞 기능 수다 (2.3.3). 넘으면 `기능 더 보기…`가 붙는다.
-        constexpr std::size_t card_menu_function_count { 8 };
-
         // 묶은 기능 버튼 알림의 상세 상한이다. 버튼이 많은 문서에서 tooltip이 화면을 덮지
         // 않게 하고, 나머지는 개수로만 알린다. 항목별 확인은 편집 dialog의 경고 행(T12)이 맡는다.
         constexpr std::size_t maximum_function_notice_details { 20 };
@@ -1254,6 +1251,18 @@ namespace gitman {
             card_state* const card { selected_.has_value() ? find_card(*selected_) : nullptr };
             if (card != nullptr)
                 card->function_results.clear();
+        }
+
+        // `Esc`로 선택을 풀 때 Tab 초점이 기능 줄에 있었으면 그 초점은 사라진다(줄에 버튼이 없고 줄의 `⋯`는 비활성).
+        // 해제 직전 카드의 `⋯`로 옮긴다 (function-buttons-design 2.2.5, D33). 배치 변경 때와 같은 요청이라 줄의 다음 버튼 →
+        // 줄의 `⋯` → 카드의 `⋯` 순서로 보이는 첫 자리를 UI가 고르고, 앞 둘은 서지 않으므로 카드의 `⋯`다. 그 `⋯`도 없으면
+        // (목록 밖 등) 빈 대상으로 요청을 끝낸다.
+        if (intent.focus_left_function_bar && selected_.has_value() == false && previous.has_value())
+        {
+            function_focus_request request {};
+            request.id = ++function_focus_revision_;
+            request.card = *previous;
+            function_focus_ = std::move(request);
         }
 
         // 키보드 순회는 화면 밖 카드도 고를 수 있다. 선택이 보이도록 따라간다.
@@ -4807,9 +4816,14 @@ namespace gitman {
                 handle_stop_function(stop_function_intent { menu.card, item.argument });
             break;
         case context_menu_entry::more_functions:
-            // 카드 메뉴가 닫힌 자리에 같은 카드의 기능 메뉴를 연다 (2.3.3). 하위 메뉴는 쓰지 않는다.
+            // 닫힌 메뉴 자리에 같은 카드의 기능 메뉴 다음 쪽을 연다 (2.3.2, 2.3.3, D34). 카드 메뉴는 앞 8개를 이미 실었으므로
+            // 9번째부터, 기능 메뉴는 지금 쪽의 다음이다. 하위 메뉴는 쓰지 않는다.
             if (state != nullptr)
-                context_menu_ = { context_menu_state { context_menu_kind::functions, menu.card, menu.anchor_x, menu.anchor_y, std::chrono::steady_clock::now() } };
+            {
+                context_menu_state next { context_menu_kind::functions, menu.card, menu.anchor_x, menu.anchor_y, std::chrono::steady_clock::now() };
+                next.function_first = menu.kind == context_menu_kind::functions ? menu.function_first + function_menu_page_size : card_menu_function_count;
+                context_menu_ = { std::move(next) };
+            }
             break;
         case context_menu_entry::reload_document:
             // 안전한 다시 읽기다 (4.9). 실행 중인 출력 수집 기능이 있으면 확인 dialog가 먼저 뜬다.
@@ -4853,7 +4867,7 @@ namespace gitman {
             if ((card.project.id == menu.card) == false)
                 continue;
             if (menu.kind == context_menu_kind::functions)
-                return function_context_menu_items(card, menu.opened_at);
+                return function_context_menu_items(card, menu.opened_at, menu.function_first);
             if (menu.kind == context_menu_kind::placement)
                 return placement_context_menu_items(card, menu.button, menu.from_bar);
             return card_context_menu_items(card, menu.opened_at);
@@ -4879,8 +4893,10 @@ namespace gitman {
         items.push_back({ .entry = context_menu_entry::update, .label = u8"업데이트", .enabled = can_change && change_running == false, .icon = u8"repo-pull" });
         items.push_back({ .entry = context_menu_entry::switch_to, .label = u8"전환…", .enabled = can_change, .icon = u8"source-control" });
 
-        // 기능 절이다 (function-buttons-design 2.3.3). 적용 기능이 없으면 지금 메뉴 그대로다. 앞 8개를 문서 순서로
-        // 싣고 넘치면 `기능 더 보기…`가 그 카드의 기능 메뉴를 연다. 하위 메뉴는 쓰지 않는다.
+        // 기능 절이다 (function-buttons-design 2.3.3). 적용 기능이 없으면 지금 메뉴 그대로다. 앞
+        // `card_menu_function_count`(8)개를 문서 순서로 싣고 넘치면 `기능 더 보기…`가 9번째부터 그 카드의 기능 메뉴로
+        // 연다 (D34). 하위 메뉴는 쓰지 않는다. 기능 메뉴 쪽 크기(12)보다 작은 것은 이 메뉴가 가장 긴 메뉴라 작은 작업
+        // 영역에서도 통째로 들게 하려는 것이다 (`list_metrics.h`).
         const std::vector<card_function_view> functions { card_function_views(card) };
         if (functions.empty())
             return items;
@@ -4897,13 +4913,23 @@ namespace gitman {
         return items;
     }
 
-    std::vector<context_menu_item_view> logic_controller::function_context_menu_items(const card_state& card, const std::chrono::steady_clock::time_point opened_at) const
+    std::vector<context_menu_item_view> logic_controller::function_context_menu_items(const card_state& card, const std::chrono::steady_clock::time_point opened_at, const std::size_t first_function) const
     {
-        // 그 카드의 적용 기능 전체다 — 배치(`card`·`bar`·`menu`)와 상관없이 문서 순서다 (2.3.2). 카드 열이나 기능 줄에
+        // 그 카드의 적용 기능이다 — 배치(`card`·`bar`·`menu`)와 상관없이 문서 순서다 (2.3.2). 카드 열이나 기능 줄에
         // 이미 보이는 것도 다시 나온다. 메뉴가 카드 폭에 의존하면 logic이 UI 배치를 알아야 한다.
+        //
+        // luil 메뉴는 스크롤이 없어 작업 영역보다 긴 메뉴는 아래가 잘린다. 한 쪽에 `function_menu_page_size`개만 싣고
+        // 남으면 `기능 더 보기…`가 다음 쪽을 연다 (D34). 쪽마다 아래 구역이 같아 어느 쪽도 같은 높이 한계 안이다. 쪽은
+        // 시작 기능으로 센다 — 카드 메뉴의 `기능 더 보기…`는 기능 메뉴 쪽 경계가 아닌 9번째에서 연다. 메뉴가 떠 있는 사이
+        // 기능이 줄어 그 쪽이 비면 첫 쪽을 보인다 — 빈 쪽은 고를 것이 없다.
+        const std::vector<card_function_view> functions { card_function_views(card) };
+        const std::size_t first { first_function < functions.size() ? first_function : 0 };
+        const std::size_t end { first + function_menu_page_size < functions.size() ? first + function_menu_page_size : functions.size() };
         std::vector<context_menu_item_view> items {};
-        for (const card_function_view& function : card_function_views(card))
-            items.push_back(function_menu_item(function, opened_at));
+        for (std::size_t index = first; index < end; ++index)
+            items.push_back(function_menu_item(functions[index], opened_at));
+        if (end < functions.size())
+            items.push_back({ .entry = context_menu_entry::more_functions, .label = u8"기능 더 보기…", .icon = u8"ellipsis" });
 
         // 아래 구역은 기능 목록과 구분선으로 가른다. 기능이 없으면 구분선도 없다.
         const std::size_t tail { items.size() };
@@ -5971,8 +5997,9 @@ namespace gitman {
                 menu.anchor_y = context_menu_->anchor_y;
                 // 기능 메뉴만 기본 항목이 있다 (2.3.2). 메뉴를 열고 Enter 한 번이면 첫 기능이 실행된다. 비활성 항목은
                 // Enter가 고르지 못하므로 첫 **활성** 기능이다. 그 카드에서 출력 수집이 돌고 있으면 비운다 — 습관적으로
-                // 친 Enter가 실행 중인 작업을 끊거나 다른 기능을 시작하지 않게 한다.
-                if (context_menu_->kind == context_menu_kind::functions)
+                // 친 Enter가 실행 중인 작업을 끊거나 다른 기능을 시작하지 않게 한다. 첫 쪽만이다 (D34) — `기능 더 보기…`를
+                // 고른 손이 이어 친 Enter가 다음 쪽의 기능을 시작하지 않게 한다.
+                if (context_menu_->kind == context_menu_kind::functions && context_menu_->function_first == 0)
                 {
                     const card_state* card { nullptr };
                     for (const card_state& candidate : cards_)

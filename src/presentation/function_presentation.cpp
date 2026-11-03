@@ -36,6 +36,21 @@ namespace gitman {
             name += u8"개";
             return name;
         }
+
+        // `실행 중 1개, 실패 2개`다. 0인 상태는 빼고, 둘 다 0이면 비어 있다.
+        std::u8string more_status_text(const function_more_status& status)
+        {
+            std::u8string text {};
+            if (status.running > 0)
+                text += u8"실행 중 " + decimal_text(static_cast<std::int64_t>(status.running)) + u8"개";
+            if (status.failed > 0)
+            {
+                if (text.empty() == false)
+                    text += u8", ";
+                text += u8"실패 " + decimal_text(static_cast<std::int64_t>(status.failed)) + u8"개";
+            }
+            return text;
+        }
     }
 
     std::u8string function_exit_code_text(const std::int32_t code)
@@ -148,9 +163,40 @@ namespace gitman {
         return text;
     }
 
-    std::u8string function_more_access_name(const std::u8string_view card_name, const std::size_t count)
+    function_more_status function_more_status_of(const std::vector<card_function_view>& functions, const std::vector<bool>& on_card)
     {
-        return more_access_name(u8"기능 더 보기", card_name, count);
+        function_more_status status {};
+        for (std::size_t index = 0; index < functions.size(); ++index)
+        {
+            if (index < on_card.size() && on_card[index])
+                continue;
+            if (functions[index].running)
+                ++status.running;
+            else if (functions[index].failed)
+                ++status.failed;
+        }
+        return status;
+    }
+
+    std::u8string function_more_access_name(const std::u8string_view card_name, const std::size_t count, const function_more_status& status)
+    {
+        std::u8string name { more_access_name(u8"기능 더 보기", card_name, count) };
+        const std::u8string state { more_status_text(status) };
+        if (state.empty() == false)
+            name += u8", " + state;
+        return name;
+    }
+
+    std::u8string function_more_tooltip(const function_more_status& status)
+    {
+        std::u8string text { u8"기능 더 보기 (Alt+↓)" };
+        const std::u8string state { more_status_text(status) };
+        if (state.empty() == false)
+        {
+            text += state_separator;
+            text += state;
+        }
+        return text;
     }
 
     std::u8string function_bar_more_access_name(const std::u8string_view card_name, const std::size_t count)
@@ -158,18 +204,16 @@ namespace gitman {
         return more_access_name(u8"기능 더 보기 (기능 줄)", card_name, count);
     }
 
+    function_more_marker function_more_marker_state(const function_more_status& status) noexcept
+    {
+        if (status.failed > 0)
+            return function_more_marker::failed;
+        return status.running > 0 ? function_more_marker::running : function_more_marker::none;
+    }
+
     function_more_marker function_more_marker_state(const std::vector<card_function_view>& functions, const std::vector<bool>& on_card)
     {
-        bool running { false };
-        for (std::size_t index = 0; index < functions.size(); ++index)
-        {
-            if (index < on_card.size() && on_card[index])
-                continue;
-            if (functions[index].failed)
-                return function_more_marker::failed;
-            running = running || functions[index].running;
-        }
-        return running ? function_more_marker::running : function_more_marker::none;
+        return function_more_marker_state(function_more_status_of(functions, on_card));
     }
 
     std::u8string function_running_reason(const std::u8string_view label)

@@ -4,6 +4,7 @@
 #include "presentation/list_metrics.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/function_icon_catalog.h"
+#include "presentation/ui/function_marker_element.h"
 #include "presentation/ui/ui_actions.h"
 
 #include "luil/ui/button_element.h"
@@ -31,31 +32,6 @@ namespace gitman::ui {
             style.elide = luil::text_elide::end;
             return style;
         }
-
-        // 버튼 오른쪽 위에 겹쳐 그리는 6px 실패 점이다 (2.3.5의 기능 줄 열). 카드의 점과 같은 모양이다. 액션도
-        // tooltip도 없어 hit 대상이 아니고 접근 tree에도 서지 않는다 — 실패는 버튼 글(`빌드 · 실패`)이 말한다.
-        class bar_marker_element final : public ui_element
-        {
-        public:
-            explicit bar_marker_element(ui_element_id id) noexcept
-                : ui_element { std::move(id) }
-            {
-            }
-
-            void arrange(const arrange_context& context) override
-            {
-                set_bounds(context.slot);
-            }
-
-            void draw(draw_context& context, const interaction_snapshot& interaction) const override
-            {
-                static_cast<void>(interaction);
-                const rect_f box { bounds() };
-                SkPaint paint { solid_paint(context.palette.error_accent) };
-                paint.setAntiAlias(true);
-                context.canvas.drawCircle(box.x + box.width / 2.0f, box.y + box.height / 2.0f, box.width / 2.0f, paint);
-            }
-        };
 
         char32_t button_glyph(const card_function_view& function) noexcept
         {
@@ -125,13 +101,14 @@ namespace gitman::ui {
         more_ = more.get();
         add_child(std::move(more));
 
-        // 점은 버튼 위에 그려야 하므로 모든 버튼 뒤에 붙인다 (2.3.5).
+        // 실패 표식은 버튼 위에 그려야 하므로 모든 버튼 뒤에 붙인다 (2.3.5의 기능 줄 열). 카드의 실패 표식과 같은 마름모다
+        // (D35). 실패는 버튼 글(`빌드 · 실패`)도 말한다.
         for (std::size_t index = 0; index < buttons_.size(); ++index)
         {
             const card_function_view& function { bar_.functions[index] };
             if (function.failed == false || function.running)
                 continue;
-            auto marker { std::make_unique<bar_marker_element>(ui_element_id { kind_function_bar_marker, card_function_owner(bar_.card.value, function.button_id) }) };
+            auto marker { std::make_unique<function_marker_element>(ui_element_id { kind_function_bar_marker, card_function_owner(bar_.card.value, function.button_id) }, function_marker_shape::failed) };
             buttons_[index].marker = marker.get();
             add_child(std::move(marker));
         }
@@ -197,11 +174,7 @@ namespace gitman::ui {
             const rect_f box { context.slot.x + left * scale, button_y, widths[index] * scale, button_height };
             slot.button->arrange(context.for_child(box));
             if (slot.marker != nullptr)
-            {
-                const float size { layout_function_marker_size * scale };
-                const float marker_inset { layout_function_marker_inset * scale };
-                slot.marker->arrange(context.for_child({ box.x + box.width - marker_inset - size, box.y + marker_inset, size, size }));
-            }
+                slot.marker->arrange(context.for_child(function_marker_slot(box, scale, function_marker_shape::failed)));
             left += widths[index] + layout_card_gap;
         }
     }

@@ -48,6 +48,10 @@ namespace gitman {
     {
         // 값이 없으면 선택 해제다.
         std::optional<project_id> id {};
+        // `Esc`로 선택을 풀 때 Tab 초점이 기능 줄 버튼(줄의 `⋯` 포함)에 있었는지다 (function-buttons-design 2.2.5, D33).
+        // 선택이 풀리면 줄에 버튼이 없고 줄의 `⋯`는 비활성이라 그 초점이 사라지므로, logic이 해제 직전 카드의 `⋯`로
+        // 초점을 옮기는 요청을 싣는다. 어느 element가 초점을 가졌는지는 policy만 안다.
+        bool focus_left_function_bar { false };
     };
 
     struct set_filter_intent

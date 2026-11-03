@@ -354,7 +354,7 @@ namespace gitman::ui {
             if (event.repeat)
                 return {};
             return { make_logic_action(refresh_all_intent {}) };
-        case luil::key_code::escape:
+        case luil::key_code::escape: {
             // 열린 dialog의 Esc는 여기까지 오지 않는다. dialog마다 luil
             // `modal_host_element`가 서 있고 controller의 `process_dismiss_key`가
             // 가둠의 dismiss 액션을 먼저 낸다 (설계 D2-A). 어느 dialog가 임자인지는
@@ -362,8 +362,16 @@ namespace gitman::ui {
             // 사슬을 따로 들면 두 곳이 반드시 어긋난다.
             //
             // 그래서 여기 남는 것은 가둠이 하나도 없을 때의 몫뿐이다: 카드 선택 해제.
+            //
+            // 선택이 풀리면 기능 줄에 버튼이 없고 줄의 `⋯`는 비활성이라 그 초점이 사라진다. logic이 해제 직전 카드의 `⋯`로
+            // 초점을 옮기도록 알린다 (function-buttons-design 2.2.5, D33). 어느 element가 초점을 가졌는지는 여기만 안다.
             focused_card_.reset();
-            return { make_logic_action(select_card_intent {}) };
+            const bool on_bar {
+                snapshot.focused_surface.empty()
+                && (snapshot.focused.kind == kind_function_bar_button || snapshot.focused.kind == kind_function_bar_more)
+            };
+            return { make_logic_action(select_card_intent { std::nullopt, on_bar }) };
+        }
         default:
             break;
         }
@@ -378,6 +386,11 @@ namespace gitman::ui {
         const luil::ui_element_kind kind { element.id().kind };
         if (kind == kind_card_body)
             focused_card_ = project_id { element.id().owner };
+        // `card` 기능 버튼을 누르면 그 카드가 초점 카드다 (function-buttons-design 2.2.6, D32). 새로 고침·업데이트·전환은
+        // 누름이 luil 초점을 세워 owner로 정해지지만 `card` 버튼은 Tab 자리가 아니라 초점이 서지 않으므로 여기서 잇는다.
+        // 우클릭(배치 메뉴)의 누름도 같다. 선택은 바꾸지 않는다 — 선택은 카드 body의 클릭 액션만 바꾼다.
+        else if (kind == kind_card_function)
+            focused_card_ = project_id { std::u8string { card_of_function_owner(element.id().owner) } };
         else if (kind == luil::ui_element_kind::root || kind == kind_card_list || kind == kind_toolbar)
             focused_card_.reset();
     }
@@ -390,16 +403,22 @@ namespace gitman::ui {
     std::optional<project_id> gitman_policy::focus_card(const luil::ui_tree& tree, const luil::interaction_snapshot& snapshot) const
     {
         // Tab 초점이 카드 안 버튼이면 그 카드다. Tab으로 `⋯`에 서도 `focused_card_`는 세워지지 않으므로
-        // (`on_click`은 카드 body만 본다) owner를 먼저 본다 (2.3.4).
+        // (`on_click`은 카드 body와 `card` 기능 버튼만 본다) owner를 먼저 본다 (2.3.4).
         if (snapshot.focused_surface.empty())
         {
             const luil::ui_element_id& focused { snapshot.focused };
-            // `card` 기능 버튼은 Tab 자리가 아니라 초점을 갖지 않는다. 누르면 초점이 걷히고 `on_click`도 카드 body만
-            // 보므로, 누른 뒤의 `Alt+N`은 아래 `focused_card_`나 선택 카드의 것이다 (2.2.6, 내장 버튼 클릭과 같다).
+            // `card` 기능 버튼은 Tab 자리가 아니라 초점을 갖지 않는다. 대신 `on_click`이 누른 버튼의 카드를
+            // `focused_card_`로 세우므로 누른 뒤의 `Alt+N`도 그 카드의 것이다 (2.2.6, D32).
             if (focused.kind == kind_card_function_more || focused.kind == kind_card_refresh || focused.kind == kind_card_update || focused.kind == kind_card_switch)
                 return project_id { focused.owner };
+            // 기능 줄에 Tab 초점이 있으면 줄의 카드(선택 카드)다 (2.2.6). D32로 `focused_card_`가 다른 카드의 `card` 버튼을
+            // 눌러 선택과 갈릴 수 있으므로, 보고 있는 줄과 다른 카드의 기능이 시작되지 않게 `focused_card_`보다 먼저 본다.
+            // 줄 버튼은 owner가 `카드:버튼`이고 줄의 `⋯`는 owner가 없어 아래 선택 카드로 간다.
+            if (focused.kind == kind_function_bar_button)
+                return project_id { std::u8string { card_of_function_owner(focused.owner) } };
         }
-        if (focused_card_.has_value())
+        const bool on_bar_more { snapshot.focused_surface.empty() && snapshot.focused.kind == kind_function_bar_more };
+        if (focused_card_.has_value() && on_bar_more == false)
             return focused_card_;
         // 마지막은 선택 카드다. 선택의 진실은 logic의 것이고 policy는 tree에 그려진 카드의 선택 표시로만 안다.
         // 그래서 선택 카드가 목록 밖이라 tree에 없으면 초점 카드가 없는 것으로 본다.

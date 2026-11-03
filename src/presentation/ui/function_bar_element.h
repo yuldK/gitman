@@ -8,6 +8,8 @@
 #include <vector>
 
 namespace gitman::ui {
+    class function_marker_element;
+
     // 선택 카드 기능 줄이다 (function-buttons-design 2.2.2, 2.4). 로그 pane 160 안 맨 위 36에 서고 구성은
     // `[카드 이름 │ bar 기능 글자 버튼 …… ⋯]`이다. 버튼은 luil 글자 버튼이고, 줄 폭에 들지 않는 버튼은 오른쪽부터
     // 숨겨 줄의 `⋯`(그 카드의 기능 메뉴)에 맡긴다. 버튼이 없으면 그 자리에 힌트를 그린다.
@@ -29,8 +31,8 @@ namespace gitman::ui {
         struct button_slot
         {
             ui_element* button { nullptr };
-            // 실패 점이다. 실패했고 실행 중이 아닐 때만 있다.
-            ui_element* marker { nullptr };
+            // 실패 표식(마름모)이다. 실패했고 실행 중이 아닐 때만 있다.
+            function_marker_element* marker { nullptr };
             // 폭을 재는 글과 글리프다 (가장 긴 상태 글).
             std::u8string widest {};
             char32_t glyph { 0 };

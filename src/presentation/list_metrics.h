@@ -53,9 +53,13 @@ namespace gitman {
     inline constexpr float layout_card_function_text_reserve { 160.0f };
     // 선의 길이다. 버튼(28)보다 짧게 그려 묶음을 가르기만 한다 (시안 값).
     inline constexpr float layout_card_function_separator_height { 16.0f };
-    // 실행 중·실패 점 표식이다. 버튼 오른쪽 위 안쪽에 그린다 (2.3.5).
+    // 실행 중 표식(채운 원)이다. 버튼 오른쪽 위 안쪽에 그린다 (2.3.5).
     inline constexpr float layout_function_marker_size { 6.0f };
     inline constexpr float layout_function_marker_inset { 2.0f };
+    // 실패 표식(채운 마름모)이다 (2.3.5, D35). 대각선 8이면 넓이(32)가 지름 6 원(28)과 비슷해 한쪽이 작아 보이지 않는다.
+    // 안쪽 여백을 1로 줄여 가운데가 실행 중 표식과 같다.
+    inline constexpr float layout_function_failure_marker_size { 8.0f };
+    inline constexpr float layout_function_failure_marker_inset { 1.0f };
 
     // 카드 기능 열의 자리다 (카드 왼쪽 가장자리 기준 논리 px). 카드와 test가 같은 함수를 쓴다.
     struct card_function_slots
@@ -442,6 +446,25 @@ namespace gitman {
     // 기능 이름과 상태 라벨(`빌드 — 실행 중 00:12`), 단축키 열이 드는 메뉴는 글 폭만큼 넓히되 이 폭에서
     // 멈추고 넘치는 라벨은 말줄임에 맡긴다 (function-buttons-design 2.3.2). 190이 하한이다.
     inline constexpr float layout_context_menu_maximum_width { 320.0f };
+
+    // 메뉴가 통째로 들어가야 하는 가장 작은 작업 영역의 높이(논리 px)다 (function-buttons-design D34). 1366×768을 125%로
+    // 쓰고 작업 표시줄이 48(Windows 11 기본)이면 768 / 1.25 − 48 = 566이다. luil 메뉴는 스크롤이 없어 이보다 긴 메뉴는
+    // 아래가 화면 밖으로 잘린다. 메뉴 높이는 `8 + 26 × 행 + 9 × 구분선`이고 배율은 이 높이와 작업 영역에 같이 곱해지므로
+    // 논리 px끼리 견준다.
+    inline constexpr float layout_menu_fit_height { 566.0f };
+    // 기능 메뉴 한 쪽이 싣는 기능 수다 (2.3.2, D34). 넘치면 `기능 더 보기…`가 다음 쪽을 연다. 한 쪽은 기능 N + 기능 더
+    // 보기 + 기능 편집 + 문서 다시 읽기, 구분선 1이라 `95 + 26N`이다. 12면 407이다.
+    inline constexpr std::size_t function_menu_page_size { 12 };
+    // 카드 메뉴 기능 절이 싣는 기능 수다 (2.3.3, D34). 넘치면 `기능 더 보기…`가 9번째 기능부터 기능 메뉴로 연다. 카드
+    // 메뉴는 기존 6 + 기능 N + 기능 더 보기 + 기능 편집, 구분선 1이라 `225 + 26N`이다. 8이면 433으로 T9의 높이 그대로다.
+    // 기능 메뉴 쪽 크기(12)를 같이 쓰면 537이 되어 S2 전에 통째로 들던 작업 영역(1280×720·125%의 528, 1920×1080·200%의
+    // 492)에서 아래가 새로 잘리므로 따로 둔다. 두 메뉴 모두 1366×768·150%(464)에도 든다.
+    inline constexpr std::size_t card_menu_function_count { 8 };
+
+    // luil `menu_element`의 높이 식(`8 + 26 × 행 + 9 × 구분선`)으로 가장 긴 두 메뉴가 작업 영역 한계 안인지 빌드가 본다.
+    // 쪽 크기를 늘릴 때 메뉴가 잘리는 것을 test보다 먼저 막는다. 실제 popup 높이는 test가 `build_context_menu_popup`으로 잰다.
+    static_assert(8.0f + 26.0f * static_cast<float>(6 + card_menu_function_count + 2) + 9.0f <= layout_menu_fit_height);
+    static_assert(8.0f + 26.0f * static_cast<float>(function_menu_page_size + 3) + 9.0f <= layout_menu_fit_height);
 
     // 카드 목록이 차지하는 영역이다. tree 빌드, 카드 목록 element와 logic의 스크롤
     // 한계 계산이 모두 이 함수를 거쳐 같은 값을 쓴다.

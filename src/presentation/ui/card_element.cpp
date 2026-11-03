@@ -5,6 +5,7 @@
 #include "presentation/log_presentation.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/function_icon_catalog.h"
+#include "presentation/ui/function_marker_element.h"
 #include "presentation/ui/status_glyphs.h"
 #include "presentation/ui/ui_actions.h"
 
@@ -52,56 +53,6 @@ namespace gitman::ui {
             return palette.primary_foreground;
         }
 
-        // 실행 중·실패 점 표식의 색이다 (function-buttons-design 2.3.5).
-        enum class marker_tone
-        {
-            error,
-            accent,
-        };
-
-        // 버튼 오른쪽 위에 겹쳐 그리는 6px 점이다. 자식 순서가 그리기 순서라 버튼 뒤에 붙인다
-        // (2.3.5). 액션도 tooltip도 없어 hit 대상이 아니고 접근 tree에도 서지 않는다 — 상태는 버튼의
-        // 접근 이름이 말한다. 색은 `⋯`처럼 접힌 버튼에 따라 정해지는 것이 있어 배치 때 고친다.
-        class function_marker_element final : public ui_element
-        {
-        public:
-            function_marker_element(ui_element_id id, const marker_tone tone) noexcept
-                : ui_element { std::move(id) }
-                , tone_ { tone }
-            {
-            }
-
-            void set_tone(const marker_tone tone) noexcept
-            {
-                tone_ = tone;
-            }
-
-            void arrange(const arrange_context& context) override
-            {
-                set_bounds(context.slot);
-            }
-
-            void draw(draw_context& context, const interaction_snapshot& interaction) const override
-            {
-                static_cast<void>(interaction);
-                const rect_f box { bounds() };
-                const ui_color color { tone_ == marker_tone::error ? context.palette.error_accent : context.palette.accent };
-                SkPaint paint { solid_paint(color) };
-                paint.setAntiAlias(true);
-                context.canvas.drawCircle(box.x + box.width / 2.0f, box.y + box.height / 2.0f, box.width / 2.0f, paint);
-            }
-
-        private:
-            marker_tone tone_ { marker_tone::error };
-        };
-
-        // 버튼 오른쪽 위 안쪽의 점 자리다.
-        rect_f marker_slot(const rect_f& button, const float scale) noexcept
-        {
-            const float size { layout_function_marker_size * scale };
-            const float inset { layout_function_marker_inset * scale };
-            return { button.x + button.width - inset - size, button.y + inset, size, size };
-        }
     } // namespace
 
     card_element::card_element(card_view_model card)
@@ -186,7 +137,8 @@ namespace gitman::ui {
         if (card_.functions.empty() == false)
         {
             auto more { std::make_unique<luil::button_element>(ui_element_id { kind_card_function_more, card_.id.value }, luil::button_config { .glyph = codicons::icon_ellipsis }) };
-            more->set_tooltip(u8"기능 더 보기 (Alt+↓)");
+            // 상태 수는 접힘이 정해지는 배치 때 붙인다 (`arrange`).
+            more->set_tooltip(function_more_tooltip({}));
             more->set_access_name(function_more_access_name(card_.display_name, card_.functions.size()));
             // 메뉴는 `⋯`의 왼쪽 아래에 연다. 클릭 액션은 누른 점만 주므로 버튼 자신의 자리를 읽는다.
             // lambda는 element가 소유하고 tree는 게시 후 불변이라 포인터 캡처가 안전하다 (drag 출발과 같다).
@@ -247,19 +199,19 @@ namespace gitman::ui {
         switch_ = switch_button.get();
         add_child(std::move(switch_button));
 
-        // 점 표식은 버튼 위에 그려야 하므로 모든 버튼 뒤에 붙인다 (2.3.5). `card` 버튼의 점은 실패했고
+        // 표식은 버튼 위에 그려야 하므로 모든 버튼 뒤에 붙인다 (2.3.5). `card` 버튼의 표식은 실패(마름모)했고
         // 실행 중이 아닐 때다 — 실행 중이면 버튼 자신이 중지 글리프로 바뀐다.
         for (function_button_slot& slot : function_buttons_)
         {
             const card_function_view& function { card_.functions[slot.function] };
             if (function.failed == false || function.running)
                 continue;
-            auto marker { std::make_unique<function_marker_element>(ui_element_id { kind_card_function_marker, card_function_owner(card_.id.value, function.button_id) }, marker_tone::error) };
+            auto marker { std::make_unique<function_marker_element>(ui_element_id { kind_card_function_marker, card_function_owner(card_.id.value, function.button_id) }, function_marker_shape::failed) };
             slot.marker = marker.get();
             add_child(std::move(marker));
         }
-        // `⋯`의 점은 버튼이 아닌 자리(`bar`·`menu`)나 접힌 `card` 기능의 것이다. 접힘은 배치 때 정해지므로
-        // 실행 중·실패인 기능이 하나라도 있으면 만들어 두고, 배치가 보일지와 색을 정한다.
+        // `⋯`의 표식은 버튼이 아닌 자리(`bar`·`menu`)나 접힌 `card` 기능의 것이다. 접힘은 배치 때 정해지므로
+        // 실행 중·실패인 기능이 하나라도 있으면 만들어 두고, 배치가 보일지와 모양(원·마름모)을 정한다.
         const bool any_state {
             std::ranges::any_of(card_.functions
                 , [](const card_function_view& function)
@@ -271,7 +223,7 @@ namespace gitman::ui {
 
         if (more_ != nullptr && any_state)
         {
-            auto marker { std::make_unique<function_marker_element>(ui_element_id { kind_card_function_more_marker, card_.id.value }, marker_tone::error) };
+            auto marker { std::make_unique<function_marker_element>(ui_element_id { kind_card_function_more_marker, card_.id.value }, function_marker_shape::failed) };
             more_marker_ = marker.get();
             add_child(std::move(marker));
         }
@@ -324,7 +276,7 @@ namespace gitman::ui {
         }
 
         // 글 예약을 지키지 못하면 뒤쪽 `card` 버튼부터 접는다. 접힌 기능은 `⋯` 메뉴에 그대로 있고
-        // 그 실행 중·실패는 `⋯`의 점이 맡는다.
+        // 그 실행 중·실패는 `⋯`의 표식이 맡는다.
         const std::size_t visible_count { more_visible ? slots.visible_count : 0 };
         std::vector<bool> on_card(card_.functions.size(), false);
         for (std::size_t index = 0; index < function_buttons_.size(); ++index)
@@ -340,18 +292,26 @@ namespace gitman::ui {
             const rect_f box { context.slot.x + card_function_button_x(slots, index) * scale, buttons_y, button, button };
             slot.button->arrange(context.for_child(box));
             if (slot.marker != nullptr)
-                slot.marker->arrange(context.for_child(marker_slot(box, scale)));
+                slot.marker->arrange(context.for_child(function_marker_slot(box, scale, function_marker_shape::failed)));
         }
+
+        // `⋯`의 접근 이름과 tooltip에 표식이 맡는 기능의 실행 중·실패 수를 붙인다 (2.3.4, D35). 접힘이 정해진 뒤라야 어느
+        // 기능을 표식이 맡는지 안다. tree는 게시 전이라 여기서 고쳐도 된다.
+        const function_more_status status { function_more_status_of(card_.functions, on_card) };
+        more_->set_access_name(function_more_access_name(card_.display_name, card_.functions.size(), status));
+        more_->set_tooltip(function_more_tooltip(status));
         if (more_marker_ == nullptr)
             return;
 
-        // 실행 중임은 상태 아이콘 회전과 3번째 줄 칩으로도 보이지만 실패는 이 점뿐이라 실패를 먼저 보인다.
-        const function_more_marker state { function_more_marker_state(card_.functions, on_card) };
+        // 실행 중임은 상태 아이콘 회전과 3번째 줄 칩으로도 보이지만 실패는 이 표식뿐이라 실패를 먼저 보인다. 모양으로도
+        // 가른다: 실행 중은 원, 실패는 마름모다 (D35).
+        const function_more_marker state { function_more_marker_state(status) };
         const bool marker_visible { more_visible && state != function_more_marker::none };
         more_marker_->set_visible(marker_visible);
-        static_cast<function_marker_element*>(more_marker_)->set_tone(state == function_more_marker::failed ? marker_tone::error : marker_tone::accent);
+        const function_marker_shape shape { state == function_more_marker::failed ? function_marker_shape::failed : function_marker_shape::running };
+        more_marker_->set_shape(shape);
         if (marker_visible)
-            more_marker_->arrange(context.for_child(marker_slot(more_->bounds(), scale)));
+            more_marker_->arrange(context.for_child(function_marker_slot(more_->bounds(), scale, shape)));
     }
 
     void card_element::draw(draw_context& context, const interaction_snapshot& interaction) const

@@ -658,6 +658,10 @@ namespace gitman {
             // 배치 메뉴의 기능과, 그 메뉴를 기능 줄 버튼에서 열었는지다.
             std::u8string button {};
             bool from_bar { false };
+            // 기능 메뉴 쪽의 첫 기능 index다 (function-buttons-design 2.3.2, D34). 0이면 첫 쪽이다. 기능 메뉴의
+            // `기능 더 보기…`는 `function_menu_page_size`만큼 넘기고, 카드 메뉴의 것은 카드 메뉴가 이미 실은 앞
+            // `card_menu_function_count`개 다음부터 연다.
+            std::size_t function_first { 0 };
         };
 
         std::optional<context_menu_state> context_menu_ {};
@@ -672,9 +676,10 @@ namespace gitman {
         [[nodiscard]] std::vector<context_menu_item_view> context_menu_items(const context_menu_state& menu) const;
         [[nodiscard]] std::vector<context_menu_item_view> card_context_menu_items(const card_state& card, std::chrono::steady_clock::time_point opened_at) const;
         [[nodiscard]] std::vector<context_menu_item_view> document_context_menu_items() const;
-        // 기능 메뉴다 (2.3.2). 그 카드의 적용 기능 전체(배치와 상관없이 문서 순서) → 구분선 → `기능 편집…` 자리,
-        // `문서 다시 읽기`다.
-        [[nodiscard]] std::vector<context_menu_item_view> function_context_menu_items(const card_state& card, std::chrono::steady_clock::time_point opened_at) const;
+        // 기능 메뉴의 한 쪽이다 (2.3.2, D34). 그 카드의 적용 기능(배치와 상관없이 문서 순서) 중 `first_function`번째부터
+        // `function_menu_page_size`개 → 뒤에 남은 기능이 있으면 `기능 더 보기…` → 구분선 → `기능 편집…`, `문서 다시 읽기`다.
+        // 기능이 줄어 그 쪽이 비면 첫 쪽을 보인다.
+        [[nodiscard]] std::vector<context_menu_item_view> function_context_menu_items(const card_state& card, std::chrono::steady_clock::time_point opened_at, std::size_t first_function) const;
         // 기능 항목 하나다. 기능 메뉴와 카드 메뉴 기능 절이 같은 항목을 쓴다. 경과 시간은 메뉴를 연 시각(`opened_at`)까지다.
         [[nodiscard]] static context_menu_item_view function_menu_item(const card_function_view& function, std::chrono::steady_clock::time_point opened_at);
         // `기능 편집…`이다 (2.7). `button_id`가 있으면(배치 메뉴) 그 기능을 고른 상태로 연다. 문서가 없으면 값이 없다.

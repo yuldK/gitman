@@ -4,6 +4,7 @@
 #include "presentation/function_presentation.h"
 #include "presentation/list_metrics.h"
 #include "presentation/ui/element_kinds.h"
+#include "presentation/ui/function_marker_element.h"
 
 #include "luil/ui/font_scale.h"
 #include "luil/ui/ui_tree.h"
@@ -181,10 +182,10 @@ TEST_CASE("Card text widths follow the 2.3 table and the reserve folds only belo
     REQUIRE(gitman::layout_card_function_slots(441.0f, 3, true).text_right - gitman::layout_card_text_left >= gitman::layout_card_function_text_reserve);
 }
 
-TEST_CASE("At 480 width every function stays reachable", "[function_buttons][t9][ui][tree]")
+TEST_CASE("At 480 width every function stays reachable", "[function_buttons][t9][s2][ui][tree]")
 {
     // 카드당 상한 20개: `card` 셋 + 나머지 17개(`bar`·`menu`). 최소 폭에서도 고정 셋이 접히지 않고 `⋯`가 보이며,
-    // 기능 메뉴가 20개 모두를 싣는다 (B6, 2.3.1).
+    // 기능 메뉴가 20개 모두에 닿는다 (B6, 2.3.1). 한 쪽은 12개이고 나머지는 `기능 더 보기…`로 다음 쪽에 있다 (D34).
     std::vector<gitman::function_button> buttons {
         make_function_card_button(u8"f00", u8"기능 0", u8"card"),
         make_function_card_button(u8"f01", u8"기능 1", u8"card"),
@@ -214,13 +215,27 @@ TEST_CASE("At 480 width every function stays reachable", "[function_buttons][t9]
     REQUIRE(more->enabled());
 
     fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 10.0f });
-    const gitman::context_menu_view menu { fixture.menu() };
-    REQUIRE(function_item_count(menu) == 20u);
-    for (const gitman::context_menu_item_view& item : menu.items)
+    std::vector<std::u8string> reached {};
+    for (int page = 0; page < 3; ++page)
     {
-        if (item.entry == gitman::context_menu_entry::run_function)
-            REQUIRE(item.enabled);
+        const gitman::context_menu_view menu { fixture.menu() };
+        bool more_item { false };
+        for (const gitman::context_menu_item_view& item : menu.items)
+        {
+            if (item.entry == gitman::context_menu_entry::run_function)
+            {
+                REQUIRE(item.enabled);
+                reached.push_back(item.argument);
+            }
+            more_item = more_item || item.entry == gitman::context_menu_entry::more_functions;
+        }
+        if (more_item == false)
+            break;
+        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::more_functions, {} });
     }
+    REQUIRE(reached.size() == 20u);
+    REQUIRE(reached.front() == u8"f00");
+    REQUIRE(reached.back() == u8"f19");
 }
 
 TEST_CASE("Bar and menu functions stay off the card column and appear in the function menu", "[function_buttons][t9][ui][tree]")
@@ -370,7 +385,7 @@ TEST_CASE("Card height stays layout_card_height with function buttons", "[functi
     }
 }
 
-TEST_CASE("Running and failed functions show on the card column", "[function_buttons][t9][ui][tree]")
+TEST_CASE("Running and failed functions show on the card column", "[function_buttons][t9][s2][ui][tree]")
 {
     function_card_fixture fixture { make_function_card_projects(3), sample_buttons() };
     fixture.query(u8"p00");
@@ -423,23 +438,24 @@ TEST_CASE("Running and failed functions show on the card column", "[function_but
     const luil::ui_element* const p00_more_marker { find(*tree, ui::kind_card_function_more_marker, u8"p00") };
     REQUIRE((p00_more_marker == nullptr || p00_more_marker->visible() == false));
 
-    // 실패한 `card` 버튼에는 오른쪽 위 6px 점이 버튼 뒤(위)에 붙는다. 점은 hit 대상이 아니다.
+    // 실패한 `card` 버튼에는 오른쪽 위 8px 마름모가 버튼 뒤(위)에 붙는다 (S2, D35: 실행 중 6px 원과 가운데가 같다). 표식은
+    // hit 대상이 아니다.
     const luil::ui_element* const failed { find(*tree, ui::kind_card_function, u8"p01:test") };
     REQUIRE(failed->access_name() == u8"테스트, p01, 마지막 실패: 종료 코드 1");
     const luil::ui_element* const marker { find(*tree, ui::kind_card_function_marker, u8"p01:test") };
     REQUIRE(marker != nullptr);
     REQUIRE(marker->visible());
     const luil::rect_f box { failed->bounds() };
-    REQUIRE(marker->bounds().width == 6.0f);
-    REQUIRE(marker->bounds().x == box.x + box.width - 2.0f - 6.0f);
-    REQUIRE(marker->bounds().y == box.y + 2.0f);
+    REQUIRE(marker->bounds().width == 8.0f);
+    REQUIRE(marker->bounds().x == box.x + box.width - 1.0f - 8.0f);
+    REQUIRE(marker->bounds().y == box.y + 1.0f);
     REQUIRE(tree->hit_test(marker->bounds().x + 1.0f, marker->bounds().y + 1.0f) == failed);
-    // 고정하지 않은 기능(린트, `bar`)의 실패는 `⋯`의 점이다.
+    // 고정하지 않은 기능(린트, `bar`)의 실패는 `⋯`의 표식이다.
     const luil::ui_element* const more_marker { find(*tree, ui::kind_card_function_more_marker, u8"p01") };
     REQUIRE(more_marker != nullptr);
     REQUIRE(more_marker->visible());
     const luil::rect_f more { bounds_of(*tree, ui::kind_card_function_more, u8"p01") };
-    REQUIRE(more_marker->bounds().x == more.x + more.width - 2.0f - 6.0f);
+    REQUIRE(more_marker->bounds().x == more.x + more.width - 1.0f - 8.0f);
 
     // 실패가 없는 카드에는 점이 없다.
     REQUIRE(find(*tree, ui::kind_card_function_marker, u8"p02:build") == nullptr);
@@ -503,6 +519,106 @@ TEST_CASE("The more dot shows running and failed functions without a card button
         const luil::ui_element* const other { find(*tree, ui::kind_card_function_more_marker, u8"p01") };
         REQUIRE((other == nullptr || other->visible() == false));
     }
+}
+
+TEST_CASE("The more marker tells running from failed by shape and in its name", "[function_buttons][s2][ui][tree]")
+{
+    // D35: 실행 중은 6px 채운 원(accent), 실패는 8px 채운 마름모(error)다. 색을 가리기 어려워도 모양으로 가른다. `⋯`의
+    // 접근 이름과 tooltip은 표식이 맡는 기능(카드 열에 버튼이 없는 것)의 실행 중·실패 수를 붙인다.
+    const auto shape_of = [](const luil::ui_element* const element) {
+        const auto* const marker { dynamic_cast<const ui::function_marker_element*>(element) };
+        REQUIRE(marker != nullptr);
+        return marker->shape();
+    };
+
+    SECTION("실행 중이면 원이고 이름에 실행 중 수가 붙는다")
+    {
+        function_card_fixture fixture { make_function_card_projects(2), sample_buttons() };
+        fixture.run(u8"p00", u8"lint");
+        fixture.started(fixture.functions.requests[0], std::chrono::steady_clock::now());
+        const auto tree { fixture.tree() };
+        const luil::ui_element* const marker { find(*tree, ui::kind_card_function_more_marker, u8"p00") };
+        REQUIRE(marker->visible());
+        REQUIRE(shape_of(marker) == ui::function_marker_shape::running);
+        const luil::rect_f more { bounds_of(*tree, ui::kind_card_function_more, u8"p00") };
+        REQUIRE(marker->bounds().width == 6.0f);
+        REQUIRE(marker->bounds().x == more.x + more.width - 2.0f - 6.0f);
+        const luil::ui_element* const button { find(*tree, ui::kind_card_function_more, u8"p00") };
+        REQUIRE(button->accessibility().name == u8"기능 더 보기, p00, 5개, 실행 중 1개");
+        REQUIRE(button->tooltip() == u8"기능 더 보기 (Alt+↓) — 실행 중 1개");
+        // 상태가 없는 카드는 예전 이름 그대로다.
+        REQUIRE(find(*tree, ui::kind_card_function_more, u8"p01")->accessibility().name == u8"기능 더 보기, p01, 5개");
+        REQUIRE(find(*tree, ui::kind_card_function_more, u8"p01")->tooltip() == u8"기능 더 보기 (Alt+↓)");
+    }
+
+    SECTION("실패면 마름모이고, 실행 중과 실패가 섞이면 둘 다 센다")
+    {
+        // 린트(`bar`)는 실패, 정리(`menu`)는 실행 중이다. `card` 버튼(테스트)의 실패는 그 버튼의 이름이 말하므로 세지 않는다.
+        function_card_fixture fixture { make_function_card_projects(2), sample_buttons() };
+        fixture.run(u8"p00", u8"test");
+        fixture.completed(fixture.functions.requests[0], gitman::function_run_outcome::exited, 1);
+        fixture.run(u8"p00", u8"lint");
+        fixture.completed(fixture.functions.requests[1], gitman::function_run_outcome::exited, 2);
+        fixture.run(u8"p00", u8"clean");
+        fixture.started(fixture.functions.requests[2], std::chrono::steady_clock::now());
+        const auto tree { fixture.tree() };
+        const luil::ui_element* const marker { find(*tree, ui::kind_card_function_more_marker, u8"p00") };
+        REQUIRE(marker->visible());
+        REQUIRE(shape_of(marker) == ui::function_marker_shape::failed);
+        const luil::rect_f more { bounds_of(*tree, ui::kind_card_function_more, u8"p00") };
+        REQUIRE(marker->bounds().width == 8.0f);
+        REQUIRE(marker->bounds().x == more.x + more.width - 1.0f - 8.0f);
+        REQUIRE(marker->bounds().y == more.y + 1.0f);
+        const luil::ui_element* const button { find(*tree, ui::kind_card_function_more, u8"p00") };
+        REQUIRE(button->accessibility().name == u8"기능 더 보기, p00, 5개, 실행 중 1개, 실패 1개");
+        REQUIRE(button->tooltip() == u8"기능 더 보기 (Alt+↓) — 실행 중 1개, 실패 1개");
+        // `card` 버튼의 실패 표식도 같은 마름모다.
+        REQUIRE(shape_of(find(*tree, ui::kind_card_function_marker, u8"p00:test")) == ui::function_marker_shape::failed);
+    }
+
+    SECTION("접힌 `card` 기능도 표식이 맡으므로 이름에 센다")
+    {
+        function_card_fixture fixture { make_function_card_projects(2), sample_buttons(), 470.0f, 320.0f };
+        fixture.run(u8"p00", u8"open");
+        fixture.started(fixture.functions.requests[0], std::chrono::steady_clock::now());
+        const auto tree { fixture.tree() };
+        REQUIRE(find(*tree, ui::kind_card_function, u8"p00:open")->visible() == false);
+        REQUIRE(find(*tree, ui::kind_card_function_more, u8"p00")->accessibility().name == u8"기능 더 보기, p00, 5개, 실행 중 1개");
+    }
+
+    SECTION("상태 수와 문구")
+    {
+        gitman::card_function_view running {};
+        running.running = true;
+        gitman::card_function_view failed {};
+        failed.failed = true;
+        gitman::card_function_view idle {};
+        const gitman::function_more_status status { gitman::function_more_status_of({ running, failed, failed, idle, running }, { false, false, false, false, true }) };
+        REQUIRE(status.running == 1u);
+        REQUIRE(status.failed == 2u);
+        REQUIRE(gitman::function_more_access_name(u8"frontend", 5, status) == u8"기능 더 보기, frontend, 5개, 실행 중 1개, 실패 2개");
+        REQUIRE(gitman::function_more_access_name(u8"frontend", 5, { 0, 1 }) == u8"기능 더 보기, frontend, 5개, 실패 1개");
+        REQUIRE(gitman::function_more_tooltip({}) == u8"기능 더 보기 (Alt+↓)");
+        REQUIRE(gitman::function_more_tooltip({ 0, 3 }) == u8"기능 더 보기 (Alt+↓) — 실패 3개");
+    }
+}
+
+TEST_CASE("Bar failure markers use the failure shape", "[function_buttons][s2][ui][tree]")
+{
+    // 기능 줄 버튼의 실패 표식도 같은 마름모다 (2.3.5의 기능 줄 열). 실패는 버튼 글(`· 실패`)도 말한다.
+    function_card_fixture fixture { make_function_card_projects(2), sample_buttons() };
+    fixture.controller.handle(gitman::select_card_intent { gitman::project_id { u8"p00" } });
+    fixture.run(u8"p00", u8"lint");
+    fixture.completed(fixture.functions.requests[0], gitman::function_run_outcome::exited, 1);
+    const auto tree { fixture.tree() };
+    const luil::ui_element* const button { find(*tree, ui::kind_function_bar_button, u8"p00:lint") };
+    REQUIRE(button != nullptr);
+    const auto* const marker { dynamic_cast<const ui::function_marker_element*>(find(*tree, ui::kind_function_bar_marker, u8"p00:lint")) };
+    REQUIRE(marker != nullptr);
+    REQUIRE(marker->shape() == ui::function_marker_shape::failed);
+    REQUIRE(marker->bounds().width == 8.0f);
+    REQUIRE(marker->bounds().x == button->bounds().x + button->bounds().width - 1.0f - 8.0f);
+    REQUIRE(marker->bounds().y == button->bounds().y + 1.0f);
 }
 
 TEST_CASE("Card function buttons carry fixed access names and the card lists its function count", "[function_buttons][t9][ui][tree]")

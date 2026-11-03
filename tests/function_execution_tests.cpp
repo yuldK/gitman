@@ -654,6 +654,7 @@ TEST_CASE("One output line followed by two silent seconds arrives as an event wi
 
     std::optional<std::chrono::steady_clock::time_point> started_at {};
     std::optional<std::chrono::steady_clock::time_point> sleeping_at {};
+    std::optional<std::chrono::steady_clock::time_point> woke_at {};
     std::optional<std::chrono::steady_clock::time_point> completed_at {};
     std::vector<std::u8string> lines {};
     for (const event_recorder::entry& value : recorder.snapshot())
@@ -668,6 +669,8 @@ TEST_CASE("One output line followed by two silent seconds arrives as an event wi
                 lines.push_back(entry.text);
                 if (entry.text == u8"sleeping" && sleeping_at.has_value() == false)
                     sleeping_at = value.received_at;
+                if (entry.text == u8"woke" && woke_at.has_value() == false)
+                    woke_at = value.received_at;
             }
         }
         else if (std::holds_alternative<gitman::function_completed_event>(value.message))
@@ -676,10 +679,13 @@ TEST_CASE("One output line followed by two silent seconds arrives as an event wi
 
     REQUIRE(started_at.has_value());
     REQUIRE(sleeping_at.has_value());
+    REQUIRE(woke_at.has_value());
     REQUIRE(completed_at.has_value());
     REQUIRE(lines == std::vector<std::u8string> { u8"sleeping", u8"woke" });
-    // 16건이 차지 않아도 주기 flush가 그 한 줄을 자식이 끝나기 전에 보낸다.
-    REQUIRE(*sleeping_at - *started_at < std::chrono::milliseconds { 2000 });
+    // 16건이 차지 않아도 주기 flush가 그 한 줄을 자식이 끝나기 전에 보낸다. 2초는 줄을 쓴 때부터 잰다. started부터 재면
+    // 부하 중 Debug 자식이 뜨는 데 쓴 시간까지 들어가 2.6~3.4초로 실패했다 (S5). 자식은 줄을 쓰고 3초 뒤에 `woke`를 쓰므로
+    // 그 줄이 2초 안에 왔다면 `woke`보다 1초 넘게 먼저 온다.
+    REQUIRE(*woke_at - *sleeping_at > std::chrono::milliseconds { 1000 });
     REQUIRE(*sleeping_at < *completed_at);
 
     const std::vector<gitman::function_completed_event> completed { recorder.completed() };

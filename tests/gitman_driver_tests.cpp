@@ -1,6 +1,7 @@
 #include "platform/win32/gitman_driver.h"
 
 #include "helpers/discovery_test_doubles.h"
+#include "helpers/document_file_watch.h"
 #include "helpers/ui_test_support.h"
 
 #include "application/app_messages.h"
@@ -17,7 +18,6 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -151,30 +151,23 @@ TEST_CASE("A reorder intent persists the new order into the document file", "[dr
     const auto both_cards { [](const gitman::view_snapshot& value) { return value.cards.size() == 2u; } };
     REQUIRE(harness.wait_for_view(std::chrono::milliseconds { 15000 }, both_cards) != nullptr);
 
-    // alpha를 beta 뒤로 옮긴다. 화면 순서 = 문서 순서가 함께 바뀐다.
+    // alpha를 beta 뒤로 옮긴다. 화면 순서 = 문서 순서가 함께 바뀐다. 저장이 끝나기 전에 문서를 열면 store의 rename 교체가
+    // 실패하므로(열린 handle이 있으면 공유 모드와 상관없이 거부된다) 디렉터리 항목으로 교체를 확인한 뒤 한 번만 읽는다 (S5).
+    const gitman::testing::document_file_stamp before_save { gitman::testing::stamp_document_file(document_path) };
     harness.post(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, true });
     const auto reordered = [](const gitman::view_snapshot& value) {
         return value.cards.size() == 2u && value.cards.front().id.value == u8"beta" && value.cards.back().id.value == u8"alpha";
     };
     REQUIRE(harness.wait_for_view(std::chrono::milliseconds { 15000 }, reordered) != nullptr);
 
-    // 실제 store가 문서를 새 순서로 다시 쓸 때까지 파일을 읽는다.
-    bool persisted { false };
-    const auto deadline { std::chrono::steady_clock::now() + std::chrono::milliseconds { 15000 } };
-    while (std::chrono::steady_clock::now() < deadline)
+    // 다른 저장이 먼저 교체하더라도 새 순서가 담긴 교체를 마감까지 기다린다.
+    const auto beta_first = [](const std::string& content)
     {
-        std::ifstream stream { std::filesystem::path { document_path }, std::ios::binary };
-        const std::string content { std::istreambuf_iterator<char> { stream }, std::istreambuf_iterator<char> {} };
         const std::size_t beta_position { content.find("\"beta\"") };
         const std::size_t alpha_position { content.find("\"alpha\"") };
-        if (beta_position != std::string::npos && alpha_position != std::string::npos && beta_position < alpha_position)
-        {
-            persisted = true;
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds { 20 });
-    }
-    REQUIRE(persisted);
+        return beta_position != std::string::npos && alpha_position != std::string::npos && beta_position < alpha_position;
+    };
+    REQUIRE(gitman::testing::wait_for_document_content(document_path, before_save, std::chrono::milliseconds { 15000 }, beta_first).has_value());
 
     harness.host.shutdown();
 }

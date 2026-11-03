@@ -23,6 +23,9 @@ gitman_add_source_filter(gitman_test_files "resource"
 gitman_add_source_filter(gitman_test_files "helpers"
     helpers/discovery_test_doubles.cpp
     helpers/discovery_test_doubles.h
+    helpers/debug_report_mode.cpp
+    helpers/document_file_watch.cpp
+    helpers/document_file_watch.h
     helpers/function_card_fixture.h
     helpers/git_repository_fixture.cpp
     helpers/git_repository_fixture.h
@@ -148,6 +151,7 @@ gitman_add_source_filter(gitman_test_files "presentation/dialogs"
     switch_dialog_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "platform/host"
+    document_file_watch_tests.cpp
     function_shutdown_tests.cpp
     gitman_delegate_tests.cpp
     gitman_driver_tests.cpp

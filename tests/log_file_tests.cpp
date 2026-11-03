@@ -7,6 +7,7 @@
 
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -36,7 +37,11 @@ namespace {
     public:
         [[nodiscard]] bool create_directories(const std::u8string_view path) noexcept override
         {
-            const std::lock_guard<std::mutex> lock { mutex_ };
+            std::unique_lock<std::mutex> lock { mutex_ };
+            ++directory_calls_;
+            changed_.notify_all();
+            // 붙잡기를 풀지 않은 test가 writer의 join에서 멎지 않도록 기다림에 상한을 둔다.
+            changed_.wait_for(lock, std::chrono::seconds { 10 }, [this] { return directories_held_ == false; });
             if (directories_fail_)
                 return false;
             directories_.emplace_back(path);
@@ -79,6 +84,29 @@ namespace {
             appends_fail_ = true;
         }
 
+        // 폴더 만들기를 붙잡는다. writer가 lock을 푼 그 틈에 다른 일을 끼울 때 쓴다.
+        void hold_directories()
+        {
+            const std::lock_guard<std::mutex> lock { mutex_ };
+            directories_held_ = true;
+        }
+
+        void release_directories()
+        {
+            {
+                const std::lock_guard<std::mutex> lock { mutex_ };
+                directories_held_ = false;
+            }
+            changed_.notify_all();
+        }
+
+        // writer가 폴더 만들기에 들어올 때까지 기다린다.
+        [[nodiscard]] bool wait_for_directory_call()
+        {
+            std::unique_lock<std::mutex> lock { mutex_ };
+            return changed_.wait_for(lock, std::chrono::seconds { 10 }, [this] { return directory_calls_ > 0; });
+        }
+
         [[nodiscard]] std::vector<std::u8string> directories() const
         {
             const std::lock_guard<std::mutex> lock { mutex_ };
@@ -112,10 +140,13 @@ namespace {
 
     private:
         mutable std::mutex mutex_ {};
+        std::condition_variable changed_ {};
         std::vector<std::u8string> directories_ {};
         std::vector<std::pair<std::u8string, std::u8string>> files_ {};
+        std::size_t directory_calls_ { 0 };
         bool directories_fail_ { false };
         bool appends_fail_ { false };
+        bool directories_held_ { false };
     };
 
     gitman::operation_log_entry make_entry(const std::u8string_view text, const gitman::log_entry_kind kind = gitman::log_entry_kind::lifecycle)
@@ -267,6 +298,38 @@ TEST_CASE("The log file header names the document, not the log folder", "[log-fi
     REQUIRE(content.has_value());
     REQUIRE(content->starts_with(u8"# 문서: D:\\R&D ws\\team.version-list\r\n# 저장소: alpha (C:\\work\\alpha)\r\n"));
     REQUIRE(content->find(u8".team.version-list.log") == std::u8string::npos);
+}
+
+TEST_CASE("A document change while the writer creates a log folder keeps the old document's line", "[log-file][writer][function_buttons][s5]")
+{
+    // writer는 폴더를 만드는 동안 lock을 푼다. 그 사이 문서가 바뀌어 꺼낸 묶음의 세대를 큐만 보고 버리면 쓰던 항목의
+    // 상태가 사라져 Debug에서는 반복자 검사 assert로 멎고 Release에서는 해제된 노드를 쓴다 (S5의 부하 반복 중 멎은 실행).
+    fake_log_file_system files {};
+    files.hold_directories();
+    gitman::file_log_writer writer { files };
+
+    writer.set_document(u8"D:\\ws\\first.version-list", make_targets({ { u8"alpha", u8"C:\\work\\alpha" } }));
+    writer.append(gitman::project_id { u8"alpha" }, make_entry(u8"이전 문서 줄"));
+    REQUIRE(files.wait_for_directory_call());
+
+    writer.set_document(u8"D:\\ws\\second.version-list", make_targets({ { u8"beta", u8"C:\\work\\beta" } }));
+    writer.set_document(u8"D:\\ws\\third.version-list", make_targets({ { u8"gamma", u8"C:\\work\\gamma" } }));
+    files.release_directories();
+    writer.flush();
+
+    // 이전 문서의 남은 항목은 이전 문서의 폴더와 머리글로 남는다.
+    const std::optional<std::u8string> content { files.content_of(u8".first.version-list.log\\alpha") };
+    REQUIRE(content.has_value());
+    REQUIRE(content->starts_with(u8"# 문서: D:\\ws\\first.version-list\r\n"));
+    REQUIRE(content->find(u8"이전 문서 줄") != std::u8string::npos);
+    REQUIRE(writer.take_failure().has_value() == false);
+
+    // 묶음을 끝낸 뒤에는 새 문서에 쓴다.
+    writer.append(gitman::project_id { u8"gamma" }, make_entry(u8"새 문서 줄"));
+    writer.flush();
+    const std::optional<std::u8string> current { files.content_of(u8".third.version-list.log\\gamma") };
+    REQUIRE(current.has_value());
+    REQUIRE(current->find(u8"새 문서 줄") != std::u8string::npos);
 }
 
 TEST_CASE("The writer ignores entries without a document or an unknown card", "[log-file][writer]")

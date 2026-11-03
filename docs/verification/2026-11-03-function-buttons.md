@@ -63,7 +63,7 @@
 
 - Debug 실패는 Catch2 실패 글 없이 출력이 멎고 Git Bash 종료 코드 127로 끝났다. 그 뒤 PowerShell 25회, analysis 전체 다시 빌드 중 `[driver]`를 더해 25회, 실패한 seed 2개로 CPU 부하 9회, `[driver]` test를 하나씩 CPU 부하 아래 8회씩(시간 상한으로 7개) 돌렸고 모두 통과했다.
 - 한 번은 seed 436075639의 실행 순서로 `A corrupt reload keeps the document and a reload after a hand edit recovers saving`(`function_shutdown_tests.cpp`, T11)을 짚었다. 다른 한 번은 어떤 test였는지 남지 않았다.
-- 추정 원인(추측): luil `app_host::shutdown`은 logic thread가 1초 안에 나오지 않으면 `platform_fail_fast`(`__fastfail(7)`)를 부른다. 이 test의 `host.shutdown()`은 한가할 때 30ms, CPU 부하에서 18~831ms였다(실험 코드는 되돌림). 같은 harness가 기준점의 `gitman_driver_tests.cpp`에도 있다. 원인을 확정하지 못해 고치지 않았고 설계 문서 "확인하지 못한 것"의 T10 항목에 적었다.
+- 추정 원인(추측): luil `app_host::shutdown`은 logic thread가 1초 안에 나오지 않으면 `platform_fail_fast`(`__fastfail(7)`)를 부른다. 이 test의 `host.shutdown()`은 한가할 때 30ms, CPU 부하에서 18~831ms였다(실험 코드는 되돌림). 같은 harness가 기준점의 `gitman_driver_tests.cpp`에도 있다. 원인을 확정하지 못해 고치지 않았고 설계 문서 "확인하지 못한 것"의 T10 항목에 적었다. (S5에서 다시 봤다: 부하 아래 반복에서 끝난 실행의 종료 코드는 0과 42뿐이었고 `0xC0000409`는 나오지 않아 이 추정은 확인되지 않았다. 재현된 실패는 Catch2 단언 실패 셋과, 이 test에서 출력이 멎은 멈춤 하나(파일 로그 writer 경쟁이 낸 Debug assert 대화상자)였다. 단언 실패는 test를, 멈춤은 제품을 고쳤다, 11장.)
 
 ## 4. 앱 점검
 
@@ -122,7 +122,7 @@
 
 - **종료 직전 대기 저장이 버려진다.** 앞선 저장이 진행 중일 때 낸 저장(`save_queued_`: 편집 dialog Apply, 배치 변경, 카드 순서 변경)을 `begin_shutdown`이 보지 않는다. 고치려면 진행 중 저장의 결과 revision으로 이어 쓰거나 runtime 종료 순서를 바꿔야 한다. 기준점의 카드 순서 변경·창 배치 저장에도 있던 틈이다.
 - **앱 설정을 읽기 전에 누른 기능은 이미 신뢰한 정의도 다시 묻는다.** T7이 읽기 전 신뢰를 합쳐 저장하기로 정했고 그것을 고정하는 test(`A trust recorded before the app settings arrive survives the load and is saved`)가 있어 두었다. (5차 검수에서 고치기로 골라 S1에서 고침: 읽는 동안 누른 실행은 읽기가 끝날 때까지 기다렸다가 판정하고, 이 test는 `A trust asked for a run pressed before the app settings arrive is saved with the loaded list`로 바뀌었다.)
-- **Debug 타이밍 test가 부하 중 드물게 출력 없이 끝난다**(약 90회 중 2회, 원인 미확정, 3장).
+- **Debug 타이밍 test가 부하 중 드물게 출력 없이 끝난다**(약 90회 중 2회, 원인 미확정, 3장). (5차 검수에서 고치기로 골라 S5에서 다시 봄: 재현된 간헐 실패는 단언 실패 셋과 출력이 멎은 멈춤 하나였다. 단언 실패는 test를 고쳤고, 멈춤은 파일 로그 writer의 경쟁이라 제품을 고쳤다. V의 종료 코드 127 그대로는 재현되지 않았다, 11장.)
 - 8장의 사용자 결정 항목 넷(특히 high 하나)은 V에서 고치지 않았다. 3차 검수 D26~D29로 정해 R1~R3에서 반영했다(9장).
 - 6.3에서 미확인으로 남은 것: `start`로 띄운 손자 정리, 기본 터미널이 conhost일 때의 분리 실행 창, 작업 영역보다 긴 메뉴, 상태 글이 바뀔 때의 낭독, `Alt` 뒤 경고음.
 - 앱 점검은 기본 테마·기본 글 크기에서만 했다. 글 크기 150%·어두운 테마·고대비에서의 모양, `Alt+F4`·작업 표시줄 닫기, IME 조합과 편집 dialog의 `Alt+↑/↓`는 보지 않았다.
@@ -174,7 +174,7 @@
 - live region 알림
 - 소비한 Alt 조합의 `WM_SYSCHAR`·`WM_SYSKEYUP` 삼키기
 
-**V에서 남긴 것** (7장): 종료 직전 대기 저장 버려짐(5차 검수에서 고치기로 고름, S3에서 고침: 닫기·열기·종료가 저장 결과를 기다림, 종료는 5초 상한), 앱 설정 읽기 전 신뢰 dialog(5차 검수에서 고치기로 고름, S1에서 고침), Debug 타이밍 test 원인 미확정.
+**V에서 남긴 것** (7장): 종료 직전 대기 저장 버려짐(5차 검수에서 고치기로 고름, S3에서 고침: 닫기·열기·종료가 저장 결과를 기다림, 종료는 5초 상한), 앱 설정 읽기 전 신뢰 dialog(5차 검수에서 고치기로 고름, S1에서 고침), Debug 타이밍 test 원인 미확정(5차 검수에서 고치기로 고름, S5에서 재현된 실패의 원인을 가려 test와 파일 로그 writer의 경쟁을 고침, 11장).
 
 ## 9. 3차 검수 반영(R1~R3)
 
@@ -314,4 +314,39 @@ CTest 등록 수는 9.3의 1112에서 1134로 22개 늘었다(R4에서 더한 te
 - **cmd 한계**: 부른 배치가 `setlocal EnableDelayedExpansion`을 켜면 넣은 `/v:off`가 무력해진다(설명서 12.6에 적음, 막지 않음. S3에서 명령이 부르는 배치에 그 줄이나 `call`이 있으면 경고하게 함). `call`로 `%`가 든 값을 넘기면 인자 경계가 바뀌거나 실행되지 않을 수 있다(주입은 확인하지 못함). `CommandLineToArgvW` 규칙의 프로그램은 `""` 뒤 공백에서 인자를 가를 수 있다. `unprotected_value` 경고는 사용자가 그래도 승인할 수 있다(원인은 작성자의 문장).
 - **문장 판정**(공백이 든 상대 경로는 S3에서 작업 폴더에 그 파일이 있는지로 가르게 고침): 공백이 든 상대 경로와 실행 확장자 이름이 든 폴더(`C:\my.bat files\x.exe`)는 문장으로 잘못 볼 수 있다(확인 dialog에 보임). `${tool} --flag`처럼 변수로 시작하는 문장에서 그 값에 공백이 있는 경우는 실제 `cmd.exe`로 돌려 보지 않았다(R4에서 새로 깨진 경우는 아님).
 - **앱에서 보지 못한 것**: 확인 dialog의 `Esc`·창 밖 클릭 취소, 분리 실행의 cmd 조립, 레지스트리 `DelayedExpansion`이 켜진 기계, 글 크기 150%·밝은 테마·고대비에서의 경고색. 10.4의 기록만 한 세 가지.
-- **`[runner]` test**: R4 첫 구현 때 한 번 실패했고 그 뒤 두 번과 이번 전체 실행에서는 통과했다. 원인을 모른다. 3장의 Debug 타이밍 test와 같은 것인지도 확인하지 못했다.
+- **`[runner]` test**: R4 첫 구현 때 한 번 실패했고 그 뒤 두 번과 이번 전체 실행에서는 통과했다. 원인을 모른다. 3장의 Debug 타이밍 test와 같은 것인지도 확인하지 못했다. (S5에서 가름: 다른 원인이다. 자식을 만든 때부터 재는 짧은 제한 시간(400ms) 안에 부하 중 Debug 자식이 첫 줄을 쓰지 못하거나 경고 진단이 첫 자리에 서서 단언이 실패한다. test를 고쳤다, 11장.)
+
+## 11. 5차 검수 반영: Debug 타이밍 test 간헐 실패(S5)
+
+날짜: 2026-11-04 · 결과·설계에서 달라진 것·남긴 것은 설계 문서 "구현 결과"의 S5 행과 "설계에서 달라진 것"·"확인하지 못한 것"의 S5 항목이 정본이다.
+
+### 11.1 방법
+
+- 반복 스크립트(scratchpad, 커밋하지 않음). `repro.ps1`: CPU spin 프로세스 수, 함께 돌릴 test 프로세스 수, 태그, 실행마다 무작위 `--rng-seed`, `-d yes`, PowerShell `Process.ExitCode`로 실제 종료 코드, 칸마다 실행 파일을 복사하는 `-IsolateSlots`, 실행마다 상한(넘기면 모든 thread stack을 찍어 `HANG`, S5 검토 뒤 더함). `repro_with_build.ps1`(P1): 다른 구성의 `--clean-first` 전체 빌드 옆에서 test 프로세스 하나. `stacks.ps1`: 디버거 없이 dbghelp `StackWalk64`로 멈춘 프로세스의 모든 thread stack.
+- 3장의 추정(luil `app_host::shutdown`의 1초 상한, `__fastfail`)을 가르려고 Windows Application 로그(이벤트 1000)도 봤다. 같은 기간 다른 저장소 test 실행 파일의 `c0000409` 기록은 있고 `gitman_tests.exe`의 기록은 없었다.
+
+### 11.2 실행과 결과
+
+| 묶음 | 실행 파일 | 조건 | 결과 |
+|---|---|---|---|
+| 고치는 동안 | 고치기 전·중간 | CPU spin 40개, test 프로세스 6~8개, 타이밍 태그·`[driver]`·`[runner]` | 175회. 종료 코드 0과 42뿐, `0xC0000409` 없음. 실패한 단언으로 원인 셋을 가름(11.3) |
+| P2 | test만 고침 | CPU spin 32개 + test 프로세스 4개, `-IsolateSlots` | 200회 모두 종료 코드 0 |
+| P1 | test만 고침 | 전체 빌드 옆 test 프로세스 하나 | 29회 통과 뒤 30번째가 **멈춤**(종료 코드 없음, 11.3 (d)) |
+| P1 | writer까지 고침 | 전체 빌드 옆 test 프로세스 하나, 실행마다 상한 5분 | 35회 모두 종료 코드 0, 멈춤 없음(실행당 21~68초, 35회 내내 빌드가 함께 돎) |
+
+타이밍 태그 = `[t5],[t6],[t11],[t3],[process],[driver],[s5]`.
+
+### 11.3 원인과 고친 것
+
+- (a) 카드 순서 저장을 기다리는 `[driver]` test 둘: 20ms마다 문서를 읽던 test의 handle이 store의 rename 교체와 겹쳐 교체가 `ERROR_ACCESS_DENIED`로 실패했다(알림 `작업공간 문서 원본을 교체하지 못했습니다.`). test는 디렉터리 항목으로 교체를 확인한 뒤에만 읽고, 기대 내용이 아니면 다음 교체를 기다린다.
+- (b) 주기 flush test, (c) `[runner]`의 시간 초과·손자 대조군: 자식 프로세스가 뜨는 시간까지 고정 상한 안에 넣은 단언이었다. 그 시간과 떼어 놓았다. 7장과 10.5의 `[runner]` 실패는 (c)로 가렸다.
+- (d) P1에서 멈춘 실행: T11 `A corrupt reload keeps the document and a reload after a hand edit recovers saving`의 끝에서 주 thread는 `~file_log_writer`의 lock을, writer thread는 Debug 반복자 검사 assert의 모달 대화상자(`_CrtDbgReport` → `MessageBoxW`)를 lock을 쥔 채 기다렸다. 파일 로그 writer가 첫 기록에서 lock을 푼 사이 문서 변경(`set_document`)이 쓰던 세대를 지운 경쟁이다. 제품을 고쳤고(묶음을 쓰는 동안 세대를 버리지 않음, lock을 다시 쥘 때마다 다시 찾음) 결정적 test를 더했다. test 실행 파일은 이제 Debug CRT 보고를 표준 오류로 돌려 같은 assert가 멎지 않고 `0xC0000409`로 끝난다.
+- 3장의 luil 종료 상한은 원인으로 확인되지 않아 고치지 않았고 luil 요청도 내지 않는다. 3장의 출력 없는 종료(Git Bash 127)가 (d)와 같은 것이었는지는 확인하지 못했다.
+
+### 11.4 이번에 돌린 검증
+
+- 빌드 `vs2026-tests-debug` 경고 0.
+- `[s5]` 5건(27 assertions)을 30번 되풀이해 모두 통과. `[log-file]` 15건(93), `[driver]` 12건(105), `[runner]` 27건(386), 주기 flush test 1건(17) 통과.
+- 새 writer test를 고치기 전 writer로 돌려 표준 오류의 `Assertion failed: cannot dereference value-initialized list iterator`와 종료 코드 `0xC0000409`를 봤다(멎지 않음).
+- `scripts/normalize_line_endings.ps1`, `scripts/check_source_style.ps1` 통과(502개 파일).
+- 전체 CTest는 돌리지 않았다.

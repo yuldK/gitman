@@ -74,7 +74,8 @@ namespace gitman {
         void write_entry(const queued_entry& entry);
         // 현재 문서가 적재 대상이 아닌 상태다 (문서 없음 또는 실패로 꺼짐).
         [[nodiscard]] bool root_disabled() const;
-        // 큐에 남지 않은 이전 문서 세대를 버린다. mutex를 쥔 채 호출한다.
+        // 큐에 남지 않은 이전 문서 세대를 버린다. mutex를 쥔 채 호출한다. writer가 꺼낸 묶음은 큐에 없으므로 묶음을
+        // 쓰는 동안(`writing_`)에는 부르지 않는다.
         void prune_generations();
 
         log_file_system* file_system_ { nullptr };

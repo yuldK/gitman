@@ -1,6 +1,7 @@
 #include "platform/win32/gitman_driver.h"
 
 #include "helpers/discovery_test_doubles.h"
+#include "helpers/document_file_watch.h"
 #include "helpers/ui_test_support.h"
 
 #include "application/app_messages.h"
@@ -121,6 +122,23 @@ namespace {
     {
         return view.notices.empty() == false && view.notices.front().text == text;
     }
+
+    // 알림 띠의 글과 상세를 한 줄로 잇는다. 알림이 남아 실패한 test가 그 사유를 보이게 한다.
+    [[nodiscard]] std::string notice_summary(const gitman::view_snapshot& view)
+    {
+        std::string summary {};
+        for (const gitman::notice_view_model& notice : view.notices)
+        {
+            summary.append(notice.text.begin(), notice.text.end());
+            for (const std::u8string& detail : notice.details)
+            {
+                summary.append(" / ");
+                summary.append(detail.begin(), detail.end());
+            }
+            summary.append(" | ");
+        }
+        return summary;
+    }
 } // namespace
 
 TEST_CASE("A corrupt reload keeps the document and a reload after a hand edit recovers saving", "[driver][integration][function_buttons][t11]")
@@ -162,25 +180,21 @@ TEST_CASE("A corrupt reload keeps the document and a reload after a hand edit re
     };
     REQUIRE(harness.wait_for_view(reloaded) != nullptr);
 
-    // 이제 저장이 된다. 손 편집도 함께 남는다.
+    // 이제 저장이 된다. 손 편집도 함께 남는다. 저장이 끝나기 전에 문서를 열면 store의 교체가 실패하므로 디렉터리 항목으로
+    // 교체를 확인한 뒤 한 번만 읽는다 (S5).
+    const gitman::testing::document_file_stamp before_save { gitman::testing::stamp_document_file(document_path) };
     harness.post(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, true });
-    bool persisted { false };
-    const auto deadline { std::chrono::steady_clock::now() + wait_limit };
-    while (std::chrono::steady_clock::now() < deadline)
+    const auto reordered_with_edit = [](const std::string& content)
     {
-        const std::string content { read_file(document_path) };
         const std::size_t beta_position { content.find("\"beta\"") };
         const std::size_t alpha_position { content.find("\"alpha\"") };
-        if (beta_position != std::string::npos && alpha_position != std::string::npos && beta_position < alpha_position && content.find("Alpha Edited") != std::string::npos)
-        {
-            persisted = true;
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds { 20 });
-    }
-    REQUIRE(persisted);
+        return beta_position != std::string::npos && alpha_position != std::string::npos && beta_position < alpha_position
+            && content.find("Alpha Edited") != std::string::npos;
+    };
+    REQUIRE(gitman::testing::wait_for_document_content(document_path, before_save, wait_limit, reordered_with_edit).has_value());
     const auto settled { harness.driver.last_view() };
     REQUIRE(settled != nullptr);
+    INFO(notice_summary(*settled));
     REQUIRE(settled->notices.empty());
 
     harness.host.shutdown();

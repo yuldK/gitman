@@ -77,7 +77,10 @@ namespace gitman {
             const std::lock_guard<std::mutex> lock { mutex_ };
             ++document_generation_;
             generations_.emplace(document_generation_, std::move(state));
-            prune_generations();
+            // writer가 꺼낸 묶음은 큐에 없으므로 그 세대를 큐만 보고 버리면 쓰던 항목의 상태가 사라진다. 묶음을 쓰는
+            // 동안에는 버리지 않고 writer가 묶음을 끝낸 뒤 버린다 (function-buttons-design "구현 결과" S5).
+            if (writing_ == false)
+                prune_generations();
         }
         pending_.notify_all();
     }
@@ -187,25 +190,42 @@ namespace gitman {
         std::u8string text {};
         {
             std::unique_lock<std::mutex> lock { mutex_ };
-            const auto generation { generations_.find(entry.document) };
-            if (generation == generations_.end() || generation->second.disabled || generation->second.root.empty())
+            // 파일 시스템을 부르는 동안 lock을 풀므로 그 사이 `set_document`의 `emplace`가 rehash할 수 있다. 반복자를
+            // 들고 있지 않고 lock을 다시 쥘 때마다 찾는다 (function-buttons-design "구현 결과" S5).
+            const auto find_generation = [this, &entry]() -> generation_state*
+            {
+                const auto found { generations_.find(entry.document) };
+                return found == generations_.end() ? nullptr : &found->second;
+            };
+            const auto find_target = [&entry](generation_state& generation) -> target_state*
+            {
+                const auto found { generation.targets.find(entry.id.value) };
+                return found == generation.targets.end() ? nullptr : &found->second;
+            };
+
+            generation_state* generation { find_generation() };
+            if (generation == nullptr || generation->disabled || generation->root.empty())
                 return;
 
-            const auto target { generation->second.targets.find(entry.id.value) };
-            if (target == generation->second.targets.end())
+            target_state* target { find_target(*generation) };
+            if (target == nullptr)
                 return;
 
-            if (target->second.file_path.empty())
+            if (target->file_path.empty())
             {
                 // 파일과 폴더는 첫 기록에서 만든다. 로그가 없는 저장소는 폴더도
                 // 만들지 않는다 (A4.2).
-                const std::u8string folder { join_path(generation->second.root, target->second.folder) };
+                const std::u8string folder { join_path(generation->root, target->folder) };
                 lock.unlock();
                 const bool created { file_system_->create_directories(folder) };
                 lock.lock();
+                generation = find_generation();
+                if (generation == nullptr)
+                    return;
+
                 if (created == false)
                 {
-                    generation->second.disabled = true;
+                    generation->disabled = true;
                     failure_ = u8"로그 폴더를 만들지 못해 이 문서의 파일 로그를 끕니다: " + folder;
                     return;
                 }
@@ -223,23 +243,31 @@ namespace gitman {
                         break;
                     }
                 }
+                generation = find_generation();
+                if (generation == nullptr)
+                    return;
+
                 if (file.empty())
                 {
-                    generation->second.disabled = true;
+                    generation->disabled = true;
                     failure_ = u8"로그 파일 이름을 정하지 못해 이 문서의 파일 로그를 끕니다.";
                     return;
                 }
 
-                target->second.file_path = file;
+                target = find_target(*generation);
+                if (target == nullptr)
+                    return;
+
+                target->file_path = file;
                 // 머리글 한 줄로 어떤 문서·저장소의 로그인지 남긴다 (A4.3). 로그 폴더는 파일 경로에 이미 있으므로 문서 경로를
                 // 적는다 (function-buttons-design 5차 검수, S3).
                 text += u8"# 문서: ";
-                text += generation->second.document_path;
+                text += generation->document_path;
                 text += line_break;
                 text += u8"# 저장소: ";
-                text += target->second.display_name;
+                text += target->display_name;
                 text += u8" (";
-                text += target->second.repository_path;
+                text += target->repository_path;
                 text += u8")";
                 text += line_break;
             }
@@ -252,7 +280,7 @@ namespace gitman {
                 unreported_drops_ = 0;
             }
 
-            path = target->second.file_path;
+            path = target->file_path;
             text += format_log_file_line(entry.record);
             text += line_break;
         }

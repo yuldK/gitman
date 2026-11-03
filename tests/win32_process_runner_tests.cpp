@@ -161,6 +161,31 @@ namespace {
         std::u8string child {};
         std::u8string working_directory {};
     };
+
+    // 첫 오류 진단의 코드다. 경고(job을 쓸 수 없음, 손자가 pipe를 물고 있어 유예 뒤 마감함)는 부하 중에도 앞에 설 수 있어
+    // 실행이 어떻게 끝났는지는 오류만 보고 가른다 (function-buttons-design "구현 결과" S5).
+    [[nodiscard]] std::optional<gitman::diagnostic_code> first_error_code(const gitman::process_result& result)
+    {
+        for (const gitman::diagnostic& value : result.diagnostics)
+            if (value.severity == gitman::diagnostic_severity::error)
+                return value.code;
+        return std::nullopt;
+    }
+
+    // 실패한 단언이 진단 목록을 보이게 한다.
+    [[nodiscard]] std::string diagnostic_summary(const gitman::process_result& result)
+    {
+        std::string summary {};
+        for (const gitman::diagnostic& value : result.diagnostics)
+        {
+            const std::u8string_view code { gitman::diagnostic_code_name(value.code) };
+            summary.append(code.begin(), code.end());
+            summary.append(": ");
+            summary.append(value.message.begin(), value.message.end());
+            summary.append(" | ");
+        }
+        return summary;
+    }
 } // namespace
 
 TEST_CASE("Child exit codes and durations are reported", "[win32][process][runner]")
@@ -509,24 +534,35 @@ TEST_CASE("Timeouts terminate the child and keep the output collected so far", "
     const runner_fixture fixture {};
     const gitman::process_cancellation_token token {};
 
-    recording_sink sink {};
-    gitman::process_request request { fixture.request({ u8"sleep", u8"60000" }) };
-    request.timeout = std::chrono::milliseconds { 400 };
-    const std::chrono::steady_clock::time_point start { std::chrono::steady_clock::now() };
-    const gitman::process_result result { fixture.runner->run(request, &sink, token) };
-    const std::chrono::milliseconds elapsed { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start) };
+    // 제한 시간은 자식을 만든 때부터 잰다. 부하 중에는 Debug 자식이 첫 줄을 쓰기 전에 400ms가 지나기도 해서(S5) 줄이 오기
+    // 전에 끝난 실행이면 제한 시간을 네 배로 늘려 다시 돌린다. 시간 초과의 성질은 실행마다 본다.
+    std::chrono::milliseconds timeout { 400 };
+    for (int attempt = 1; attempt <= 3; ++attempt, timeout *= 4)
+    {
+        recording_sink sink {};
+        gitman::process_request request { fixture.request({ u8"sleep", u8"60000" }) };
+        request.timeout = timeout;
+        const std::chrono::steady_clock::time_point start { std::chrono::steady_clock::now() };
+        const gitman::process_result result { fixture.runner->run(request, &sink, token) };
+        const std::chrono::milliseconds elapsed { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start) };
 
-    REQUIRE(result.completion == gitman::process_completion::timed_out);
-    REQUIRE_FALSE(result.exit_code.has_value());
-    REQUIRE_FALSE(result.succeeded());
-    REQUIRE(result.has_errors());
-    REQUIRE(result.diagnostics.front().code == gitman::diagnostic_code::process_timed_out);
-    // 자식은 60초를 자므로 곧바로 돌아오지 않으면 종료가 동작하지 않은 것이다.
-    REQUIRE(elapsed < std::chrono::milliseconds { 20000 });
-    REQUIRE(result.duration >= std::chrono::milliseconds { 400 });
-    // 제한 시간 전에 나온 줄은 그대로 전달된다.
-    REQUIRE(sink.records.size() == 1);
-    REQUIRE(sink.records[0].text == u8"sleeping");
+        INFO("attempt " << attempt << ", " << diagnostic_summary(result));
+        REQUIRE(result.completion == gitman::process_completion::timed_out);
+        REQUIRE_FALSE(result.exit_code.has_value());
+        REQUIRE_FALSE(result.succeeded());
+        REQUIRE(result.has_errors());
+        REQUIRE(first_error_code(result) == std::optional<gitman::diagnostic_code> { gitman::diagnostic_code::process_timed_out });
+        // 자식은 60초를 자므로 곧바로 돌아오지 않으면 종료가 동작하지 않은 것이다.
+        REQUIRE(elapsed < timeout + std::chrono::milliseconds { 20000 });
+        REQUIRE(result.duration >= timeout);
+        if (sink.records.empty() && attempt < 3)
+            continue;
+
+        // 제한 시간 전에 나온 줄은 그대로 전달된다.
+        REQUIRE(sink.records.size() == 1);
+        REQUIRE(sink.records[0].text == u8"sleeping");
+        break;
+    }
 }
 
 TEST_CASE("Cancellation during a run terminates the child", "[win32][process][runner][cancellation]")
@@ -550,7 +586,8 @@ TEST_CASE("Cancellation during a run terminates the child", "[win32][process][ru
     REQUIRE(result.completion == gitman::process_completion::cancelled);
     REQUIRE_FALSE(result.exit_code.has_value());
     REQUIRE_FALSE(result.succeeded());
-    REQUIRE(result.diagnostics.front().code == gitman::diagnostic_code::process_cancelled);
+    INFO(diagnostic_summary(result));
+    REQUIRE(first_error_code(result) == std::optional<gitman::diagnostic_code> { gitman::diagnostic_code::process_cancelled });
     REQUIRE(elapsed < std::chrono::milliseconds { 20000 });
 }
 
@@ -582,11 +619,17 @@ TEST_CASE("Grandchild processes are terminated with the job", "[win32][process][
     const std::filesystem::path victim { directory.root() / L"victim.marker" };
 
     // 대조군: 손자가 종료 전에 marker를 만들 시간이 있으면 파일이 생긴다. 경로와
-    // 손자 생성 자체가 동작한다는 것을 먼저 확인한다.
-    gitman::process_request control { fixture.request({ u8"spawn-child", u8"200", survivor.u8string() }) };
-    control.timeout = std::chrono::milliseconds { 2000 };
-    const gitman::process_result control_result { fixture.runner->run(control, nullptr, token) };
-    REQUIRE(control_result.completion == gitman::process_completion::timed_out);
+    // 손자 생성 자체가 동작한다는 것을 먼저 확인한다. 부하 중에는 자식과 손자가 뜨는 데만 2초를 넘기기도 해서(S5)
+    // marker가 없으면 제한 시간을 네 배로 늘려 한 번 더 본다.
+    for (const std::chrono::milliseconds timeout : { std::chrono::milliseconds { 2000 }, std::chrono::milliseconds { 8000 } })
+    {
+        gitman::process_request control { fixture.request({ u8"spawn-child", u8"200", survivor.u8string() }) };
+        control.timeout = timeout;
+        const gitman::process_result control_result { fixture.runner->run(control, nullptr, token) };
+        REQUIRE(control_result.completion == gitman::process_completion::timed_out);
+        if (std::filesystem::exists(survivor))
+            break;
+    }
     REQUIRE(std::filesystem::exists(survivor));
 
     // 손자가 marker를 만들기 전에 트리를 종료하면 이후에도 파일이 생기지 않는다.

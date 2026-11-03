@@ -155,4 +155,17 @@ namespace gitman {
     {
         return sha256_hex(function_trust_digest_input(definition, projects));
     }
+
+    std::u8string vcs_executables_trust_digest(const std::u8string_view git_executable, const std::u8string_view svn_executable)
+    {
+        // 기능 신뢰 해시와 머리글이 달라 같은 글이 될 수 없다.
+        std::u8string text { u8"gitman.vcs-executables-trust.v1\n" };
+        text += u8"git ";
+        append_field(text, git_executable);
+        text.push_back(u8'\n');
+        text += u8"svn ";
+        append_field(text, svn_executable);
+        text.push_back(u8'\n');
+        return sha256_hex(text);
+    }
 }

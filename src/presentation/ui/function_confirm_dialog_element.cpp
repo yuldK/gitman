@@ -31,17 +31,23 @@ namespace gitman::ui {
             return dialog.mode == function_confirm_mode::running && dialog.unsaved_changes && dialog.items.empty();
         }
 
-        // 제목이다. 실행 중인 기능 확인(4.10)은 실행하려는 것이 아니라 실행 중인 것을 멈출지 묻는다.
+        // 제목이다. 실행 중인 기능 확인(4.10)은 실행하려는 것이 아니라 실행 중인 것을 멈출지 묻는다. logic이 제목을 적었으면
+        // 그 글이다(문서 실행 파일 신뢰, S1). 돌려준 글은 `dialog`를 가리키므로 받는 쪽이 복사해 둔다.
         [[nodiscard]] std::u8string_view dialog_title(const function_confirm_dialog_view& dialog) noexcept
         {
+            if (dialog.title.empty() == false)
+                return dialog.title;
             if (unsaved_only(dialog))
                 return u8"저장하지 못한 변경";
             return dialog.mode == function_confirm_mode::running ? std::u8string_view { u8"실행 중인 기능" } : std::u8string_view { u8"기능 실행 확인" };
         }
 
-        // panel의 화면 읽기 이름 앞머리다.
+        // panel의 화면 읽기 이름 앞머리다. logic이 제목을 적었으면 무엇을 신뢰하는지가 그 제목에 있으므로 그 글을 읽는다
+        // (`실행 파일 신뢰 확인`, S1). 돌려준 글은 `dialog`를 가리키므로 받는 쪽이 복사해 둔다.
         [[nodiscard]] std::u8string_view panel_access_prefix(const function_confirm_dialog_view& dialog) noexcept
         {
+            if (dialog.title.empty() == false)
+                return dialog.title;
             if (unsaved_only(dialog))
                 return u8"저장하지 못한 변경 확인";
             switch (dialog.mode)
@@ -314,8 +320,8 @@ namespace gitman::ui {
 
         private:
             function_confirm_mode mode_ { function_confirm_mode::trust };
-            std::u8string_view title_ {};
-            std::u8string_view access_prefix_ {};
+            std::u8string title_ {};
+            std::u8string access_prefix_ {};
             std::u8string subject_ {};
             std::vector<std::u8string> description_ {};
             std::vector<std::u8string> note_ {};

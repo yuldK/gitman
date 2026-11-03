@@ -435,9 +435,9 @@ TEST_CASE("Function button diagnostic code names are stable", "[function_buttons
     REQUIRE(gitman::diagnostic_code_name(gitman::diagnostic_code::function_button_warning) == std::u8string_view { u8"function_button_warning" });
 }
 
-TEST_CASE("Trust digest input leaves out only placement", "[function_buttons][t3][r3]")
+TEST_CASE("Trust digest input leaves out only placement", "[function_buttons][t3][r3][s1]")
 {
-    const std::u8string base { digest_input_of(digest_document(u8"빌드", u8"tools", u8"card", u8"C:\\\\Tools\\\\build.exe")) };
+    const std::u8string base { digest_input_of(digest_document(u8"빌드", u8"tools", u8"bar", u8"C:\\\\Tools\\\\build.exe")) };
     REQUIRE(base.empty() == false);
     REQUIRE(base.find(u8"\"label\"") != std::u8string::npos);
     REQUIRE(base.find(u8"\"icon\"") != std::u8string::npos);
@@ -445,14 +445,78 @@ TEST_CASE("Trust digest input leaves out only placement", "[function_buttons][t3
     REQUIRE(base.find(u8"build.exe") != std::u8string::npos);
     REQUIRE(base.find(u8"\"variables\"") != std::u8string::npos);
 
-    // 배치만 해시 입력이 아니다. 실패해 원문으로 든 항목의 배치도 뺀다 (D29).
+    // `bar`·`menu` 사이 배치는 해시 입력이 아니다 (D29, D31). `card`는 `Alt+N`이 가리키는 기능이라 넣는다 (D31).
     REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"menu", u8"C:\\\\Tools\\\\build.exe")) == base);
-    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"bar", u8"C:\\\\Tools\\\\build.exe")) == base);
+    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"card", u8"C:\\\\Tools\\\\build.exe")) != base);
     // `label`(신뢰 dialog가 명령과 쌍으로 보인 이름)과 `icon`(`card` 버튼에 보이는 유일한 표시)은 해시 입력이다 (D29).
-    REQUIRE(digest_input_of(digest_document(u8"빌드 다시", u8"tools", u8"card", u8"C:\\\\Tools\\\\build.exe")) != base);
-    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"rocket", u8"card", u8"C:\\\\Tools\\\\build.exe")) != base);
+    REQUIRE(digest_input_of(digest_document(u8"빌드 다시", u8"tools", u8"bar", u8"C:\\\\Tools\\\\build.exe")) != base);
+    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"rocket", u8"bar", u8"C:\\\\Tools\\\\build.exe")) != base);
     // 실행에 쓰는 필드는 해시 입력을 바꾼다.
-    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"card", u8"C:\\\\Tools\\\\other.exe")) != base);
+    REQUIRE(digest_input_of(digest_document(u8"빌드", u8"tools", u8"bar", u8"C:\\\\Tools\\\\other.exe")) != base);
+}
+
+TEST_CASE("Only the visible card placement and its order enter the trust digest input", "[function_buttons][s1][trust]")
+{
+    // D31: `card` 배치 여부와 `card` 안의 순서(`Alt+N` 번호)만 해시에 넣는다. 손 편집·pull로 `Alt+1~3`이 가리키는 기능이
+    // 바뀌면 다시 묻고, `bar`·`menu` 사이 이동은 묻지 않는다.
+    const auto digest_of = [](const std::u8string_view a, const std::u8string_view b, const std::u8string_view c, const std::u8string_view d)
+    {
+        const auto item = [](const std::u8string_view id, const std::u8string_view placement)
+        {
+            std::u8string text { u8R"({"id":")" };
+            text.append(id);
+            text.append(u8R"(","label":")");
+            text.append(id);
+            text.append(u8R"(","program":"C:\\x.exe")");
+            if (placement.empty() == false)
+            {
+                text.append(u8R"(,"placement":")");
+                text.append(placement);
+                text.push_back(u8'"');
+            }
+            text.push_back(u8'}');
+            return text;
+        };
+        std::u8string section { u8R"({"buttons":[)" };
+        section.append(item(u8"a", a));
+        section.push_back(u8',');
+        section.append(item(u8"b", b));
+        section.push_back(u8',');
+        section.append(item(u8"c", c));
+        section.push_back(u8',');
+        section.append(item(u8"d", d));
+        section.append(u8"]}");
+        return digest_input_of(document_with(section, u8R"([{"id":"alpha","path":"alpha"}])"));
+    };
+
+    const std::u8string base { digest_of(u8"card", u8"bar", u8"menu", u8"") };
+
+    SECTION("bar와 menu 사이 이동과 생략·알 수 없는 값은 같은 해시 입력")
+    {
+        REQUIRE(digest_of(u8"card", u8"menu", u8"bar", u8"") == base);
+        REQUIRE(digest_of(u8"card", u8"", u8"menu", u8"bar") == base);
+        REQUIRE(digest_of(u8"card", u8"sidebar", u8"menu", u8"") == base);
+    }
+
+    SECTION("card에 넣거나 빼면 다른 해시 입력")
+    {
+        REQUIRE(digest_of(u8"bar", u8"bar", u8"menu", u8"") != base);
+        REQUIRE(digest_of(u8"card", u8"card", u8"menu", u8"") != base);
+    }
+
+    SECTION("Alt+N이 가리키는 기능이 바뀌면 다른 해시 입력")
+    {
+        const std::u8string two { digest_of(u8"card", u8"card", u8"menu", u8"") };
+        // `Alt+1`이 a에서 b로 옮겨 간다.
+        REQUIRE(digest_of(u8"bar", u8"card", u8"card", u8"") != two);
+        REQUIRE(digest_of(u8"menu", u8"card", u8"card", u8"") == digest_of(u8"bar", u8"card", u8"card", u8""));
+    }
+
+    SECTION("넷째 card는 기능 줄로 보이므로 bar와 같은 해시 입력")
+    {
+        REQUIRE(digest_of(u8"card", u8"card", u8"card", u8"card") == digest_of(u8"card", u8"card", u8"card", u8"bar"));
+        REQUIRE(digest_of(u8"card", u8"card", u8"card", u8"card") != digest_of(u8"card", u8"card", u8"bar", u8"card"));
+    }
 }
 
 TEST_CASE("Filling the label of a failed function item changes the trust digest", "[function_buttons][r3][trust]")
@@ -1126,15 +1190,15 @@ TEST_CASE("Malformed function button subsections keep their source through the w
     REQUIRE(nulls.bytes.find(u8"\"buttons\": null") != std::u8string::npos);
 }
 
-TEST_CASE("A placement change saved and read again keeps the trust digest", "[function_buttons][t10][store][trust]")
+TEST_CASE("A placement change saved and read again keeps the trust digest", "[function_buttons][t10][s1][store][trust]")
 {
     // 배치 메뉴(T10)는 모델의 배치만 바꿔 저장한다. 해시 입력은 파일 원문에서 만들므로, 쓴 뒤 다시 읽어도 같은
-    // 해시여야 재배치가 다음 열기에서 신뢰를 다시 묻지 않는다 (T7에서 넘어온 일, 3.10).
+    // 해시여야 `bar`·`menu` 사이 재배치가 다음 열기에서 신뢰를 다시 묻지 않는다 (T7에서 넘어온 일, 3.10, D31).
     const saved_round_trip trip {
         save_round_trip(load_fixture("function-buttons.version-list")
             , [](gitman::workspace_document& document)
             {
-                mutable_button(document, u8"test").placement = std::u8string { u8"card" };
+                mutable_button(document, u8"test").placement = std::u8string { u8"menu" };
                 mutable_button(document, u8"clean").placement = std::u8string { u8"bar" };
                 mutable_button(document, u8"status").placement = std::u8string { u8"bar" };
             }
@@ -1142,10 +1206,21 @@ TEST_CASE("A placement change saved and read again keeps the trust digest", "[fu
     };
     const gitman::workspace_document& before { *trip.loaded.document };
     const gitman::workspace_document& after { *trip.reloaded.document };
-    REQUIRE(button_at(*after.function_buttons, 3).placement == std::optional<std::u8string> { u8"card" });
+    REQUIRE(button_at(*after.function_buttons, 3).placement == std::optional<std::u8string> { u8"menu" });
     REQUIRE(button_at(*after.function_buttons, 4).placement == std::optional<std::u8string> { u8"bar" });
     REQUIRE(after.function_buttons->source_digest_input == before.function_buttons->source_digest_input);
     REQUIRE(gitman::function_trust_digest(*after.function_buttons, after.projects) == gitman::function_trust_digest(*before.function_buttons, before.projects));
+
+    // `card`에 넣으면 `Alt+3`이 생기므로 해시가 바뀐다 (D31). 저장 결과의 해시 입력은 다시 읽은 값과 같다.
+    const saved_round_trip carded {
+        save_round_trip(load_fixture("function-buttons.version-list")
+            , [](gitman::workspace_document& document)
+            {
+                mutable_button(document, u8"test").placement = std::u8string { u8"card" };
+            }
+        )
+    };
+    REQUIRE(carded.reloaded.document->function_buttons->source_digest_input != carded.loaded.document->function_buttons->source_digest_input);
 
     // 실행에 쓰는 필드를 바꾸면 해시가 바뀐다 — 위의 같음이 우연이 아니다.
     const saved_round_trip changed {
@@ -1159,14 +1234,15 @@ TEST_CASE("A placement change saved and read again keeps the trust digest", "[fu
     REQUIRE(changed.reloaded.document->function_buttons->source_digest_input != changed.loaded.document->function_buttons->source_digest_input);
 }
 
-TEST_CASE("A placement change keeps stated default fields and the trust digest", "[function_buttons][t10][store][trust]")
+TEST_CASE("A placement change keeps stated default fields and the trust digest", "[function_buttons][t10][s1][store][trust]")
 {
     // 기본값과 같은 값을 손으로 적은 문서다. 쓰기 함수는 원문에 있던 키를 기본값이어도 지우지 않는다 — 지우면 다시 읽은
-    // 해시 입력이 바뀌어 재배치 뒤 다음 열기가 신뢰를 다시 묻는다 (3.10, T7에서 넘어온 일).
+    // 해시 입력이 바뀌어 재배치 뒤 다음 열기가 신뢰를 다시 묻는다 (3.10, T7에서 넘어온 일). `card`를 건드리면 해시가
+    // 바뀌므로(D31) `bar`·`menu` 사이로만 옮긴다.
     const std::u8string source {
         document_with(
             u8R"({"buttons":[)"
-            u8R"({"id":"a","label":"가","program":"C:\\x.exe","args":[],"mode":"capture","confirm":false,"timeout_seconds":3600,"placement":"card"},)"
+            u8R"({"id":"a","label":"가","program":"C:\\x.exe","args":[],"mode":"capture","confirm":false,"timeout_seconds":3600,"placement":"bar"},)"
             u8R"({"id":"b","label":"나","program":"C:\\x.exe"}]})"
             , u8R"([{"id":"alpha","path":"alpha"}])"
         )
@@ -1175,15 +1251,15 @@ TEST_CASE("A placement change keeps stated default fields and the trust digest",
         save_round_trip(source
             , [](gitman::workspace_document& document)
             {
-                mutable_button(document, u8"a").placement = std::u8string { u8"bar" };
-                mutable_button(document, u8"b").placement = std::u8string { u8"card" };
+                mutable_button(document, u8"a").placement = std::u8string { u8"menu" };
+                mutable_button(document, u8"b").placement = std::u8string { u8"bar" };
             }
         )
     };
     const gitman::workspace_document& before { *trip.loaded.document };
     const gitman::workspace_document& after { *trip.reloaded.document };
-    REQUIRE(button_at(*after.function_buttons, 0).placement == std::optional<std::u8string> { u8"bar" });
-    REQUIRE(button_at(*after.function_buttons, 1).placement == std::optional<std::u8string> { u8"card" });
+    REQUIRE(button_at(*after.function_buttons, 0).placement == std::optional<std::u8string> { u8"menu" });
+    REQUIRE(button_at(*after.function_buttons, 1).placement == std::optional<std::u8string> { u8"bar" });
     REQUIRE(after.function_buttons->source_digest_input == before.function_buttons->source_digest_input);
     REQUIRE(gitman::function_trust_digest(*after.function_buttons, after.projects) == gitman::function_trust_digest(*before.function_buttons, before.projects));
 
@@ -1266,10 +1342,10 @@ TEST_CASE("The save result carries the digest input of the written section", "[f
     REQUIRE(loaded.document.has_value());
 
     gitman::workspace_document placed { *loaded.document };
-    mutable_button(placed, u8"build").placement = std::u8string { u8"menu" };
+    mutable_button(placed, u8"clean").placement = std::u8string { u8"bar" };
     const gitman::project_store_save_result saved_placed { store.save(document_path, placed, loaded.revision) };
     REQUIRE(saved_placed.succeeded());
-    // 배치만 바꾼 저장은 해시 입력이 그대로다 (2.7, 3.10, D29).
+    // `bar`·`menu` 사이 배치만 바꾼 저장은 해시 입력이 그대로다 (2.7, 3.10, D29, D31).
     REQUIRE(saved_placed.function_digest_input == std::optional { loaded.document->function_buttons->source_digest_input });
 
     // 이름과 아이콘은 해시 입력이다 (D29). 저장 결과의 값이 다시 읽은 값과 같아야 편집 dialog가 그 해시로 신뢰를 갱신한다.

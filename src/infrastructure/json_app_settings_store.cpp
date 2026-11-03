@@ -272,19 +272,20 @@ namespace gitman {
             return appearance;
         }
 
-        // 기능 버튼 신뢰 목록이다 (function-buttons-design 3.10). 읽을 수 없는 항목은 건너뛴다 —
-        // 그 문서의 기능을 누를 때 한 번 더 묻는 것으로 끝나고 시작을 막을 일이 아니다. 해시는
-        // SHA-256 소문자 16진수 64자만 받는다.
-        std::vector<trusted_function_definition> parse_trusted_function_definitions(const json& root, app_settings_load_result& result, const std::u8string_view path)
+        // 기능 버튼 신뢰 목록과 문서 실행 파일 신뢰 목록이다 (function-buttons-design 3.10, S1). 읽을 수 없는 항목은
+        // 건너뛴다 — 그 문서를 쓸 때 한 번 더 묻는 것으로 끝나고 시작을 막을 일이 아니다. 해시는 SHA-256 소문자 16진수
+        // 64자만 받는다.
+        std::vector<trusted_function_definition> parse_trusted_documents(const json& root, const char* const key, const std::u8string_view not_array_message
+            , app_settings_load_result& result, const std::u8string_view path
+        )
         {
             std::vector<trusted_function_definition> trusted {};
-            const auto source { root.find("trusted_function_definitions") };
+            const auto source { root.find(key) };
             if (source == root.end() || source->is_null())
                 return trusted;
             if (source->is_array() == false)
             {
-                result.diagnostics.push_back(
-                    make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, u8"앱 설정의 기능 버튼 신뢰 목록이 배열이 아니라 무시했습니다.", path));
+                result.diagnostics.push_back(make_diagnostic(diagnostic_code::app_settings_invalid, diagnostic_severity::warning, not_array_message, path));
                 return trusted;
             }
 
@@ -306,6 +307,19 @@ namespace gitman {
                 };
                 if (entry.document_path.empty() || hex_digest == false)
                     continue;
+                trusted.push_back(std::move(entry));
+            }
+            return trusted;
+        }
+
+        json trusted_documents_json(const std::vector<trusted_function_definition>& values)
+        {
+            json trusted { json::array() };
+            for (const trusted_function_definition& value : values)
+            {
+                json entry { json::object() };
+                entry["path"] = as_string(value.document_path);
+                entry["digest"] = as_string(value.digest);
                 trusted.push_back(std::move(entry));
             }
             return trusted;
@@ -372,18 +386,11 @@ namespace gitman {
         // 기능 버튼 신뢰 목록이다 (function-buttons-design 3.10). 신뢰한 적이 없으면 키를 만들지
         // 않아 기능 버튼을 쓰지 않는 사용자의 파일 모양이 그대로다. 파일에 있던 값(형식이 틀린
         // 값 포함)도 그때는 건드리지 않는다.
+        // 문서 실행 파일 신뢰 목록도 같은 규칙이다 (S1).
         if (settings.trusted_function_definitions.empty() == false)
-        {
-            json trusted { json::array() };
-            for (const trusted_function_definition& value : settings.trusted_function_definitions)
-            {
-                json entry { json::object() };
-                entry["path"] = as_string(value.document_path);
-                entry["digest"] = as_string(value.digest);
-                trusted.push_back(std::move(entry));
-            }
-            root["trusted_function_definitions"] = std::move(trusted);
-        }
+            root["trusted_function_definitions"] = trusted_documents_json(settings.trusted_function_definitions);
+        if (settings.trusted_vcs_executables.empty() == false)
+            root["trusted_vcs_executables"] = trusted_documents_json(settings.trusted_vcs_executables);
 
         // 값이 없으면 필드를 만들지 않고, 파일에 이미 있던 `window`는 지우지
         // 않는다 (문서 저장의 window 규칙과 동일).
@@ -422,7 +429,8 @@ namespace gitman {
         result.settings.settings = parse_global_settings(root, result, path);
         result.settings.appearance = parse_appearance(root, result, path);
         result.settings.fonts = parse_fonts(root, result, path);
-        result.settings.trusted_function_definitions = parse_trusted_function_definitions(root, result, path);
+        result.settings.trusted_function_definitions = parse_trusted_documents(root, "trusted_function_definitions", u8"앱 설정의 기능 버튼 신뢰 목록이 배열이 아니라 무시했습니다.", result, path);
+        result.settings.trusted_vcs_executables = parse_trusted_documents(root, "trusted_vcs_executables", u8"앱 설정의 문서 실행 파일 신뢰 목록이 배열이 아니라 무시했습니다.", result, path);
 
         const auto recent { root.find("recent_documents") };
         if (recent == root.end())

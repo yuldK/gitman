@@ -72,6 +72,10 @@ namespace gitman {
         // 기능 버튼을 신뢰한 문서와 그 정의의 해시다 (function-buttons-design 3.10). 저장에
         // 실패해도 이 값은 메모리에 남아 그 실행 동안은 다시 묻지 않는다.
         std::vector<trusted_function_definition> trusted_function_definitions {};
+        // 문서가 지정한 VCS 실행 파일(`settings.git_executable`·`svn_executable`)을 신뢰한 문서와 그 두 값의 해시다
+        // (function-buttons-design 3.10, 5차 검수 S1). 기능 버튼 신뢰와 따로 둔다. 항목 모양은 같고 해시는
+        // `vcs_executables_trust_digest`다. 저장에 실패해도 메모리에 남는다.
+        std::vector<trusted_function_definition> trusted_vcs_executables {};
 
         [[nodiscard]] bool operator==(const app_settings&) const noexcept = default;
     };
@@ -96,6 +100,9 @@ namespace gitman {
     // 그 문서의 신뢰를 이 해시로 기록한다. 같은 문서의 옛 해시는 바꾼다 — 낡은 해시를 쌓지
     // 않는다. 바뀐 것이 있으면 true다.
     bool trust_function_definition(app_settings& settings, std::u8string document_path, std::u8string digest);
+    // 문서가 지정한 VCS 실행 파일 신뢰다. 규칙은 위 두 함수와 같고 목록만 `trusted_vcs_executables`다.
+    [[nodiscard]] bool is_vcs_executables_trusted(const app_settings& settings, std::u8string_view document_path, std::u8string_view digest);
+    bool trust_vcs_executables(app_settings& settings, std::u8string document_path, std::u8string digest);
     // `2026-08-21T18:40:12Z` 형식의 UTC 문자열이다. 변환에 실패하면 빈 값이다.
     [[nodiscard]] std::u8string format_utc_timestamp(std::chrono::system_clock::time_point time);
 } // namespace gitman

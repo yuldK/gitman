@@ -55,7 +55,7 @@ bin\gitman.exe --register-file-association
 | 데이터 | 위치 |
 | --- | --- |
 | 프로젝트 목록·문서 설정(Git/SVN 경로, 경로 표시 방식)·창 배치·기능 버튼과 변수(`function_buttons`, REQ-018) | 사용자가 만든 `<이름>.version-list` (UTF-8 JSON, 스키마 버전 1) |
-| 최근에 연 문서 목록, 신뢰한 기능 정의(`trusted_function_definitions`: 문서 경로와 정의 해시) | `gitman.exe`와 같은 폴더의 `gitman.app-settings.json` (UTF-8 JSON, 스키마 버전 1) |
+| 최근에 연 문서 목록, 신뢰한 기능 정의(`trusted_function_definitions`: 문서 경로와 정의 해시), 신뢰한 문서 실행 파일(`trusted_vcs_executables`: 문서 경로와 Git·SVN 경로 해시) | `gitman.exe`와 같은 폴더의 `gitman.app-settings.json` (UTF-8 JSON, 스키마 버전 1) |
 | 작업 로그(화면) | 메모리 전용 (카드당 1,000 record ring buffer) |
 | 작업 로그(파일) | 문서 폴더의 `.<이름>.version-list.log\<저장소>\<타임스탬프>.log` (문서 설정 `write_log_files`가 켜져 있을 때) |
 | file association | `HKCU\Software\Classes`의 `.version-list`·`Gitman.VersionList` (등록한 경우만) |
@@ -74,6 +74,12 @@ bin\gitman.exe --register-file-association
 - 신뢰한 기능 정의 목록은 `gitman.app-settings.json`에 있다. 이 파일 없이
   실행 파일만 다른 폴더로 옮기면 목록도 없으므로 기능을 처음 누를 때 신뢰를
   한 번 더 묻는다.
+- 문서가 적은 Git·SVN 실행 파일(`settings.git_executable`·`svn_executable`, 빈 값이
+  아닌 것)은 그 문서의 실행 파일을 신뢰한 뒤에만 쓴다 (function-buttons-design
+  3.10, 5차 검수 S1). 이 규칙 전의 버전에서 문서에 실행 파일을 적어 쓰던 문서는
+  업그레이드 뒤 처음 열 때 신뢰 기록이 없어 그 경로 대신 전역 설정의 실행
+  파일(비어 있으면 자동 탐색)로 조회하고 상단 배너에 알린다. 한 번 신뢰하면
+  전처럼 쓴다 (user-manual 13.1·19).
 
 ## 6. 저장 안전성
 

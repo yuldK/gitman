@@ -340,16 +340,25 @@ namespace gitman::ui {
             return item;
         }
 
+        // 실행 파일 행의 값 줄이다. 문서가 지정했으나 신뢰하지 않아 쓰지 않는 경로는 쓰는 값처럼 보이지 않게 그 사실을 끝에
+        // 덧붙인다(function-buttons-design 3.10, S1). 경로는 앞을 줄이므로 덧붙인 글은 잘리지 않는다.
+        std::u8string executable_value(const std::u8string& path, const bool unused)
+        {
+            if (unused == false)
+                return path;
+            return path + u8" · 신뢰하지 않아 쓰지 않음";
+        }
+
         std::vector<tab_model> build_tabs(const settings_dialog_view& dialog)
         {
             std::vector<tab_model> tabs {};
 
             tab_model tools { settings_tab::tools, std::u8string { u8"도구" }, codicons::icon_tools, {} };
             section_model executables { std::u8string { u8"실행 파일" }, {} };
-            executables.items.push_back(make_item(item_kind::git_executable, u8"Git 실행 파일", dialog.git_path, u8"자동 탐색 (지정되지 않음)", { settings_override_field::git_executable }, u8"git",
-                overridden(dialog, dialog.git_follows_app)));
-            executables.items.push_back(make_item(item_kind::svn_executable, u8"SVN 실행 파일", dialog.svn_path, u8"자동 탐색 (지정되지 않음)", { settings_override_field::svn_executable }, u8"svn",
-                overridden(dialog, dialog.svn_follows_app)));
+            executables.items.push_back(make_item(item_kind::git_executable, u8"Git 실행 파일", executable_value(dialog.git_path, dialog.git_unused), u8"자동 탐색 (지정되지 않음)",
+                { settings_override_field::git_executable }, u8"git", overridden(dialog, dialog.git_follows_app)));
+            executables.items.push_back(make_item(item_kind::svn_executable, u8"SVN 실행 파일", executable_value(dialog.svn_path, dialog.svn_unused), u8"자동 탐색 (지정되지 않음)",
+                { settings_override_field::svn_executable }, u8"svn", overridden(dialog, dialog.svn_follows_app)));
             tools.sections.push_back(std::move(executables));
             // 대형 저장소는 status만 5~10분 걸릴 수 있어 제한 시간을 조정한다
             // (field-feedback-design 1장). 값 칸은 텍스트 박스 element가 그린다.

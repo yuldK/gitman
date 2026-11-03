@@ -938,6 +938,7 @@ namespace gitman {
         if (composition_.has_value() && is_function_editor_target(composition_->target))
             composition_.reset();
         function_trust_after_save_ = false;
+        run_waiting_for_app_settings_.reset();
         function_notice_after_save_ = false;
         unsaved_ = {};
         function_button_problems_.clear();
@@ -1127,6 +1128,7 @@ namespace gitman {
         // 편집 dialog의 초안과 저장 뒤 신뢰 갱신은 이전 문서의 정의다.
         function_editor_.reset();
         function_trust_after_save_ = false;
+        run_waiting_for_app_settings_.reset();
         function_notice_after_save_ = false;
         unsaved_ = {};
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
@@ -1781,6 +1783,14 @@ namespace gitman {
         // 키로 오는 intent도 있다.
         if (function_confirm_.has_value())
             return;
+        // 앱 설정을 읽는 중이면 신뢰 목록이 아직 비어 있다. 지금 판정하면 신뢰한 정의도 묻는다. 읽기가 끝나면
+        // `handle_app_settings_loaded`가 이 실행을 다시 들인다 (5차 검수). 읽기는 실패해도 결과 event가 와서 기다림이 끝난다.
+        if (app_settings_loaded_ == false && pending_app_settings_load_id_ != 0)
+        {
+            if (run_waiting_for_app_settings_.has_value() == false)
+                run_waiting_for_app_settings_ = intent;
+            return;
+        }
         card_state* const card { find_card(intent.id) };
         const function_button* const button { find_function_button(intent.button_id) };
         if (card == nullptr || button == nullptr)
@@ -2000,8 +2010,9 @@ namespace gitman {
         // 해시 입력의 출처와 낡는 시점은 `function_trust.h`에 적었다. 여기서는 그때그때 지금 모델로
         // 만든다 — 누를 때와 확인할 때 두 번 부르고, 두 값이 다르면 확인한 정의가 아니다.
         //  - `source_digest_input`: 문서를 읽을 때(열기, T11의 다시 읽기) 파일 원문에서 만든 값이다.
-        //    배치 변경(T10)은 해시 입력이 아니라 그대로 맞다. 저장이 성공하면 store가 쓴 글을 다시 읽은 값으로
-        //    바뀐다 (`finish_function_editor_save`, T12). 편집 dialog가 고친 정의는 그 저장이 끝나기 전까지 앞 값이다.
+        //    `bar`·`menu` 사이 배치 변경(T10)은 해시 입력이 아니라 그대로 맞다. 저장이 성공하면 store가 쓴 글을 다시
+        //    읽은 값으로 바뀐다 (`finish_function_editor_save`, T12). 편집 dialog가 고친 정의와 `card`에 넣거나 뺀 배치(D31)는
+        //    그 저장이 끝나기 전까지 앞 값이다.
         //  - project `{id, path.original, ${projectName} 값}`: 지금 `document_->projects`다. 등록으로 project가 늘면
         //    해시가 바뀌어 다시 묻는다.
         return function_trust_digest(*document_->function_buttons, document_->projects);
@@ -2030,6 +2041,48 @@ namespace gitman {
             break;
         }
         // 열린 메뉴가 dialog 뒤에 남지 않게 한다 (카드 메뉴의 기능 절에서 연 경우, T9).
+        context_menu_.reset();
+        function_confirm_ = { std::move(state) };
+    }
+
+    void logic_controller::open_vcs_executables_confirm()
+    {
+        // 다른 확인이 떠 있으면 열지 않는다. 메뉴가 떠 있는 사이 신뢰했거나 문서가 바뀌었으면 할 것이 없다.
+        if (shutting_down_ || function_confirm_.has_value() || vcs_executables_notice().has_value() == false)
+            return;
+
+        // 기능 신뢰 dialog와 같은 틀이다. 목록에는 실행 파일마다 한 항목을 두고 경로를 그대로 보인다.
+        function_confirm_dialog_view view {};
+        view.mode = function_confirm_mode::trust;
+        view.title = u8"실행 파일 신뢰 확인";
+        view.subject = document_path_;
+        view.description = {
+            u8"이 문서가 지정한 실행 파일을 아직 신뢰하지 않았습니다.",
+            u8"신뢰하면 저장소를 조회·업데이트·전환할 때 실행합니다.",
+        };
+        view.note = {
+            u8"신뢰는 실행 파일의 내용을 확인하지 않습니다.",
+            u8"문서의 실행 파일 경로가 바뀌면 다시 묻습니다.",
+        };
+        view.confirm_label = u8"신뢰";
+        const auto add_item = [&view](const std::u8string_view label, const std::optional<std::u8string>& path)
+        {
+            if (path.has_value() == false || path->empty())
+                return;
+            function_confirm_item_view item {};
+            item.label = label;
+            item.mode_text = u8"문서 설정";
+            item.lines.push_back({ *path, false });
+            view.items.push_back(std::move(item));
+        };
+        add_item(u8"Git 실행 파일", document_->settings.git_executable);
+        add_item(u8"SVN 실행 파일", document_->settings.svn_executable);
+
+        function_confirm_state state {};
+        state.mode = function_confirm_mode::trust;
+        state.vcs_executables = true;
+        state.digest = document_vcs_executables_digest();
+        state.view = std::move(view);
         context_menu_.reset();
         function_confirm_ = { std::move(state) };
     }
@@ -2261,6 +2314,20 @@ namespace gitman {
             case running_function_action::exit_application:
                 break;
             }
+            return;
+        }
+
+        // 문서 실행 파일의 신뢰다 (S1). 사용자가 본 경로의 해시를 기록하고, 요청 설정이 바뀌므로 켜진 카드를 다시 조회해
+        // 문서의 실행 파일로 바꾼다. dialog가 떠 있는 동안 경로가 바뀌었으면(환경설정은 이 dialog 뒤에서 열 수 없지만 다시
+        // 읽기 성공은 dialog를 닫는다) 본 값이 아니므로 기록하지 않는다.
+        if (pending.vcs_executables)
+        {
+            if (shutting_down_ || document_path_.empty() || pending.digest.empty() || document_vcs_executables_digest() != pending.digest)
+                return;
+            const workspace_settings before { request_settings() };
+            if (trust_vcs_executables(app_settings_, document_path_, pending.digest))
+                request_app_settings_save();
+            refresh_cards_after_request_settings_change(before);
             return;
         }
 
@@ -2803,6 +2870,7 @@ namespace gitman {
         function_focus_.reset();
         function_editor_.reset();
         function_trust_after_save_ = false;
+        run_waiting_for_app_settings_.reset();
         function_notice_after_save_ = false;
         unsaved_ = {};
         function_button_problems_.clear();
@@ -3143,6 +3211,8 @@ namespace gitman {
         // 읽기 전에 신뢰한 기능 정의도 파일 값보다 최신이다 (function-buttons-design 3.10). 덮어쓰면
         // 방금 신뢰한 문서를 다시 묻고, 뒤따르는 저장이 그 항목 없이 파일을 쓴다.
         const std::vector<trusted_function_definition> pending_trust { std::move(app_settings_.trusted_function_definitions) };
+        // 읽기 전에 환경설정에서 고른 문서 실행 파일의 신뢰도 같다 (S1).
+        const std::vector<trusted_function_definition> pending_executable_trust { std::move(app_settings_.trusted_vcs_executables) };
         app_settings_ = std::move(event.settings);
         app_settings_shadow_ = std::move(event.shadow_source_json);
         app_settings_loaded_ = true;
@@ -3157,6 +3227,11 @@ namespace gitman {
         for (const trusted_function_definition& value : pending_trust)
         {
             if (trust_function_definition(app_settings_, value.document_path, value.digest))
+                trust_changed = true;
+        }
+        for (const trusted_function_definition& value : pending_executable_trust)
+        {
+            if (trust_vcs_executables(app_settings_, value.document_path, value.digest))
                 trust_changed = true;
         }
 
@@ -3176,6 +3251,23 @@ namespace gitman {
         {
             app_settings_save_queued_ = false;
             request_app_settings_save();
+        }
+
+        // 읽기 전에 연 문서의 실행 파일은 신뢰 목록을 몰라 쓰지 않았다 (S1). 읽은 목록에서 신뢰했으면 문서의 실행 파일로
+        // 다시 조회한다. 앱 설정의 다른 값이 바뀐 것만으로는 다시 조회하지 않는다(기존 동작).
+        if (document_.has_value() && document_vcs_executables_digest().empty() == false && document_vcs_executables_trusted())
+        {
+            for (card_state& card : cards_)
+                if (card.project.enabled)
+                    request_refresh(card);
+        }
+
+        // 읽는 동안 누른 기능을 이제 판정한다. 같은 길이라 늦은 클릭 판정(카드·기능이 아직 있는지, 활성인지)도 다시 한다.
+        if (run_waiting_for_app_settings_.has_value())
+        {
+            const run_function_intent waiting { std::move(*run_waiting_for_app_settings_) };
+            run_waiting_for_app_settings_.reset();
+            handle_run_function(waiting);
         }
     }
 
@@ -3490,11 +3582,13 @@ namespace gitman {
         {
             settings_dialog_->git_path = std::move(intent.path);
             settings_dialog_->git_defined = true;
+            settings_dialog_->git_chosen = true;
         }
         else if (intent.tool == repository_kind::subversion)
         {
             settings_dialog_->svn_path = std::move(intent.path);
             settings_dialog_->svn_defined = true;
+            settings_dialog_->svn_chosen = true;
         }
     }
 
@@ -3510,11 +3604,13 @@ namespace gitman {
         {
             settings_dialog_->git_path.clear();
             settings_dialog_->git_defined = true;
+            settings_dialog_->git_chosen = true;
         }
         else if (intent.tool == repository_kind::subversion)
         {
             settings_dialog_->svn_path.clear();
             settings_dialog_->svn_defined = true;
+            settings_dialog_->svn_chosen = true;
         }
     }
 
@@ -3565,6 +3661,13 @@ namespace gitman {
             dialog.accent_follows_app = settings_dialog_->accent_defined == false;
             dialog.ui_font_follows_app = settings_dialog_->ui_font_defined == false;
             dialog.code_font_follows_app = settings_dialog_->code_font_defined == false;
+            // 초안은 유효 값에서 시작하므로 신뢰하지 않아 쓰지 않는 남의 경로도 그 행에 보인다(3.10, S1). 쓰는 값처럼
+            // 보이지 않게 표시한다. 사용자가 이 dialog에서 고르거나 지운 값은 저장하면 신뢰하므로 표시하지 않는다.
+            if (document_vcs_executables_trusted() == false)
+            {
+                dialog.git_unused = settings_dialog_->git_defined && settings_dialog_->git_chosen == false && settings_dialog_->git_path.empty() == false;
+                dialog.svn_unused = settings_dialog_->svn_defined && settings_dialog_->svn_chosen == false && settings_dialog_->svn_path.empty() == false;
+            }
         }
         // 검증 메시지와 확인 가능 여부는 logic이 한곳에서 정한다. 첫 오류만
         // 표시해도 확인이 막혀 있어 사용자는 고칠 것을 하나씩 안내받는다.
@@ -3670,6 +3773,8 @@ namespace gitman {
 
         const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout.text) };
         const workspace_settings previous_effective { effective_settings() };
+        const workspace_settings previous_request { request_settings() };
+        const bool executables_trusted_before { document_vcs_executables_trusted() };
 
         if (settings_dialog_->document_mode)
         {
@@ -3694,6 +3799,17 @@ namespace gitman {
             fonts.ui_family = settings_dialog_->ui_font_defined ? std::optional<std::u8string> { settings_dialog_->ui_font_family } : std::nullopt;
             fonts.code_family = settings_dialog_->code_font_defined ? std::optional<std::u8string> { settings_dialog_->code_font_family } : std::nullopt;
 
+            // 문서 실행 파일의 신뢰다 (3.10, S1). 이 dialog에서 고른 경로는 사용자의 값이라 신뢰한다. 고르지 않은 경로가
+            // 신뢰하지 않은 남의 값이면 함께 신뢰하지 않는다 — 다른 항목을 저장한 것이 그 경로를 받아들인 것은 아니다.
+            const auto accepted = [&](const std::optional<std::u8string>& value, const bool chosen)
+            {
+                return value.has_value() == false || value->empty() || chosen || executables_trusted_before;
+            };
+            const bool trust_executables {
+                accepted(overrides.git_executable, settings_dialog_->git_chosen)
+                && accepted(overrides.svn_executable, settings_dialog_->svn_chosen)
+            };
+
             const bool settings_changed { (overrides == document_->settings) == false };
             const bool appearance_changed { (appearance == document_->appearance) == false };
             const bool fonts_changed { (fonts == document_->fonts) == false };
@@ -3705,6 +3821,10 @@ namespace gitman {
                 document_->fonts = std::move(fonts);
             if (settings_changed || appearance_changed || fonts_changed)
                 request_save();
+            // 저장 결과를 기다리지 않는다. 사용자가 고른 값이고, 저장에 실패해도 모델에 남아 쓰이는 값이다.
+            if (const std::u8string digest { document_vcs_executables_digest() }; trust_executables && digest.empty() == false
+                && trust_vcs_executables(app_settings_, document_path_, digest))
+                request_app_settings_save();
         }
         else
         {
@@ -3745,6 +3865,7 @@ namespace gitman {
         // 재조회한다 (G3.2 — 문서가 전부 덮어쓰고 있으면 전역 변경은 재조회하지
         // 않는다). 요청마다 유효 설정 사본이 실리므로 저장 완료를 기다릴 필요가
         // 없다.
+        // 요청 설정은 문서 실행 파일 신뢰로도 바뀐다 (S1). 유효 설정이 같아도 다시 조회한다.
         if ((effective_settings() == previous_effective) == false)
         {
             publish_log_targets();
@@ -3752,6 +3873,8 @@ namespace gitman {
                 if (card.project.enabled)
                     request_refresh(card);
         }
+        else
+            refresh_cards_after_request_settings_change(previous_request);
         settings_dialog_.reset();
     }
 
@@ -4539,7 +4662,13 @@ namespace gitman {
         }
 
         // 모델 값을 바꾸면 카드 열, 기능 줄, `Alt+N` 번호, 기능 줄 유무가 다음 view에서 바로 바뀐다. 실행 중인 그 기능은
-        // 계속 돌고 실행 중 표시가 새 자리로 옮겨 간다 (4.11). 신뢰 해시는 배치를 넣지 않아 다시 묻지 않는다 (3.10).
+        // 계속 돌고 실행 중 표시가 새 자리로 옮겨 간다 (4.11). 신뢰 해시 입력에는 보이는 `card`와 그 순서만 들어간다 (3.10,
+        // D31). `card`에 넣거나 빼면 해시가 바뀌므로 편집 dialog의 Apply처럼 편집 전에 신뢰했을 때만 저장이 끝난 뒤 저장한
+        // 글의 해시 입력으로 신뢰를 갱신한다(D24-A와 같은 규칙). 실행은 막지 않는다 — 저장 전 해시 입력은 바꾸기 전 원문이고,
+        // 그 사이에 신뢰를 물어 기록하면 저장 뒤 한 번 더 물을 뿐 덜 묻지는 않는다. `bar`·`menu` 사이 이동은 해시가 같아
+        // 갱신해도 바뀌는 것이 없다.
+        if (before[index] == function_placement::card || intent.placement == function_placement::card)
+            remember_function_trust_for_save();
         button.placement = std::u8string { name };
         if (focus.has_value())
         {
@@ -4702,6 +4831,9 @@ namespace gitman {
         case context_menu_entry::edit_functions:
             // 편집 dialog다 (2.7). 배치 메뉴에서 고르면 argument가 그 기능이다.
             handle_open_function_editor(open_function_editor_intent { item.argument });
+            break;
+        case context_menu_entry::trust_document_executables:
+            open_vcs_executables_confirm();
             break;
         case context_menu_entry::open_repository:
         case context_menu_entry::open_in_vscode:
@@ -4911,6 +5043,9 @@ namespace gitman {
         // 편집 dialog다 (2.3.3, T12). 적용 기능이 0개인 카드에는 기능 절이 없으므로 정의가 0개인 문서의 진입은 여기뿐이다.
         if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
             items.push_back(std::move(*edit));
+        // 문서가 지정한 실행 파일을 신뢰하지 않아 쓰지 않을 때만이다 (3.10, S1). 기능 버튼이 없는 문서도 이 길로 신뢰한다.
+        if (vcs_executables_notice().has_value())
+            items.push_back({ .entry = context_menu_entry::trust_document_executables, .label = u8"문서 실행 파일 신뢰…", .icon = u8"workspace-trusted", .separator_above = true });
         return items;
     }
 
@@ -5203,7 +5338,17 @@ namespace gitman {
 
     bool logic_controller::has_notice() const noexcept
     {
-        return notices_.empty() == false || function_button_notice_.has_value() || save_notice_.empty() == false || reload_notice_.has_value();
+        if (notices_.empty() == false || function_button_notice_.has_value() || save_notice_.empty() == false || reload_notice_.has_value())
+            return true;
+        // 문서 실행 파일 알림은 해시를 만들어 판정한다. 메모리가 모자라 실패하면 띠 자리를 두지 않는다 — 다음 snapshot이 다시 본다.
+        try
+        {
+            return vcs_executables_notice().has_value();
+        }
+        catch (...)
+        {
+            return false;
+        }
     }
 
     float logic_controller::list_viewport_height() const noexcept
@@ -5261,8 +5406,8 @@ namespace gitman {
         if (card != nullptr)
             request.project = card->project;
         // worker는 유효 설정(전역 + 문서 override)의 사본을 받는다. 층 구분은
-        // logic 안에서 끝난다.
-        request.settings = effective_settings();
+        // logic 안에서 끝난다. 신뢰하지 않은 문서의 실행 파일은 빠진다 (S1).
+        request.settings = request_settings();
         request.token = cancellation_source_.token();
         return request;
     }
@@ -5282,6 +5427,77 @@ namespace gitman {
         if (document_.has_value())
             return apply_overrides(app_settings_.settings, document_->settings);
         return app_settings_.settings;
+    }
+
+    workspace_settings logic_controller::request_settings() const
+    {
+        if (document_.has_value() == false)
+            return app_settings_.settings;
+        // 문서의 실행 파일은 그 문서를 열고 처음 조회할 때 확인 없이 실행됐다(3.10). 남이 준 문서가 저장소 안의 프로그램을
+        // 가리키면 열기만 해도 돈다. 신뢰하지 않았으면 그 값을 정의하지 않은 것처럼 본다 — 빈 값으로 덮지 않는 것은 앱
+        // 설정에 사용자가 직접 고른 경로가 있으면 그것을 써야 해서다. 빈 값(자동 탐색)은 실행 파일을 지정하지 않으므로 둔다.
+        workspace_settings_overrides overrides { document_->settings };
+        if (document_vcs_executables_trusted() == false)
+        {
+            if (overrides.git_executable.has_value() && overrides.git_executable->empty() == false)
+                overrides.git_executable.reset();
+            if (overrides.svn_executable.has_value() && overrides.svn_executable->empty() == false)
+                overrides.svn_executable.reset();
+        }
+        return apply_overrides(app_settings_.settings, overrides);
+    }
+
+    std::u8string logic_controller::document_vcs_executables_digest() const
+    {
+        if (document_.has_value() == false)
+            return {};
+        const std::u8string_view git { document_->settings.git_executable.has_value() ? std::u8string_view { *document_->settings.git_executable } : std::u8string_view {} };
+        const std::u8string_view svn { document_->settings.svn_executable.has_value() ? std::u8string_view { *document_->settings.svn_executable } : std::u8string_view {} };
+        if (git.empty() && svn.empty())
+            return {};
+        return vcs_executables_trust_digest(git, svn);
+    }
+
+    bool logic_controller::document_vcs_executables_trusted() const
+    {
+        const std::u8string digest { document_vcs_executables_digest() };
+        if (digest.empty())
+            return true;
+        // 앱 설정을 읽는 중이면 신뢰 목록을 아직 모른다. 읽기를 내지 못했으면(제출 실패) 메모리의 목록이 전부다.
+        const bool known { app_settings_loaded_ || pending_app_settings_load_id_ == 0 };
+        return known && document_path_.empty() == false && is_vcs_executables_trusted(app_settings_, document_path_, digest);
+    }
+
+    std::optional<notice_view_model> logic_controller::vcs_executables_notice() const
+    {
+        // 앱 설정을 읽기 전에는 신뢰 목록을 몰라 알리지 않는다. 읽은 뒤 신뢰했으면 바로 문서의 값으로 다시 조회한다.
+        if ((app_settings_loaded_ == false && pending_app_settings_load_id_ != 0) || document_vcs_executables_trusted())
+            return std::nullopt;
+        const std::optional<std::u8string>& git { document_->settings.git_executable };
+        const std::optional<std::u8string>& svn { document_->settings.svn_executable };
+        const bool has_git { git.has_value() && git->empty() == false };
+        const bool has_svn { svn.has_value() && svn->empty() == false };
+        notice_view_model notice {};
+        if (has_git && has_svn)
+            notice.text = u8"문서가 지정한 Git·SVN 실행 파일을 쓰지 않았습니다";
+        else
+            notice.text = has_git ? u8"문서가 지정한 Git 실행 파일을 쓰지 않았습니다" : u8"문서가 지정한 SVN 실행 파일을 쓰지 않았습니다";
+        if (has_git)
+            notice.details.push_back(u8"Git: " + *git);
+        if (has_svn)
+            notice.details.push_back(u8"SVN: " + *svn);
+        notice.details.push_back(u8"이 문서의 실행 파일을 신뢰하지 않아 앱 설정의 실행 파일(비어 있으면 자동 탐색)을 씁니다.");
+        notice.details.push_back(u8"쓰려면 문서 경로를 우클릭해 `문서 실행 파일 신뢰…`를 고르거나 환경설정에서 경로를 다시 고르십시오.");
+        return notice;
+    }
+
+    void logic_controller::refresh_cards_after_request_settings_change(const workspace_settings& before)
+    {
+        if (request_settings() == before)
+            return;
+        for (card_state& card : cards_)
+            if (card.project.enabled)
+                request_refresh(card);
     }
 
     appearance_settings logic_controller::effective_appearance() const
@@ -5394,6 +5610,10 @@ namespace gitman {
         snapshot->notices = notices_;
         if (function_button_notice_.has_value())
             snapshot->notices.push_back(*function_button_notice_);
+        // 신뢰하지 않아 쓰지 않는 문서 실행 파일은 문서 진단보다 먼저 보인다. 조회가 문서와 다른 git으로 돈다는 것을 띠의
+        // 첫 알림으로 알린다 (S1).
+        if (std::optional<notice_view_model> executables { vcs_executables_notice() }; executables.has_value())
+            snapshot->notices.insert(snapshot->notices.begin(), std::move(*executables));
         // 다시 읽기 실패는 문서 진단보다 먼저 보인다. 띠가 첫 알림만 보이므로 묻히면 실패를 모른다.
         if (reload_notice_.has_value())
             snapshot->notices.insert(snapshot->notices.begin(), *reload_notice_);

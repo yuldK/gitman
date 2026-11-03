@@ -338,11 +338,14 @@ namespace gitman {
         // 기능 메뉴·카드 메뉴·배너 메뉴·배치 메뉴의 `기능 편집…`이다 (function-buttons-design 2.7). 배치 메뉴의 항목만
         // argument에 버튼 id를 실어 그 기능을 고른 상태로 연다.
         edit_functions,
+        // 배너 메뉴의 `문서 실행 파일 신뢰…`다 (function-buttons-design 3.10, S1). 문서가 지정한 VCS 실행 파일을 신뢰하지
+        // 않아 쓰지 않고 있을 때만 나온다. 신뢰 확인 dialog를 연다.
+        trust_document_executables,
     };
 
     // `context_menu_entry`의 값 수다. 키 표를 되돌리는 배열이 모든 값을 덮는지 묶는다 (popup의
     // `static_assert`). 새 값은 enum 끝에 더하고 이 값을 함께 고친다.
-    inline constexpr std::size_t context_menu_entry_count { static_cast<std::size_t>(context_menu_entry::edit_functions) + 1 };
+    inline constexpr std::size_t context_menu_entry_count { static_cast<std::size_t>(context_menu_entry::trust_document_executables) + 1 };
 
     // 메뉴 항목 하나의 모양이다. radio는 하나만 고르는 무리(배치 메뉴의 세 배치,
     // function-buttons-design 2.2.5)이고 luil `menu_item_kind::radio`로 그린다.
@@ -458,6 +461,9 @@ namespace gitman {
     struct function_confirm_dialog_view
     {
         function_confirm_mode mode { function_confirm_mode::trust };
+        // 제목이다. 비면 모드가 정한 제목(`기능 실행 확인`, `실행 중인 기능`)이다. 문서 실행 파일 신뢰(S1)는 기능 실행이 아니라
+        // 따로 적는다.
+        std::u8string title {};
         // 제목 바로 아래 한 줄이다. 신뢰 모드는 문서 경로, 미리보기는 카드 이름이다. 넘치면 앞을
         // 줄여 끝(파일 이름)을 남긴다.
         std::u8string subject {};
@@ -688,6 +694,10 @@ namespace gitman {
         bool code_font_follows_app { false };
         std::u8string git_path {};
         std::u8string svn_path {};
+        // 문서 모드에서 그 행의 경로가 문서가 지정했으나 신뢰하지 않아 쓰지 않는 값이라는 표시다 (function-buttons-design
+        // 3.10, S1). 값 줄 끝에 그 사실을 덧붙인다.
+        bool git_unused { false };
+        bool svn_unused { false };
         // 상태 확인 제한 시간 텍스트 박스의 초안이다 (field-feedback-design 1.3).
         // 숫자만 담기며, 비어 있으면 기본값(600초)을 뜻해 element가 안내 문구를
         // 대신 그린다.

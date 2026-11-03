@@ -4,6 +4,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -256,19 +258,22 @@ TEST_CASE("Shutdown cancels outstanding work and refuses new refreshes", "[logic
     REQUIRE(submitter.requests.empty());
 }
 
-TEST_CASE("Requests carry the document settings and the cancellation token", "[logic][app]")
+TEST_CASE("Requests carry the document settings and the cancellation token", "[logic][app][s1]")
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
     controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
 
     gitman::document_loaded_event event { make_loaded_document({ make_project(u8"alpha") }) };
+    event.document->settings.query_timeout_seconds = 120;
     event.document->settings.git_executable = u8"C:\\tools\\git.exe";
     controller.handle(std::move(event));
 
     REQUIRE(submitter.requests.size() == 2u);
     const gitman::operation_request& query { submitter.requests.back() };
-    REQUIRE(query.settings.git_executable == u8"C:\\tools\\git.exe");
+    REQUIRE(query.settings.query_timeout_seconds == std::optional<std::int32_t> { 120 });
+    // 문서가 지정한 실행 파일은 그 문서의 실행 파일을 신뢰해야 실린다 (function-buttons-design 3.10, S1).
+    REQUIRE(query.settings.git_executable.empty());
     REQUIRE(query.token.cancellable());
 }
 

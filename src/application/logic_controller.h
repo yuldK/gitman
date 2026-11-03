@@ -386,9 +386,23 @@ namespace gitman {
         // 폴더 기준 상대 경로다.
         [[nodiscard]] std::u8string display_path(const project_definition& project) const;
         [[nodiscard]] bool relative_paths() const noexcept;
-        // 전역 설정 위에 문서 override를 얹은 유효 설정이다. 조회·작업 요청과 표시,
-        // 파일 로그 여부가 모두 이 값을 쓴다 (G3.1).
+        // 전역 설정 위에 문서 override를 얹은 유효 설정이다. 표시(환경설정 초안)와 파일 로그 여부가 이 값을 쓴다 (G3.1).
         [[nodiscard]] workspace_settings effective_settings() const;
+        // worker에 넘기는 요청의 설정이다. 유효 설정과 같되, 문서가 지정한 VCS 실행 파일(빈 값이 아닌 `git_executable`·
+        // `svn_executable` 덮어쓰기)은 그 문서의 실행 파일을 신뢰했을 때만 쓴다. 신뢰하지 않았으면 그 덮어쓰기를 정의하지 않은
+        // 것처럼 앱 설정을 따른다(앱 설정이 비면 자동 탐색) (function-buttons-design 3.10, S1).
+        [[nodiscard]] workspace_settings request_settings() const;
+        // 문서가 지정한 VCS 실행 파일의 신뢰 해시다. 문서가 없거나 빈 값이 아닌 실행 파일 덮어쓰기가 없으면 비어 있다.
+        [[nodiscard]] std::u8string document_vcs_executables_digest() const;
+        // 문서가 지정한 VCS 실행 파일을 지금 쓸 수 있는지다. 지정한 것이 없으면 참이고, 앱 설정을 읽는 중에는 신뢰 목록을 몰라
+        // 거짓이다.
+        [[nodiscard]] bool document_vcs_executables_trusted() const;
+        // 신뢰하지 않아 쓰지 않는 문서 실행 파일의 알림이다. 앱 설정을 읽는 중에는 내지 않는다.
+        [[nodiscard]] std::optional<notice_view_model> vcs_executables_notice() const;
+        // 배너 메뉴의 `문서 실행 파일 신뢰…`가 여는 신뢰 확인이다. 기능 실행 확인 dialog를 신뢰 모드로 쓴다.
+        void open_vcs_executables_confirm();
+        // 요청 설정이 `before`와 달라졌으면 켜진 카드를 다시 조회한다. 실행 파일 신뢰가 바뀐 뒤에 부른다.
+        void refresh_cards_after_request_settings_change(const workspace_settings& before);
         // 앱 외양 위에 문서 override를 얹은 유효 값이다 (S2.2).
         [[nodiscard]] appearance_settings effective_appearance() const;
         // 앱 글꼴 위에 문서 override를 얹은 유효 값이다 (2026-08-23 지시).
@@ -560,6 +574,10 @@ namespace gitman {
             // 쓰지 않는다.
             bool git_defined { false };
             bool svn_defined { false };
+            // 이 dialog에서 사용자가 파일 선택으로 고른(또는 지운) 실행 파일 경로다. 고른 경로는 사용자의 값이라 확인할 때
+            // 문서 실행 파일 신뢰로 기록한다 (function-buttons-design 3.10, S1). 처음 보인 남의 값은 고른 것이 아니다.
+            bool git_chosen { false };
+            bool svn_chosen { false };
             bool timeout_defined { false };
             bool submodules_defined { false };
             bool ignore_local_defined { false };
@@ -709,6 +727,9 @@ namespace gitman {
             // dialog를 열 때의 신뢰 해시다. 신뢰 모드는 확인하면 이 값을 기록한다 — 사용자가 본
             // 정의의 해시다.
             std::u8string digest {};
+            // 기능이 아니라 문서가 지정한 VCS 실행 파일의 신뢰 확인이다 (S1). 확인하면 `digest`를 실행 파일 신뢰 목록에
+            // 기록하고 실행할 기능은 없다.
+            bool vcs_executables { false };
             // dialog를 열 때의 실행 값이다. 확인할 때 다시 만든 값과 다르면 실행하지 않는다.
             prepared_function_run prepared {};
             // 열 때 만든 표시 모델이다. 줄은 나누기 전의 글이고 스크롤 위치(`view.scroll_offset`)만
@@ -778,8 +799,8 @@ namespace gitman {
 
         // 기능 편집 dialog다 (2.7). 값이 있으면 열려 있고, Apply 전까지 문서 모델을 바꾸지 않는다.
         std::optional<function_editor_state> function_editor_ {};
-        // 편집 dialog의 Apply가 낸 저장이 끝나면 저장한 정의의 해시로 신뢰를 갱신한다. 편집 전 정의를 신뢰한 상태였을
-        // 때만 켠다 (D24-A, 4.11). 저장이 실패하면 끈다.
+        // 편집 dialog의 Apply나 `card`에 넣거나 빼는 배치 메뉴가 낸 저장이 끝나면 저장한 정의의 해시로 신뢰를 갱신한다.
+        // 편집 전 정의를 신뢰한 상태였을 때만 켠다 (D24-A, D31, 4.11). 저장이 실패하면 끈다.
         bool function_trust_after_save_ { false };
         // 편집 dialog의 Apply가 낸 저장이 끝나면 쓴 글을 다시 읽은 진단으로 기능 버튼 알림을 다시 만든다. 저장이 실패하면 끈다.
         bool function_notice_after_save_ { false };
@@ -794,8 +815,10 @@ namespace gitman {
             // 다시 읽기·닫기·다른 문서 열기·종료가 먼저 묻는다 (`has_unsaved_changes`).
             bool document { false };
             // 그 변경에 편집 dialog의 Apply가 바꾼 기능 정의가 있다. 신뢰 해시 입력(`source_digest_input`)은 파일
-            // 원문이라 모델과 어긋나므로, 켜져 있는 동안은 기능을 실행하지 않고 신뢰도 기록하지 않는다. 카드 순서·배치
-            // 같은 다른 변경은 해시 입력이 아니어서 실행을 막을 까닭이 없으므로 따로 둔다.
+            // 원문이라 모델과 어긋나므로, 켜져 있는 동안은 기능을 실행하지 않고 신뢰도 기록하지 않는다. 카드 순서와
+            // `bar`·`menu` 사이 배치는 해시 입력이 아니어서 실행을 막을 까닭이 없으므로 따로 둔다. 배치 메뉴로 `card`에 넣거나
+            // 빼는 것은 해시 입력이지만(D31) 명령·이름은 그대로라 막지 않는다 — 저장 전에 신뢰를 기록해도 저장 뒤 한 번 더 물을
+            // 뿐이다.
             bool function_definition { false };
         };
 
@@ -831,6 +854,10 @@ namespace gitman {
         [[nodiscard]] static bool is_function_editor_target(text_input_target target) noexcept;
         // 저장이 끝난 뒤의 신뢰 갱신이다 (D24-A). `handle_document_saved`가 부른다.
         void finish_function_editor_save(const document_saved_event& event);
+        // 신뢰 해시 입력을 바꾸는 앱 안 변경(편집 dialog의 Apply, `card`에 넣거나 빼는 배치 메뉴) 직전에 부른다. 지금
+        // 정의를 신뢰했으면 저장이 끝난 뒤 새 해시로 신뢰를 갱신하게 표시한다 (D24-A, D31). 앞선 변경이 켠 표시는 끄지 않는다 —
+        // 이어 낸 저장 사이에 해시 입력이 중간 값으로 바뀌어 지금 해시가 신뢰 목록에 없을 수 있다.
+        void remember_function_trust_for_save();
         // 기능 버튼 진단을 묶은 알림(`function_button_notice_`)을 이 진단으로 다시 만든다 (3.8).
         void refresh_function_button_notice(const std::vector<diagnostic>& diagnostics);
 
@@ -860,6 +887,10 @@ namespace gitman {
         // 전의 갱신은 대기시켰다가 결과가 도착하면 합친다.
         bool app_settings_loaded_ { false };
         std::uint64_t pending_app_settings_load_id_ { 0 };
+        // 앱 설정을 읽는 동안 누른 기능이다 (function-buttons-design 3.10, 5차 검수). 신뢰 목록을 읽기 전에 판정하면
+        // 이미 신뢰한 정의도 다시 묻는다. 읽기가 끝나면 그때 판정한다. 기다리는 실행은 하나이고, 기다리는 동안 온 다른
+        // 실행은 버린다. 문서를 바꾸면(열기·교체·닫기) 버린다.
+        std::optional<run_function_intent> run_waiting_for_app_settings_ {};
         std::uint64_t pending_app_settings_save_id_ { 0 };
         bool app_settings_save_queued_ { false };
         // 저장 실패 문구는 한 번만 알린다. 반복 실패가 배너를 도배하지 않게 한다.

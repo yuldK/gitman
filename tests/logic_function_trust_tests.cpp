@@ -442,15 +442,17 @@ TEST_CASE("A trust that cannot be written is remembered for the session", "[func
     REQUIRE(fixture.controller.make_view_snapshot()->notices.size() == 1u);
 }
 
-TEST_CASE("A trust recorded before the app settings arrive survives the load and is saved", "[function_buttons][t7]")
+TEST_CASE("A trust asked for a run pressed before the app settings arrive is saved with the loaded list", "[function_buttons][t7][s1]")
 {
+    // 앱 설정을 읽기 전에 누른 기능은 읽기가 끝날 때까지 기다린다 (5차 검수, S1). 그 뒤에 묻고 기록한 신뢰는 읽은 목록에
+    // 더해 저장한다 — 읽기 전 신뢰를 읽은 값에 합치는 T7의 규칙은 그대로다(읽기 전에는 신뢰를 기록할 길이 없어졌다).
     trust_fixture fixture {};
     fixture.controller.start();
     const std::uint64_t load_id { fixture.submitter.last_of(gitman::operation_kind::load_app_settings)->operation_id };
     fixture.open({ make_project(u8"alpha") }, make_definition({ make_button(u8"build", u8"빌드") }));
     fixture.run(u8"alpha", u8"build");
-    fixture.confirm();
-    REQUIRE(fixture.functions.requests.size() == 1u);
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.empty());
     // 읽기가 끝나기 전에는 저장하지 않는다 (파일 내용을 지우지 않으려는 기존 규칙).
     REQUIRE_FALSE(fixture.saved_trust().has_value());
 
@@ -460,6 +462,14 @@ TEST_CASE("A trust recorded before the app settings arrive survives the load and
     event.operation_id = load_id;
     event.settings = stored;
     fixture.controller.handle(std::move(event));
+
+    // 읽은 목록에 이 문서의 신뢰가 없어 이제 묻는다.
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    REQUIRE(dialog->mode == gitman::function_confirm_mode::trust);
+    fixture.finish_settings_save(true);
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 1u);
 
     const std::optional<std::vector<gitman::trusted_function_definition>> saved { fixture.saved_trust() };
     REQUIRE(saved.has_value());
@@ -471,6 +481,51 @@ TEST_CASE("A trust recorded before the app settings arrive survives the load and
     fixture.run(u8"alpha", u8"build");
     REQUIRE_FALSE(fixture.dialog().has_value());
     REQUIRE(fixture.functions.requests.size() == 1u);
+}
+
+TEST_CASE("A run pressed before the app settings arrive runs without asking once the trust is read", "[function_buttons][s1]")
+{
+    // 명령줄·파일 연결로 문서를 연 직후에 누른 기능이다. 읽은 신뢰 목록에 이 정의가 있으면 묻지 않고 실행한다 (5차 검수).
+    trust_fixture fixture {};
+    fixture.controller.start();
+    const std::uint64_t load_id { fixture.submitter.last_of(gitman::operation_kind::load_app_settings)->operation_id };
+    const gitman::function_buttons_definition definition { make_definition({ make_button(u8"build", u8"빌드") }) };
+    const gitman::project_definition projects[] { make_project(u8"alpha") };
+    fixture.open({ make_project(u8"alpha") }, definition);
+    fixture.run(u8"alpha", u8"build");
+    // 키로 오는 실행(`Alt+N`과 같은 길)이 한 번 더 와도 기다리는 실행은 하나다.
+    fixture.run(u8"alpha", u8"build");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.empty());
+
+    gitman::app_settings_loaded_event event {};
+    event.operation_id = load_id;
+    event.settings.trusted_function_definitions.push_back({ std::u8string { document_path }, gitman::function_trust_digest(definition, projects) });
+    fixture.controller.handle(std::move(event));
+
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == 1u);
+}
+
+TEST_CASE("A run waiting for the app settings is dropped when another document opens", "[function_buttons][s1]")
+{
+    trust_fixture fixture {};
+    fixture.controller.start();
+    const std::uint64_t load_id { fixture.submitter.last_of(gitman::operation_kind::load_app_settings)->operation_id };
+    const gitman::function_buttons_definition definition { make_definition({ make_button(u8"build", u8"빌드") }) };
+    const gitman::project_definition projects[] { make_project(u8"alpha") };
+    fixture.open({ make_project(u8"alpha") }, definition);
+    fixture.run(u8"alpha", u8"build");
+    // 같은 카드와 기능이 있는 다른 문서다. 기다리던 실행은 이전 문서의 것이라 버린다.
+    fixture.open({ make_project(u8"alpha") }, definition, u8"C:\\work\\other.version-list");
+
+    gitman::app_settings_loaded_event event {};
+    event.operation_id = load_id;
+    event.settings.trusted_function_definitions.push_back({ u8"C:\\work\\other.version-list", gitman::function_trust_digest(definition, projects) });
+    fixture.controller.handle(std::move(event));
+
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.empty());
 }
 
 TEST_CASE("A confirm button previews the display command line before every run", "[function_buttons][t7]")

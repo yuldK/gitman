@@ -838,7 +838,7 @@ TEST_CASE("Cancel and document changes drop the draft", "[function_buttons][t12]
     REQUIRE(fixture.snapshot()->function_editor.has_value() == false);
 }
 
-TEST_CASE("Editor saves keep trust for placement and renew it for renames and command changes", "[function_buttons][t12][r3][logic][store][trust]")
+TEST_CASE("Editor saves keep trust for placement and renew it for renames and command changes", "[function_buttons][t12][r3][s1][logic][store][trust]")
 {
     // 실제 store로 읽고 쓴다. 배치만 바꾼 Apply는 저장한 글의 해시 입력이 같아 신뢰가 그대로이고, 이름·아이콘이나 실행에
     // 쓰는 필드를 바꾸면 해시가 바뀌지만 편집 전에 신뢰했으므로 새 해시로 신뢰를 갱신한다 (2.7, 3.10, D24-A, D29).
@@ -968,17 +968,28 @@ TEST_CASE("Editor saves keep trust for placement and renew it for renames and co
         finish_settings_save(submitter, controller);
     };
 
-    // 배치만 바꾼 Apply는 저장한 글의 해시 입력이 같아 신뢰가 그대로다 (D29).
+    // `card`에서 뺀 Apply는 `Alt+1`이 사라져 해시가 바뀐다. 편집 전에 신뢰했으므로 새 해시로 신뢰를 갱신한다 (D24-A, D31).
     controller.handle(gitman::open_function_editor_intent {});
     controller.handle(gitman::set_function_editor_field_intent { function_editor_field::placement, u8"bar" });
     controller.handle(gitman::apply_function_editor_intent {});
     const gitman::project_store_save_result placed { save_through_store() };
-    REQUIRE(placed.function_digest_input == std::optional { loaded.document->function_buttons->source_digest_input });
-    REQUIRE(digest_now() == digest_before);
+    REQUIRE(placed.function_digest_input != std::optional { loaded.document->function_buttons->source_digest_input });
+    const std::u8string digest_placed { digest_now() };
+    REQUIRE(digest_placed != digest_before);
+    require_trust_saved(digest_placed);
     gitman::project_store_load_result after_place { store.load(document_path) };
     REQUIRE(std::get<gitman::function_button>(after_place.document->function_buttons->buttons[0]).placement == std::optional<std::u8string> { u8"bar" });
     REQUIRE(std::get<gitman::function_button>(after_place.document->function_buttons->buttons[0]).icon.has_value() == with_icon);
     run_without_asking(1u);
+
+    // `bar`·`menu` 사이만 바꾼 Apply는 저장한 글의 해시 입력이 같아 신뢰가 그대로다 (D29, D31).
+    controller.handle(gitman::open_function_editor_intent {});
+    controller.handle(gitman::set_function_editor_field_intent { function_editor_field::placement, u8"menu" });
+    controller.handle(gitman::apply_function_editor_intent {});
+    const gitman::project_store_save_result menued { save_through_store() };
+    REQUIRE(menued.function_digest_input == placed.function_digest_input);
+    REQUIRE(digest_now() == digest_placed);
+    run_without_asking(2u);
 
     // 이름과 아이콘은 해시 입력이라 해시가 바뀐다. 편집 전에 신뢰했으므로 저장한 정의로 신뢰를 갱신해 다시 묻지 않는다
     // (D24-A, D29).
@@ -995,7 +1006,7 @@ TEST_CASE("Editor saves keep trust for placement and renew it for renames and co
     REQUIRE(std::get<gitman::function_button>(after_rename.document->function_buttons->buttons[0]).label == u8"새 이름");
     REQUIRE(std::get<gitman::function_button>(after_rename.document->function_buttons->buttons[0]).args == arguments({ u8"a b" }));
     require_trust_saved(digest_renamed);
-    run_without_asking(2u);
+    run_without_asking(3u);
 
     // 실행에 쓰는 필드를 바꿔도 같다.
     controller.handle(gitman::open_function_editor_intent {});
@@ -1006,7 +1017,263 @@ TEST_CASE("Editor saves keep trust for placement and renew it for renames and co
     const std::u8string digest_after { digest_now() };
     REQUIRE(digest_after != digest_renamed);
     require_trust_saved(digest_after);
-    run_without_asking(3u);
+    run_without_asking(4u);
+}
+
+namespace {
+    // 경로를 그대로 돌려주는 resolver다. 시험 폴더가 있으므로 경로는 모두 쓸 수 있다.
+    class identity_path_resolver final : public gitman::project_path_resolver
+    {
+    public:
+        [[nodiscard]] gitman::project_path_resolution resolve(const std::u8string_view original_path, const std::u8string_view) noexcept override
+        {
+            try
+            {
+                return { std::u8string { original_path }, gitman::configured_path_state::available, std::nullopt };
+            }
+            catch (...)
+            {
+                return {};
+            }
+        }
+
+        [[nodiscard]] bool normalized_equal(const std::u8string_view left, const std::u8string_view right) noexcept override
+        {
+            return left == right;
+        }
+    };
+
+    // 실제 store로 읽고 쓰는 문서와 logic이다 (D31). 버튼 셋(`a`, `b`, `c`)의 배치를 받아 문서를 쓰고, `trusted`면 읽은
+    // 정의의 해시를 앱 설정에 실어 연다.
+    struct stored_trust_fixture
+    {
+        scoped_scan_directory directory {};
+        std::u8string root {};
+        std::u8string document_path {};
+        gitman::win32::workspace_document_file_system file_system {};
+        identity_path_resolver path_resolver {};
+        gitman::json_project_store store { file_system, path_resolver };
+        function_card_submitter submitter {};
+        function_card_run_submitter functions {};
+        gitman::cancellation_registry registry {};
+        gitman::logic_controller controller { submitter, registry };
+
+        stored_trust_fixture(const std::u8string_view a, const std::u8string_view b, const std::u8string_view c, const bool trusted)
+        {
+            REQUIRE(directory.available());
+            root = directory.make_directory(u8"alpha");
+            document_path = directory.path_of(u8"team.version-list");
+            write(a, b, c);
+            const gitman::project_store_load_result loaded { store.load(document_path) };
+            REQUIRE(loaded.document.has_value());
+
+            controller.bind_function_execution(functions
+                , gitman::make_function_run_services(
+                    [](const std::u8string_view) -> std::optional<std::u8string>
+                    {
+                        return std::nullopt;
+                    }
+                )
+            );
+            controller.handle(gitman::window_metrics_intent { 1280.0f, 720.0f, 1.0f });
+            controller.start();
+            gitman::app_settings_loaded_event settings {};
+            settings.operation_id = submitter.requests.back().operation_id;
+            if (trusted)
+                settings.settings.trusted_function_definitions.push_back({ document_path, gitman::function_trust_digest(*loaded.document->function_buttons, loaded.document->projects) });
+            controller.handle(std::move(settings));
+            open();
+        }
+
+        // 버튼 셋의 배치를 적은 문서를 쓴다. 빈 배치는 키를 적지 않는다(`menu`).
+        void write(const std::u8string_view a, const std::u8string_view b, const std::u8string_view c) const
+        {
+            std::string root_json {};
+            for (const char8_t value : root)
+                root_json.push_back(value == u8'\\' ? '/' : static_cast<char>(value));
+            const auto item = [](const char* const id, const std::u8string_view placement)
+            {
+                std::string text { "{\"id\":\"" };
+                text += id;
+                text += "\",\"label\":\"";
+                text += id;
+                text += "\",\"program\":\"C:\\\\Tools\\\\run.exe\"";
+                if (placement.empty() == false)
+                {
+                    text += ",\"placement\":\"";
+                    text.append(placement.begin(), placement.end());
+                    text += "\"";
+                }
+                text += "}";
+                return text;
+            };
+            std::ofstream stream { std::filesystem::path { document_path }, std::ios::binary | std::ios::trunc };
+            stream << "{\"schema_version\":1,\"function_buttons\":{\"buttons\":[" << item("a", a) << "," << item("b", b) << "," << item("c", c)
+                   << "]},\"projects\":[{\"id\":\"alpha\",\"path\":\"" << root_json << "\"}]}";
+        }
+
+        // 파일을 읽어 문서를 연다. 같은 경로를 다시 열면 손으로 고친 문서를 다시 읽은 것과 같다.
+        void open()
+        {
+            gitman::project_store_load_result loaded { store.load(document_path) };
+            REQUIRE(loaded.document.has_value());
+            controller.handle(gitman::open_document_intent { document_path });
+            gitman::document_loaded_event event {};
+            event.document = std::move(loaded.document);
+            event.revision = loaded.revision;
+            controller.handle(std::move(event));
+            finish_settings_save(submitter, controller);
+            submitter.requests.clear();
+        }
+
+        // store를 지나는 저장 한 번이다. 요청의 문서를 실제로 쓰고 결과를 logic에 돌려준다.
+        void save_through_store()
+        {
+            const gitman::operation_request* save { nullptr };
+            for (const gitman::operation_request& request : submitter.requests)
+            {
+                if (request.kind == gitman::operation_kind::save_document)
+                    save = &request;
+            }
+            REQUIRE(save != nullptr);
+            gitman::project_store_save_result saved { store.save(save->document_path, *save->document, save->revision) };
+            REQUIRE(saved.succeeded());
+            gitman::document_saved_event done {};
+            done.operation_id = save->operation_id;
+            done.revision = saved.revision;
+            done.function_digest_input = saved.function_digest_input;
+            done.diagnostics = saved.diagnostics;
+            submitter.requests.clear();
+            controller.handle(std::move(done));
+        }
+
+        [[nodiscard]] std::u8string digest_now()
+        {
+            const gitman::project_store_load_result now { store.load(document_path) };
+            REQUIRE(now.document.has_value());
+            return gitman::function_trust_digest(*now.document->function_buttons, now.document->projects);
+        }
+
+        // 마지막 앱 설정 저장 요청이 실은 신뢰 해시다. 저장 요청이 없으면 값이 없다.
+        [[nodiscard]] std::optional<std::u8string> saved_trust() const
+        {
+            for (auto found = submitter.requests.rbegin(); found != submitter.requests.rend(); ++found)
+            {
+                if (found->kind != gitman::operation_kind::save_app_settings || found->app_settings_payload.has_value() == false)
+                    continue;
+                const std::vector<gitman::trusted_function_definition>& trusted { found->app_settings_payload->trusted_function_definitions };
+                if (trusted.size() != 1u)
+                    return std::nullopt;
+                return trusted.front().digest;
+            }
+            return std::nullopt;
+        }
+
+        // 누른 결과다. 신뢰 dialog가 뜨면 참이고, 아니면 곧바로 실행됐다.
+        [[nodiscard]] bool run_asks(const std::u8string_view button)
+        {
+            const std::size_t before { functions.requests.size() };
+            controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, std::u8string { button } });
+            const bool asked { controller.make_view_snapshot()->function_confirm_dialog.has_value() };
+            if (asked)
+            {
+                controller.handle(gitman::cancel_function_run_intent {});
+                REQUIRE(functions.requests.size() == before);
+                return true;
+            }
+            REQUIRE(functions.requests.size() == before + 1u);
+            gitman::function_completed_event completed {};
+            completed.id = functions.requests.back().id;
+            completed.run_id = functions.requests.back().run_id;
+            completed.outcome = gitman::function_run_outcome::exited;
+            completed.exit_code = 0;
+            controller.handle(std::move(completed));
+            return false;
+        }
+    };
+}
+
+TEST_CASE("A placement menu change into or out of the card renews only a trust held before it", "[function_buttons][s1][logic][store][trust]")
+{
+    // D31: `card`에 넣거나 빼면 `Alt+N`이 바뀌어 해시가 바뀐다. 앱 안의 배치 메뉴는 편집 전에 신뢰했을 때만 저장한 글의
+    // 해시 입력으로 신뢰를 갱신해 다시 묻지 않는다 (D24-A와 같은 규칙).
+    SECTION("신뢰한 정의")
+    {
+        stored_trust_fixture fixture { u8"card", u8"bar", u8"", true };
+        const std::u8string before { fixture.digest_now() };
+        REQUIRE_FALSE(fixture.run_asks(u8"a"));
+
+        fixture.controller.handle(gitman::set_function_placement_intent { u8"b", gitman::function_placement::card });
+        fixture.save_through_store();
+        const std::u8string carded { fixture.digest_now() };
+        REQUIRE(carded != before);
+        REQUIRE(fixture.saved_trust() == std::optional { carded });
+        finish_settings_save(fixture.submitter, fixture.controller);
+        REQUIRE_FALSE(fixture.run_asks(u8"b"));
+
+        fixture.controller.handle(gitman::set_function_placement_intent { u8"a", gitman::function_placement::menu });
+        fixture.save_through_store();
+        const std::u8string uncarded { fixture.digest_now() };
+        REQUIRE(uncarded != carded);
+        REQUIRE(fixture.saved_trust() == std::optional { uncarded });
+        finish_settings_save(fixture.submitter, fixture.controller);
+        REQUIRE_FALSE(fixture.run_asks(u8"a"));
+    }
+
+    SECTION("신뢰하지 않은 정의")
+    {
+        stored_trust_fixture fixture { u8"card", u8"bar", u8"", false };
+        fixture.controller.handle(gitman::set_function_placement_intent { u8"b", gitman::function_placement::card });
+        fixture.save_through_store();
+        REQUIRE_FALSE(fixture.saved_trust().has_value());
+        REQUIRE(fixture.run_asks(u8"b"));
+    }
+}
+
+TEST_CASE("Overlapping placement menu saves renew a trust held before the first one", "[function_buttons][s1][logic][store][trust]")
+{
+    // 저장이 진행 중일 때 낸 배치 변경은 뒤에 이어 낸다. 앞 저장이 끝나면 해시 입력이 중간 값(앞 변경만 실은 글)이 되어,
+    // 그 사이 낸 변경은 지금 정의를 신뢰하지 않은 것으로 본다. 앞 변경이 켠 갱신 표시를 끄지 않아야 마지막 저장 뒤에 신뢰가
+    // 이어진다 (3.10, D31).
+    stored_trust_fixture fixture { u8"card", u8"bar", u8"", true };
+    fixture.controller.handle(gitman::set_function_placement_intent { u8"b", gitman::function_placement::card });
+    fixture.controller.handle(gitman::set_function_placement_intent { u8"a", gitman::function_placement::menu });
+    fixture.save_through_store();
+    fixture.controller.handle(gitman::set_function_placement_intent { u8"c", gitman::function_placement::card });
+    fixture.save_through_store();
+    REQUIRE_FALSE(fixture.saved_trust().has_value());
+    fixture.save_through_store();
+
+    const std::u8string final_digest { fixture.digest_now() };
+    REQUIRE(fixture.saved_trust() == std::optional { final_digest });
+    finish_settings_save(fixture.submitter, fixture.controller);
+    REQUIRE_FALSE(fixture.run_asks(u8"c"));
+    REQUIRE_FALSE(fixture.run_asks(u8"b"));
+}
+
+TEST_CASE("A placement menu move between the bar and the menu keeps the trust digest", "[function_buttons][s1][logic][store][trust]")
+{
+    stored_trust_fixture fixture { u8"card", u8"bar", u8"", true };
+    const std::u8string before { fixture.digest_now() };
+    fixture.controller.handle(gitman::set_function_placement_intent { u8"b", gitman::function_placement::menu });
+    fixture.save_through_store();
+    REQUIRE(fixture.digest_now() == before);
+    REQUIRE_FALSE(fixture.run_asks(u8"b"));
+}
+
+TEST_CASE("A hand edit that changes the Alt+N target asks for the trust again", "[function_buttons][s1][logic][store][trust]")
+{
+    // 손 편집·pull로 `Alt+1`이 가리키는 기능이 바뀌면 다시 묻는다 (D31). `bar`·`menu` 사이 손 편집은 묻지 않는다.
+    stored_trust_fixture fixture { u8"card", u8"bar", u8"", true };
+    REQUIRE_FALSE(fixture.run_asks(u8"a"));
+
+    fixture.write(u8"card", u8"", u8"bar");
+    fixture.open();
+    REQUIRE_FALSE(fixture.run_asks(u8"a"));
+
+    fixture.write(u8"bar", u8"card", u8"bar");
+    fixture.open();
+    REQUIRE(fixture.run_asks(u8"a"));
 }
 
 TEST_CASE("Duplicating a card function keeps the three card limit", "[function_buttons][t12][logic]")

@@ -313,7 +313,7 @@ TEST_CASE("Cancelling the settings dialog keeps the document settings", "[logic]
     REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->git_path == u8"C:\\tools\\git\\git.exe");
 }
 
-TEST_CASE("Untouched document rows follow the app settings and touched ones override", "[logic][settings-ui]")
+TEST_CASE("Untouched document rows follow the app settings and touched ones override", "[logic][settings-ui][s1]")
 {
     // 문서 모드의 암묵 덮어쓰기다 (G3.2): 건드린 행만 문서에 남고, 나머지는 앱
     // 설정을 따른다.
@@ -348,7 +348,8 @@ TEST_CASE("Untouched document rows follow the app settings and touched ones over
     REQUIRE(fixture.submitter.requests.empty());
 
     // ignore_local만 건드리면 그 행만 문서 override가 된다. 재조회 요청에는 전역
-    // svn과 문서 git이 합성된 유효 설정이 실린다.
+    // svn이 합성된 유효 설정이 실린다. 문서 git은 이 문서의 실행 파일을 신뢰하지 않아
+    // 싣지 않는다 (function-buttons-design 3.10, S1).
     fixture.controller.handle(gitman::open_settings_intent {});
     fixture.controller.handle(gitman::toggle_settings_ignore_local_intent {});
     fixture.controller.handle(gitman::confirm_settings_intent {});
@@ -360,7 +361,7 @@ TEST_CASE("Untouched document rows follow the app settings and touched ones over
     REQUIRE(save.document->settings.update_submodules.has_value() == false);
     const gitman::operation_request& refresh { fixture.submitter.requests[1] };
     REQUIRE(refresh.kind == gitman::operation_kind::refresh);
-    REQUIRE(refresh.settings.git_executable == u8"C:\\tools\\git\\git.exe");
+    REQUIRE(refresh.settings.git_executable.empty());
     REQUIRE(refresh.settings.svn_executable == u8"C:\\tools\\svn\\svn.exe");
     REQUIRE(refresh.settings.update_submodules);
     REQUIRE(refresh.settings.ignore_local_changes);

@@ -273,7 +273,7 @@ namespace gitman {
         }
 
         // 통과한 버튼 하나다. 알려진 필드는 모델 값으로 쓰고, 생략한 문서에 기본값 키를 새로 만들지 않는다 — 다시 읽은
-        // 신뢰 해시 입력(3.10)이 쓰기 전과 같아야 재배치가 신뢰를 다시 묻지 않는다 (T7에서 넘어온 일).
+        // 신뢰 해시 입력(3.10)이 쓰기 전과 같아야 `bar`·`menu` 사이 재배치가 신뢰를 다시 묻지 않는다 (T7에서 넘어온 일, D31).
         json function_button_json(json value, const function_button& button)
         {
             if (value.is_object() == false)

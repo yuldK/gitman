@@ -18,7 +18,7 @@ namespace gitman::ui {
 
         // 앞 20개가 D16의 기능 아이콘 이름이고, 뒤는 메뉴 항목이 쓰는 이름이다. 이름은 codicon 이름 그대로다.
         constexpr std::size_t function_icon_count { 20 };
-        constexpr std::array<icon_name_glyph, 27> icons {
+        constexpr std::array<icon_name_glyph, 28> icons {
             icon_name_glyph { u8"tools", luil::codicons::icon_tools },
             icon_name_glyph { u8"play", luil::codicons::icon_play },
             icon_name_glyph { u8"debug-start", luil::codicons::icon_debug_start },
@@ -48,6 +48,8 @@ namespace gitman::ui {
             // 기능 메뉴의 실행 중 항목(중지)과 `⋯`다 (2.3.2).
             icon_name_glyph { u8"stop-circle", luil::codicons::icon_stop_circle },
             icon_name_glyph { u8"ellipsis", luil::codicons::icon_ellipsis },
+            // 배너 메뉴의 `문서 실행 파일 신뢰…`다 (function-buttons-design 3.10, S1).
+            icon_name_glyph { u8"workspace-trusted", luil::codicons::icon_workspace_trusted },
         };
 
         // 아이콘 목록이 쓰는 이름 표다. 위 표의 앞 20개와 같은 순서다.

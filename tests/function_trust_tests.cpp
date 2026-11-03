@@ -63,18 +63,20 @@ TEST_CASE("SHA-256 matches the FIPS 180-4 examples", "[function_buttons][t7]")
         == u8"cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1");
 }
 
-TEST_CASE("The trust digest changes with the definition and project paths and names but not with placement", "[function_buttons][t7][r3]")
+TEST_CASE("The trust digest changes with the definition and project paths and names but not with placement", "[function_buttons][t7][r3][s1]")
 {
     const digest_document base {};
     const std::u8string digest { base.digest() };
     REQUIRE(digest.size() == 64u);
 
-    // 배치(`placement`)는 해시 입력이 아니다. 재배치는 다시 묻지 않는다 (D29).
+    // `card`가 아닌 배치(`bar`·`menu`)는 해시 입력이 아니다. 그 사이 재배치는 다시 묻지 않는다 (D29). `card`에 넣거나 빼면
+    // `Alt+N`이 가리키는 기능이 바뀌므로 다시 묻는다 (D31).
     digest_document placed { base };
     placed.placement = u8"bar";
-    REQUIRE(placed.digest() == digest);
+    const std::u8string bar_digest { placed.digest() };
+    REQUIRE(bar_digest != digest);
     placed.placement = u8"menu";
-    REQUIRE(placed.digest() == digest);
+    REQUIRE(placed.digest() == bar_digest);
 
     // 이름은 신뢰 dialog가 명령과 쌍으로 보인 것이고 아이콘은 `card` 버튼에 보이는 유일한 표시라, 바뀌면 다시 묻는다 (D29).
     digest_document renamed { base };
@@ -229,4 +231,49 @@ TEST_CASE("An empty trust list leaves the app settings file shape alone", "[func
     REQUIRE(parsed.diagnostics.size() == 1u);
     REQUIRE(parsed.settings.trusted_function_definitions.empty());
     REQUIRE(gitman::serialize_app_settings_json(parsed.settings, parsed.shadow_source_json).find(u8"\"trusted_function_definitions\": \"x\"") != std::u8string::npos);
+}
+
+TEST_CASE("The document executable trust digest changes with either path and differs from the function trust", "[function_buttons][s1][trust]")
+{
+    const std::u8string base { gitman::vcs_executables_trust_digest(u8"D:\\tools\\git.exe", u8"") };
+    REQUIRE(base.size() == 64u);
+    REQUIRE(gitman::vcs_executables_trust_digest(u8"D:\\tools\\git.exe", u8"") == base);
+    REQUIRE(gitman::vcs_executables_trust_digest(u8"D:\\tools\\git2.exe", u8"") != base);
+    REQUIRE(gitman::vcs_executables_trust_digest(u8"D:\\tools\\git.exe", u8"D:\\tools\\svn.exe") != base);
+    // 값의 경계가 길이로 갈려 git 값의 끝을 svn 값으로 옮겨도 같은 해시가 되지 않는다.
+    REQUIRE(gitman::vcs_executables_trust_digest(u8"ab", u8"c") != gitman::vcs_executables_trust_digest(u8"a", u8"bc"));
+}
+
+TEST_CASE("Trusted document executables are kept apart from trusted function definitions", "[function_buttons][s1][trust]")
+{
+    const std::u8string digest(64, u8'a');
+    gitman::app_settings settings {};
+    REQUIRE(gitman::trust_vcs_executables(settings, u8"D:\\ws\\team.version-list", digest));
+    REQUIRE(gitman::is_vcs_executables_trusted(settings, u8"d:/WS/team.version-list", digest));
+    REQUIRE_FALSE(gitman::is_function_definition_trusted(settings, u8"D:\\ws\\team.version-list", digest));
+    REQUIRE(gitman::trust_function_definition(settings, u8"D:\\ws\\team.version-list", std::u8string(64, u8'b')));
+    REQUIRE(settings.trusted_vcs_executables.size() == 1u);
+    REQUIRE(gitman::is_vcs_executables_trusted(settings, u8"D:\\ws\\team.version-list", digest));
+    REQUIRE_FALSE(gitman::trust_vcs_executables(settings, u8"D:\\ws\\team.version-list", digest));
+}
+
+TEST_CASE("Trusted document executables round trip through the app settings file", "[function_buttons][s1][trust]")
+{
+    const std::u8string digest(64, u8'e');
+    gitman::app_settings settings {};
+    REQUIRE(gitman::trust_vcs_executables(settings, u8"D:\\ws\\team.version-list", digest));
+    const std::u8string serialized { gitman::serialize_app_settings_json(settings, u8"") };
+    REQUIRE(serialized.find(u8"trusted_vcs_executables") != std::u8string::npos);
+    REQUIRE(serialized.find(u8"trusted_function_definitions") == std::u8string::npos);
+
+    const gitman::app_settings_load_result reparsed { gitman::parse_app_settings_json(serialized, settings_path) };
+    REQUIRE(reparsed.diagnostics.empty());
+    REQUIRE(reparsed.settings.trusted_vcs_executables == settings.trusted_vcs_executables);
+    REQUIRE(reparsed.settings.trusted_function_definitions.empty());
+
+    // 신뢰한 적이 없으면 키를 만들지 않는다. 형식이 틀린 값은 경고 하나를 내고 무시한다.
+    REQUIRE(gitman::serialize_app_settings_json(gitman::app_settings {}, u8"").find(u8"trusted_vcs_executables") == std::u8string::npos);
+    const gitman::app_settings_load_result broken { gitman::parse_app_settings_json(u8"{ \"schema_version\": 1, \"trusted_vcs_executables\": 3 }", settings_path) };
+    REQUIRE(broken.diagnostics.size() == 1u);
+    REQUIRE(broken.settings.trusted_vcs_executables.empty());
 }

@@ -45,6 +45,7 @@ gitman_add_source_filter(gitman_test_files "application/logic"
     app_commands_tests.cpp
     application_options_tests.cpp
     cancellation_registry_tests.cpp
+    document_executable_trust_tests.cpp
     log_isolation_stress_tests.cpp
     function_editor_tests.cpp
     logic_change_operation_tests.cpp

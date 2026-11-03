@@ -656,8 +656,7 @@ namespace gitman {
 
         // 편집 전 정의를 신뢰한 상태였는지 기억한다 (D24-A). 저장이 끝나면 저장한 정의의 해시로 신뢰를 갱신한다 — 편집기를
         // 열었다는 것만으로 남이 만든 다른 버튼까지 신뢰하지 않게, 신뢰하지 않았던 정의는 그대로 둔다.
-        const std::u8string digest { current_function_digest() };
-        function_trust_after_save_ = digest.empty() == false && is_function_definition_trusted(app_settings_, document_path_, digest);
+        remember_function_trust_for_save();
         // 알림 띠의 기능 버튼 경고도 쓴 글을 다시 읽은 진단으로 다시 만든다 (지운 항목·새로 생긴 경고).
         function_notice_after_save_ = true;
         // 저장이 끝나기 전에는 해시 입력이 편집 전 원문이다. 그 해시로 신뢰를 판정·기록하지 않게 실행을 막는다. 문서 변경
@@ -667,6 +666,13 @@ namespace gitman {
         function_button_problems_ = std::move(problems);
         // 모델이 바뀌어 카드 열·기능 줄·`Alt+N` 번호가 바로 다시 매겨진다 (view는 snapshot마다 다시 짓는다).
         request_save();
+    }
+
+    void logic_controller::remember_function_trust_for_save()
+    {
+        const std::u8string digest { current_function_digest() };
+        if (digest.empty() == false && is_function_definition_trusted(app_settings_, document_path_, digest))
+            function_trust_after_save_ = true;
     }
 
     void logic_controller::finish_function_editor_save(const document_saved_event& event)

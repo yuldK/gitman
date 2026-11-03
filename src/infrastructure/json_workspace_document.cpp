@@ -479,20 +479,29 @@ namespace gitman {
             }
         }
 
-        // 신뢰 해시 입력이다 (3.10). 버튼마다 `placement`만 뺀 원문을 다시 직렬화한다. 키를
+        // 신뢰 해시 입력이다 (3.10). 버튼마다 `placement`를 뺀 원문을 다시 직렬화한다. 키를
         // 정렬하는 json으로 만들어, 손으로 키 순서만 바꾼 같은 정의는 같은 입력이 된다.
         // `label`은 신뢰 dialog가 명령과 쌍으로 보인 이름이고, `icon`은 `card` 버튼이 아이콘만
         // 보여 사용자가 그 그림으로 명령을 알아보므로 넣는다 (D29). 검증에 실패한 항목도 같은
         // 규칙이라, 신뢰한 뒤 label만 채워 유효 버튼이 되면 해시가 바뀐다.
-        std::u8string function_digest_input(const json& section)
+        // 화면에 `card`로 보이는 항목만 `"placement":"card"`를 다시 적는다 (D31). 배열 순서는 원래
+        // 입력에 있으므로 `Alt+N`이 가리키는 기능이 바뀌면 해시가 바뀌고, `bar`·`menu`·생략·알 수
+        // 없는 값·넷째 `card`(기능 줄로 보임) 사이의 차이는 해시를 바꾸지 않는다. `entries`는 파서가
+        // 같은 배열을 문서 순서 그대로 읽은 결과라 자리가 하나씩 맞는다.
+        std::u8string function_digest_input(const json& section, const std::span<const function_button_entry> entries)
         {
             json digest { section };
             if (const auto buttons { digest.find("buttons") }; buttons != digest.end() && buttons->is_array())
             {
-                for (json& item : *buttons)
+                const std::vector<std::optional<function_placement>> visible { resolve_visible_placements(entries) };
+                for (std::size_t index = 0; index < buttons->size(); ++index)
                 {
-                    if (item.is_object())
-                        item.erase("placement");
+                    json& item { (*buttons)[index] };
+                    if (item.is_object() == false)
+                        continue;
+                    item.erase("placement");
+                    if (index < visible.size() && visible[index] == function_placement::card)
+                        item["placement"] = "card";
                 }
             }
             return as_utf8(digest.dump());
@@ -521,8 +530,9 @@ namespace gitman {
             const ordered_json ordered_root { ordered_json::parse(source_bytes.begin(), source_bytes.end(), nullptr, false) };
             const ordered_json& source { ordered_root.at("function_buttons") };
 
+            // 신뢰 해시 입력(`source_digest_input`)은 부르는 쪽이 항목을 다 읽은 뒤에 만든다. 화면에 보이는 `card`가
+            // 항목의 검증 결과에 달려 있다 (D31).
             function_buttons_definition definition {};
-            definition.source_digest_input = function_digest_input(*section);
 
             for (auto field = source.begin(); field != source.end(); ++field)
             {
@@ -1240,6 +1250,8 @@ namespace gitman {
         }
         // project id 경고를 위해 project 다음에 읽는다.
         document.function_buttons = parse_function_buttons(root, source_bytes, document.projects, result, document_path);
+        if (document.function_buttons.has_value())
+            document.function_buttons->source_digest_input = function_digest_input(root.at("function_buttons"), document.function_buttons->buttons);
         result.document = std::move(document);
         return result;
     }

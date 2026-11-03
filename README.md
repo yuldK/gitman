@@ -281,7 +281,7 @@ Gitman은 installer나 MSIX 없이 `bin\gitman.exe`를 원하는 위치에 복�
 사용자 데이터는 다음 위치에 저장됩니다.
 
 - 프로젝트 목록, 실행 파일 경로, 경로 표시 방식, 문서별 테마·키 컬러·글꼴, 창 배치, 기능 버튼과 변수(`function_buttons`): 사용자가 만든 `.version-list` JSON 문서
-- 최근에 연 문서 목록과 고정 여부, 전역 설정과 외양·글꼴, 문서 없이 쓸 때의 창 배치, 신뢰한 기능 정의(문서 경로와 해시): `gitman.exe`와 같은 폴더의 `gitman.app-settings.json`
+- 최근에 연 문서 목록과 고정 여부, 전역 설정과 외양·글꼴, 문서 없이 쓸 때의 창 배치, 신뢰한 기능 정의와 신뢰한 문서 실행 파일(`trusted_function_definitions`·`trusted_vcs_executables`: 문서 경로와 해시): `gitman.exe`와 같은 폴더의 `gitman.app-settings.json`
 - 작업 로그: 화면은 메모리 전용(카드당 1,000 record), 파일은 `.<이름>.version-list.log` 폴더의 저장소별 `타임스탬프.log`
 - 파일 연결: 등록한 경우 `HKCU\Software\Classes`
 

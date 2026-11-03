@@ -76,7 +76,8 @@ namespace gitman {
     [[nodiscard]] function_more_marker function_more_marker_state(const function_more_status& status) noexcept;
     [[nodiscard]] function_more_marker function_more_marker_state(const std::vector<card_function_view>& functions, const std::vector<bool>& on_card);
 
-    // 출력 수집 기능이 실행 중이라 update·switch가 막힌 사유다: `기능 "빌드"가 실행 중입니다` (4.7).
+    // 출력 수집 기능이 실행 중이라 update·switch가 막힌 사유다: `기능 "빌드"가 실행 중입니다` (4.7). 조사는 이름 끝 글자의
+    // 받침으로 고른다(`기능 "핑"이 실행 중입니다`, S6).
     [[nodiscard]] std::u8string function_running_reason(std::u8string_view label);
 
     // 실행 중인 출력 수집 기능 하나다. 문서 닫기·다시 읽기·다른 문서 열기·종료의 확인 dialog가 쓴다 (4.10).

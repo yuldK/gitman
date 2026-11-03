@@ -26,6 +26,40 @@ namespace gitman {
             return text;
         }
 
+        // 이름 뒤 주격 조사다. 끝 글자에 받침이 있으면 `이`, 없으면 `가`다 — 기능 이름은 사용자가 지으므로 받침을 미리
+        // 알 수 없다 (S6 앱 점검의 `기능 "핑"가`). 숫자는 한국어로 읽은 소리로 고르고, 소리를 정할 수 없는 끝 글자(영문,
+        // 기호)와 빈 이름은 예전 글 그대로 `가`다.
+        std::u8string_view subject_particle(const std::u8string_view label) noexcept
+        {
+            constexpr std::u8string_view with_final { u8"이" };
+            constexpr std::u8string_view without_final { u8"가" };
+            if (label.empty())
+                return without_final;
+            const char8_t last { label.back() };
+            if (last >= u8'0' && last <= u8'9')
+            {
+                // 0 영, 1 일, 3 삼, 6 육, 7 칠, 8 팔은 받침이 있다.
+                constexpr std::u8string_view digits_with_final { u8"013678" };
+                return digits_with_final.find(last) != std::u8string_view::npos ? with_final : without_final;
+            }
+            // 한글 음절(U+AC00~U+D7A3)은 UTF-8로 세 바이트다.
+            if (label.size() < 3)
+                return without_final;
+            const std::u8string_view tail { label.substr(label.size() - 3) };
+            const auto lead { static_cast<char32_t>(tail[0]) };
+            const auto second { static_cast<char32_t>(tail[1]) };
+            const auto third { static_cast<char32_t>(tail[2]) };
+            if ((lead & 0xF0u) != 0xE0u
+                || (second & 0xC0u) != 0x80u
+                || (third & 0xC0u) != 0x80u)
+                return without_final;
+            const char32_t code { ((lead & 0x0Fu) << 12) | ((second & 0x3Fu) << 6) | (third & 0x3Fu) };
+            if (code < 0xAC00u || code > 0xD7A3u)
+                return without_final;
+            // 음절은 (초성 × 21 + 중성) × 28 + 종성 순서라 28로 나눈 나머지가 종성이다. 0이면 받침이 없다.
+            return (code - 0xAC00u) % 28u != 0u ? with_final : without_final;
+        }
+
         std::u8string more_access_name(const std::u8string_view prefix, const std::u8string_view card_name, const std::size_t count)
         {
             std::u8string name { prefix };
@@ -220,7 +254,9 @@ namespace gitman {
     {
         std::u8string text { u8"기능 \"" };
         text += label;
-        text += u8"\"가 실행 중입니다";
+        text += u8"\"";
+        text += subject_particle(label);
+        text += u8" 실행 중입니다";
         return text;
     }
 

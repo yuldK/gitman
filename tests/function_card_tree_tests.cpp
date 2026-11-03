@@ -761,3 +761,20 @@ TEST_CASE("An absolute card list offset scrolls there within the limit", "[funct
     REQUIRE(gitman::scroll_target(10.0f, 5.0f, -std::numeric_limits<float>::infinity()) == 15.0f);
     REQUIRE(gitman::scroll_target(10.0f, 5.0f, 0.0f) == 0.0f);
 }
+
+TEST_CASE("The running reason picks the subject particle from the label's last syllable", "[function_buttons][s6][ui][tree]")
+{
+    // 앱 점검에서 `기능 "핑"가 실행 중입니다`가 나왔다 (S6). 받침이 있는 한글 끝 글자는 `이`, 없으면 `가`다.
+    REQUIRE(gitman::function_running_reason(u8"빌드") == u8"기능 \"빌드\"가 실행 중입니다");
+    REQUIRE(gitman::function_running_reason(u8"핑") == u8"기능 \"핑\"이 실행 중입니다");
+    REQUIRE(gitman::function_running_reason(u8"배포 준비") == u8"기능 \"배포 준비\"가 실행 중입니다");
+    REQUIRE(gitman::function_running_reason(u8"빌드 확인") == u8"기능 \"빌드 확인\"이 실행 중입니다");
+    // 숫자는 한국어로 읽은 소리로 고른다 (1 일, 2 이, 3 삼, 4 사, 5 오, 6 육, 7 칠, 8 팔, 9 구, 0 영).
+    REQUIRE(gitman::function_running_reason(u8"빌드1") == u8"기능 \"빌드1\"이 실행 중입니다");
+    REQUIRE(gitman::function_running_reason(u8"빌드2") == u8"기능 \"빌드2\"가 실행 중입니다");
+    REQUIRE(gitman::function_running_reason(u8"단계 0") == u8"기능 \"단계 0\"이 실행 중입니다");
+    // 소리를 정할 수 없는 끝 글자(영문, 기호)와 빈 이름은 예전처럼 `가`다.
+    REQUIRE(gitman::function_running_reason(u8"build") == u8"기능 \"build\"가 실행 중입니다");
+    REQUIRE(gitman::function_running_reason(u8"빌드)") == u8"기능 \"빌드)\"가 실행 중입니다");
+    REQUIRE(gitman::function_running_reason(u8"") == u8"기능 \"\"가 실행 중입니다");
+}

@@ -425,6 +425,10 @@ namespace gitman {
         // 끝내려 할 때다 (4.10, D28).
         // 실행 중인 기능을 목록으로 보이고, 확인하면 중지하고(저장하지 못한 변경은 버리고) 그 일을 한다.
         running,
+        // `program`이 `cmd.exe`인 기능의 명령을 gitman이 보정했거나 경고가 있을 때의 최종 승인이다 (4.3, D30). 원래 명령,
+        // 보정한 실행 명령, 바뀐 자리와 이유, 경고를 보인다. 신뢰 확인·`confirm` 미리보기가 함께 필요하면 그 모드의 dialog
+        // 하나에 같은 줄을 싣고 이 모드는 쓰지 않는다.
+        correction,
     };
 
     // dialog 목록 항목의 코드 줄 하나다. 비밀 가리기를 거친 글이고, 제어 문자와 보이지 않는 글자는
@@ -436,6 +440,8 @@ namespace gitman {
         bool dim { false };
         // 앞 줄이 폭을 넘겨 이어지는 줄이다. element가 들여 그린다.
         bool continuation { false };
+        // gitman이 고칠 수 없는 위험을 알리는 줄이다 (cmd 보정의 경고, D30). element가 경고색으로 그린다.
+        bool warning { false };
     };
 
     // dialog 목록의 기능 하나다. 줄 수만큼 높이가 정해져 logic의 스크롤 한계와 element의 배치가

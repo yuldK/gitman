@@ -52,6 +52,8 @@ namespace gitman::ui {
                 return u8"실행 전 확인";
             case function_confirm_mode::running:
                 return u8"실행 중인 기능 확인";
+            case function_confirm_mode::correction:
+                return u8"보정 확인";
             }
             return u8"기능 실행 확인";
         }
@@ -191,8 +193,10 @@ namespace gitman::ui {
                 float line_top { header_top + header_height };
                 for (const function_confirm_line& line : item_.lines)
                 {
-                    SkPaint paint { solid_paint(context.palette.primary_foreground) };
-                    paint.setAlphaf(line.dim ? 0.5f : 0.8f);
+                    // cmd 보정의 경고(D30)는 gitman이 고칠 수 없는 위험이라 panel 경고 줄과 같은 경고색으로 그린다.
+                    SkPaint paint { solid_paint(line.warning ? context.palette.warning_accent : context.palette.primary_foreground) };
+                    if (line.warning == false)
+                        paint.setAlphaf(line.dim ? 0.5f : 0.8f);
                     const float left { line.continuation ? label_left + indent : label_left };
                     draw_text_line(context, line.text, { left, line_top, right - left, line_height }, paint, code);
                     line_top += line_height;

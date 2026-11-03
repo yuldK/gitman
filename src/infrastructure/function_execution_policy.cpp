@@ -62,6 +62,7 @@ namespace gitman {
         // 활성 code page로 바꾼다 (`vcs_execution_policy.cpp`와 같은 값).
         request.text_encoding = process_text_encoding::active_code_page_fallback;
         request.syntax = function_command_line_syntax(request.executable);
+        request.command_line = std::move(command.command_line);
         return request;
     }
 
@@ -73,6 +74,7 @@ namespace gitman {
         request.working_directory = std::move(command.working_directory);
         request.environment_overrides = function_environment_overrides(builtins, function_run_mode::detached);
         request.syntax = function_command_line_syntax(request.executable);
+        request.command_line = std::move(command.command_line);
         return request;
     }
 

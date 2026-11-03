@@ -20,6 +20,9 @@ namespace gitman {
         std::u8string program {};
         std::vector<std::u8string> arguments {};
         std::u8string working_directory {};
+        // `program`이 `cmd.exe`일 때 logic이 지어 사용자가 승인한 최종 명령줄이다 (4.3, D30). 요청의 `command_line`이
+        // 된다. cmd가 아니면 비어 있다.
+        std::u8string command_line {};
     };
 
     // `${env:NAME}`의 값이다. 정의되지 않았으면 값이 없다. 클릭 시점의 gitman 프로세스

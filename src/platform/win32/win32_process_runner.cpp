@@ -406,8 +406,9 @@ namespace gitman::win32 {
             }
 
             // 실제 실행에 쓰는 명령줄과 기록용 값을 분리한다. 마스킹은 기록용 값에만
-            // 적용하므로 자식에게 전달하는 인자는 바뀌지 않는다.
-            const std::u8string command_line_text { build_process_command_line(request.executable, request.arguments, request.syntax) };
+            // 적용하므로 자식에게 전달하는 인자는 바뀌지 않는다. cmd 기능은 logic이 지어 사용자가 승인한 명령줄을
+            // 싣고 오므로 다시 짓지 않는다 (function-buttons-design D30).
+            const std::u8string command_line_text { request.command_line.empty() ? build_process_command_line(request.executable, request.arguments, request.syntax) : request.command_line };
             result.masked_command_line = mask_secrets(command_line_text);
 
             const auto executable { utf8_to_utf16(request.executable) };

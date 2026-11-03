@@ -17,14 +17,13 @@ namespace gitman {
         // 인자마다 `CommandLineToArgvW` 규칙으로 인용한다. 셸을 거치지 않으므로 메타 문자는 값의 일부다.
         argv,
         // `cmd.exe`가 `/c` 뒤의 글을 자기 규칙으로 다시 해석하는 것에 맞춰 조립한다. 메타 문자가 든 토큰은
-        // 따옴표로 감싸 원래 값 그대로 닿게 한다 (function-buttons-design 4.3, D27).
+        // 따옴표로 감싸고 `%`·`"`·`!`를 보정해 원래 값 그대로 닿게 한다 (function-buttons-design 4.3, D27, D30).
         cmd,
     };
 
-    // `cmd` 조립으로도 원래 값을 지킬 수 없는 문자다. `%`는 따옴표 안에서도 정의된 환경 변수 이름이면 값으로
-    // 바뀌고 `^`로 막을 수 없다. `!`는 지연 확장(`/v:on`)이 켜지면 같다. 따옴표 안의 `"`를 나타낼 길이 없고
-    // 줄바꿈은 명령을 끝낸다 (2026-11-03 실측, R1).
-    inline constexpr std::u8string_view cmd_uncorrectable_characters { u8"%!\"\r\n" };
+    // cmd 명령줄로 아예 전달할 수 없는 문자다. cmd는 줄바꿈에서 명령을 끝내고 그 뒤를 버리며, `^`로도 이을 수
+    // 없다 (2026-11-03 실측, R4). `% ! "`는 R1에서 거부했지만 R4부터 보정한다(`^%`, `/v:off`, `""`).
+    inline constexpr std::u8string_view cmd_uncorrectable_characters { u8"\r\n" };
 
     enum class process_stream
     {

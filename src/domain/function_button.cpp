@@ -98,14 +98,6 @@ namespace gitman {
             return path.substr(separator + 1);
         }
 
-        // 배치 줄에서 `%NAME%`을 펼친 뒤 cmd가 해석하는 문자다 (D26). `!`는 지연 확장이 켜진 cmd(`/v:on`,
-        // `setlocal EnableDelayedExpansion`, 레지스트리)가 `!NAME!`을 gitman 환경의 값으로 바꾼다. `, ; =`는
-        // 명령과 인자를 가른다. `if %GITMAN_BRANCH%==main …`에 `x==x,md,INJECTED`가 오면 `==`가 비교를 일찍 끝내고
-        // 뒤의 `md INJECTED`가 실행된다(git이 받는 브랜치 이름, 2026-11-03 실측). 공백·탭은 넣지 않는다. 브랜치
-        // 이름에는 올 수 없고, 저장소 루트(`OneDrive - 회사명`)를 막으면 흔한 경로가 모두 거부되며, `=` 없이
-        // 공백만으로는 `if` 비교가 문법 오류로 끝난다.
-        constexpr std::u8string_view cmd_environment_metacharacters { u8"&|<>^()%!\",;=\r\n" };
-
         // 고정 집합이다. 사용자 변수를 내보내지 않으므로 대소문자만 다른 이름이 생기지 않는다 (3.3).
         constexpr std::array exported_function_variables {
             function_environment_export { u8"workspaceFolder", u8"GITMAN_WORKSPACE_FOLDER" },
@@ -622,12 +614,17 @@ namespace gitman {
 
     std::u8string build_display_command_line(const variable_expansion& program, const std::span<const variable_expansion> arguments, const command_line_joiner& join, const secret_text_masker& mask)
     {
+        // cmd는 보정 결정(따옴표, `^%`, `/v:off`, 명령 문장)을 실제 값으로 내리고 같은 결정으로 표시용 글을 짓는다.
+        // 표시용 글로 따로 조립하면 `${env:}` 값의 `!` 때문에 넣은 `/v:off`가 표시에서 빠진다 (D30).
+        if (is_cmd_program(program.text))
+            return mask(assemble_function_cmd_command_line(program, arguments, {}).display_text);
+
         std::vector<std::u8string> displayed_arguments {};
         displayed_arguments.reserve(arguments.size());
         for (const variable_expansion& argument : arguments)
             displayed_arguments.push_back(display_text(argument));
 
-        const std::u8string joined { join(display_text(program), std::span<const std::u8string> { displayed_arguments }, function_command_line_syntax(program.text)) };
+        const std::u8string joined { join(display_text(program), std::span<const std::u8string> { displayed_arguments }, command_line_syntax::argv) };
         return mask(joined);
     }
 
@@ -727,7 +724,7 @@ namespace gitman {
             message.append(finding.variable);
             message.append(u8"} 값에");
         }
-        message.append(u8" gitman이 보정할 수 없는 문자(");
+        message.append(u8" cmd 명령줄로 넘길 수 없는 문자(");
         append_character_name(message, finding.character);
         message.append(u8")가 있습니다.");
         return message;
@@ -738,34 +735,49 @@ namespace gitman {
         return exported_function_variables;
     }
 
-    std::optional<cmd_environment_finding> find_cmd_environment_injection(const std::u8string_view program, const std::span<const variable_binding> builtins)
+    cmd_argument make_cmd_argument(const variable_expansion& expansion)
     {
-        if (is_cmd_program(program) == false)
-            return std::nullopt;
+        cmd_argument argument {};
+        argument.pieces.reserve(expansion.segments.size());
+        for (const expansion_segment& segment : expansion.segments)
+        {
+            cmd_text_piece piece {};
+            piece.text = std::u8string_view { expansion.text }.substr(segment.offset, segment.length);
+            piece.literal = segment.origin == variable_origin::literal;
+            // 실제 값 대신 이름을 보인다. `display_text`와 같은 규칙이다 (3.6).
+            if (segment.origin == variable_origin::environment)
+                piece.display = u8"${env:" + segment.variable + u8"}";
+            argument.pieces.push_back(std::move(piece));
+        }
+        return argument;
+    }
 
+    std::vector<cmd_exported_value> function_cmd_exported_values(const std::span<const variable_binding> builtins)
+    {
+        std::vector<cmd_exported_value> values {};
         for (const function_environment_export& exported : exported_function_variables)
         {
             for (const variable_binding& binding : builtins)
             {
-                if (binding.name != exported.variable || binding.origin != variable_origin::runtime || binding.value.has_value() == false)
-                    continue;
-
-                const std::size_t found { binding.value->find_first_of(cmd_environment_metacharacters) };
-                if (found != std::u8string::npos)
-                    return cmd_environment_finding { std::u8string { exported.environment }, (*binding.value)[found] };
+                if (binding.name == exported.variable && binding.origin == variable_origin::runtime && binding.value.has_value())
+                    values.push_back({ std::u8string { exported.environment }, *binding.value });
             }
         }
-        return std::nullopt;
+        return values;
     }
 
-    std::u8string cmd_environment_injection_message(const cmd_environment_finding& finding)
+    cmd_command_line assemble_function_cmd_command_line(const variable_expansion& program, const std::span<const variable_expansion> arguments, const std::span<const variable_binding> builtins)
     {
-        std::u8string message { u8"cmd.exe에 내보내는 " };
-        message.append(finding.environment);
-        message.append(u8" 값에 cmd가 다시 해석하는 문자(");
-        append_character_name(message, finding.character);
-        message.append(u8")가 있습니다.");
-        return message;
+        std::vector<cmd_argument> pieces {};
+        pieces.reserve(arguments.size());
+        for (const variable_expansion& argument : arguments)
+            pieces.push_back(make_cmd_argument(argument));
+
+        cmd_text_piece executable {};
+        executable.text = program.text;
+        executable.display = display_text(program);
+        const std::vector<cmd_exported_value> exported { function_cmd_exported_values(builtins) };
+        return assemble_cmd_command_line(executable, pieces, exported);
     }
 
     std::vector<std::u8string> function_user_variable_names(const function_buttons_definition& definition, const std::span<const std::u8string> project_ids)

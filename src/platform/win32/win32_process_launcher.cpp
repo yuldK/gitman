@@ -76,7 +76,7 @@ namespace gitman::win32 {
             }
 
             const auto executable { utf8_to_utf16(request.executable) };
-            const auto command_line { utf8_to_utf16(build_process_command_line(request.executable, request.arguments, request.syntax)) };
+            const auto command_line { utf8_to_utf16(request.command_line.empty() ? build_process_command_line(request.executable, request.arguments, request.syntax) : request.command_line) };
             const auto working_directory { utf8_to_utf16(request.working_directory) };
             if (executable.value.has_value() == false
                 || command_line.value.has_value() == false

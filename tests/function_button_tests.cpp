@@ -751,7 +751,8 @@ TEST_CASE("Allow list messages name the field and suggest an interpreter", "[fun
 
 TEST_CASE("Cmd defense corrects metacharacters from runtime variables instead of refusing them", "[function_buttons][t4][r1]")
 {
-    // R1(D27)부터 `& | < > ^ ( )`는 cmd 전용 조립이 따옴표로 감싸 넘긴다. 보정할 수 없는 `%`만 거부한다.
+    // R1(D27)부터 `& | < > ^ ( )`는 cmd 전용 조립이 따옴표로 감싸 넘기고, R4(D30)부터 `% ! "`도 보정한다. cmd
+    // 명령줄로 넘길 수 없는 줄바꿈만 거부한다.
     gitman::repository_snapshot snapshot { make_git_snapshot() };
     snapshot.current_reference = u8"feature&calc";
     gitman::variable_lookup lookup { make_lookup(&snapshot) };
@@ -768,41 +769,47 @@ TEST_CASE("Cmd defense corrects metacharacters from runtime variables instead of
     snapshot.current_reference = u8"feature%calc";
     lookup = make_lookup(&snapshot);
     arguments[3] = expand(u8"--branch=${branch}", lookup);
+    REQUIRE_FALSE(gitman::find_cmd_injection(program, arguments).has_value());
+
+    snapshot.current_reference = u8"feature\ncalc";
+    lookup = make_lookup(&snapshot);
+    arguments[3] = expand(u8"--branch=${branch}", lookup);
     const std::optional<gitman::cmd_injection_finding> finding { gitman::find_cmd_injection(program, arguments) };
     REQUIRE(finding.has_value());
     REQUIRE(finding->argument == std::optional<std::size_t> { 3u });
     REQUIRE(finding->origin == gitman::variable_origin::runtime);
     REQUIRE(finding->variable == u8"branch");
-    REQUIRE(finding->character == u8'%');
+    REQUIRE(finding->character == u8'\n');
     REQUIRE(gitman::cmd_injection_message(*finding).find(u8"${branch}") != std::u8string::npos);
-    REQUIRE(gitman::cmd_injection_message(*finding).find(u8"(%)") != std::u8string::npos);
+    REQUIRE(gitman::cmd_injection_message(*finding).find(u8"(줄바꿈)") != std::u8string::npos);
 }
 
-TEST_CASE("Cmd defense rejects the delayed expansion mark", "[function_buttons][v]")
+TEST_CASE("Cmd defense turns off delayed expansion for the delayed expansion mark", "[function_buttons][v][r4]")
 {
-    // 지연 확장이 켜진 cmd(`/v:on`, `setlocal EnableDelayedExpansion`)는 `!NAME!`을 gitman 환경의 값으로 바꾼다.
+    // 지연 확장이 켜진 cmd(`/v:on`, 레지스트리)는 `!NAME!`을 gitman 환경의 값으로 바꾼다. V·R1은 거부했고 R4(D30)부터
+    // `/v:off`를 넣어 보정한다.
     gitman::repository_snapshot snapshot { make_git_snapshot() };
     snapshot.current_reference = u8"!GITHUB_TOKEN!";
     const gitman::variable_lookup lookup { make_lookup(&snapshot) };
     const gitman::variable_expansion program { expand(u8"cmd.exe", lookup) };
     const std::vector<gitman::variable_expansion> arguments { expand(u8"/c", lookup), expand(u8"${branch}", lookup) };
 
-    const std::optional<gitman::cmd_injection_finding> finding { gitman::find_cmd_injection(program, arguments) };
-    REQUIRE(finding.has_value());
-    REQUIRE(finding->character == u8'!');
-    REQUIRE(gitman::cmd_injection_message(*finding).find(u8"(!)") != std::u8string::npos);
+    REQUIRE_FALSE(gitman::find_cmd_injection(program, arguments).has_value());
+    const gitman::cmd_command_line assembly { gitman::assemble_function_cmd_command_line(program, arguments, lookup.builtins) };
+    REQUIRE(assembly.text.find(u8" /v:off /s /c ") != std::u8string::npos);
+    REQUIRE(assembly.corrections.front().kinds == std::vector<gitman::cmd_correction_kind> { gitman::cmd_correction_kind::delayed_expansion });
 }
 
 TEST_CASE("Cmd defense checks every uncorrectable character and environment values", "[function_buttons][t4][r1]")
 {
     const gitman::variable_expansion program { expand(u8"C:\\Windows\\System32\\CMD.EXE", make_lookup(nullptr)) };
-    for (const std::u8string_view value : { u8"a&b", u8"a|b", u8"a^b", u8"a<b", u8"a>b", u8"a(b)" })
+    for (const std::u8string_view value : { u8"a&b", u8"a|b", u8"a^b", u8"a<b", u8"a>b", u8"a(b)", u8"a%PATH%", u8"a!b", u8"a\"b" })
     {
         const gitman::variable_lookup lookup { make_lookup(nullptr, { { u8"TARGET", std::u8string { value } } }) };
         const std::vector<gitman::variable_expansion> arguments { expand(u8"/c", lookup), expand(u8"${env:TARGET}", lookup) };
         REQUIRE_FALSE(gitman::find_cmd_injection(program, arguments).has_value());
     }
-    for (const std::u8string_view value : { u8"a%PATH%", u8"a!b", u8"a\"b", u8"a\nb", u8"a\rb" })
+    for (const std::u8string_view value : { u8"a\nb", u8"a\rb" })
     {
         INFO(reinterpret_cast<const char*>(std::u8string { value }.c_str()));
         const gitman::variable_lookup lookup { make_lookup(nullptr, { { u8"TARGET", std::u8string { value } } }) };
@@ -840,7 +847,7 @@ TEST_CASE("Cmd defense lets correctable document and literal segments through", 
 TEST_CASE("Cmd defense follows runtime values through user variables", "[function_buttons][t4]")
 {
     gitman::repository_snapshot snapshot { make_git_snapshot() };
-    snapshot.current_reference = u8"x%y";
+    snapshot.current_reference = u8"x\ny";
     gitman::variable_lookup lookup { make_lookup(&snapshot) };
     lookup.user = { { u8"target", u8"refs/${branch}" } };
 
@@ -849,13 +856,13 @@ TEST_CASE("Cmd defense follows runtime values through user variables", "[functio
     const std::optional<gitman::cmd_injection_finding> finding { gitman::find_cmd_injection(program, arguments) };
     REQUIRE(finding.has_value());
     REQUIRE(finding->variable == u8"branch");
-    REQUIRE(finding->character == u8'%');
+    REQUIRE(finding->character == u8'\n');
 }
 
 TEST_CASE("Cmd defense applies only when the program is cmd", "[function_buttons][t4]")
 {
     gitman::repository_snapshot snapshot { make_git_snapshot() };
-    snapshot.current_reference = u8"feature%calc";
+    snapshot.current_reference = u8"feature\ncalc";
     const gitman::variable_lookup lookup { make_lookup(&snapshot) };
     const std::vector<gitman::variable_expansion> arguments { expand(u8"${branch}", lookup) };
 

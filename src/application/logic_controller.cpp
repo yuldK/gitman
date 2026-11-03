@@ -923,6 +923,8 @@ namespace gitman {
         // 기능 실행 확인은 이전 문서의 정의를 가리킨다. 남겨 두면 확인할 때 새 문서 경로에 이전
         // 정의의 해시를 기록하게 된다.
         function_confirm_.reset();
+        // cmd 보정 승인은 그 문서의 정의와 값에 대한 것이다. 다시 읽거나 다른 문서를 열면 다시 묻는다 (D30).
+        cmd_approvals_.clear();
         // 이전 문서의 다시 읽기 결과는 도착해도 쓰지 않는다.
         abandon_reload();
         // 이전 문서를 가리키던 dialog와 메뉴도 지금 닫는다. 읽기에 실패하면 `install_document`가 닫아 주지 않아, 편집
@@ -1119,6 +1121,8 @@ namespace gitman {
         // 기능 실행 확인은 이전 문서의 카드와 정의를 가리킨다. 초점 옮기기 요청도 이전 문서의 카드 id다 — 새 문서에
         // 같은 id가 있으면 그 element로 초점이 갈 수 있다. 번호는 되돌리지 않는다 (luil이 같은 번호를 한 번만 이행한다).
         function_confirm_.reset();
+        // cmd 보정 승인은 그 문서의 정의와 값에 대한 것이다. 다시 읽거나 다른 문서를 열면 다시 묻는다 (D30).
+        cmd_approvals_.clear();
         function_focus_.reset();
         // 편집 dialog의 초안과 저장 뒤 신뢰 갱신은 이전 문서의 정의다.
         function_editor_.reset();
@@ -1808,7 +1812,32 @@ namespace gitman {
             open_function_confirm(function_confirm_mode::preview, *card, *button, *prepared, std::move(digest));
             return;
         }
+        // cmd 명령을 gitman이 보정했거나 고칠 수 없는 위험이 있으면 보정한 명령을 보이고 최종 승인을 받는다 (D30). 신뢰
+        // 확인이나 `confirm` 미리보기가 함께 필요하면 위 dialog 하나가 같은 줄을 싣는다 — 잇따라 열면 같은 자리의 확인을
+        // 두 번 누른 것이 두 번째 dialog를 지나간다.
+        if (cmd_approval_needed(*card, *button, *prepared))
+        {
+            open_function_confirm(function_confirm_mode::correction, *card, *button, *prepared, std::move(digest));
+            return;
+        }
         submit_function_run(*card, *button, *prepared);
+    }
+
+    bool logic_controller::cmd_approval_needed(const card_state& card, const function_button& button, const prepared_function_run& prepared) const
+    {
+        if (prepared.cmd.has_value() == false || prepared.cmd->needs_approval() == false)
+            return false;
+        // 기억은 사용자가 본 그대로의 실행에만 맞는다. 값이 바뀌어 최종 명령줄, 경고(배치가 읽을 값), 작업 폴더가 달라지면
+        // 다시 묻는다.
+        const auto approved = [&](const cmd_approval& approval)
+        {
+            return approval.card == card.project.id
+                && approval.button_id == button.id
+                && approval.command_line == prepared.cmd->text
+                && approval.warnings == prepared.cmd->warnings
+                && approval.working_directory == prepared.working_directory.text;
+        };
+        return std::ranges::none_of(cmd_approvals_, approved);
     }
 
     std::optional<logic_controller::prepared_function_run> logic_controller::prepare_function_run(card_state& card, const function_button& button)
@@ -1867,22 +1896,32 @@ namespace gitman {
             reject_function_run(card, button, u8"작업 폴더(cwd)가 절대 경로가 아닙니다");
             return std::nullopt;
         }
-        // cmd는 인자의 메타 문자를 따옴표로 보정해 넘기고(D27) 보정할 수 없는 문자만 거부한다. 배치 안에서 읽힐
-        // `GITMAN_BRANCH` 같은 런타임 값은 gitman이 보정할 수 없어 메타 문자가 있으면 실행하지 않는다 (D26, 4.3).
+        // cmd는 cmd 명령줄로 아예 넘길 수 없는 줄바꿈만 거부한다. 메타 문자·`%`·`!`·`"`는 cmd 전용 조립이 보정하고, 배치
+        // 안에서 읽힐 `GITMAN_BRANCH` 같은 런타임 값의 메타 문자는 경고로 남긴다. 보정이나 경고가 있으면 실행 전에 사용자의
+        // 최종 승인을 받는다 (D30, 4.3).
         const std::optional<cmd_injection_finding> injection { find_cmd_injection(prepared.program, prepared.arguments) };
         if (injection.has_value())
         {
             reject_function_run(card, button, cmd_injection_message(*injection));
             return std::nullopt;
         }
-        const std::optional<cmd_environment_finding> exported { find_cmd_environment_injection(prepared.program.text, lookup.builtins) };
-        if (exported.has_value())
-        {
-            reject_function_run(card, button, cmd_environment_injection_message(*exported));
-            return std::nullopt;
-        }
 
-        prepared.display_command_line = build_display_command_line(prepared.program, prepared.arguments, function_services_.join, function_services_.mask);
+        if (is_cmd_program(prepared.program.text))
+        {
+            prepared.cmd = assemble_function_cmd_command_line(prepared.program, prepared.arguments, lookup.builtins);
+            // 위 검사가 같은 글자를 먼저 거르므로 오지 않는다. 조립이 거부한 명령줄을 실행 요청에 싣지 않으려는 마지막 자리다.
+            if (prepared.cmd->rejection.has_value())
+            {
+                reject_function_run(card, button, u8"cmd.exe 명령줄로 넘길 수 없는 문자(줄바꿈)가 있습니다");
+                return std::nullopt;
+            }
+            // 표시용 명령줄은 실제 명령줄과 같은 보정 결정으로 지은 글이다. env 값은 이름으로 남는다 (3.6).
+            prepared.display_command_line = function_services_.mask(prepared.cmd->display_text);
+        }
+        else
+        {
+            prepared.display_command_line = build_display_command_line(prepared.program, prepared.arguments, function_services_.join, function_services_.mask);
+        }
         prepared.builtins = std::move(lookup.builtins);
         return prepared;
     }
@@ -1902,6 +1941,9 @@ namespace gitman {
         for (const variable_expansion& argument : prepared.arguments)
             command.arguments.push_back(argument.text);
         command.working_directory = prepared.working_directory.text;
+        // 사용자가 본(또는 보정이 없어 묻지 않은) 최종 명령줄을 그대로 싣는다. runner가 다시 짓지 않는다 (D30).
+        if (prepared.cmd.has_value())
+            command.command_line = prepared.cmd->text;
 
         function_run_state run {};
         run.run_id = next_operation_id_++;
@@ -1973,7 +2015,20 @@ namespace gitman {
         state.button_id = button.id;
         state.digest = std::move(digest);
         state.prepared = prepared;
-        state.view = mode == function_confirm_mode::trust ? build_function_trust_view(button, prepared) : build_function_preview_view(card, button, prepared);
+        switch (mode)
+        {
+        case function_confirm_mode::trust:
+            state.view = build_function_trust_view(button, prepared);
+            break;
+        case function_confirm_mode::preview:
+            state.view = build_function_preview_view(card, button, prepared);
+            break;
+        case function_confirm_mode::correction:
+            state.view = build_function_correction_view(card, button, prepared);
+            break;
+        case function_confirm_mode::running:
+            break;
+        }
         // 열린 메뉴가 dialog 뒤에 남지 않게 한다 (카드 메뉴의 기능 절에서 연 경우, T9).
         context_menu_.reset();
         function_confirm_ = { std::move(state) };
@@ -2028,7 +2083,9 @@ namespace gitman {
         // 누른 기능이 `confirm`이면 미리보기 줄을 그 항목에 잇는다. 확인 한 번으로 신뢰와 미리보기를 함께
         // 끝내므로 두 번째 dialog가 없다 — 이어 뜬 dialog의 같은 자리 버튼을 더블클릭이나 Enter 반복이
         // 지나가는 일을 없앤다. 다음 실행부터는 신뢰한 정의라 미리보기 dialog만 뜬다 (3.10의 "별개").
-        if (clicked.confirm)
+        // cmd 보정이나 경고가 있어도 같다. 원래 명령, 실행할 명령, 바뀐 자리와 이유, 경고를 이 항목에 싣고 확인 한 번이
+        // 보정 승인까지 끝낸다 (D30).
+        if (clicked.confirm || (prepared.cmd.has_value() && prepared.cmd->needs_approval()))
         {
             for (function_confirm_line& line : function_preview_lines(prepared, u8"실행할 명령 ", u8"실행할 작업 폴더 "))
                 view.items.front().lines.push_back(std::move(line));
@@ -2063,15 +2120,97 @@ namespace gitman {
 
     std::vector<function_confirm_line> logic_controller::function_preview_lines(const prepared_function_run& prepared, const std::u8string_view command_prefix, const std::u8string_view folder_prefix) const
     {
+        const auto mask = [this](const std::u8string_view text)
+        {
+            return function_services_.mask ? function_services_.mask(text) : std::u8string { text };
+        };
+        const bool corrected { prepared.cmd.has_value() && prepared.cmd->needs_approval() };
+        std::vector<function_confirm_line> lines {};
+
+        // 보정 전의 명령이다. 문서에 적은 인자 배열을 보통의 argv 규칙으로 이은 글이고, env 값은 이름으로 남는다 (3.6).
+        if (corrected)
+        {
+            std::vector<std::u8string> displayed {};
+            displayed.reserve(prepared.arguments.size());
+            for (const variable_expansion& argument : prepared.arguments)
+                displayed.push_back(display_text(argument));
+            std::u8string original { u8"원래 명령 " };
+            if (function_services_.join)
+                original += function_services_.join(display_text(prepared.program), std::span<const std::u8string> { displayed }, command_line_syntax::argv);
+            lines.push_back({ mask(original), false });
+        }
+
         // 로그 시작 줄과 같은 표시용 명령줄이다. env 값은 이름으로 남고 비밀은 가린다 (3.6). 작업
         // 폴더도 같은 가리기를 거친다.
-        std::u8string command { command_prefix };
+        std::u8string command { corrected && command_prefix.empty() ? std::u8string_view { u8"실행할 명령 " } : command_prefix };
         command += prepared.display_command_line;
+        lines.push_back({ std::move(command), false });
         std::u8string folder { folder_prefix };
         folder += display_text(prepared.working_directory);
-        if (function_services_.mask)
-            folder = function_services_.mask(folder);
-        return { { std::move(command), false }, { std::move(folder), false } };
+        lines.push_back({ mask(folder), false });
+        if (corrected == false)
+            return lines;
+
+        // 바뀐 자리와 이유다. 원래 글과 보정한 글은 표시용 글(env는 이름)이고 비밀 가리기를 거친다.
+        for (const cmd_correction& correction : prepared.cmd->corrections)
+        {
+            std::u8string changed { u8"보정 " };
+            if (correction.argument.has_value())
+            {
+                changed += u8"args[";
+                changed += function_decimal_text(*correction.argument);
+                changed += u8"]: ";
+                changed += correction.original;
+                // 명령 문장으로만 넘긴 인자는 글이 그대로라 `X → X`가 되므로 무엇을 했는지를 쓴다.
+                if (correction.corrected == correction.original)
+                    changed += u8" (명령 문장으로 넘김)";
+                else
+                    changed += u8" → " + correction.corrected;
+            }
+            else
+            {
+                changed += u8"스위치: " + correction.corrected;
+            }
+            lines.push_back({ mask(changed), false });
+            lines.push_back({ u8"이유: " + cmd_correction_reason(correction.kinds), true });
+        }
+        // gitman이 고칠 수 없는 위험이다. 경고색으로 그린다.
+        for (const cmd_warning& warning : prepared.cmd->warnings)
+            lines.push_back({ mask(u8"경고 " + cmd_warning_message(warning)), false, false, true });
+        return lines;
+    }
+
+    function_confirm_dialog_view logic_controller::build_function_correction_view(const card_state& card, const function_button& button, const prepared_function_run& prepared) const
+    {
+        function_confirm_dialog_view view {};
+        view.mode = function_confirm_mode::correction;
+        view.subject = function_project_name(card.project);
+        // 480 폭 창과 글 크기 150%에서도 말줄임되지 않게 짧게 나눈다. 보정 없이 경고만 있으면(저장소 루트의 괄호) 보정했다고
+        // 말하지 않는다.
+        if (prepared.cmd.has_value() && prepared.cmd->corrections.empty())
+        {
+            view.description = {
+                u8"cmd.exe 명령에 확인할 경고가 있습니다.",
+                u8"실행할 명령과 경고를 확인하고 실행합니다.",
+                u8"같은 명령은 다시 묻지 않습니다.",
+            };
+        }
+        else
+        {
+            view.description = {
+                u8"gitman이 cmd.exe 명령을 보정했습니다.",
+                u8"보정한 명령과 경고를 확인하고 실행합니다.",
+                u8"같은 명령은 다시 묻지 않습니다.",
+            };
+        }
+        view.confirm_label = u8"실행";
+
+        function_confirm_item_view item {};
+        item.label = button.label;
+        item.mode_text = function_mode_text(button.mode);
+        item.lines = function_preview_lines(prepared, u8"실행할 명령 ", u8"작업 폴더 ");
+        view.items.push_back(std::move(item));
+        return view;
     }
 
     function_confirm_dialog_view logic_controller::wrapped_function_confirm_view() const
@@ -2090,7 +2229,7 @@ namespace gitman {
             {
                 const std::vector<std::u8string> chunks { wrap_confirm_text(visible_confirm_text(line.text), columns) };
                 for (std::size_t index = 0; index < chunks.size(); ++index)
-                    lines.push_back({ chunks[index], line.dim, index > 0 });
+                    lines.push_back({ chunks[index], line.dim, index > 0, line.warning });
             }
             item.lines = std::move(lines);
         }
@@ -2162,17 +2301,29 @@ namespace gitman {
         // 실제 argv와 작업 폴더까지 비교한다. 표시용 명령줄만 보면 env 값이 바뀐 것을 놓친다.
         // 내보내는 `GITMAN_*` 환경(`prepared.builtins`)은 비교하지 않는다. dialog에 보이지 않는 값이고,
         // 조회로 바뀌는 런타임 값(`${branch}` 등)은 인자에 쓰였으면 위 비교가 잡는다.
+        // cmd는 사용자가 본 최종 명령줄과 경고까지 같아야 한다. 경고는 인자에 쓰지 않은 값(배치가 읽을 `GITMAN_BRANCH`)도
+        // 담으므로 argv 비교만으로는 놓친다 (D30).
+        const auto same_cmd = [](const std::optional<cmd_command_line>& left, const std::optional<cmd_command_line>& right)
+        {
+            if (left.has_value() != right.has_value())
+                return false;
+            return left.has_value() == false || (left->text == right->text && left->warnings == right->warnings);
+        };
         const bool same {
             prepared->program.text == pending.prepared.program.text
             && texts_of(prepared->arguments) == texts_of(pending.prepared.arguments)
             && prepared->working_directory.text == pending.prepared.working_directory.text
             && prepared->display_command_line == pending.prepared.display_command_line
+            && same_cmd(prepared->cmd, pending.prepared.cmd)
         };
         if (same == false)
         {
             append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"확인한 뒤 실행 값이 바뀌어 실행하지 않습니다"));
             return;
         }
+        // dialog가 보정과 경고를 보였으면 승인을 기억한다. 신뢰·미리보기 dialog에 실은 경우도 같다 (D30).
+        if (cmd_approval_needed(*card, *button, *prepared))
+            cmd_approvals_.push_back({ card->project.id, button->id, prepared->cmd->text, prepared->cmd->warnings, prepared->working_directory.text });
         submit_function_run(*card, *button, *prepared);
     }
 
@@ -2647,6 +2798,8 @@ namespace gitman {
         context_menu_.reset();
         // 기능 실행 확인과 초점 옮기기 요청은 이전 문서의 카드와 정의를 가리킨다. 편집 dialog도 같다.
         function_confirm_.reset();
+        // cmd 보정 승인은 그 문서의 정의와 값에 대한 것이다. 다시 읽거나 다른 문서를 열면 다시 묻는다 (D30).
+        cmd_approvals_.clear();
         function_focus_.reset();
         function_editor_.reset();
         function_trust_after_save_ = false;

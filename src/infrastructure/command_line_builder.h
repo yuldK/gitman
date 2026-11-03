@@ -14,18 +14,11 @@ namespace gitman {
     // 하나의 인자를 위 규칙으로 인용해 덧붙인다. 명령줄 조립 test와 재사용을 위해 노출한다.
     void append_windows_command_line_argument(std::u8string& target, std::u8string_view argument);
 
-    // `cmd.exe` 전용 명령줄이다 (function-buttons-design 4.3, D27). `cmd /c`는 받은 명령줄을 자기 규칙으로 다시
-    // 해석하므로 인자 배열의 경계와 값을 지키려면 따로 지어야 한다.
-    // - argv[0]은 `/`를 `\`로 바꿔 감싼다. cmd는 argv[0] 안의 `/c`도 스위치로 읽는다.
-    // - 앞쪽의 스위치(`/d`, `/v:on` 꼴)는 그대로 둔다. `/c`·`/k`·`/r`이 스위치 줄을 끝내고, 스위치 꼴이 아닌 첫
-    //   인자에서 `/c` 없이 명령이 시작되면 `/c`를 넣는다. 그 앞에 `/s`가 없으면 넣는다(`/c` 뒤의 `/s`는 명령이다).
-    //   `/c:x`·`/k:1`·`/r:x`는 스위치가 아니라 명령의 시작이다.
-    // - 명령 인자는 cmd 메타 문자(`& | < > ^ ( )`), 배치 인자를 가르는 문자(`, ; =`, 공백·탭), `%`·`!`가 있거나
-    //   비었을 때만 따옴표로 감싸 공백으로 잇고, 전체를 `"…"` 한 묶음으로 둔다. `/s`라서 cmd는 맨 앞과 맨 끝
-    //   따옴표만 벗긴다. 따옴표 안의 메타 문자는 cmd가 해석하지 않고, 배치의 `%*`로 다시 넘겨도 따옴표째 간다.
-    // - 감싼 토큰 끝의 `\`는 두 배로 늘린다(`CommandLineToArgvW`). `cmd_uncorrectable_characters`는 보정하지
-    //   않는다. 부르는 쪽이 거부한다(표시용 미리보기는 그대로 보인다).
+    // `cmd.exe` 전용 명령줄이다 (function-buttons-design 4.3, D27, D30). 규칙은 domain의 `assemble_cmd_command_line`이다.
+    // 인자의 출처를 모르므로 모두 값으로 보고(명령 문장으로 넘기지 않는다) 보정 목록과 경고는 버린다. 기능 버튼은 logic이
+    // 사용자가 승인한 최종 명령줄을 요청의 `command_line`에 싣고 runner·launcher가 그 글을 그대로 쓴다.
     [[nodiscard]] std::u8string build_cmd_command_line(std::u8string_view executable, std::span<const std::u8string> arguments);
-    // 요청의 `syntax`에 맞는 명령줄이다. runner·launcher와 표시용 명령줄(3.6)이 같은 함수를 쓴다.
+    // 요청의 `syntax`에 맞는 명령줄이다. runner·launcher가 요청에 미리 지은 `command_line`이 없을 때 쓴다. 기능 버튼의
+    // 표시용 명령줄(3.6)은 argv면 이 함수, cmd면 같은 domain 조립의 표시용 글이다.
     [[nodiscard]] std::u8string build_process_command_line(std::u8string_view executable, std::span<const std::u8string> arguments, command_line_syntax syntax);
 } // namespace gitman

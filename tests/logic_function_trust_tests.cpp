@@ -9,6 +9,8 @@
 #include "presentation/ui/function_confirm_dialog_element.h"
 #include "presentation/ui/gitman_policy.h"
 
+#include "luil/ui/font_scale.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
@@ -22,7 +24,7 @@
 #include <variant>
 #include <vector>
 
-// 기능 버튼의 신뢰 확인과 `confirm` 미리보기다 (function-buttons-design 3.10, 4.5, 6.1 T7). intent와
+// 기능 버튼의 신뢰 확인과 `confirm` 미리보기, cmd 보정의 최종 승인이다 (function-buttons-design 3.10, 4.5, 6.1 T7·R4). intent와
 // 앱 설정 event를 직접 넣고 dialog view, 제출된 요청, 앱 설정 저장 요청, 카드 로그를 본다.
 namespace {
     using gitman::testing::as_intent;
@@ -811,4 +813,466 @@ TEST_CASE("The confirm dialog tree wires its buttons, scrim and wheel", "[functi
     const auto* const scroll { as_intent<gitman::function_confirm_scroll_intent>(actions) };
     REQUIRE(scroll != nullptr);
     REQUIRE(scroll->delta == 24.0f);
+}
+
+namespace {
+    constexpr std::u8string_view system_cmd { u8"C:\\Windows\\System32\\cmd.exe" };
+
+    // 항목의 줄을 나누기 전 줄로 되이어 한 글로 잇는다. 폭에 맞춰 나눈 줄(`continuation`)은 앞 줄에 붙인다.
+    std::u8string unwrapped_lines(const gitman::function_confirm_item_view& item)
+    {
+        std::u8string text {};
+        for (std::size_t index = 0; index < item.lines.size(); ++index)
+        {
+            if (index > 0 && item.lines[index].continuation == false)
+                text += u8"\n";
+            text += item.lines[index].text;
+        }
+        if (item.lines.empty() == false)
+            text += u8"\n";
+        return text;
+    }
+
+    // 글자 크기 표를 넣고 test가 끝나면 비운다 (`function_bar_tree_tests.cpp`와 같다).
+    class text_size_scope
+    {
+    public:
+        explicit text_size_scope(const float factor)
+        {
+            std::vector<float> sizes {};
+            for (std::size_t size = 0; size <= 64; ++size)
+                sizes.push_back(static_cast<float>(size) * factor);
+            applied_ = luil::set_system_font_sizes(std::move(sizes));
+        }
+
+        ~text_size_scope()
+        {
+            static_cast<void>(luil::set_system_font_sizes({}));
+        }
+
+        text_size_scope(const text_size_scope&) = delete;
+        text_size_scope& operator=(const text_size_scope&) = delete;
+
+        [[nodiscard]] bool applied() const noexcept
+        {
+            return applied_;
+        }
+
+    private:
+        bool applied_ { false };
+    };
+
+    // 저장소 `alpha` 하나와 신뢰를 기록한 정의를 연다 (보정 확인만 보려는 test다).
+    void open_trusted(trust_fixture& fixture, std::vector<gitman::function_button> buttons, const std::u8string_view root = u8"C:\\work\\")
+    {
+        const gitman::function_buttons_definition definition { make_definition(std::move(buttons)) };
+        const gitman::project_definition projects[] { make_project(u8"alpha", root) };
+        gitman::app_settings settings {};
+        settings.trusted_function_definitions.push_back({ std::u8string { document_path }, gitman::function_trust_digest(definition, projects) });
+        fixture.load_settings(settings);
+        fixture.open({ make_project(u8"alpha", root) }, definition);
+    }
+
+    // 배치를 부르는 cmd 기능이다. 브랜치를 인자로 넘기므로 `&`가 든 브랜치는 보정과 경고를 함께 낸다.
+    gitman::function_button cmd_batch(const std::u8string_view id = u8"batch", const std::u8string_view label = u8"배치")
+    {
+        gitman::function_button button { make_button(id, label, system_cmd) };
+        button.args = { u8"/d", u8"/c", u8"${projectRoot}\\tools\\run.bat", u8"${branch}" };
+        return button;
+    }
+
+    const gitman::process_request& submitted(const trust_fixture& fixture, const std::size_t index)
+    {
+        REQUIRE(fixture.functions.requests.size() > index);
+        return std::get<gitman::process_request>(fixture.functions.requests[index].command);
+    }
+
+    bool has_warning_line(const gitman::function_confirm_item_view& item, const std::u8string_view part)
+    {
+        for (const gitman::function_confirm_line& line : item.lines)
+        {
+            if (line.warning && contains(line.text, part))
+                return true;
+        }
+        return false;
+    }
+} // namespace
+
+TEST_CASE("A cmd command gitman corrected asks for a final approval and runs only after it", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    open_trusted(fixture, { cmd_batch() });
+    fixture.query(u8"alpha", u8"main&whoami");
+
+    fixture.run(u8"alpha", u8"batch");
+
+    REQUIRE(fixture.functions.requests.empty());
+    std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    REQUIRE(dialog->mode == gitman::function_confirm_mode::correction);
+    REQUIRE(dialog->subject == u8"alpha");
+    REQUIRE(dialog->confirm_label == u8"실행");
+    REQUIRE(dialog->items.size() == 1u);
+    // 원래 명령, 보정한 실행 명령, 바뀐 자리와 이유, 경고를 보인다.
+    const gitman::function_confirm_item_view& item { dialog->items.front() };
+    const std::u8string text { unwrapped_lines(item) };
+    REQUIRE(contains(text, u8"원래 명령 \"C:\\Windows\\System32\\cmd.exe\" /d /c C:\\work\\alpha\\tools\\run.bat main&whoami\n"));
+    REQUIRE(contains(text, u8"실행할 명령 \"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"C:\\work\\alpha\\tools\\run.bat \"main&whoami\"\"\n"));
+    REQUIRE(contains(text, u8"보정 args[3]: main&whoami → \"main&whoami\"\n"));
+    REQUIRE(contains(text, u8"작업 폴더 C:\\work\\alpha\n"));
+    REQUIRE(has_warning_line(item, u8"GITMAN_BRANCH"));
+    // 거부가 아니므로 실패 점과 거부 줄이 없다.
+    REQUIRE_FALSE(fixture.controller.function_state(gitman::project_id { u8"alpha" }, u8"batch")->failed);
+
+    // 취소하면 실행하지 않고 기억하지 않는다.
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.empty());
+    fixture.run(u8"alpha", u8"batch");
+    REQUIRE(fixture.dialog().has_value());
+
+    // 승인하면 보정한 명령줄 그대로 실행한다. whoami는 따옴표 안이라 명령이 아니다.
+    fixture.confirm();
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    const gitman::process_request& request { submitted(fixture, 0) };
+    REQUIRE(request.syntax == gitman::command_line_syntax::cmd);
+    REQUIRE(request.command_line == u8"\"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"C:\\work\\alpha\\tools\\run.bat \"main&whoami\"\"");
+    REQUIRE(request.arguments.back() == u8"main&whoami");
+    REQUIRE(fixture.last_log(u8"alpha").text == u8"[배치] 실행: \"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"C:\\work\\alpha\\tools\\run.bat \"main&whoami\"\"");
+}
+
+TEST_CASE("An approved cmd correction is not asked again until the command, the warnings or the document change", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button env_only { make_button(u8"env", u8"환경", system_cmd) };
+    env_only.args = { u8"/d", u8"/c", u8"${projectRoot}\\tools\\env.bat" };
+    open_trusted(fixture, { cmd_batch(), env_only });
+    fixture.query(u8"alpha", u8"main&whoami");
+
+    fixture.run(u8"alpha", u8"batch");
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 1u);
+    fixture.completed_all();
+
+    // 같은 버튼, 같은 최종 명령줄, 같은 경고면 이 세션에서 다시 묻지 않는다.
+    fixture.run(u8"alpha", u8"batch");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == 2u);
+    fixture.completed_all();
+
+    // 다른 버튼은 따로 묻는다. 인자에 브랜치가 없어도 배치가 읽을 GITMAN_BRANCH 경고가 있다.
+    fixture.run(u8"alpha", u8"env");
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.dialog()->mode == gitman::function_confirm_mode::correction);
+    REQUIRE(fixture.dialog()->items.front().lines.size() >= 3u);
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 3u);
+    fixture.completed_all();
+
+    // 값이 바뀌면 최종 명령줄이 달라져 다시 묻는다.
+    fixture.query(u8"alpha", u8"main&calc");
+    fixture.run(u8"alpha", u8"batch");
+    REQUIRE(fixture.dialog().has_value());
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
+
+    // 명령줄이 같아도 경고가 바뀌면 다시 묻는다 (`env`는 인자에 브랜치를 쓰지 않는다).
+    fixture.run(u8"alpha", u8"env");
+    REQUIRE(fixture.dialog().has_value());
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
+
+    // 메타 문자가 없어지면 보정도 경고도 없어 묻지 않는다.
+    fixture.query(u8"alpha", u8"main");
+    fixture.run(u8"alpha", u8"batch");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == 4u);
+    fixture.completed_all();
+
+    // 처음 승인한 값으로 돌아오면 그 승인이 아직 맞다. 문서를 다시 열면 승인 기억을 지운다.
+    fixture.query(u8"alpha", u8"main&whoami");
+    fixture.run(u8"alpha", u8"batch");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == 5u);
+    fixture.completed_all();
+    const std::size_t before_reopen { fixture.functions.requests.size() };
+    fixture.open({ make_project(u8"alpha") }, make_definition({ cmd_batch(), env_only }));
+    fixture.query(u8"alpha", u8"main&whoami");
+    fixture.run(u8"alpha", u8"batch");
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == before_reopen);
+}
+
+TEST_CASE("A cmd command without corrections or warnings runs without asking", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button plain { make_button(u8"plain", u8"보통", system_cmd) };
+    // 공백 경로를 감싸는 것은 보통 조립이라 묻지 않는다.
+    plain.args = { u8"/d", u8"/c", u8"${projectRoot}\\tools\\run.bat", u8"${branch}", u8"--config=Release" };
+    open_trusted(fixture, { plain }, u8"C:\\OneDrive - 회사명\\");
+    fixture.query(u8"alpha", u8"feature/login");
+
+    fixture.run(u8"alpha", u8"plain");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(submitted(fixture, 0).command_line == u8"\"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"\"C:\\OneDrive - 회사명\\alpha\\tools\\run.bat\" feature/login \"--config=Release\"\"");
+}
+
+TEST_CASE("The final cmd approval joins the trust dialog and the confirm preview in one dialog", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+
+    SECTION("an untrusted definition")
+    {
+        fixture.load_settings();
+        fixture.open({ make_project(u8"alpha") }, make_definition({ cmd_batch(), make_button(u8"build", u8"빌드") }));
+        fixture.query(u8"alpha", u8"main&whoami");
+        fixture.finish_settings_save(true);
+
+        fixture.run(u8"alpha", u8"batch");
+
+        const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+        REQUIRE(dialog.has_value());
+        REQUIRE(dialog->mode == gitman::function_confirm_mode::trust);
+        REQUIRE(dialog->confirm_label == u8"신뢰하고 실행");
+        const std::u8string text { unwrapped_lines(dialog->items.front()) };
+        REQUIRE(contains(text, u8"실행할 명령 \"C:\\Windows\\System32\\cmd.exe\" /d /s /c "));
+        REQUIRE(contains(text, u8"보정 args[3]: main&whoami → \"main&whoami\"\n"));
+        REQUIRE(has_warning_line(dialog->items.front(), u8"GITMAN_BRANCH"));
+        REQUIRE_FALSE(contains(unwrapped_lines(dialog->items[1]), u8"보정"));
+
+        // 확인 한 번이 신뢰와 보정 승인을 함께 끝낸다. 다음 실행은 묻지 않는다.
+        fixture.confirm();
+        fixture.confirm();
+        REQUIRE(fixture.functions.requests.size() == 1u);
+        REQUIRE(fixture.saved_trust().has_value());
+        fixture.completed_all();
+        fixture.run(u8"alpha", u8"batch");
+        REQUIRE_FALSE(fixture.dialog().has_value());
+        REQUIRE(fixture.functions.requests.size() == 2u);
+    }
+
+    SECTION("a confirm button")
+    {
+        gitman::function_button batch { cmd_batch() };
+        batch.confirm = true;
+        open_trusted(fixture, { batch });
+        fixture.query(u8"alpha", u8"main&whoami");
+
+        fixture.run(u8"alpha", u8"batch");
+
+        const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+        REQUIRE(dialog.has_value());
+        REQUIRE(dialog->mode == gitman::function_confirm_mode::preview);
+        const std::u8string text { unwrapped_lines(dialog->items.front()) };
+        REQUIRE(contains(text, u8"원래 명령 "));
+        REQUIRE(contains(text, u8"보정 args[3]: main&whoami → \"main&whoami\"\n"));
+        fixture.confirm();
+        REQUIRE(fixture.functions.requests.size() == 1u);
+
+        // `confirm`은 매번 미리보기를 거친다 (3.10의 "별개"). 보정 줄도 함께 보인다.
+        fixture.completed_all();
+        fixture.run(u8"alpha", u8"batch");
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->mode == gitman::function_confirm_mode::preview);
+        REQUIRE(contains(unwrapped_lines(fixture.dialog()->items.front()), u8"보정 args[3]"));
+    }
+}
+
+TEST_CASE("A value changed under the cmd approval aborts the run", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button env_only { make_button(u8"env", u8"환경", system_cmd) };
+    env_only.args = { u8"/d", u8"/c", u8"${projectRoot}\\tools\\env.bat" };
+    open_trusted(fixture, { env_only });
+    fixture.query(u8"alpha", u8"main&whoami");
+
+    fixture.run(u8"alpha", u8"env");
+    REQUIRE(fixture.dialog().has_value());
+    // 인자는 같고 배치가 읽을 브랜치만 바뀌었다. 승인한 경고가 아니므로 실행하지 않는다.
+    fixture.query(u8"alpha", u8"main|more");
+    fixture.confirm();
+
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(fixture.last_log(u8"alpha").text == u8"[환경] 확인한 뒤 실행 값이 바뀌어 실행하지 않습니다");
+}
+
+TEST_CASE("A cmd value with a line break is still refused with a failure mark", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    open_trusted(fixture, { cmd_batch() });
+    fixture.query(u8"alpha", u8"main\nwhoami");
+
+    fixture.run(u8"alpha", u8"batch");
+
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(fixture.last_log(u8"alpha").text == u8"[배치] 실행하지 않습니다: cmd.exe에 넘기는 ${branch} 값에 cmd 명령줄로 넘길 수 없는 문자(줄바꿈)가 있습니다.");
+    REQUIRE(fixture.controller.function_state(gitman::project_id { u8"alpha" }, u8"batch")->failed);
+}
+
+TEST_CASE("Alt+N and the function menu reach the same cmd approval", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button batch { cmd_batch() };
+    batch.placement = u8"card";
+    open_trusted(fixture, { batch });
+    fixture.query(u8"alpha", u8"main&whoami");
+
+    SECTION("Alt+1")
+    {
+        fixture.controller.handle(gitman::run_function_shortcut_intent { gitman::project_id { u8"alpha" }, 1 });
+    }
+
+    SECTION("function menu")
+    {
+        fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"alpha" }, 10.0f, 20.0f });
+        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::run_function, u8"batch" });
+    }
+
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.dialog()->mode == gitman::function_confirm_mode::correction);
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 1u);
+}
+
+TEST_CASE("The cmd approval dialog tree names its parts and wraps at 480 wide with large text", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button batch { cmd_batch() };
+    batch.args.push_back(u8"${projectRoot}\\a very long folder name that keeps going\\and going (x86) & more\\file.txt");
+    open_trusted(fixture, { batch });
+    fixture.query(u8"alpha", u8"main&whoami");
+    fixture.run(u8"alpha", u8"batch");
+
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const host { find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_function_confirm) };
+    REQUIRE(host != nullptr);
+    REQUIRE(host->accessibility().name == u8"기능 실행 확인");
+    const luil::ui_element* const panel { find(*tree, gitman::ui::kind_function_confirm_dialog_panel) };
+    REQUIRE(panel != nullptr);
+    REQUIRE(panel->accessibility().name.starts_with(u8"보정 확인, alpha"));
+    // 보정 줄과 경고 줄은 항목의 화면 읽기 이름으로 닿는다.
+    const luil::ui_element* const item { tree->find(gitman::ui::function_confirm_dialog_item_id(0)) };
+    REQUIRE(item != nullptr);
+    REQUIRE(contains(item->accessibility().name, u8"실행할 명령 "));
+    REQUIRE(contains(item->accessibility().name, u8"보정 args[3]: main&whoami"));
+    REQUIRE(contains(item->accessibility().name, u8"경고 GITMAN_BRANCH"));
+    REQUIRE(as_intent<gitman::confirm_function_run_intent>(click_action(*tree, id_of(gitman::ui::kind_function_confirm_dialog_confirm))) != nullptr);
+
+    // 480 폭, 글자 150%에서 긴 줄을 나눠 말줄임으로 숨기지 않는다. 경고 줄은 나눠도 경고다.
+    const text_size_scope large { 1.5f };
+    REQUIRE(large.applied());
+    fixture.controller.handle(gitman::window_metrics_intent { 480.0f, 320.0f, 1.0f });
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    const std::size_t columns { gitman::function_confirm_code_columns(480.0f) };
+    bool continued { false };
+    bool continued_warning { false };
+    for (const gitman::function_confirm_line& line : dialog->items.front().lines)
+    {
+        // 표시 칸 수다. 한글은 두 칸으로 센다(`function_confirm_code_columns`).
+        std::size_t width { 0 };
+        for (std::size_t index = 0; index < line.text.size(); ++index)
+        {
+            const char8_t byte { line.text[index] };
+            if ((byte & 0xC0u) == 0x80u)
+                continue;
+            width += byte < 0x80u ? 1u : 2u;
+        }
+        REQUIRE(width <= columns);
+        continued = continued || line.continuation;
+        continued_warning = continued_warning || (line.continuation && line.warning);
+    }
+    REQUIRE(continued);
+    REQUIRE(continued_warning);
+    REQUIRE(dialog->description.size() <= 3u);
+}
+
+TEST_CASE("A cmd approval with only warnings does not say gitman corrected the command", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button env_only { make_button(u8"env", u8"환경", system_cmd) };
+    env_only.args = { u8"/d", u8"/c", u8"${projectRoot}\\tools\\env.bat" };
+    open_trusted(fixture, { env_only, cmd_batch() });
+    fixture.query(u8"alpha", u8"main&whoami");
+
+    // 인자에 고친 것이 없고 배치가 읽을 GITMAN_BRANCH 경고만 있다 (R4 검토).
+    fixture.run(u8"alpha", u8"env");
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.dialog()->description.size() == 3u);
+    REQUIRE(fixture.dialog()->description.front() == u8"cmd.exe 명령에 확인할 경고가 있습니다.");
+    REQUIRE_FALSE(contains(unwrapped_lines(fixture.dialog()->items.front()), u8"보정 "));
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
+
+    fixture.run(u8"alpha", u8"batch");
+    REQUIRE(fixture.dialog()->description.front() == u8"gitman이 cmd.exe 명령을 보정했습니다.");
+}
+
+TEST_CASE("A command passed only as a sentence says so instead of showing the same text twice", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button echo { make_button(u8"echo", u8"인사", system_cmd) };
+    echo.args = { u8"/c", u8"echo hi" };
+    open_trusted(fixture, { echo });
+    fixture.query(u8"alpha", u8"main");
+
+    fixture.run(u8"alpha", u8"echo");
+    REQUIRE(fixture.dialog().has_value());
+    const std::u8string text { unwrapped_lines(fixture.dialog()->items.front()) };
+    REQUIRE(contains(text, u8"보정 args[1]: echo hi (명령 문장으로 넘김)\n"));
+    REQUIRE_FALSE(contains(text, u8"→"));
+}
+
+TEST_CASE("An approved cmd correction is asked again when the working folder changes or the document is reloaded", "[function_buttons][r4]")
+{
+    trust_fixture fixture {};
+    gitman::function_button relative { make_button(u8"relative", u8"상대", system_cmd) };
+    // 상대 경로 배치는 작업 폴더에 따라 다른 파일이다. 명령줄과 경고가 같아도 작업 폴더가 바뀌면 다시 묻는다 (R4 검토).
+    relative.args = { u8"/d", u8"/c", u8"run.bat", u8"${branch}" };
+    relative.cwd = u8"${env:GITMAN_TEST_CWD}";
+    fixture.environment[u8"GITMAN_TEST_CWD"] = u8"C:\\work\\one";
+    const gitman::function_buttons_definition definition { make_definition({ relative }) };
+    open_trusted(fixture, { relative });
+    fixture.query(u8"alpha", u8"main&whoami");
+
+    fixture.run(u8"alpha", u8"relative");
+    REQUIRE(fixture.dialog().has_value());
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 1u);
+    REQUIRE(submitted(fixture, 0).working_directory == u8"C:\\work\\one");
+    fixture.completed_all();
+    fixture.run(u8"alpha", u8"relative");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == 2u);
+    fixture.completed_all();
+
+    fixture.environment[u8"GITMAN_TEST_CWD"] = u8"C:\\work\\two";
+    fixture.run(u8"alpha", u8"relative");
+    REQUIRE(fixture.dialog().has_value());
+    // env 값은 표시용 글에서 이름이다 (3.6). 보이는 글이 같아도 실제 폴더가 바뀌었으므로 묻는다.
+    REQUIRE(contains(unwrapped_lines(fixture.dialog()->items.front()), u8"작업 폴더 ${env:GITMAN_TEST_CWD}\n"));
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
+
+    // 처음 폴더로 돌아오면 그 승인이 맞다. 다시 읽기에 성공해 문서를 바꾸면 지운다.
+    fixture.environment[u8"GITMAN_TEST_CWD"] = u8"C:\\work\\one";
+    fixture.run(u8"alpha", u8"relative");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == 3u);
+    fixture.completed_all();
+
+    fixture.controller.handle(gitman::reload_document_intent {});
+    const gitman::operation_request* const reload { fixture.submitter.last_of(gitman::operation_kind::load_document) };
+    REQUIRE(reload != nullptr);
+    gitman::document_loaded_event loaded {};
+    loaded.operation_id = reload->operation_id;
+    gitman::workspace_document document {};
+    document.document_path = document_path;
+    document.projects = { make_project(u8"alpha") };
+    document.function_buttons = definition;
+    loaded.document = { std::move(document) };
+    fixture.controller.handle(std::move(loaded));
+    fixture.query(u8"alpha", u8"main&whoami");
+    fixture.run(u8"alpha", u8"relative");
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.dialog()->mode == gitman::function_confirm_mode::correction);
+    REQUIRE(fixture.functions.requests.size() == 3u);
 }

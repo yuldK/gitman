@@ -69,8 +69,10 @@ gitman_add_source_filter(gitman_lib_files "domain/settings"
     domain/appearance.h)
 
 # 문서에 정의한 기능 버튼과 변수의 모델, 배치 판정, 변수 치환과 표시용 명령줄,
-# 실행 파일 허용 목록과 cmd 방어 판정이다.
+# 실행 파일 허용 목록과 cmd 방어 판정, cmd 전용 명령줄의 보정이다.
 gitman_add_source_filter(gitman_lib_files "domain/function_buttons"
+    domain/cmd_command_line.cpp
+    domain/cmd_command_line.h
     domain/function_button.cpp
     domain/function_button.h
     domain/function_editor.cpp

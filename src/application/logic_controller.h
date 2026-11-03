@@ -174,10 +174,13 @@ namespace gitman {
             // 요청 조립이 `GITMAN_*`로 내보낼 내장 변수 표다.
             std::vector<variable_binding> builtins {};
             std::u8string display_command_line {};
+            // `program`이 `cmd.exe`일 때의 최종 명령줄, 보정, 경고다 (4.3, D30). 요청의 `command_line`이 되고, 보정이나
+            // 경고가 있으면 실행 전에 사용자의 최종 승인을 받는다.
+            std::optional<cmd_command_line> cmd {};
         };
 
-        // 기능 버튼 실행이다 (4.5). 활성 재판정 → 치환 → 허용 목록·절대 경로·cmd 방어 → 신뢰 확인
-        // 또는 `confirm` 미리보기 → 풀 자리 → 제출 순서다.
+        // 기능 버튼 실행이다 (4.5). 활성 재판정 → 치환 → 허용 목록·절대 경로·cmd 방어와 조립 → 신뢰 확인
+        // 또는 `confirm` 미리보기 또는 cmd 보정 확인(D30, 하나의 dialog) → 풀 자리 → 제출 순서다.
         void handle_run_function(const run_function_intent& intent);
         // 활성 재판정과 클릭 시점 검사다. 걸리면 로그를 남기고(늦은 클릭은 아무것도 남기지 않고)
         // 값이 없다.
@@ -188,10 +191,15 @@ namespace gitman {
         // 주석대로 읽을 때의 `source_digest_input`과 지금 project의 `{id, path.original, ${projectName} 값}`이다.
         [[nodiscard]] std::u8string current_function_digest() const;
         void open_function_confirm(function_confirm_mode mode, const card_state& card, const function_button& button, const prepared_function_run& prepared, std::u8string digest);
+        // cmd 보정의 최종 승인이 필요한지다 (D30). 보정이나 경고가 있고, 이 세션에서 같은 버튼·같은 최종 명령줄·같은 경고로
+        // 승인한 적이 없으면 참이다.
+        [[nodiscard]] bool cmd_approval_needed(const card_state& card, const function_button& button, const prepared_function_run& prepared) const;
+        [[nodiscard]] function_confirm_dialog_view build_function_correction_view(const card_state& card, const function_button& button, const prepared_function_run& prepared) const;
         [[nodiscard]] function_confirm_dialog_view build_function_trust_view(const function_button& clicked, const prepared_function_run& prepared) const;
         [[nodiscard]] function_confirm_dialog_view build_function_preview_view(const card_state& card, const function_button& button, const prepared_function_run& prepared) const;
         // `confirm` 미리보기의 줄(표시용 명령줄, 치환한 작업 폴더)이다. 미리보기와, 신뢰하지 않은
-        // `confirm` 버튼의 신뢰 dialog가 같은 글을 쓴다.
+        // `confirm` 버튼의 신뢰 dialog가 같은 글을 쓴다. cmd 보정이나 경고가 있으면 원래 명령, 바뀐 자리와 이유, 경고 줄을
+        // 함께 싣는다 (D30). 그때 `command_prefix`가 비어 있으면 `실행할 명령 `을 쓴다.
         [[nodiscard]] std::vector<function_confirm_line> function_preview_lines(const prepared_function_run& prepared, std::u8string_view command_prefix, std::u8string_view folder_prefix) const;
         // 지금 창 폭으로 긴 줄을 나눈 dialog view다. snapshot과 스크롤 한계가 같은 값을 본다.
         [[nodiscard]] function_confirm_dialog_view wrapped_function_confirm_view() const;
@@ -709,6 +717,20 @@ namespace gitman {
         };
 
         std::optional<function_confirm_state> function_confirm_ {};
+
+        // 사용자가 승인한 cmd 보정이다 (D30). 같은 버튼이 같은 최종 명령줄, 같은 경고, 같은 작업 폴더로 다시 실행되면 묻지
+        // 않는다. 작업 폴더는 dialog에 보였고 상대 경로 배치(`run.bat`)가 가리키는 파일을 바꾸므로 넣는다(R4 검토). 메모리에만
+        // 두고 문서를 열거나 닫거나 다시 읽으면 지운다. 최종 명령줄에는 `${env:}` 값이 들어 있어 파일에 쓰지 않는다.
+        struct cmd_approval
+        {
+            project_id card {};
+            std::u8string button_id {};
+            std::u8string command_line {};
+            std::vector<cmd_warning> warnings {};
+            std::u8string working_directory {};
+        };
+
+        std::vector<cmd_approval> cmd_approvals_ {};
 
         // 기능 편집 dialog의 항목 하나다 (function-buttons-design 2.7). 통과한 버튼은 텍스트 칸 다섯의 초안과 나머지 필드를
         // 들고, 검증에 실패해 원문만 든 항목은 그 원문(`source`)을 그대로 들어 경고 행으로 보인다.

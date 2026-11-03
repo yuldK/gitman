@@ -54,6 +54,10 @@ namespace gitman {
         // `cmd`는 기능 버튼의 `program`이 `cmd.exe`일 때만 쓴다. 그때는 `cmd_uncorrectable_characters`가 든
         // 인자를 요청 오류로 본다.
         command_line_syntax syntax { command_line_syntax::argv };
+        // `cmd`일 때 logic이 지어 사용자가 승인한 최종 명령줄이다 (function-buttons-design 4.3, D30). 비어 있지 않으면
+        // runner가 `arguments`로 다시 짓지 않고 이 글을 그대로 쓴다. 명령 문장(글자 그대로의 인자)처럼 인자 배열만으로는
+        // 정할 수 없는 조립을 담는다. `arguments`는 검증과 test가 본다.
+        std::u8string command_line {};
     };
 
     // 분리 실행(`process_launcher`) 요청이다. 기다리지 않고 출력도 모으지 않으므로
@@ -66,6 +70,8 @@ namespace gitman {
         std::u8string working_directory {};
         std::vector<process_environment_override> environment_overrides {};
         command_line_syntax syntax { command_line_syntax::argv };
+        // `process_request::command_line`과 같다.
+        std::u8string command_line {};
     };
 
     // 요청 값만으로 판정할 수 있는 오류를 반환한다. filesystem 조회는 하지 않는다.

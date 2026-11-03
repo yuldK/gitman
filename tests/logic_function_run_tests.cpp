@@ -170,6 +170,17 @@ namespace {
             controller.handle(gitman::run_function_intent { gitman::project_id { std::u8string { id } }, std::u8string { button } });
         }
 
+        // 떠 있는 확인 dialog다. cmd 보정의 최종 승인(D30)을 볼 때 쓴다.
+        [[nodiscard]] std::optional<gitman::function_confirm_dialog_view> dialog() const
+        {
+            return controller.make_view_snapshot()->function_confirm_dialog;
+        }
+
+        void confirm()
+        {
+            controller.handle(gitman::confirm_function_run_intent {});
+        }
+
         [[nodiscard]] gitman::logic_controller::function_button_state state(const std::u8string_view id, const std::u8string_view button) const
         {
             const std::optional<gitman::logic_controller::function_button_state> value { controller.function_state(gitman::project_id { std::u8string { id } }, button) };
@@ -719,7 +730,7 @@ TEST_CASE("An undefined environment variable refuses the run with one log line a
     REQUIRE_FALSE(fixture.state(u8"alpha", u8"lint").failed);
 }
 
-TEST_CASE("The cmd defence refuses a runtime value at click time with a failure mark", "[function_buttons][t6]")
+TEST_CASE("The cmd defence asks before running a corrected runtime value and leaves no failure mark", "[function_buttons][t6][r4]")
 {
     gitman::function_button button { make_button(u8"echo", u8"브랜치 출력", u8"C:\\Windows\\System32\\cmd.exe") };
     button.args = { u8"/d", u8"/c", u8"echo", u8"${branch}" };
@@ -727,22 +738,28 @@ TEST_CASE("The cmd defence refuses a runtime value at click time with a failure 
     fixture.query(u8"alpha", u8"feature&calc");
     fixture.query(u8"beta", u8"feature");
 
+    // 인자의 `&`는 따옴표로 보정하고(D27) 같은 값이 `GITMAN_BRANCH`로도 나가므로 경고한다. R1은 거부했고 R4(D30)부터는
+    // 보정한 명령을 보이고 사용자의 최종 승인을 받는다.
     fixture.run(u8"alpha", u8"echo");
     REQUIRE(fixture.functions.requests.empty());
-    REQUIRE(fixture.last_log(u8"alpha").severity == gitman::diagnostic_severity::error);
-    // 접두 `실행하지 않습니다:`는 거부 줄에 한 번만 있다. 인자의 `&`는 보정하지만(D27) 같은 값이
-    // `GITMAN_BRANCH`로도 나가므로 cmd 아래에서는 실행하지 않는다 (D26, R1).
-    REQUIRE(fixture.last_log(u8"alpha").text == u8"[브랜치 출력] 실행하지 않습니다: cmd.exe에 내보내는 GITMAN_BRANCH 값에 cmd가 다시 해석하는 문자(&)가 있습니다.");
-    REQUIRE(fixture.state(u8"alpha", u8"echo").failed);
-
-    // 메타 문자가 없는 값은 통과한다.
-    fixture.run(u8"beta", u8"echo");
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.dialog()->mode == gitman::function_confirm_mode::correction);
+    REQUIRE_FALSE(fixture.state(u8"alpha", u8"echo").failed);
+    fixture.confirm();
     REQUIRE(fixture.functions.requests.size() == 1u);
+    const gitman::process_request& command { std::get<gitman::process_request>(fixture.functions.requests.front().command) };
+    REQUIRE(command.command_line == u8"\"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"echo \"feature&calc\"\"");
+
+    // 메타 문자가 없는 값은 묻지 않고 실행한다.
+    fixture.run(u8"beta", u8"echo");
+    REQUIRE_FALSE(fixture.dialog().has_value());
+    REQUIRE(fixture.functions.requests.size() == 2u);
 }
 
-TEST_CASE("A cmd batch is refused when the branch it can read from GITMAN_BRANCH has cmd metacharacters", "[function_buttons][r1]")
+TEST_CASE("A cmd batch that can read GITMAN_BRANCH with cmd metacharacters runs only after the warning is approved", "[function_buttons][r1][r4]")
 {
-    // 배치 안의 `echo %GITMAN_BRANCH%`는 gitman이 고칠 수 없다. 인자에 `${branch}`를 쓰지 않아도 거부한다.
+    // 배치 안의 `echo %GITMAN_BRANCH%`는 gitman이 고칠 수 없다. 인자에 `${branch}`를 쓰지 않아도 경고한다 (D26을 D30이
+    // 거부에서 경고로 바꿈).
     gitman::function_button button { make_button(u8"env", u8"배치", u8"C:\\Windows\\System32\\cmd.exe") };
     button.args = { u8"/d", u8"/c", u8"${projectRoot}\\tools\\echo-branch.bat" };
     function_fixture fixture { { make_project(u8"alpha"), make_project(u8"beta") }, { button } };
@@ -751,26 +768,35 @@ TEST_CASE("A cmd batch is refused when the branch it can read from GITMAN_BRANCH
 
     fixture.run(u8"alpha", u8"env");
     REQUIRE(fixture.functions.requests.empty());
-    REQUIRE(fixture.last_log(u8"alpha").severity == gitman::diagnostic_severity::error);
-    REQUIRE(fixture.last_log(u8"alpha").text == u8"[배치] 실행하지 않습니다: cmd.exe에 내보내는 GITMAN_BRANCH 값에 cmd가 다시 해석하는 문자(&)가 있습니다.");
-    REQUIRE(fixture.state(u8"alpha", u8"env").failed);
+    REQUIRE(fixture.dialog().has_value());
+    bool warned { false };
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    for (const gitman::function_confirm_line& line : dialog->items.front().lines)
+        warned = warned || (line.warning && contains(line.text, u8"GITMAN_BRANCH"));
+    REQUIRE(warned);
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 1u);
 
     fixture.run(u8"beta", u8"env");
-    REQUIRE(fixture.functions.requests.size() == 1u);
+    REQUIRE(fixture.functions.requests.size() == 2u);
 }
 
-TEST_CASE("A cmd button in an R&D document folder runs with the cmd command line it logs", "[function_buttons][r1]")
+TEST_CASE("A cmd button in an R&D document folder runs with the cmd command line it logs", "[function_buttons][r1][r4]")
 {
     gitman::function_button button { make_button(u8"build", u8"빌드", u8"C:\\Windows\\System32\\cmd.exe") };
     button.args = { u8"/d", u8"/c", u8"${workspaceFolder}\\tools\\build.bat", u8"${projectName}" };
     function_fixture fixture { { make_project(u8"alpha") }, { button }, u8"C:\\R&D\\projects.version-list" };
     fixture.query(u8"alpha");
 
+    // 문서 경로의 `&`를 따옴표 안에 넣은 것도 보정이라 한 번 승인을 받는다.
     fixture.run(u8"alpha", u8"build");
+    REQUIRE(fixture.dialog().has_value());
+    fixture.confirm();
     REQUIRE(fixture.functions.requests.size() == 1u);
     const gitman::process_request& command { std::get<gitman::process_request>(fixture.functions.requests.front().command) };
     REQUIRE(command.syntax == gitman::command_line_syntax::cmd);
     REQUIRE(command.arguments == std::vector<std::u8string> { u8"/d", u8"/c", u8"C:\\R&D\\tools\\build.bat", u8"alpha" });
+    REQUIRE(command.command_line == u8"\"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"\"C:\\R&D\\tools\\build.bat\" alpha\"");
     REQUIRE(fixture.last_log(u8"alpha").text == u8"[빌드] 실행: \"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"\"C:\\R&D\\tools\\build.bat\" alpha\"");
 }
 

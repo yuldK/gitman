@@ -1,5 +1,6 @@
 #pragma once
 
+#include "domain/cmd_command_line.h"
 #include "domain/process_execution.h"
 
 #include <cstddef>
@@ -295,8 +296,9 @@ namespace gitman {
 
     // 로그 시작 줄, `confirm` 미리보기, 신뢰·편집 dialog에 보이는 명령줄이다 (3.6).
     // 인자마다 display_text를 만들어 `join`으로 잇고 결과 전체에 `mask`를 한 번 적용한다.
-    // `join`에 넘기는 조립 규칙은 치환한 실제 `program`으로 정한다(`${env:}`로 가린 표시 글로 정하면 cmd를
-    // 놓친다). 실제 argv에는 쓰지 않는다.
+    // 치환한 실제 `program`이 `cmd.exe`이면(`${env:}`로 가린 표시 글로 정하면 cmd를 놓친다) `join` 대신 cmd 조립
+    // (`assemble_function_cmd_command_line`)의 표시용 명령줄을 쓴다. 보정 결정이 실제 명령줄과 같다 (D30). 실제
+    // argv에는 쓰지 않는다.
     // 부르는 쪽이 지킬 것: `program`과 `arguments`는 모두 성공한 치환이다. 실패한 치환을
     // 넘기면 빈 인자로 조용히 이어지므로 편집 dialog 미리보기도 오류가 있으면 이 함수를
     // 부르지 않고 오류를 보인다. `join`과 `mask`는 비어 있지 않다. 비밀 가리기를 빼고
@@ -338,10 +340,9 @@ namespace gitman {
         [[nodiscard]] bool operator==(const cmd_injection_finding&) const = default;
     };
 
-    // `program`이 `cmd.exe`일 때 cmd 전용 조립(D27)으로도 원래 값을 지킬 수 없는 문자
-    // (`cmd_uncorrectable_characters`: `% ! "`, 줄바꿈)를 찾는다. 출처를 가리지 않는다. 문서 작성자가 쓴 글자
-    // 그대로의 `%PATH%`도 cmd가 값으로 바꿔 표시용 명령줄과 실제 동작이 달라지기 때문이다. `& | < > ^ ( )`는
-    // 조립이 따옴표로 보정하므로 거부하지 않는다. `program`이 cmd가 아니면 늘 값이 없다.
+    // `program`이 `cmd.exe`일 때 cmd 명령줄로 아예 전달할 수 없는 문자(`cmd_uncorrectable_characters`: 줄바꿈)를
+    // 찾는다. 출처를 가리지 않는다. `% ! "`와 `& | < > ^ ( )`는 cmd 전용 조립이 보정하고 사용자가 최종 승인한다
+    // (D30, R4). `program`이 cmd가 아니면 늘 값이 없다.
     [[nodiscard]] std::optional<cmd_injection_finding> find_cmd_injection(const variable_expansion& program, std::span<const variable_expansion> arguments);
     // 거부 사유 문구다. `실행하지 않습니다:` 접두는 거부 줄을 남기는 logic이 붙인다.
     [[nodiscard]] std::u8string cmd_injection_message(const cmd_injection_finding& finding);
@@ -355,21 +356,15 @@ namespace gitman {
 
     [[nodiscard]] std::span<const function_environment_export> function_environment_exports() noexcept;
 
-    // 배치 파일 안에서 읽힐 환경 변수 값에 cmd 메타 문자가 든 자리다 (D26).
-    struct cmd_environment_finding
-    {
-        std::u8string environment {};
-        char8_t character { u8'&' };
-
-        [[nodiscard]] bool operator==(const cmd_environment_finding&) const = default;
-    };
-
-    // `program`이 `cmd.exe`일 때 내보낼 **런타임** 값(`GITMAN_BRANCH`, `GITMAN_REPOSITORY_ROOT`, `GITMAN_VCS`,
-    // `GITMAN_REVISION`)에서 cmd 메타 문자(`& | < > ^ ( ) % ! "`, `, ; =`, 줄바꿈)를 찾는다. 배치 줄의 `%GITMAN_BRANCH%`는
-    // `&` 해석보다 먼저 펼쳐지고 gitman이 고칠 수 없는 사용자 글이라 실행 자체를 거부한다. 문서 출처 값
-    // (`GITMAN_WORKSPACE_FOLDER` 등)은 문서 작성자의 것이라 보지 않는다.
-    [[nodiscard]] std::optional<cmd_environment_finding> find_cmd_environment_injection(std::u8string_view program, std::span<const variable_binding> builtins);
-    [[nodiscard]] std::u8string cmd_environment_injection_message(const cmd_environment_finding& finding);
+    // cmd 조립(`assemble_cmd_command_line`)의 인자 하나다. 글자 그대로의 구간은 `literal` 조각이고, 나머지는 값
+    // 조각이다. `${env:}` 구간은 표시용 글이 `${env:NAME}`이라 표시용 명령줄과 보정 목록에 값이 남지 않는다 (3.6).
+    [[nodiscard]] cmd_argument make_cmd_argument(const variable_expansion& expansion);
+    // 배치 파일 안에서 읽힐 **런타임** 값(`GITMAN_BRANCH`, `GITMAN_REPOSITORY_ROOT`, `GITMAN_VCS`, `GITMAN_REVISION`)이다
+    // (D26). 배치 줄의 `%GITMAN_BRANCH%`는 `&` 해석보다 먼저 펼쳐지고 gitman이 고칠 수 없는 글이라 메타 문자가 있으면
+    // 경고한다(R4에서 거부를 경고로 바꿈). 문서 출처 값(`GITMAN_WORKSPACE_FOLDER` 등)은 문서 작성자의 것이라 넣지 않는다.
+    [[nodiscard]] std::vector<cmd_exported_value> function_cmd_exported_values(std::span<const variable_binding> builtins);
+    // `program`이 `cmd.exe`인 기능의 명령줄, 보정, 경고다 (4.3, D30). `builtins`가 비면 환경 변수 경고를 보지 않는다.
+    [[nodiscard]] cmd_command_line assemble_function_cmd_command_line(const variable_expansion& program, std::span<const variable_expansion> arguments, std::span<const variable_binding> builtins);
 
     // 정적 검사(3.7)가 받는 사용자 변수 이름이다. 문서 변수와, `project_ids`(카드로 읽은 project)의 덮어쓰기 중 쓸 수
     // 있는 것이다. 카드 목록에 없는 project의 덮어쓰기는 어느 카드에서도 풀리지 않으므로 세지 않는다. 파서와 편집

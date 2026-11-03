@@ -44,7 +44,7 @@ namespace gitman {
         }
 
         // 저장 충돌(`concurrent_modification`)의 알림이다 (function-buttons-design 4.9).
-        constexpr std::u8string_view save_conflict_notice { u8"문서가 밖에서 바뀌었습니다. 문서 다시 읽기로 불러오십시오." };
+        constexpr std::u8string_view save_conflict_notice { u8"문서가 밖에서 바뀌어 저장하지 않았습니다. 문서 다시 읽기로 불러오십시오." };
         // 다시 읽기에 실패한 알림이다. 사유는 띠 tooltip의 상세 줄에 둔다.
         constexpr std::u8string_view reload_failed_notice { u8"문서를 다시 읽지 못해 지금 문서를 그대로 둡니다." };
 
@@ -901,8 +901,9 @@ namespace gitman {
     {
         if (shutting_down_)
             return;
-        // 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.10). 확인하면 `open_document_now`가 이어 연다.
-        if (confirm_running_functions(running_function_action::open_document, intent.path) == false)
+        // 실행 중인 출력 수집 기능이나 저장하지 못한 변경이 있으면 먼저 묻는다 (4.10, D28). 확인하면 `open_document_now`가
+        // 이어 연다.
+        if (confirm_document_change(running_function_action::open_document, intent.path) == false)
             return;
         open_document_now(intent.path);
     }
@@ -936,7 +937,7 @@ namespace gitman {
             composition_.reset();
         function_trust_after_save_ = false;
         function_notice_after_save_ = false;
-        function_definition_unsaved_ = false;
+        unsaved_ = {};
         function_button_problems_.clear();
         function_editor_lock_reason_.clear();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
@@ -1037,10 +1038,10 @@ namespace gitman {
         // 성공하면 만든 문서를 곧바로 열므로 dialog는 닫는다.
         generate_dialog_.reset();
 
-        // 다른 문서를 여는 것이라 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.10). 만든 문서는 이미 파일에
+        // 다른 문서를 여는 것이라 실행 중인 출력 수집 기능이나 저장하지 못한 변경이 있으면 먼저 묻는다 (4.10). 만든 문서는 이미 파일에
         // 있으므로, 확인하면 그 경로를 여는 길(`open_document_now`)로 다시 읽어 연다. 취소하면 지금 문서가 남고
         // 만든 파일은 나중에 열 수 있다.
-        if (confirm_running_functions(running_function_action::open_document, event.document_path) == false)
+        if (confirm_document_change(running_function_action::open_document, event.document_path) == false)
         {
             function_confirm_->generated_document = true;
             return;
@@ -1123,7 +1124,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         function_notice_after_save_ = false;
-        function_definition_unsaved_ = false;
+        unsaved_ = {};
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
         discovery_dialog_.reset();
@@ -1385,6 +1386,10 @@ namespace gitman {
                     save_notice_ = value.code == diagnostic_code::concurrent_modification ? std::u8string { save_conflict_notice } : value.message;
                     break;
                 }
+        // 저장은 모델 전체를 쓰므로, 이어 낼 저장이 없는 성공이면 앞서 저장하지 못한 변경까지 파일에 있다 (D28). 실패하면
+        // 표시가 남아 다시 읽기·닫기·다른 문서 열기·종료가 먼저 묻는다.
+        if (event.revision.has_value() && save_queued_ == false)
+            unsaved_ = {};
         // 편집 dialog가 고친 정의의 해시 입력과 신뢰 갱신이다 (4.11). 이어 낼 저장이 있는지 보므로 그 앞이다.
         finish_function_editor_save(event);
 
@@ -1393,11 +1398,31 @@ namespace gitman {
             save_queued_ = false;
             request_save();
         }
+        // 떠 있는 실행 중인 기능 확인은 열 때의 상태로 지었다. 저장이 진행 중일 때 열었으면 저장하지 못한 변경을 싣지
+        // 않았으므로, 그 저장이 실패했으면 다시 지어 확인 전에 그 변경도 사라진다는 것을 보인다 (D28, R2 검토). 저장
+        // 하나가 오가는 사이에 연 dialog에서만 생긴다. 반대로 꺼지는 쪽은 없다 — 변경을 실은 dialog는 진행 중인 저장이
+        // 없을 때 열리고, 떠 있는 동안 새 저장을 낼 길이 없다.
+        if (function_confirm_.has_value() && function_confirm_->mode == function_confirm_mode::running && function_confirm_->view.unsaved_changes == false && has_unsaved_changes())
+        {
+            const float scroll_offset { function_confirm_->view.scroll_offset };
+            function_confirm_->view = build_running_function_view(function_confirm_->action);
+            function_confirm_->view.scroll_offset = scroll_offset;
+        }
         // 저장이 모두 끝났으면 미뤄 둔 다시 읽기를 낸다 (4.9의 2). 이어 낸 저장이 있으면 그 결과를 기다린다.
         if (reload_after_save_ && pending_save_operation_id_ == 0)
         {
             reload_after_save_ = false;
-            begin_reload_document();
+            // 기다린 저장이 실패했으면 읽으면 그 변경이 사라진다. 누를 때는 저장이 진행 중이라 묻지 않았으므로 지금
+            // 묻는다 (D28). 기다림은 이미 풀어 두어 취소해도 메뉴가 `읽는 중`에 묶이지 않는다. 그사이 다른 기능 확인
+            // (신뢰·미리보기·실행 중인 기능)이 떠 있으면 그것을 말없이 바꾸지 않고 다시 읽기를 거둔다. 저장 실패 알림이
+            // 남아 다시 고를 수 있다 (4.9의 2).
+            if (has_unsaved_changes())
+            {
+                if (function_confirm_.has_value() == false)
+                    open_document_change_confirm(running_function_action::reload_document);
+            }
+            else
+                begin_reload_document();
         }
     }
 
@@ -1405,6 +1430,9 @@ namespace gitman {
     {
         if (shutting_down_ || document_.has_value() == false)
             return;
+        // 문서를 쓰는 변경(편집 dialog Apply, 배치, 카드 순서, 경로 표시, 환경설정)은 모두 여기를 거친다. 저장이 성공할
+        // 때까지 모델에만 있는 변경이다 (D28).
+        unsaved_.document = true;
         // 다시 읽기의 결과를 기다리는 동안은 내지 않는다. 지금 모델을 쓰면 읽은 파일과 어긋나고, 다시 읽기가
         // 성공하면 모델이 바뀌므로 버리며, 실패하면 이어 낸다.
         if (pending_save_operation_id_ != 0 || pending_reload_operation_id_ != 0)
@@ -1759,7 +1787,7 @@ namespace gitman {
             return;
         // 편집 dialog가 바꾼 정의가 아직 파일에 없으면 해시 입력이 편집 전 원문이다. 그 해시로 판정하면 신뢰 dialog가 보일
         // 정의와 기록할 해시가 다르다 (4.11). 저장이 끝나거나 다시 읽을 때까지 실행하지 않는다.
-        if (function_definition_unsaved_)
+        if (unsaved_.function_definition)
         {
             append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"기능 정의가 아직 저장되지 않아 실행하지 않습니다"));
             return;
@@ -2118,7 +2146,7 @@ namespace gitman {
         // dialog가 떠 있는 동안 정의가 바뀌는 길은 편집 dialog의 Apply다 (문서 열기·교체·닫기·다시 읽기는 dialog를 닫는다).
         // Apply 뒤 저장이 끝나기 전에는 해시 입력이 아직 편집 전 원문이라 해시만 보면 같으므로 저장 전 표시도 본다. 저장이
         // 끝났으면 해시가 바뀌어 잡힌다. dialog는 저장 전 표시가 꺼져 있을 때만 열린다 (`handle_run_function`).
-        if (function_definition_unsaved_ || current_function_digest() != pending.digest)
+        if (unsaved_.function_definition || current_function_digest() != pending.digest)
         {
             append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"확인한 뒤 기능 정의가 바뀌어 실행하지 않습니다"));
             return;
@@ -2542,6 +2570,12 @@ namespace gitman {
         // 보존하기 위해 install_document 대신 새 프로젝트만 카드로 추가한다.
         document_ = std::move(*event.document);
         revision_ = std::move(*event.revision);
+        // 등록은 `request_save`를 거치지 않고 모델 전체(`request.document = document_`)를 쓴다. 그래서 앞서 쓰기 실패로
+        // 저장하지 못한 변경도 이제 파일에 있다 (D28, R2 검토). 충돌로 실패한 변경이면 등록도 같은 revision으로 충돌해
+        // 여기 오지 않는다. 등록이 나간 뒤 낸 저장이 있으면 그 결과가 정한다. 기능 정의 표시(`function_definition`)는
+        // 그대로 둔다 — 등록 결과는 쓴 글의 해시 입력을 싣지 않아 `source_digest_input`이 아직 낡았다 (4.11).
+        if (pending_save_operation_id_ == 0 && save_queued_ == false)
+            unsaved_.document = false;
         for (const project_definition& project : document_->projects)
         {
             if (find_card(project.id) != nullptr)
@@ -2570,8 +2604,9 @@ namespace gitman {
     {
         if (shutting_down_ || document_.has_value() == false)
             return;
-        // 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.10). 확인하면 `close_document_now`가 이어 닫는다.
-        if (confirm_running_functions(running_function_action::close_document) == false)
+        // 실행 중인 출력 수집 기능이나 저장하지 못한 변경이 있으면 먼저 묻는다 (4.10, D28). 확인하면 `close_document_now`가
+        // 이어 닫는다.
+        if (confirm_document_change(running_function_action::close_document) == false)
             return;
         close_document_now();
     }
@@ -2616,7 +2651,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         function_notice_after_save_ = false;
-        function_definition_unsaved_ = false;
+        unsaved_ = {};
         function_button_problems_.clear();
         function_editor_lock_reason_.clear();
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
@@ -2668,9 +2703,10 @@ namespace gitman {
         // 다시 읽기가 이미 진행 중이면 한 번으로 족하다. 메뉴 항목도 그동안 비활성이다.
         if (reload_available() == false)
             return;
-        // 실행 중인 출력 수집 기능이 있으면 먼저 묻는다 (4.9의 1). 확인해도 취소는 읽기가 성공해 문서를 바꿀 때 한다
-        // — 읽기에 실패하면 지금 문서와 함께 실행도 그대로 남는다.
-        if (confirm_running_functions(running_function_action::reload_document) == false)
+        // 실행 중인 출력 수집 기능이나 저장하지 못한 변경이 있으면 먼저 묻는다 (4.9의 1, D28). 하나의 dialog에 함께 싣는다.
+        // 확인해도 취소는 읽기가 성공해 문서를 바꿀 때 한다 — 읽기에 실패하면 지금 문서와 함께 실행과 변경도 그대로
+        // 남는다. 저장이 진행 중이면 아직 실패하지 않았으므로 묻지 않고, 그 저장이 실패하면 그때 묻는다.
+        if (confirm_document_change(running_function_action::reload_document) == false)
             return;
         begin_reload_document();
     }
@@ -2768,8 +2804,8 @@ namespace gitman {
     {
         if (shutting_down_)
             return;
-        // driver는 출력 수집 기능이 실행 중일 때만 닫힘 훅을 건다. 그 frame을 게시한 뒤 기능이 끝났으면 실행 중인
-        // 것이 없다는 dialog가 뜬다 — logic은 UI thread의 끝내기 명령을 낼 수 없어 확인 버튼에 맡긴다.
+        // driver는 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있을 때만 닫힘 훅을 건다. 그 frame을 게시한 뒤
+        // 기능이 끝났으면 실행 중인 것이 없다는 dialog가 뜬다 — logic은 UI thread의 끝내기 명령을 낼 수 없어 확인 버튼에 맡긴다.
         function_confirm_state state {};
         state.mode = function_confirm_mode::running;
         state.action = running_function_action::exit_application;
@@ -2792,12 +2828,24 @@ namespace gitman {
         return count;
     }
 
-    bool logic_controller::confirm_running_functions(const running_function_action action, const std::u8string_view path)
+    bool logic_controller::has_unsaved_changes() const noexcept
     {
-        // 확인이 없는 것은 출력 수집 기능이 0개일 때뿐이다. 분리 실행은 job 밖이라 남으므로 묻지 않는다 (4.10).
-        if (running_capture_count() == 0)
-            return true;
+        // 진행 중인 저장은 아직 실패하지 않았다. 그 결과를 기다리는 다시 읽기는 실패하면 그때 묻는다 (`handle_document_saved`).
+        return unsaved_.document && pending_save_operation_id_ == 0;
+    }
 
+    bool logic_controller::confirm_document_change(const running_function_action action, const std::u8string_view path)
+    {
+        // 확인이 없는 것은 출력 수집 기능이 0개이고 저장하지 못한 변경이 없을 때뿐이다. 분리 실행은 job 밖이라 남으므로
+        // 묻지 않는다 (4.10). 저장하지 못한 변경은 모델에만 있어 문서를 바꾸거나 닫으면 사라진다 (D28).
+        if (running_capture_count() == 0 && has_unsaved_changes() == false)
+            return true;
+        open_document_change_confirm(action, path);
+        return false;
+    }
+
+    void logic_controller::open_document_change_confirm(const running_function_action action, const std::u8string_view path)
+    {
         function_confirm_state state {};
         state.mode = function_confirm_mode::running;
         state.action = action;
@@ -2807,7 +2855,6 @@ namespace gitman {
         // 닫기·열기·다시 읽기와 함께 사라질 일이다.
         context_menu_.reset();
         function_confirm_ = { std::move(state) };
-        return false;
     }
 
     void logic_controller::handle_cancel_function_run()
@@ -2846,6 +2893,37 @@ namespace gitman {
             }
         }
         view.subject = function_running_summary(entries);
+        view.unsaved_changes = has_unsaved_changes();
+
+        // 실행 중인 것은 없고 저장하지 못한 변경만 있다 (D28). 같은 틀에 목록 없이 무엇이 사라지는지만 말한다. 확인
+        // 버튼은 `중지하고 …`와 같은 꼴로 그 일을 하면 변경을 버린다는 것을 밝힌다. 사라진다는 말은 경고 줄(경고색과
+        // 아이콘)이다 — 함께 뜨는 dialog의 `저장하지 못한 변경도 사라집니다.`와 같은 자리여야 단독일 때 덜 눈에 띄지
+        // 않는다 (R2 검토). 안내 줄에는 다시 읽기의 실패 때 일만 남는다.
+        if (entries.empty() && view.unsaved_changes)
+        {
+            view.subject = u8"저장하지 못한 변경이 있습니다";
+            switch (action)
+            {
+            case running_function_action::close_document:
+                view.note = { u8"문서를 닫으면 저장하지 못한 변경이 사라집니다." };
+                view.confirm_label = u8"버리고 닫기";
+                break;
+            case running_function_action::open_document:
+                view.note = { u8"다른 문서를 열면 저장하지 못한 변경이 사라집니다." };
+                view.confirm_label = u8"버리고 열기";
+                break;
+            case running_function_action::reload_document:
+                view.description = { u8"읽지 못하면 지금 문서와 변경을 그대로 둡니다." };
+                view.note = { u8"다시 읽은 문서로 바꾸면 저장하지 못한 변경이 사라집니다." };
+                view.confirm_label = u8"버리고 읽기";
+                break;
+            case running_function_action::exit_application:
+                view.note = { u8"종료하면 저장하지 못한 변경이 사라집니다." };
+                view.confirm_label = u8"버리고 종료";
+                break;
+            }
+            return view;
+        }
 
         // 안내 두 줄과 경고 한 줄이다. 신뢰 dialog처럼 480 폭과 글 크기 150%에서 말줄임되지 않게 짧게 나눈다.
         switch (action)
@@ -2859,7 +2937,11 @@ namespace gitman {
             view.confirm_label = u8"중지하고 열기";
             break;
         case running_function_action::reload_document:
-            view.description = { u8"다시 읽은 문서로 바꿀 때 실행 중인 기능을 중지합니다.", u8"읽지 못하면 중지하지 않고 지금 문서를 둡니다." };
+            // 저장하지 못한 변경도 함께 보이면 읽지 못했을 때 그 변경도 남는다는 것을 단독 dialog처럼 밝힌다 (R2 검토).
+            view.description = {
+                u8"다시 읽은 문서로 바꿀 때 실행 중인 기능을 중지합니다."
+                , view.unsaved_changes ? u8"읽지 못하면 중지하지 않고 지금 문서와 변경을 둡니다." : u8"읽지 못하면 중지하지 않고 지금 문서를 둡니다."
+            };
             view.confirm_label = u8"중지하고 읽기";
             break;
         case running_function_action::exit_application:
@@ -2869,14 +2951,18 @@ namespace gitman {
         }
         if (entries.empty())
         {
-            // 닫힘 훅을 건 frame 뒤에 기능이 끝났다 (앱 종료에서만 생긴다). 대상 줄이 `실행 중인 기능이 없습니다`라
-            // 안내는 같은 말을 되풀이하지 않고 누르면 무엇이 되는지만 말한다.
-            view.description = { u8"그사이 기능이 끝나 바로 종료할 수 있습니다." };
+            // 닫힘 훅을 건 frame 뒤에 기능이 끝났거나, 훅을 건 저장하지 못한 변경의 다시 저장이 진행 중이다 (앱 종료에서만
+            // 생긴다). 대상 줄이 `실행 중인 기능이 없습니다`라 안내는 같은 말을 되풀이하지 않고 누르면 무엇이 되는지만
+            // 말한다. 원인이 둘이라 그 까닭은 말하지 않는다 (R2 검토).
+            view.description = { u8"지금은 멈출 기능이 없어 바로 종료할 수 있습니다." };
             view.confirm_label = view.exit_application ? u8"종료" : u8"확인";
             return view;
         }
         // 중지는 job 종료라 유예가 없다 (4.10). 그래서 확인을 받는다.
         view.note = { u8"중지하면 끝나기를 기다리지 않고 바로 끝냅니다." };
+        // 저장하지 못한 변경도 같은 확인으로 버린다. dialog를 둘 띄우지 않고 경고 줄 하나를 더한다 (D28).
+        if (view.unsaved_changes)
+            view.note.push_back(u8"저장하지 못한 변경도 사라집니다.");
         return view;
     }
 
@@ -5248,8 +5334,8 @@ namespace gitman {
         snapshot->window_placement_revision = window_placement_revision_;
         snapshot->document_generating = pending_generation_operation_id_ != 0;
         snapshot->shutting_down = shutting_down_;
-        // 출력 수집 기능이 실행 중이면 창을 닫기 전에 묻는다 (function-buttons-design 4.10).
-        snapshot->exit_needs_confirmation = shutting_down_ == false && running_capture_count() > 0;
+        // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있으면 창을 닫기 전에 묻는다 (function-buttons-design 4.10, D28).
+        snapshot->exit_needs_confirmation = shutting_down_ == false && (running_capture_count() > 0 || has_unsaved_changes());
         snapshot->cards = build_ordered_cards();
 
         // 선택 카드의 로그 뷰다. 필터를 통과한 record만 담고 스크롤은 이미 고정된

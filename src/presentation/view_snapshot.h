@@ -421,8 +421,9 @@ namespace gitman {
         trust,
         // `confirm: true` 버튼의 실행 전 미리보기다. 그 버튼의 표시용 명령줄과 작업 폴더를 보인다.
         preview,
-        // 출력 수집 기능이 실행 중일 때 문서를 닫거나 다시 읽거나 다른 문서를 열거나 앱을 끝내려 할 때다 (4.10).
-        // 실행 중인 기능을 목록으로 보이고, 확인하면 중지하고 그 일을 한다.
+        // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있을 때 문서를 닫거나 다시 읽거나 다른 문서를 열거나 앱을
+        // 끝내려 할 때다 (4.10, D28).
+        // 실행 중인 기능을 목록으로 보이고, 확인하면 중지하고(저장하지 못한 변경은 버리고) 그 일을 한다.
         running,
     };
 
@@ -463,6 +464,10 @@ namespace gitman {
         // 실행 중인 기능 확인을 앱 종료에서 열었다 (4.10). 확인 버튼이 logic intent 대신 UI thread의 앱 끝내기
         // 명령을 낸다 — 종료는 창의 닫힘 훅을 받아 간 뒤라 logic이 끝낼 길이 없다.
         bool exit_application { false };
+        // 실행 중인 기능 확인에 저장하지 못한 변경도 함께 보인다 (D28, 4.9·4.10). 그 일을 하면 모델에만 있는 변경이
+        // 사라진다. 실행 중인 것이 없으면 목록이 비고 제목·대상·경고 줄이 저장하지 못한 변경을 말한다(panel도 목록 자리 없이
+        // 낮아진다).
+        bool unsaved_changes { false };
         // 목록의 스크롤 위치다 (논리 픽셀, 이미 고정됨).
         float scroll_offset { 0.0f };
     };
@@ -772,8 +777,8 @@ namespace gitman {
         std::optional<context_menu_view> context_menu {};
         // 값이 있으면 탐색 후보 선택 등록 dialog가 화면을 덮는다.
         std::optional<discovery_dialog_view> discovery_dialog {};
-        // 출력 수집 기능이 실행 중이라 창을 닫기 전에 확인을 받아야 한다 (function-buttons-design 4.10). driver가 이
-        // 값일 때만 frame의 닫힘 훅을 건다. 분리 실행만 있으면 묻지 않는다.
+        // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있어 창을 닫기 전에 확인을 받아야 한다 (function-buttons-design
+        // 4.10, D28). driver가 이 값일 때만 frame의 닫힘 훅을 건다. 분리 실행만 있으면 묻지 않는다.
         bool exit_needs_confirmation { false };
         bool shutting_down { false };
     };

@@ -31,7 +31,7 @@
 // 실제 프로세스는 `gitman_process_test_child`만 띄운다.
 namespace {
     constexpr std::chrono::milliseconds wait_limit { 15000 };
-    constexpr std::u8string_view conflict_notice { u8"문서가 밖에서 바뀌었습니다. 문서 다시 읽기로 불러오십시오." };
+    constexpr std::u8string_view conflict_notice { u8"문서가 밖에서 바뀌어 저장하지 않았습니다. 문서 다시 읽기로 불러오십시오." };
     constexpr std::u8string_view reload_failed_notice { u8"문서를 다시 읽지 못해 지금 문서를 그대로 둡니다." };
 
     std::u8string test_child_path()
@@ -152,8 +152,10 @@ TEST_CASE("A corrupt reload keeps the document and a reload after a hand edit re
     REQUIRE(harness.wait_for_view([](const gitman::view_snapshot& view) { return front_notice_is(view, conflict_notice); }) != nullptr);
     REQUIRE(read_file(document_path).find("Alpha Edited") != std::string::npos);
 
-    // 다시 읽으면 손 편집이 화면에 오고 알림이 걷힌다.
+    // 저장하지 못한 카드 순서가 사라진다고 먼저 묻는다 (D28). 확인하면 손 편집이 화면에 오고 알림이 걷힌다.
     harness.post(gitman::reload_document_intent {});
+    REQUIRE(harness.wait_for_view([](const gitman::view_snapshot& view) { return view.function_confirm_dialog.has_value() && view.function_confirm_dialog->unsaved_changes; }) != nullptr);
+    harness.post(gitman::confirm_function_run_intent {});
     const auto reloaded = [](const gitman::view_snapshot& view)
     {
         return view.notices.empty() && view.cards.size() == 2u && view.cards.front().display_name == u8"Alpha Edited";

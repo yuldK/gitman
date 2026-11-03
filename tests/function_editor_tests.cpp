@@ -1153,7 +1153,7 @@ namespace {
     }
 }
 
-TEST_CASE("An edit whose save failed neither runs nor records trust", "[function_buttons][v][logic][trust]")
+TEST_CASE("An edit whose save failed neither runs nor records trust", "[function_buttons][v][r2][logic][trust]")
 {
     // 해시 입력은 파일 원문이라 저장하지 못한 편집 모델과 어긋난다. 신뢰 dialog가 보일 모델과 기록할 해시가 다르면 안 된다.
     for (const bool trusted : { false, true })
@@ -1171,8 +1171,11 @@ TEST_CASE("An edit whose save failed neither runs nor records trust", "[function
         REQUIRE(fixture.saved_trust().has_value() == false);
         REQUIRE(last_card_log(fixture, u8"p00").find(u8"기능 정의가 아직 저장되지 않아 실행하지 않습니다") != std::u8string::npos);
 
-        // 다시 읽으면 파일의 정의로 돌아가 다시 실행할 수 있다.
+        // 다시 읽으면 파일의 정의로 돌아가 다시 실행할 수 있다. 저장하지 못한 편집이 사라지므로 먼저 묻는다 (D28).
         fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.snapshot()->function_confirm_dialog.has_value());
+        REQUIRE(fixture.snapshot()->function_confirm_dialog->unsaved_changes);
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
         const gitman::operation_request* const reload { fixture.last_of(gitman::operation_kind::load_document) };
         REQUIRE(reload != nullptr);
         gitman::document_loaded_event loaded {};

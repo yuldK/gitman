@@ -672,9 +672,13 @@ namespace gitman {
             exit_application,
         };
 
-        // 출력 수집 기능이 실행 중이면 실행 중인 기능 확인 dialog를 열고 false다. 없으면 true이고, 부르는 쪽이 곧바로
-        // 그 일을 한다. 분리 실행만 있으면 묻지 않는다 (4.10).
-        [[nodiscard]] bool confirm_running_functions(running_function_action action, std::u8string_view path = {});
+        // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있으면 실행 중인 기능 확인 dialog를 열고 false다. 둘 다
+        // 없으면 true이고, 부르는 쪽이 곧바로 그 일을 한다. 분리 실행만 있으면 묻지 않는다 (4.10, D28).
+        [[nodiscard]] bool confirm_document_change(running_function_action action, std::u8string_view path = {});
+        // 실행 중인 기능 확인 dialog를 연다. 실행 중인 것과 저장하지 못한 변경을 그때의 상태로 싣는다.
+        void open_document_change_confirm(running_function_action action, std::u8string_view path = {});
+        // 저장이 실패해 모델에만 있는 변경이 있다 (D28). 저장이 진행 중이면 아직 실패하지 않았으므로 아니다.
+        [[nodiscard]] bool has_unsaved_changes() const noexcept;
         // 기능 실행 확인 dialog의 취소다. 실행도, 미뤄 둔 일도 하지 않는다.
         void handle_cancel_function_run();
         // 실행 중인 기능 확인의 표시 모델이다. 지금 실행 중인 출력 수집 기능을 카드 순서대로 싣는다.
@@ -757,10 +761,23 @@ namespace gitman {
         bool function_trust_after_save_ { false };
         // 편집 dialog의 Apply가 낸 저장이 끝나면 쓴 글을 다시 읽은 진단으로 기능 버튼 알림을 다시 만든다. 저장이 실패하면 끈다.
         bool function_notice_after_save_ { false };
-        // 편집 dialog의 Apply가 바꾼 기능 정의가 아직 파일에 없다. 신뢰 해시 입력(`source_digest_input`)은 파일 원문이라
-        // 모델과 어긋나므로, 켜져 있는 동안은 기능을 실행하지 않고 신뢰도 기록하지 않는다. 저장이 성공하면(이어 낼 저장이
-        // 없을 때) 끄고, 실패하면 다시 읽거나 문서를 바꿀 때까지 남는다.
-        bool function_definition_unsaved_ { false };
+        // 모델에 있고 파일에 아직 없는 변경이다 (D28, 4.11). 문서를 쓰는 변경은 모두 `request_save`를 거치므로 거기서
+        // 켜고, 저장이 성공하면(이어 낼 저장이 없을 때) 둘 다 끄고, 문서를 바꾸면(열기·교체·닫기·다시 읽기) 버린다.
+        // 실패하면 다시 읽거나 문서를 바꿀 때까지 남는다. 모델 전체를 쓰는 탐색 후보 등록이 성공해도 `document`만 끈다
+        // (`handle_projects_registered`). 창 배치(`window_placement_dirty_`)는 닫기·종료에서만
+        // 저장하고 다시 읽기가 새 모델로 옮기므로(4.9의 6) 여기에 넣지 않는다.
+        struct unsaved_document_changes
+        {
+            // 저장을 냈고 아직 성공하지 않은 변경이 있다. 저장이 진행 중이 아닐 때 켜져 있으면 저장이 실패한 것이라
+            // 다시 읽기·닫기·다른 문서 열기·종료가 먼저 묻는다 (`has_unsaved_changes`).
+            bool document { false };
+            // 그 변경에 편집 dialog의 Apply가 바꾼 기능 정의가 있다. 신뢰 해시 입력(`source_digest_input`)은 파일
+            // 원문이라 모델과 어긋나므로, 켜져 있는 동안은 기능을 실행하지 않고 신뢰도 기록하지 않는다. 카드 순서·배치
+            // 같은 다른 변경은 해시 입력이 아니어서 실행을 막을 까닭이 없으므로 따로 둔다.
+            bool function_definition { false };
+        };
+
+        unsaved_document_changes unsaved_ {};
         // 검증에 실패한 버튼 항목의 사유다. 문서의 `buttons`와 같은 순서이고 통과한 항목 자리는 비어 있다. 편집 dialog의
         // 경고 행이 쓴다.
         std::vector<std::u8string> function_button_problems_ {};

@@ -2,6 +2,7 @@
 #include "helpers/ui_test_support.h"
 
 #include "application/logic_controller.h"
+#include "presentation/list_metrics.h"
 #include "presentation/ui/context_menu_popup.h"
 #include "presentation/ui/element_kinds.h"
 #include "presentation/ui/function_confirm_dialog_element.h"
@@ -27,7 +28,9 @@ namespace {
     using gitman::testing::make_function_card_projects;
     using gitman::testing::make_tree;
 
-    constexpr std::u8string_view conflict_notice { u8"문서가 밖에서 바뀌었습니다. 문서 다시 읽기로 불러오십시오." };
+    // 저장하지 않았다는 것을 밝힌다 (D28, user-manual 18장).
+    constexpr std::u8string_view conflict_notice { u8"문서가 밖에서 바뀌어 저장하지 않았습니다. 문서 다시 읽기로 불러오십시오." };
+    constexpr std::u8string_view conflict_message { u8"load 이후 작업공간 문서가 변경되어 저장하지 않았습니다." };
     constexpr std::u8string_view reload_failed_notice { u8"문서를 다시 읽지 못해 지금 문서를 그대로 둡니다." };
 
     [[nodiscard]] gitman::diagnostic make_error(const gitman::diagnostic_code code, const std::u8string_view message)
@@ -110,6 +113,15 @@ namespace {
             gitman::document_saved_event event {};
             event.operation_id = operation_id;
             event.diagnostics = std::move(diagnostics);
+            controller.handle(std::move(event));
+        }
+
+        // 성공한 저장이다. 새 revision이 와야 성공이다 — revision 없는 결과는 실패로 본다.
+        void saved_ok(const std::uint64_t operation_id)
+        {
+            gitman::document_saved_event event {};
+            event.operation_id = operation_id;
+            event.revision = { gitman::workspace_revision_token {} };
             controller.handle(std::move(event));
         }
 
@@ -381,7 +393,7 @@ TEST_CASE("Reload waits for a save in progress and holds saves while it reads", 
     fixture.controller.handle(gitman::reload_document_intent {});
     // 진행 중인 저장이 끝난 뒤 읽는다 (4.9의 2).
     REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
-    fixture.saved(save_id, {});
+    fixture.saved_ok(save_id);
     REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
 
     // 읽는 동안 들어온 변경은 저장을 미룬다. 지금 모델은 읽은 파일과 어긋난다.
@@ -401,15 +413,15 @@ TEST_CASE("Reload waits for a save in progress and holds saves while it reads", 
     }
 }
 
-TEST_CASE("A save conflict points to reload and a reload recovers saving", "[function_buttons][t11]")
+TEST_CASE("A save conflict points to reload and a reload recovers saving", "[function_buttons][t11][r2]")
 {
     reload_fixture fixture {};
     fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
     const gitman::operation_request* const save { fixture.last_request(gitman::operation_kind::save_document) };
     REQUIRE(save != nullptr);
 
-    // 손 편집 뒤의 저장은 낙관적 잠금에 걸린다. 다시 읽기로 불러오라고 알린다 (4.9).
-    fixture.saved(save->operation_id, { make_error(gitman::diagnostic_code::concurrent_modification, u8"load 이후 작업공간 문서가 변경되어 저장하지 않았습니다.") });
+    // 손 편집 뒤의 저장은 낙관적 잠금에 걸린다. 저장하지 않았다는 것과 다시 읽기로 불러오는 길을 알린다 (4.9, D28).
+    fixture.saved(save->operation_id, { make_error(gitman::diagnostic_code::concurrent_modification, conflict_message) });
     REQUIRE(fixture.snapshot()->notices.front().text == conflict_notice);
 
     // 다른 저장 실패는 그 진단 그대로다.
@@ -417,8 +429,15 @@ TEST_CASE("A save conflict points to reload and a reload recovers saving", "[fun
     fixture.saved(fixture.last_request(gitman::operation_kind::save_document)->operation_id, { make_error(gitman::diagnostic_code::document_write_failed, u8"쓰지 못했습니다.") });
     REQUIRE(fixture.snapshot()->notices.front().text == u8"쓰지 못했습니다.");
 
-    // 다시 읽으면 알림이 걷히고 다음 변경이 읽은 revision으로 저장된다.
+    // 다시 읽으면 저장하지 못한 카드 순서가 사라지므로 먼저 묻는다 (D28). 확인해야 읽는다.
     fixture.controller.handle(gitman::reload_document_intent {});
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.dialog()->unsaved_changes);
+    REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
+    fixture.controller.handle(gitman::confirm_function_run_intent {});
+    REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+
+    // 다시 읽으면 알림이 걷히고 다음 변경이 읽은 revision으로 저장된다.
     fixture.reloaded(reload_fixture::edited_document());
     REQUIRE(fixture.snapshot()->notices.empty());
     fixture.submitter.requests.clear();
@@ -429,6 +448,423 @@ TEST_CASE("A save conflict points to reload and a reload recovers saving", "[fun
     REQUIRE(recovered->document->projects.size() == 1u);
 }
 
+TEST_CASE("Reloading over an unsaved change asks first and cancelling keeps everything", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+    fixture.saved(fixture.last_request(gitman::operation_kind::save_document)->operation_id, { make_error(gitman::diagnostic_code::concurrent_modification, conflict_message) });
+
+    fixture.controller.handle(gitman::reload_document_intent {});
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    // 실행 중인 기능 확인과 같은 틀이다. 실행 중인 것이 없으면 목록은 비고 저장하지 못한 변경만 말한다.
+    REQUIRE(dialog->mode == gitman::function_confirm_mode::running);
+    REQUIRE(dialog->unsaved_changes);
+    REQUIRE(dialog->items.empty());
+    REQUIRE(dialog->subject == u8"저장하지 못한 변경이 있습니다");
+    // 사라진다는 말은 경고 줄이고, 안내 줄에는 읽지 못했을 때의 일만 남는다 (R2 검토).
+    REQUIRE(dialog->description == std::vector<std::u8string> { u8"읽지 못하면 지금 문서와 변경을 그대로 둡니다." });
+    REQUIRE(dialog->note == std::vector<std::u8string> { u8"다시 읽은 문서로 바꾸면 저장하지 못한 변경이 사라집니다." });
+    REQUIRE(dialog->confirm_label == u8"버리고 읽기");
+    REQUIRE(dialog->exit_application == false);
+
+    // 취소하면 읽지 않고 모델·알림·저장하지 못한 상태가 그대로다. 다시 읽기를 다시 하면 또 묻는다.
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
+    const auto view { fixture.snapshot() };
+    REQUIRE(view->function_confirm_dialog.has_value() == false);
+    REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
+    REQUIRE(view->notices.front().text == conflict_notice);
+    REQUIRE(view->cards.size() == 2u);
+    REQUIRE(view->cards.front().id.value == u8"p01");
+    REQUIRE(view->exit_needs_confirmation);
+    fixture.controller.handle(gitman::open_document_context_menu_intent { 40.0f, 50.0f });
+    REQUIRE(fixture.menu().items[2].enabled);
+    fixture.controller.handle(gitman::close_context_menu_intent {});
+    fixture.controller.handle(gitman::reload_document_intent {});
+    REQUIRE(fixture.dialog().has_value());
+    fixture.controller.handle(gitman::cancel_function_run_intent {});
+
+    // 저장 실패는 기능 실행을 막지 않는다. 카드 순서는 신뢰 해시 입력이 아니다 — 편집 dialog의 Apply만 막는다.
+    fixture.run(u8"p00", u8"ide");
+    REQUIRE(fixture.functions.requests.size() == 1u);
+
+    SECTION("읽지 못하면 변경이 남아 다음 다시 읽기도 묻는다")
+    {
+        fixture.controller.handle(gitman::reload_document_intent {});
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
+        fixture.reloaded(std::nullopt, { make_error(gitman::diagnostic_code::malformed_document, u8"JSON 오류") });
+        REQUIRE(fixture.snapshot()->cards.front().id.value == u8"p01");
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->unsaved_changes);
+    }
+
+    SECTION("다시 읽으면 상태가 풀려 다음 다시 읽기는 묻지 않는다")
+    {
+        fixture.controller.handle(gitman::reload_document_intent {});
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
+        fixture.reloaded(reload_fixture::edited_document());
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog().has_value() == false);
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 2u);
+    }
+
+    SECTION("뒤의 저장이 성공하면 묻지 않는다")
+    {
+        // 쓰기 실패처럼 다시 저장해 회복하는 경우다(logic은 실패 사유를 가리지 않는다). 성공한 저장은 모델 전체를 쓰므로
+        // 앞서 저장하지 못한 변경도 실었다.
+        fixture.controller.handle(gitman::toggle_path_display_intent {});
+        fixture.saved_ok(fixture.last_request(gitman::operation_kind::save_document)->operation_id);
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog().has_value() == false);
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+    }
+}
+
+TEST_CASE("A reload after a successful save does not ask", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    fixture.controller.handle(gitman::set_function_placement_intent { u8"build", gitman::function_placement::bar });
+    fixture.saved_ok(fixture.last_request(gitman::operation_kind::save_document)->operation_id);
+
+    fixture.controller.handle(gitman::reload_document_intent {});
+    REQUIRE(fixture.dialog().has_value() == false);
+    REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+}
+
+TEST_CASE("A reload waiting for a save asks only when that save fails", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    // 배치 변경도 문서를 쓰는 변경이다. 저장이 진행 중이면 아직 실패하지 않았으므로 묻지 않고 기다린다 (4.9의 2).
+    fixture.controller.handle(gitman::set_function_placement_intent { u8"build", gitman::function_placement::bar });
+    const std::uint64_t save_id { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+    fixture.controller.handle(gitman::reload_document_intent {});
+    REQUIRE(fixture.dialog().has_value() == false);
+    REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
+    REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+
+    SECTION("저장이 성공하면 곧바로 읽는다")
+    {
+        fixture.saved_ok(save_id);
+        REQUIRE(fixture.dialog().has_value() == false);
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+    }
+
+    SECTION("저장이 실패하면 읽지 않고 묻는다")
+    {
+        fixture.saved(save_id, { make_error(gitman::diagnostic_code::concurrent_modification, conflict_message) });
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->unsaved_changes);
+        // 기다림이 풀려 메뉴가 `읽는 중`에 묶이지 않는다. 취소하면 다시 고를 수 있다.
+        fixture.controller.handle(gitman::cancel_function_run_intent {});
+        fixture.controller.handle(gitman::open_document_context_menu_intent { 40.0f, 50.0f });
+        REQUIRE(fixture.menu().items[2].enabled);
+        REQUIRE(fixture.menu().items[2].label == u8"문서 다시 읽기");
+        fixture.controller.handle(gitman::close_context_menu_intent {});
+
+        fixture.controller.handle(gitman::reload_document_intent {});
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+    }
+}
+
+TEST_CASE("A running capture and an unsaved change share one dialog", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    fixture.run(u8"p00", u8"build");
+    const gitman::function_run_request request { fixture.functions.requests.front() };
+    fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+    fixture.saved(fixture.last_request(gitman::operation_kind::save_document)->operation_id, { make_error(gitman::diagnostic_code::concurrent_modification, conflict_message) });
+
+    fixture.controller.handle(gitman::reload_document_intent {});
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    REQUIRE(dialog->unsaved_changes);
+    REQUIRE(dialog->items.size() == 1u);
+    REQUIRE(dialog->subject == u8"빌드 (p00)");
+    REQUIRE(dialog->confirm_label == u8"중지하고 읽기");
+    REQUIRE(dialog->note == std::vector<std::u8string> { u8"중지하면 끝나기를 기다리지 않고 바로 끝냅니다.", u8"저장하지 못한 변경도 사라집니다." });
+    // 읽지 못하면 변경도 남는다는 것을 단독 dialog처럼 밝힌다 (R2 검토).
+    REQUIRE(dialog->description == std::vector<std::u8string> { u8"다시 읽은 문서로 바꿀 때 실행 중인 기능을 중지합니다.", u8"읽지 못하면 중지하지 않고 지금 문서와 변경을 둡니다." });
+
+    // 한 번 확인하면 읽는다. 교체할 때 실행을 취소한다.
+    fixture.controller.handle(gitman::confirm_function_run_intent {});
+    REQUIRE(fixture.dialog().has_value() == false);
+    REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+    fixture.reloaded(reload_fixture::edited_document());
+    REQUIRE(request.token.cancelled());
+}
+
+TEST_CASE("Closing, opening another document or exiting over an unsaved change asks first", "[function_buttons][r2][ui]")
+{
+    reload_fixture fixture {};
+    fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+    REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+    fixture.saved(fixture.last_request(gitman::operation_kind::save_document)->operation_id, { make_error(gitman::diagnostic_code::document_write_failed, u8"쓰지 못했습니다.") });
+    // 창 닫기도 같은 확인을 거친다. driver가 닫힘 훅을 건다.
+    REQUIRE(fixture.snapshot()->exit_needs_confirmation);
+
+    SECTION("문서 닫기")
+    {
+        fixture.controller.handle(gitman::close_document_intent {});
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->description.empty());
+        REQUIRE(fixture.dialog()->note == std::vector<std::u8string> { u8"문서를 닫으면 저장하지 못한 변경이 사라집니다." });
+        REQUIRE(fixture.dialog()->confirm_label == u8"버리고 닫기");
+        fixture.controller.handle(gitman::cancel_function_run_intent {});
+        REQUIRE(fixture.snapshot()->document_path == function_card_fixture::document_path);
+
+        fixture.controller.handle(gitman::close_document_intent {});
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
+        REQUIRE(fixture.snapshot()->document_path.empty());
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+    }
+
+    SECTION("다른 문서 열기")
+    {
+        fixture.controller.handle(gitman::open_document_intent { u8"C:\\work\\other.version-list" });
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->note == std::vector<std::u8string> { u8"다른 문서를 열면 저장하지 못한 변경이 사라집니다." });
+        REQUIRE(fixture.dialog()->confirm_label == u8"버리고 열기");
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
+        REQUIRE(fixture.last_request(gitman::operation_kind::load_document)->document_path == u8"C:\\work\\other.version-list");
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+    }
+
+    SECTION("새 문서 만들기의 결과 열기")
+    {
+        // 만든 문서를 여는 길도 다른 문서 열기와 같은 확인을 거친다 (4.10). 취소하면 지금 문서와 변경이 남는다.
+        fixture.controller.handle(gitman::generate_document_intent { u8"C:\\work", u8"C:\\work\\new.version-list" });
+        gitman::document_generated_event event {};
+        event.operation_id = fixture.last_request(gitman::operation_kind::generate_document)->operation_id;
+        event.document_path = u8"C:\\work\\new.version-list";
+        event.document = { gitman::workspace_document {} };
+        event.revision = { gitman::workspace_revision_token {} };
+        fixture.controller.handle(std::move(event));
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->items.empty());
+        REQUIRE(fixture.dialog()->note == std::vector<std::u8string> { u8"다른 문서를 열면 저장하지 못한 변경이 사라집니다." });
+        REQUIRE(fixture.dialog()->confirm_label == u8"버리고 열기");
+
+        SECTION("확인")
+        {
+            fixture.controller.handle(gitman::confirm_function_run_intent {});
+            REQUIRE(fixture.last_request(gitman::operation_kind::load_document)->document_path == u8"C:\\work\\new.version-list");
+            REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+        }
+
+        SECTION("취소")
+        {
+            fixture.controller.handle(gitman::cancel_function_run_intent {});
+            REQUIRE(fixture.snapshot()->document_path == function_card_fixture::document_path);
+            REQUIRE(fixture.snapshot()->cards.front().id.value == u8"p01");
+            REQUIRE(fixture.snapshot()->exit_needs_confirmation);
+        }
+    }
+
+    SECTION("앱 종료")
+    {
+        fixture.controller.handle(gitman::request_exit_intent {});
+        const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+        REQUIRE(dialog.has_value());
+        REQUIRE(dialog->exit_application);
+        REQUIRE(dialog->unsaved_changes);
+        REQUIRE(dialog->subject == u8"저장하지 못한 변경이 있습니다");
+        REQUIRE(dialog->description.empty());
+        REQUIRE(dialog->note == std::vector<std::u8string> { u8"종료하면 저장하지 못한 변경이 사라집니다." });
+        REQUIRE(dialog->confirm_label == u8"버리고 종료");
+
+        // 제목과 화면 읽기 이름은 실행 중인 기능이 아니라 저장하지 못한 변경을 말한다. 경고 줄도 이름에 든다.
+        const auto tree { make_tree(*fixture.snapshot()) };
+        const luil::ui_element* const host { gitman::testing::find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_function_confirm) };
+        REQUIRE(host != nullptr);
+        REQUIRE(host->accessibility().name == u8"저장하지 못한 변경");
+        const luil::ui_element* const panel { gitman::testing::find(*tree, gitman::ui::kind_function_confirm_dialog_panel) };
+        REQUIRE(panel != nullptr);
+        REQUIRE(panel->accessibility().name == u8"저장하지 못한 변경 확인, 저장하지 못한 변경이 있습니다 종료하면 저장하지 못한 변경이 사라집니다.");
+        // 목록이 없어 빈 목록 자리 없이 대상·경고 줄과 버튼만 담는 높이다 (480 고정이 아님, R2 검토). 버튼은 panel 안이다.
+        const luil::rect_f box { panel->bounds() };
+        REQUIRE(box.height == gitman::function_confirm_list_top(1) + gitman::function_confirm_list_bottom(1));
+        REQUIRE(box.height < gitman::layout_function_confirm_dialog_height);
+        const luil::ui_element* const button { tree->find(id_of(gitman::ui::kind_function_confirm_dialog_confirm)) };
+        REQUIRE(button != nullptr);
+        REQUIRE(button->bounds().y > box.y + gitman::function_confirm_list_top(1));
+        REQUIRE(button->bounds().y + button->bounds().height <= box.y + box.height);
+        const std::vector<luil::input_action> confirm { click_action(*tree, id_of(gitman::ui::kind_function_confirm_dialog_confirm)) };
+        REQUIRE(confirm.size() == 1u);
+        const luil::ui_command* const command { std::get_if<luil::ui_command>(&confirm.front()) };
+        REQUIRE(command != nullptr);
+        REQUIRE(*command == luil::ui_command::application_exit);
+    }
+}
+
+TEST_CASE("A queued save keeps the unsaved mark until the last save ends", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    // 앞 저장(배치)이 진행 중일 때 낸 변경(카드 순서)은 대기열에 선다. 앞 저장의 결과는 뒤 변경을 싣지 않았다.
+    fixture.controller.handle(gitman::set_function_placement_intent { u8"build", gitman::function_placement::bar });
+    const std::uint64_t first { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+    fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+    REQUIRE(fixture.request_count(gitman::operation_kind::save_document) == 1u);
+
+    SECTION("앞 저장이 성공해도 뒤 저장이 끝날 때까지 남는다")
+    {
+        fixture.saved_ok(first);
+        // 뒤 저장이 이어 나가 진행 중이다. 아직 실패하지 않았으므로 묻지 않는다.
+        REQUIRE(fixture.request_count(gitman::operation_kind::save_document) == 2u);
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+        fixture.saved(fixture.last_request(gitman::operation_kind::save_document)->operation_id, { make_error(gitman::diagnostic_code::concurrent_modification, conflict_message) });
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation);
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->unsaved_changes);
+    }
+
+    SECTION("앞 저장이 쓰기에 실패해도 이어 낸 저장이 성공하면 풀린다")
+    {
+        fixture.saved(first, { make_error(gitman::diagnostic_code::document_write_failed, u8"쓰지 못했습니다.") });
+        REQUIRE(fixture.request_count(gitman::operation_kind::save_document) == 2u);
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+        // 이어 낸 저장은 모델 전체를 쓰므로 앞서 실패한 배치도 실었다.
+        fixture.saved_ok(fixture.last_request(gitman::operation_kind::save_document)->operation_id);
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog().has_value() == false);
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+    }
+}
+
+TEST_CASE("A successful project registration clears an unsaved change it wrote", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+    fixture.saved(fixture.last_request(gitman::operation_kind::save_document)->operation_id, { make_error(gitman::diagnostic_code::document_write_failed, u8"쓰지 못했습니다.") });
+    REQUIRE(fixture.snapshot()->exit_needs_confirmation);
+
+    // 탐색 후보 등록은 `request_save`를 거치지 않고 지금 모델 전체를 쓴다.
+    fixture.controller.handle(gitman::begin_discovery_intent { u8"C:\\work\\scan" });
+    gitman::discovery_completed_event scanned {};
+    scanned.operation_id = fixture.submitter.requests.back().operation_id;
+    scanned.result.completed = true;
+    gitman::discovery_candidate candidate {};
+    candidate.directory_name = u8"repo-a";
+    candidate.absolute_path = u8"C:\\work\\scan\\repo-a";
+    candidate.normalized_path = candidate.absolute_path;
+    candidate.kind = gitman::repository_kind::git;
+    scanned.result.candidates.push_back(std::move(candidate));
+    fixture.controller.handle(std::move(scanned));
+    fixture.controller.handle(gitman::confirm_discovery_intent {});
+    const gitman::operation_request* const registration { fixture.last_request(gitman::operation_kind::register_projects) };
+    REQUIRE(registration != nullptr);
+    REQUIRE(registration->document.has_value());
+    REQUIRE(registration->document->projects.front().id.value == u8"p01");
+
+    gitman::projects_registered_event registered {};
+    registered.operation_id = registration->operation_id;
+
+    SECTION("성공하면 앞서 저장하지 못한 변경도 파일에 있어 묻지 않는다")
+    {
+        registered.document = registration->document;
+        registered.revision = { gitman::workspace_revision_token {} };
+        fixture.controller.handle(std::move(registered));
+        REQUIRE(fixture.snapshot()->discovery_dialog.has_value() == false);
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog().has_value() == false);
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 1u);
+    }
+
+    SECTION("실패하면 남는다")
+    {
+        registered.diagnostics.push_back(make_error(gitman::diagnostic_code::document_write_failed, u8"쓰지 못했습니다."));
+        fixture.controller.handle(std::move(registered));
+        REQUIRE(fixture.snapshot()->exit_needs_confirmation);
+    }
+}
+
+TEST_CASE("An open confirmation picks up a save that fails behind it", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    fixture.run(u8"p00", u8"build");
+    REQUIRE(fixture.functions.requests.size() == 1u);
+
+    SECTION("저장 중에 연 닫기 확인에 경고 줄이 붙는다")
+    {
+        fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+        const std::uint64_t save_id { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+        // 저장이 진행 중이라 실행 중인 기능만 묻는다.
+        fixture.controller.handle(gitman::close_document_intent {});
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->unsaved_changes == false);
+        REQUIRE(fixture.dialog()->note.size() == 1u);
+
+        // 그 저장이 실패하면 확인 전에 변경도 사라진다는 것을 보인다. 같은 일(닫기)이다.
+        fixture.saved(save_id, { make_error(gitman::diagnostic_code::concurrent_modification, conflict_message) });
+        const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+        REQUIRE(dialog.has_value());
+        REQUIRE(dialog->unsaved_changes);
+        REQUIRE(dialog->confirm_label == u8"중지하고 닫기");
+        REQUIRE(dialog->note == std::vector<std::u8string> { u8"중지하면 끝나기를 기다리지 않고 바로 끝냅니다.", u8"저장하지 못한 변경도 사라집니다." });
+    }
+
+    SECTION("저장을 기다리던 다시 읽기는 떠 있는 확인을 바꾸지 않고 거둔다")
+    {
+        // 실행 중인 기능을 확인한 다시 읽기가 진행 중인 저장을 기다린다 (4.9의 2).
+        fixture.controller.handle(gitman::set_function_placement_intent { u8"build", gitman::function_placement::bar });
+        const std::uint64_t save_id { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog().has_value());
+        fixture.controller.handle(gitman::confirm_function_run_intent {});
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
+
+        // 기다리는 동안 닫기 확인을 열었다. 그 저장이 실패해도 다시 읽기 확인으로 바꾸지 않는다.
+        fixture.controller.handle(gitman::close_document_intent {});
+        fixture.saved(save_id, { make_error(gitman::diagnostic_code::concurrent_modification, conflict_message) });
+        REQUIRE(fixture.dialog().has_value());
+        REQUIRE(fixture.dialog()->confirm_label == u8"중지하고 닫기");
+        REQUIRE(fixture.dialog()->unsaved_changes);
+        REQUIRE(fixture.request_count(gitman::operation_kind::load_document) == 0u);
+
+        // 다시 읽기는 거둬 메뉴가 `읽는 중`에 묶이지 않고, 저장 실패 알림이 남아 다시 고를 수 있다.
+        fixture.controller.handle(gitman::cancel_function_run_intent {});
+        REQUIRE(fixture.snapshot()->notices.front().text == conflict_notice);
+        fixture.controller.handle(gitman::open_document_context_menu_intent { 40.0f, 50.0f });
+        REQUIRE(fixture.menu().items[2].label == u8"문서 다시 읽기");
+        REQUIRE(fixture.menu().items[2].enabled);
+        fixture.controller.handle(gitman::close_context_menu_intent {});
+        fixture.controller.handle(gitman::reload_document_intent {});
+        REQUIRE(fixture.dialog()->confirm_label == u8"중지하고 읽기");
+        REQUIRE(fixture.dialog()->unsaved_changes);
+    }
+}
+
+TEST_CASE("An exit confirmation opened during a save turns into the unsaved one when it fails", "[function_buttons][r2]")
+{
+    reload_fixture fixture {};
+    fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+    fixture.saved(fixture.last_request(gitman::operation_kind::save_document)->operation_id, { make_error(gitman::diagnostic_code::document_write_failed, u8"쓰지 못했습니다.") });
+    // driver가 닫힘 훅을 건 frame 뒤에 다시 저장이 나갔다. 그 사이의 종료 요청은 실행 중인 것도, 아직 실패한 저장도 없다.
+    REQUIRE(fixture.snapshot()->exit_needs_confirmation);
+    fixture.controller.handle(gitman::toggle_path_display_intent {});
+    const std::uint64_t save_id { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+    fixture.controller.handle(gitman::request_exit_intent {});
+    REQUIRE(fixture.dialog().has_value());
+    REQUIRE(fixture.dialog()->subject == u8"실행 중인 기능이 없습니다");
+    REQUIRE(fixture.dialog()->description == std::vector<std::u8string> { u8"지금은 멈출 기능이 없어 바로 종료할 수 있습니다." });
+
+    fixture.saved(save_id, { make_error(gitman::diagnostic_code::document_write_failed, u8"쓰지 못했습니다.") });
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    REQUIRE(dialog->exit_application);
+    REQUIRE(dialog->subject == u8"저장하지 못한 변경이 있습니다");
+    REQUIRE(dialog->note == std::vector<std::u8string> { u8"종료하면 저장하지 못한 변경이 사라집니다." });
+    REQUIRE(dialog->confirm_label == u8"버리고 종료");
+}
+
 TEST_CASE("A failed reload after a save conflict shows the failure first", "[function_buttons][t11]")
 {
     reload_fixture fixture {};
@@ -437,8 +873,9 @@ TEST_CASE("A failed reload after a save conflict shows the failure first", "[fun
     REQUIRE(fixture.snapshot()->notices.front().text == conflict_notice);
 
     // 충돌 안내를 따라 다시 읽었으나 파일이 아직 깨져 있다. 띠 첫 줄이 그 실패여야 한다 — 충돌 안내가 남으면 아무 일도
-    // 없었던 것처럼 보인다.
+    // 없었던 것처럼 보인다. 저장하지 못한 카드 순서가 있어 확인을 거친다 (D28).
     fixture.controller.handle(gitman::reload_document_intent {});
+    fixture.controller.handle(gitman::confirm_function_run_intent {});
     fixture.reloaded(std::nullopt, { make_error(gitman::diagnostic_code::malformed_document, u8"작업공간 문서가 유효한 JSON이 아닙니다.") });
     REQUIRE(fixture.snapshot()->notices.size() == 1u);
     REQUIRE(fixture.snapshot()->notices.front().text == reload_failed_notice);
@@ -628,8 +1065,8 @@ TEST_CASE("Exit asks while a capture runs and its confirm button ends the applic
         REQUIRE(fixture.dialog().has_value());
         REQUIRE(fixture.dialog()->items.empty());
         REQUIRE(fixture.dialog()->subject == u8"실행 중인 기능이 없습니다");
-        // 안내는 대상 줄을 되풀이하지 않는다.
-        REQUIRE(fixture.dialog()->description == std::vector<std::u8string> { u8"그사이 기능이 끝나 바로 종료할 수 있습니다." });
+        // 안내는 대상 줄을 되풀이하지 않는다. 훅을 건 까닭이 저장하지 못한 변경일 수도 있어 원인은 말하지 않는다 (R2 검토).
+        REQUIRE(fixture.dialog()->description == std::vector<std::u8string> { u8"지금은 멈출 기능이 없어 바로 종료할 수 있습니다." });
         REQUIRE(fixture.dialog()->confirm_label == u8"종료");
     }
 

@@ -83,9 +83,9 @@ namespace gitman::win32 {
             frame->popups.push_back(ui::build_context_menu_popup(*view->context_menu, view->scale));
         frame->appearance = view->appearance;
         frame->fonts = view->fonts;
-        // 출력 수집 기능이 실행 중이면 주 창의 닫힘을 받아 logic이 실행 중인 기능을 보이고 묻는다
-        // (function-buttons-design 4.10). 확인 버튼이 앱 끝내기 명령을 내면 luil이 이 훅을 비켜 기존 종료 순서
-        // (`cancel` → close → `stop_workers`)를 밟는다. 실행 중인 것이 없으면 훅을 걸지 않아 지금처럼 곧바로 끝난다.
+        // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있으면 주 창의 닫힘을 받아 logic이 그것을 보이고 묻는다
+        // (function-buttons-design 4.10, D28). 확인 버튼이 앱 끝내기 명령을 내면 luil이 이 훅을 비켜 기존 종료 순서
+        // (`cancel` → close → `stop_workers`)를 밟는다. 둘 다 없으면 훅을 걸지 않아 지금처럼 곧바로 끝난다.
         if (view->exit_needs_confirmation)
             frame->close = []
             {

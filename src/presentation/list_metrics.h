@@ -400,6 +400,15 @@ namespace gitman {
         const float available { dialog_available_height(window_height) };
         return available < layout_function_confirm_dialog_height ? available : layout_function_confirm_dialog_height;
     }
+    // 목록 항목이 없는 확인(저장하지 못한 변경만 묻는 것, function-buttons-design 4.10·D28)의 panel 높이다. 480 높이를
+    // 그대로 두면 제목·안내 몇 줄과 버튼 사이가 빈 목록 자리로 크게 빈다. 그래서 목록 자리 없이 위아래 글과 버튼 줄만
+    // 담는다. 창이 낮으면 줄이는 것은 같다.
+    [[nodiscard]] inline float function_confirm_compact_dialog_height(const float window_height, const std::size_t description_lines, const std::size_t note_lines) noexcept
+    {
+        const float wanted { function_confirm_list_top(description_lines) + function_confirm_list_bottom(note_lines) };
+        const float available { dialog_available_height(window_height) };
+        return available < wanted ? available : wanted;
+    }
     // 목록 영역의 높이다. 창이 아주 낮아도 코드 한 줄 높이는 남긴다.
     [[nodiscard]] inline float function_confirm_list_height(const float window_height, const std::size_t description_lines, const std::size_t note_lines) noexcept
     {

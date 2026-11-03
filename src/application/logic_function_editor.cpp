@@ -660,8 +660,9 @@ namespace gitman {
         function_trust_after_save_ = digest.empty() == false && is_function_definition_trusted(app_settings_, document_path_, digest);
         // 알림 띠의 기능 버튼 경고도 쓴 글을 다시 읽은 진단으로 다시 만든다 (지운 항목·새로 생긴 경고).
         function_notice_after_save_ = true;
-        // 저장이 끝나기 전에는 해시 입력이 편집 전 원문이다. 그 해시로 신뢰를 판정·기록하지 않게 실행을 막는다.
-        function_definition_unsaved_ = true;
+        // 저장이 끝나기 전에는 해시 입력이 편집 전 원문이다. 그 해시로 신뢰를 판정·기록하지 않게 실행을 막는다. 문서 변경
+        // 표시(`unsaved_.document`)는 아래 `request_save`가 켠다.
+        unsaved_.function_definition = true;
         document_->function_buttons = std::move(definition);
         function_button_problems_ = std::move(problems);
         // 모델이 바뀌어 카드 열·기능 줄·`Alt+N` 번호가 바로 다시 매겨진다 (view는 snapshot마다 다시 짓는다).
@@ -688,8 +689,8 @@ namespace gitman {
         // 이어 낼 저장이 있으면 이 저장은 편집 전 모델일 수 있다. 마지막 저장이 끝난 뒤에 갱신한다.
         if (save_queued_)
             return;
-        // 모델이 파일과 같아져 해시 입력도 맞다. 아래 신뢰 갱신이 이 해시를 쓴다.
-        function_definition_unsaved_ = false;
+        // 모델이 파일과 같아져 해시 입력도 맞다(`handle_document_saved`가 저장하지 못한 변경 표시를 이미 껐다). 아래 신뢰
+        // 갱신이 이 해시를 쓴다.
         // store는 쓴 글을 다시 읽어 그 진단을 저장 결과에 싣는다. 편집으로 고치거나 지운 항목, 새로 생긴 경고(4번째
         // `card` 등)가 띠에 바로 맞춰진다.
         if (function_notice_after_save_)

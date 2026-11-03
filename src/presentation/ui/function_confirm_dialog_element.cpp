@@ -25,16 +25,26 @@ namespace gitman::ui {
     namespace {
         constexpr float action_button_width { 104.0f };
         constexpr float action_button_gap { 8.0f };
-        // 제목이다. 실행 중인 기능 확인(4.10)은 실행하려는 것이 아니라 실행 중인 것을 멈출지 묻는다.
-        [[nodiscard]] std::u8string_view dialog_title(const function_confirm_mode mode) noexcept
+        // 실행 중인 것은 없고 저장하지 못한 변경만 묻는 확인이다 (D28). 같은 틀이지만 제목이 실행 중인 기능을 말하면 틀린다.
+        [[nodiscard]] bool unsaved_only(const function_confirm_dialog_view& dialog) noexcept
         {
-            return mode == function_confirm_mode::running ? std::u8string_view { u8"실행 중인 기능" } : std::u8string_view { u8"기능 실행 확인" };
+            return dialog.mode == function_confirm_mode::running && dialog.unsaved_changes && dialog.items.empty();
+        }
+
+        // 제목이다. 실행 중인 기능 확인(4.10)은 실행하려는 것이 아니라 실행 중인 것을 멈출지 묻는다.
+        [[nodiscard]] std::u8string_view dialog_title(const function_confirm_dialog_view& dialog) noexcept
+        {
+            if (unsaved_only(dialog))
+                return u8"저장하지 못한 변경";
+            return dialog.mode == function_confirm_mode::running ? std::u8string_view { u8"실행 중인 기능" } : std::u8string_view { u8"기능 실행 확인" };
         }
 
         // panel의 화면 읽기 이름 앞머리다.
-        [[nodiscard]] std::u8string_view panel_access_prefix(const function_confirm_mode mode) noexcept
+        [[nodiscard]] std::u8string_view panel_access_prefix(const function_confirm_dialog_view& dialog) noexcept
         {
-            switch (mode)
+            if (unsaved_only(dialog))
+                return u8"저장하지 못한 변경 확인";
+            switch (dialog.mode)
             {
             case function_confirm_mode::trust:
                 return u8"신뢰 확인";
@@ -73,8 +83,12 @@ namespace gitman::ui {
             return height;
         }
 
+        // 목록 영역의 높이다. 항목이 없으면 목록 자리를 두지 않는다 (`function_confirm_compact_dialog_height`). 내용도
+        // 0이라 logic의 스크롤 한계(`handle_function_confirm_scroll`)와 어긋나지 않는다.
         [[nodiscard]] float list_height(const function_confirm_dialog_view& dialog, const float window_height) noexcept
         {
+            if (dialog.items.empty())
+                return 0.0f;
             return function_confirm_list_height(window_height, dialog.description.size() + 1, dialog.note.size());
         }
 
@@ -197,6 +211,8 @@ namespace gitman::ui {
             explicit function_confirm_panel_element(const function_confirm_dialog_view& dialog)
                 : ui_element { ui_element_id { kind_function_confirm_dialog_panel } }
                 , mode_ { dialog.mode }
+                , title_ { dialog_title(dialog) }
+                , access_prefix_ { panel_access_prefix(dialog) }
                 , subject_ { dialog.subject }
                 , description_ { dialog.description }
                 , note_ { dialog.note }
@@ -221,7 +237,7 @@ namespace gitman::ui {
             // 이 이름이 없으면 경고가 보조 기술에 닿지 않는다.
             [[nodiscard]] access_info accessibility() const override
             {
-                std::u8string name { panel_access_prefix(mode_) };
+                std::u8string name { access_prefix_ };
                 name += u8", ";
                 name += subject_;
                 for (const std::u8string& line : description_)
@@ -252,7 +268,7 @@ namespace gitman::ui {
                 const float padding { layout_function_confirm_padding * scale };
                 const float text_width { box.width - padding * 2.0f };
                 const float title_height { layout_function_confirm_title_height * scale };
-                draw_text_line(context, dialog_title(mode_), { box.x + padding, box.y + padding, text_width, title_height }, solid_paint(context.palette.primary_foreground), { .size = 13.0f });
+                draw_text_line(context, title_, { box.x + padding, box.y + padding, text_width, title_height }, solid_paint(context.palette.primary_foreground), { .size = 13.0f });
 
                 // 대상(문서 경로·카드 이름)은 앞을 줄여 끝의 파일 이름을 남긴다. 실행 중인 기능 요약(`빌드 (frontend) 외 1개`)은
                 // 앞의 기능 이름이 먼저 사라지지 않게 끝을 줄인다.
@@ -294,6 +310,8 @@ namespace gitman::ui {
 
         private:
             function_confirm_mode mode_ { function_confirm_mode::trust };
+            std::u8string_view title_ {};
+            std::u8string_view access_prefix_ {};
             std::u8string subject_ {};
             std::vector<std::u8string> description_ {};
             std::vector<std::u8string> note_ {};
@@ -427,12 +445,17 @@ namespace gitman::ui {
         float width { layout_function_confirm_dialog_width };
         if (width > window_width)
             width = window_width;
-        // 창이 낮으면 위아래 여백을 남기고 줄인다. 목록 높이를 정하는 함수가 같은 높이를 쓴다.
-        const float height { function_confirm_dialog_height(window_height) };
+        // 창이 낮으면 위아래 여백을 남기고 줄인다. 목록 높이를 정하는 함수가 같은 높이를 쓴다. 항목이 없는 확인(저장하지
+        // 못한 변경만 묻는 것)은 빈 목록 자리 없이 글과 버튼 높이만이다.
+        const float height {
+            view.items.empty()
+                ? function_confirm_compact_dialog_height(window_height, view.description.size() + 1, view.note.size())
+                : function_confirm_dialog_height(window_height)
+        };
 
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_function_confirm };
-        spec.name = std::u8string { dialog_title(view.mode) };
+        spec.name = std::u8string { dialog_title(view) };
         spec.content_width = width;
         spec.content_height = height;
         // 배경 클릭과 Esc는 모두 취소다. 실행하지 않는 쪽이 안전하다.

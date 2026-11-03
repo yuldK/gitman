@@ -1534,6 +1534,10 @@ VCS 배타(D6-A, 2차 검수. v1에서는 끌 수 없다. 버튼별 `exclusive: 
 - 고치기로 고른 결함: 진행 중·대기 저장이 닫기·종료 뒤 실패하면 변경이 말없이 사라짐, 문서의 `git_executable`·`svn_executable`이 신뢰 없이 실행됨(신뢰 전에는 자동 탐색), 앱 설정을 읽기 전에 누른 기능이 신뢰를 다시 물음, Debug 타이밍 test 간헐 실패, 스크롤 막대를 UI Automation으로 움직일 수 없음, 비활성 버튼·로그 줄이 UI Automation에 보이지 않음, cmd 보정이 닿지 않는 경우, 파일 로그 머리글 경로, 편집 dialog의 비슷한 두 아이콘.
 - 함께 고른 마무리: 남은 수동 점검(글 크기·테마·고대비, `Esc`·창 밖 클릭·`Alt+F4` 닫기, 분리 실행·conhost·손자 정리, 낭독·경고음), `user-manual.html` 갱신과 5.1 캡처, main 병합(로컬, push 없음).
 
+2026-11-04 6차 검수(5차 검수 앱 점검에서 남은 결정):
+
+- D36 → luil 요청: D32가 화면 읽기의 기본 동작(UIA Invoke)으로 누른 `card` 버튼에는 서지 않는 것은 gitman을 바꾸지 않고 luil에 "접근 Invoke에도 `interaction_policy::on_click`(또는 같은 자리의 hook)을 부른다"를 요청한다. luil이 반영하면 gitman은 바꿀 것이 없다. 그때까지 화면 읽기로 누른 `card` 버튼 뒤의 `Alt+N`은 선택 카드에서 돈다. 고른 선택지: "C: luil 요청으로"
+
 ## 구현 결과
 
 | 체크포인트 | 커밋 | 결과 |
@@ -1876,7 +1880,7 @@ VCS 배타(D6-A, 2차 검수. v1에서는 끌 수 없다. 버튼별 `exclusive: 
 - (S5, 남김) 파일 로그 writer 경쟁의 test는 fake 파일 시스템으로 틈을 붙잡아 결정적으로 본다. 실제 앱에서 첫 기록의 폴더 만들기와 문서 변경이 겹친 것을 본 적은 없고, 실제 디스크에서 그 틈의 크기를 재지 않았다. Release 빌드에서 이 경쟁이 무엇을 냈을지(해제된 노드에 쓰기)도 확인하지 않았다.
 - (S5, 남김) 다른 test가 store가 교체하는 파일을 기다리며 읽는 곳은 grep으로 이 둘뿐이었다. 앞으로 실제 store의 저장을 기다리는 test는 `helpers/document_file_watch.h`로 교체를 확인한 뒤 읽는다.
 - (S6) 조사 test는 고치기 전에 썼지만 고치기 전 코드로 돌려 실패하는 것을 보지는 않았다(고치기 전 글은 `기능 "핑"가`라 받침 있는 단언이 실패하는 것을 코드로 읽었다). 같은 꼴로 이름 뒤에 조사를 고정한 UI 글은 grep으로 이것 하나였다. 끝 글자가 영문이면 소리를 정하지 않고 `가`를 쓴다(`build가`, `clean가`).
-- (S 앱 점검, 남김, 설계 결정 또는 luil 필요) D32는 마우스 누름에만 선다. 화면 읽기의 기본 동작(UIA Invoke)으로 `card` 버튼을 누르면 그 카드가 초점 카드가 되지 않아, 뒤이은 `Alt+N`이 선택 카드에서 돈다. luil의 접근 실행 (`uia_element_provider::perform` → `window_surface::accessibility_dispatch`)은 `interaction_policy::on_click`을 부르지 않고, `card` 버튼은 Tab 자리가 아니라 luil 초점도 서지 않는다. gitman 쪽 우회는 모두 동작을 바꾸는 설계 결정이다(A. 접근 실행이 그 카드의 `⋯`로 초점을 옮김, B. 초점 카드를 logic이 들게 함). luil이 접근 Invoke에도 `on_click`(또는 같은 자리의 hook)을 부르면 gitman은 바꿀 것이 없다. 마우스·키보드 사용자에게는 영향이 없다(검증 기록 12.4, handoff 0.2.1 "다음에 할 일").
+- (S 앱 점검, 남김, 설계 결정 또는 luil 필요) D32는 마우스 누름에만 선다. 화면 읽기의 기본 동작(UIA Invoke)으로 `card` 버튼을 누르면 그 카드가 초점 카드가 되지 않아, 뒤이은 `Alt+N`이 선택 카드에서 돈다. luil의 접근 실행 (`uia_element_provider::perform` → `window_surface::accessibility_dispatch`)은 `interaction_policy::on_click`을 부르지 않고, `card` 버튼은 Tab 자리가 아니라 luil 초점도 서지 않는다. gitman 쪽 우회는 모두 동작을 바꾸는 설계 결정이다(A. 접근 실행이 그 카드의 `⋯`로 초점을 옮김, B. 초점 카드를 logic이 들게 함). luil이 접근 Invoke에도 `on_click`(또는 같은 자리의 hook)을 부르면 gitman은 바꿀 것이 없다. 마우스·키보드 사용자에게는 영향이 없다(검증 기록 12.4, handoff 0.2.1 "다음에 할 일"). → 2026-11-04 D36으로 결정: C(luil 요청), gitman은 그대로 둔다.
 - (S 앱 점검, 남김, luil 필요) Windows의 텍스트 크기(접근성 > 텍스트 크기)를 키워도 글과 줄 높이가 바뀌지 않는다. luil은 시스템 글자 크기를 Android에서만 읽어(`set_system_font_sizes`) Windows에서는 `text_growth`가 늘 0이다. 2.2.4 표의 "큰 글자" 행과 user-manual 12.2의 옛 문장("시스템 글자 크기를 키우면 줄도 함께 높아집니다")은 코드와 맞지 않았고, 설명서는 S에서 고쳤다. 화면 배율(DPI)은 따른다(점검은 150%, 144 DPI).
 - (S 앱 점검, 남김) 저장 중 닫기는 문서 파일을 잠가 실패한 저장 뒤의 `저장하지 못한 변경` 창까지만 봤다. 닫기가 저장 도중에 들어갔는지는 가를 수 없었고(실패 뒤에 닫아도 같은 창), 종료의 5초 상한과 `문서 저장 중` 창은 느린 저장을 만들 수 없어 보지 못했다. 고대비, 낭독, `Alt` 뒤 경고음, 기본 터미널이 conhost일 때의 분리 실행은 시스템 설정이 필요해 사용자 수동 확인으로 넘겼다(검증 기록 12.5).
 - (S, 남김) `docs/user-manual.html`은 `scripts/render_user_manual.py`(markdown-it-py)가 md에서 만든다. 제목 id를 md의 링크와 같은 GitHub 규칙(`#129-문서-다시-읽기와-실행-중-확인`)으로 바꿔, 예전 html의 id(`#21`, `#_1`)를 가리키던 바깥 북마크는 더 맞지 않는다. 예전 html은 md의 링크 넷이 맞는 id가 없어 움직이지 않았다.

@@ -236,7 +236,7 @@ TEST_CASE("The writer creates one file per repository and appends the header onc
 
     const std::optional<std::u8string> content { files.content_of(u8"alpha") };
     REQUIRE(content.has_value());
-    REQUIRE(content->find(u8"# 문서: D:\\ws\\.team.version-list.log") != std::u8string::npos);
+    REQUIRE(content->find(u8"# 문서: D:\\ws\\team.version-list\r\n") != std::u8string::npos);
     REQUIRE(content->find(u8"# 저장소: alpha (C:\\work\\alpha)") != std::u8string::npos);
     REQUIRE(content->find(u8"첫 줄") != std::u8string::npos);
     REQUIRE(content->find(u8"둘째 줄") != std::u8string::npos);
@@ -249,6 +249,24 @@ TEST_CASE("The writer creates one file per repository and appends the header onc
     REQUIRE(files.file_count() == 2);
     const std::optional<std::u8string> beta { files.path_of(u8".team.version-list.log\\beta") };
     REQUIRE(beta.has_value());
+}
+
+TEST_CASE("The log file header names the document, not the log folder", "[log-file][writer][function_buttons][s3]")
+{
+    // 머리글의 `# 문서:`는 어떤 문서의 로그인지 알리는 줄이다. 로그 폴더는 파일 경로에 이미 있으므로 문서 경로를
+    // 적는다 (5차 검수에서 고치기로 고른 결함, S3).
+    fake_log_file_system files {};
+    gitman::file_log_writer writer { files };
+
+    const std::vector<gitman::log_file_target> targets { make_targets({ { u8"alpha", u8"C:\\work\\alpha" } }) };
+    writer.set_document(u8"D:\\R&D ws\\team.version-list", targets);
+    writer.append(gitman::project_id { u8"alpha" }, make_entry(u8"첫 줄"));
+    writer.flush();
+
+    const std::optional<std::u8string> content { files.content_of(u8"alpha") };
+    REQUIRE(content.has_value());
+    REQUIRE(content->starts_with(u8"# 문서: D:\\R&D ws\\team.version-list\r\n# 저장소: alpha (C:\\work\\alpha)\r\n"));
+    REQUIRE(content->find(u8".team.version-list.log") == std::u8string::npos);
 }
 
 TEST_CASE("The writer ignores entries without a document or an unknown card", "[log-file][writer]")

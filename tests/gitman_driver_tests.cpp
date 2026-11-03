@@ -408,6 +408,26 @@ TEST_CASE("Cancel shortens handling to the close message only", "[driver][shutdo
     REQUIRE(driver.shutdown_completed());
 }
 
+TEST_CASE("The driver asks the controller when to wake only before shutdown", "[driver][shutdown][function_buttons][s3]")
+{
+    // luil은 frame을 게시할 때마다 `next_tick`을 묻는다. 기다리는 일이 없으면 깨울 시각이 없고, 종료 중에는 controller에
+    // 묻지도 넘기지도 않는다 (S3). 기다리는 일이 있을 때 값을 넘기는 것은 logic test가 controller에서 본다 — driver의
+    // 실제 worker가 낸 답이 relay에 언제 닿을지 test가 정할 수 없어서다.
+    gitman::win32::gitman_driver driver {};
+    driver.handle(luil::app_message { gitman::logic_message { gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f } } });
+    REQUIRE(driver.next_tick().has_value() == false);
+    const std::shared_ptr<const luil::win32::ui_frame> before { driver.make_frame() };
+    driver.tick(std::chrono::steady_clock::now() + std::chrono::hours { 1 });
+    REQUIRE(driver.last_view()->function_confirm_dialog.has_value() == false);
+
+    driver.cancel();
+    REQUIRE(driver.next_tick().has_value() == false);
+    driver.tick(std::chrono::steady_clock::now() + std::chrono::hours { 1 });
+    REQUIRE(driver.make_frame() == before);
+    driver.handle(driver.make_close_message());
+    REQUIRE(driver.shutdown_completed());
+}
+
 TEST_CASE("Messages that are not logic messages are ignored", "[driver][frame]")
 {
     // luil은 앱 메시지의 내용을 모른다. 다른 앱 타입이나 빈 상자가 와도 driver는

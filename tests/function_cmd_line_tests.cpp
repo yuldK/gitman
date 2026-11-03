@@ -5,9 +5,11 @@
 #include "domain/process_execution.h"
 #include "domain/project.h"
 #include "domain/repository_snapshot.h"
+#include "infrastructure/cmd_target_inspection.h"
 #include "infrastructure/command_line_builder.h"
 #include "infrastructure/function_execution_policy.h"
 #include "platform/win32/win32_process_runner.h"
+#include "platform/win32/win32_vcs_file_probe.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -256,10 +258,10 @@ namespace {
     }
 
     // 조각으로 직접 지은 인자를 실제 `cmd.exe`로 돌린다. 작업 폴더는 `working_directory`다.
-    cmd_run run_assembled(const std::vector<gitman::cmd_argument>& arguments, const std::filesystem::path& working_directory)
+    cmd_run run_assembled(const std::vector<gitman::cmd_argument>& arguments, const std::filesystem::path& working_directory, const gitman::cmd_target_facts* facts = nullptr)
     {
         cmd_run run {};
-        run.assembly = gitman::assemble_cmd_command_line(value(cmd_program_path()), arguments);
+        run.assembly = gitman::assemble_cmd_command_line(value(cmd_program_path()), arguments, {}, facts);
         REQUIRE_FALSE(run.assembly.rejection.has_value());
 
         gitman::function_command command {};
@@ -833,4 +835,302 @@ TEST_CASE("The ! texts say when cmd expands it", "[function_buttons][r4]")
     REQUIRE(gitman::cmd_warning_message(bang.warnings.front()).find(u8"지연 확장이 켜져 있으면") != std::u8string::npos);
     const gitman::cmd_correction_kind off[] { gitman::cmd_correction_kind::delayed_expansion };
     REQUIRE(gitman::cmd_correction_reason(off).find(u8"배치가 지연 확장을 켜면") != std::u8string::npos);
+}
+
+TEST_CASE("The cmd target query names the batch file and the relative path the worker must check", "[function_buttons][s3]")
+{
+    // 변수로 시작하는 배치 경로다. 글자만으로 경로로 정해지고, 부를 배치가 그 경로다.
+    const std::vector<gitman::cmd_argument> continued { { { literal(u8"/d") } }, { { literal(u8"/c") } }, { { value(u8"D:\\R&D"), literal(u8"\\tools\\Run.CMD") } }, { { value(u8"x") } } };
+    const std::optional<gitman::cmd_target_query> path { gitman::find_cmd_target_query(continued) };
+    REQUIRE(path.has_value());
+    REQUIRE(path->argument == 2u);
+    REQUIRE(path->sentence == false);
+    REQUIRE(path->relative_path.has_value() == false);
+    REQUIRE(path->batch_if_path == u8"D:\\R&D\\tools\\Run.CMD");
+    REQUIRE(path->batch_if_sentence.empty());
+
+    // 공백이 든 상대 경로는 글자만으로는 문장이다. 작업 폴더에서 그 파일이 있는지 worker가 본다.
+    const std::optional<gitman::cmd_target_query> relative { gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"tools\\Build Tools\\run.bat", u8"y" }, true)) };
+    REQUIRE(relative.has_value());
+    REQUIRE(relative->argument == 1u);
+    REQUIRE(relative->sentence);
+    REQUIRE(relative->relative_path == std::optional<std::u8string> { u8"tools\\Build Tools\\run.bat" });
+    REQUIRE(relative->batch_if_path == u8"tools\\Build Tools\\run.bat");
+    REQUIRE(relative->batch_if_sentence.empty());
+    REQUIRE(gitman::cmd_target_batch_path(*relative, true) == u8"tools\\Build Tools\\run.bat");
+    REQUIRE(gitman::cmd_target_batch_path(*relative, false).empty());
+
+    // 문장이면 첫 토큰(따옴표면 따옴표 안)이 부를 배치다. 경로 꼴이 아닌 문장은 있는지 보지 않는다.
+    const std::optional<gitman::cmd_target_query> sentence { gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"build.bat --all & echo done" }, true)) };
+    REQUIRE(sentence.has_value());
+    REQUIRE(sentence->sentence);
+    REQUIRE(sentence->relative_path.has_value() == false);
+    REQUIRE(sentence->batch_if_sentence == u8"build.bat");
+    const std::optional<gitman::cmd_target_query> quoted { gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"\"C:\\a b\\x.cmd\" y" }, true)) };
+    REQUIRE(quoted.has_value());
+    REQUIRE(quoted->relative_path.has_value() == false);
+    REQUIRE(quoted->batch_if_sentence == u8"C:\\a b\\x.cmd");
+
+    // 확인할 것이 없으면 값이 없다. worker를 거치지 않고 바로 판정한다.
+    REQUIRE(gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"echo hi" }, true)).has_value() == false);
+    REQUIRE(gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"C:\\tools\\x.exe" }, true)).has_value() == false);
+    REQUIRE(gitman::find_cmd_target_query(arguments_of({ u8"/d", u8"/c" }, true)).has_value() == false);
+
+    // 상대 경로는 작업 폴더에 잇는다. 절대 경로는 그대로다.
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws\\", u8"tools\\run.bat") == u8"D:\\ws\\tools\\run.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"tools\\run.bat") == u8"D:\\ws\\tools\\run.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"C:\\x.bat") == u8"C:\\x.bat");
+}
+
+TEST_CASE("A batch file scan finds setlocal EnableDelayedExpansion and call outside comments", "[function_buttons][s3]")
+{
+    REQUIRE(gitman::scan_cmd_batch_text("@echo off\r\nSETLOCAL EnableExtensions   enabledelayedexpansion\r\necho %*\r\n") == gitman::cmd_batch_findings { true, false, false });
+    REQUIRE(gitman::scan_cmd_batch_text("@echo off\r\n  call \"%~dp0next.bat\" %*\r\n") == gitman::cmd_batch_findings { false, true, false });
+    REQUIRE(gitman::scan_cmd_batch_text("if 1==1 (@CALL :sub)\r\n") == gitman::cmd_batch_findings { false, true, false });
+    REQUIRE(gitman::scan_cmd_batch_text("x.exe & call:label\n") == gitman::cmd_batch_findings { false, true, false });
+    // 주석과 다른 낱말 안의 글은 세지 않는다.
+    REQUIRE(gitman::scan_cmd_batch_text("rem call x.bat\r\n:: setlocal EnableDelayedExpansion\r\n@REM call y\r\nrecall.exe\r\nsetlocal\r\necho callback\r\n") == gitman::cmd_batch_findings {});
+}
+
+TEST_CASE("A batch file scan uses every cmd word boundary, carets, empty variables and a BOM", "[function_buttons][s3]")
+{
+    constexpr gitman::cmd_batch_findings delayed { true, false, false };
+    constexpr gitman::cmd_batch_findings call { false, true, false };
+    // cmd가 그대로 지연 확장을 켜는 줄이다(S3 검토, 실제 cmd.exe에서 `!GMX!`가 펼쳐짐).
+    REQUIRE(gitman::scan_cmd_batch_text("setlocal EnableDelayedExpansion&echo hi\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("(setlocal EnableDelayedExpansion)\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("setlocal EnableDelayedExpansion>nul\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("setlocal,EnableDelayedExpansion\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("\xEF\xBB\xBFsetlocal EnableDelayedExpansion\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("set^local EnableDelayed^Expansion\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("%nothing%setlocal Enable%nothing%DelayedExpansion\r\n") == delayed);
+    // 자식 cmd도 지연 확장을 켠다. `/v`만으로는 다른 명령의 스위치일 수 있어 같은 줄의 `cmd`를 본다.
+    REQUIRE(gitman::scan_cmd_batch_text("cmd /v:on /c echo %~1\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("for /f %%i in ('cmd /d /v /c echo %~1') do echo %%i\r\n") == delayed);
+    REQUIRE(gitman::scan_cmd_batch_text("findstr /v x y.txt\r\ncmd /v:off /c echo x\r\n") == gitman::cmd_batch_findings {});
+
+    REQUIRE(gitman::scan_cmd_batch_text("call,echo %~1\r\n") == call);
+    REQUIRE(gitman::scan_cmd_batch_text("call;echo %~1\r\n") == call);
+    REQUIRE(gitman::scan_cmd_batch_text("call=echo %~1\r\n") == call);
+    REQUIRE(gitman::scan_cmd_batch_text("call\x0B" "echo %~1\r\n") == call);
+    REQUIRE(gitman::scan_cmd_batch_text("echo x&call\"x.bat\"\r\n") == call);
+    REQUIRE(gitman::scan_cmd_batch_text("\xEF\xBB\xBF" "call x.bat\r\n") == call);
+    REQUIRE(gitman::scan_cmd_batch_text("ca^ll x.bat\r\n") == call);
+    REQUIRE(gitman::scan_cmd_batch_text("%nothing%call x.bat\r\n") == call);
+    // `%…%` 구간을 지운 사본만 보면 사이의 낱말을 놓친다. 원래 줄도 본다.
+    REQUIRE(gitman::scan_cmd_batch_text("echo %~1 call %~2\r\n") == call);
+}
+
+TEST_CASE("The cmd target path folds dot segments, roots and drives like Win32", "[function_buttons][s3]")
+{
+    // probe의 `\\?\`는 `.`·`..`를 풀지 않으므로 글자로 접어 넘긴다 (S3 검토).
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8".\\run.bat") == u8"D:\\ws\\run.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"./run.bat") == u8"D:\\ws\\run.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws\\sub", u8"..\\sub dir\\x.bat") == u8"D:\\ws\\sub dir\\x.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"tools/../x.bat") == u8"D:\\ws\\x.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws\\..\\ws\\", u8"x.bat") == u8"D:\\ws\\x.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"..\\..\\..\\x.bat") == u8"D:\\x.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"C:\\a\\..\\b.bat") == u8"C:\\b.bat");
+    // 루트 상대는 작업 폴더의 드라이브나 share 뿌리, 같은 드라이브의 드라이브 상대는 작업 폴더 기준이다.
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws\\sub", u8"\\tools\\x.bat") == u8"D:\\tools\\x.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"\\\\host\\share\\ws", u8"\\x.bat") == u8"\\\\host\\share\\x.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"\\\\host\\share\\ws", u8"..\\..\\x.bat") == u8"\\\\host\\share\\x.bat");
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"d:x.bat") == u8"D:\\ws\\x.bat");
+    // 다른 드라이브의 현재 폴더는 알 수 없다. 장치 경로는 정규화하지 않는다.
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"C:x.bat").empty());
+    REQUIRE(gitman::cmd_target_absolute_path(u8"ws", u8"x.bat").empty());
+    REQUIRE(gitman::cmd_target_absolute_path(u8"D:\\ws", u8"\\\\?\\C:\\a\\..\\x.bat") == u8"\\\\?\\C:\\a\\..\\x.bat");
+
+    // 신뢰하기 전에는 드라이브 문자 경로만 읽는다. 읽지 않은 답은 배치 후보가 있으면 확인하지 못했다는 것이다.
+    gitman::cmd_target_query query { *gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"run.bat" }, true)) };
+    query.working_directory = u8"D:\\ws";
+    REQUIRE(gitman::cmd_target_is_local(query));
+    query.working_directory = u8"\\\\host\\share\\ws";
+    REQUIRE(gitman::cmd_target_is_local(query) == false);
+    const gitman::cmd_target_facts unread { gitman::cmd_target_unread_facts(query) };
+    REQUIRE(unread.query == query);
+    REQUIRE(unread.path_exists == false);
+    REQUIRE(unread.batch == std::optional<gitman::cmd_batch_findings> { gitman::cmd_batch_findings { false, false, true } });
+    gitman::cmd_target_query unc { *gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"\\\\host\\share\\x.bat" }, true)) };
+    unc.working_directory = u8"D:\\ws";
+    REQUIRE(gitman::cmd_target_is_local(unc) == false);
+
+    // 명령 문장의 첫 토큰은 cmd가 건너뛰는 앞 글자와 `^`를 벗기고 본다.
+    REQUIRE(gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"@run.bat x" }, true))->batch_if_sentence == u8"run.bat");
+    REQUIRE(gitman::find_cmd_target_query(arguments_of({ u8"/c", u8"(run.bat x)" }, true))->batch_if_sentence == u8"run.bat");
+    REQUIRE(gitman::find_cmd_target_query(arguments_of({ u8"/c", u8";^run.bat x" }, true))->batch_if_sentence == u8"run.bat");
+}
+
+TEST_CASE("Known cmd target facts decide a relative path and add batch warnings", "[function_buttons][s3]")
+{
+    const std::vector<gitman::cmd_argument> relative { arguments_of({ u8"/c", u8"tools\\Build Tools\\run.bat", u8"y" }, true) };
+    gitman::cmd_target_facts facts {};
+    facts.query = *gitman::find_cmd_target_query(relative);
+
+    // 파일이 없으면 글자만의 판정 그대로 문장이다.
+    const gitman::cmd_command_line missing { gitman::assemble_cmd_command_line(value(system_cmd), relative, {}, &facts) };
+    REQUIRE(missing.text == u8"\"C:\\Windows\\System32\\cmd.exe\" /s /c \"tools\\Build Tools\\run.bat y\"");
+    REQUIRE(missing.corrections.front().kinds == std::vector<gitman::cmd_correction_kind> { gitman::cmd_correction_kind::sentence });
+
+    // 작업 폴더에 그 파일이 있으면 경로 하나다. 공백 때문에 감싸는 보통 조립이라 보정이 아니다.
+    facts.path_exists = true;
+    const gitman::cmd_command_line existing { gitman::assemble_cmd_command_line(value(system_cmd), relative, {}, &facts) };
+    REQUIRE(existing.text == u8"\"C:\\Windows\\System32\\cmd.exe\" /s /c \"\"tools\\Build Tools\\run.bat\" y\"");
+    REQUIRE(existing.corrections.empty());
+    REQUIRE(existing.needs_approval() == false);
+
+    // 부를 배치가 지연 확장을 켜거나 call을 쓰면 경고다. 경고는 그 배치를 가리키는 인자의 것이다.
+    facts.batch = gitman::cmd_batch_findings { true, true, false };
+    const gitman::cmd_command_line warned { gitman::assemble_cmd_command_line(value(system_cmd), relative, {}, &facts) };
+    REQUIRE(has_warning(warned, gitman::cmd_warning_kind::batch_delayed_expansion, 1u));
+    REQUIRE(has_warning(warned, gitman::cmd_warning_kind::batch_call, 1u));
+    REQUIRE(warned.needs_approval());
+    for (const gitman::cmd_warning& warning : warned.warnings)
+    {
+        const std::u8string message { gitman::cmd_warning_message(warning) };
+        INFO(reinterpret_cast<const char*>(message.c_str()));
+        if (warning.kind == gitman::cmd_warning_kind::batch_delayed_expansion)
+            REQUIRE(message == u8"args[1]이 부르는 배치 파일이 지연 확장을 켭니다(EnableDelayedExpansion, cmd /v:on). 넘긴 값의 !NAME!을 배치 안에서 cmd가 환경 변수로 펼칠 수 있습니다(/v:off로 막지 못합니다).");
+        else
+            REQUIRE(message == u8"args[1]이 부르는 배치 파일이 call을 씁니다. call로 다시 넘긴 값은 ^가 두 배가 되고 %가 한 번 더 펼쳐져 인자 경계가 바뀔 수 있습니다.");
+    }
+
+    // 너무 커서 읽지 않은 배치도 경고로 알린다.
+    facts.batch = gitman::cmd_batch_findings { false, false, true };
+    const gitman::cmd_command_line unchecked { gitman::assemble_cmd_command_line(value(system_cmd), relative, {}, &facts) };
+    REQUIRE(has_warning(unchecked, gitman::cmd_warning_kind::batch_unchecked, 1u));
+    REQUIRE(gitman::cmd_warning_message(unchecked.warnings.front()) == u8"args[1]이 부르는 배치 파일을 읽지 못하거나 커서(256KiB 넘음) 지연 확장과 call을 확인하지 못했습니다.");
+}
+
+TEST_CASE("cmd.exe runs a relative batch path with spaces only when it exists and a delayed expansion batch is flagged", "[function_buttons][s3]")
+{
+    const cmd_folders folders {};
+    const std::filesystem::path tools { folders.onedrive() / L"tools" / L"Build Tools" };
+    REQUIRE(std::filesystem::create_directories(tools));
+    cmd_folders::write_batch(tools / L"run.bat", "@\"%~dp0..\\..\\gitman_process_test_child.exe\" echo-args %*\r\n");
+    // `/v:off`를 넣어도 배치가 지연 확장을 다시 켜면 넘긴 값의 `!GMX!`가 펼쳐진다 (4.3의 전제, R4 보안 검토 실측).
+    cmd_folders::write_batch(folders.onedrive() / L"delayed.bat", "@echo off\r\nset GMX=expanded\r\nsetlocal EnableDelayedExpansion\r\n\"%~dp0gitman_process_test_child.exe\" echo-args %*\r\n");
+    const std::unique_ptr<gitman::vcs_file_probe> probe { gitman::win32::make_vcs_file_probe() };
+    const std::u8string working_directory { folders.onedrive().u8string() };
+
+    // 작업 폴더에 있는 공백 상대 경로는 경로 하나로 넘겨 배치가 돈다.
+    const std::vector<gitman::cmd_argument> relative { arguments_of({ u8"/d", u8"/c", u8"tools\\Build Tools\\run.bat", u8"x y" }, true) };
+    gitman::cmd_target_query query { *gitman::find_cmd_target_query(relative) };
+    query.working_directory = working_directory;
+    const gitman::cmd_target_facts found { gitman::inspect_cmd_target(*probe, query) };
+    REQUIRE(found.path_exists);
+    REQUIRE(found.batch == std::optional<gitman::cmd_batch_findings> { gitman::cmd_batch_findings {} });
+    const cmd_run path_run { run_assembled(relative, folders.onedrive(), &found) };
+    INFO(reinterpret_cast<const char*>(path_run.assembly.text.c_str()));
+    REQUIRE(path_run.result.exit_code == std::optional<std::int32_t> { 0 });
+    REQUIRE(path_run.lines == std::vector<std::u8string> { u8"[x y]" });
+    REQUIRE(path_run.assembly.needs_approval() == false);
+
+    // 없는 경로는 글자만의 판정 그대로 문장이고, cmd는 `tools\Build`를 명령으로 찾지 못한다.
+    const std::vector<gitman::cmd_argument> absent { arguments_of({ u8"/d", u8"/c", u8"tools\\Build Tools\\absent.bat", u8"x y" }, true) };
+    gitman::cmd_target_query absent_query { *gitman::find_cmd_target_query(absent) };
+    absent_query.working_directory = working_directory;
+    const gitman::cmd_target_facts not_found { gitman::inspect_cmd_target(*probe, absent_query) };
+    REQUIRE(not_found.path_exists == false);
+    REQUIRE(not_found.batch.has_value() == false);
+    const cmd_run sentence_run { run_assembled(absent, folders.onedrive(), &not_found) };
+    REQUIRE(sentence_run.assembly.corrections.front().kinds == std::vector<gitman::cmd_correction_kind> { gitman::cmd_correction_kind::sentence });
+    REQUIRE(sentence_run.result.exit_code != std::optional<std::int32_t> { 0 });
+    REQUIRE(sentence_run.lines.empty());
+
+    // 지연 확장을 켜는 배치는 경고로 잡히고, 실제로 `!GMX!`를 펼친다.
+    const std::vector<gitman::cmd_argument> delayed { { { literal(u8"/d") } }, { { literal(u8"/c") } }, { { value(working_directory), literal(u8"\\delayed.bat") } }, { { value(u8"!GMX!") } } };
+    gitman::cmd_target_query delayed_query { *gitman::find_cmd_target_query(delayed) };
+    delayed_query.working_directory = working_directory;
+    const gitman::cmd_target_facts flagged { gitman::inspect_cmd_target(*probe, delayed_query) };
+    REQUIRE(flagged.batch == std::optional<gitman::cmd_batch_findings> { gitman::cmd_batch_findings { true, false, false } });
+    const cmd_run delayed_run { run_assembled(delayed, folders.onedrive(), &flagged) };
+    INFO(reinterpret_cast<const char*>(delayed_run.assembly.text.c_str()));
+    REQUIRE(has_warning(delayed_run.assembly, gitman::cmd_warning_kind::batch_delayed_expansion, 2u));
+    REQUIRE(delayed_run.assembly.text.find(u8"/v:off") != std::u8string::npos);
+    REQUIRE(delayed_run.result.exit_code == std::optional<std::int32_t> { 0 });
+    REQUIRE(delayed_run.lines == std::vector<std::u8string> { u8"[expanded]" });
+
+    // 크기 상한을 넘는 배치는 읽지 않고 확인하지 못했다고 남긴다.
+    cmd_folders::write_batch(folders.onedrive() / L"large.bat", std::string(gitman::cmd_batch_inspection_limit + 1, 'x'));
+    const std::vector<gitman::cmd_argument> large { arguments_of({ u8"/c", u8"large.bat" }, true) };
+    gitman::cmd_target_query large_query { *gitman::find_cmd_target_query(large) };
+    large_query.working_directory = working_directory;
+    REQUIRE(gitman::inspect_cmd_target(*probe, large_query).batch == std::optional<gitman::cmd_batch_findings> { gitman::cmd_batch_findings { false, false, true } });
+}
+
+TEST_CASE("cmd.exe and the worker agree on dot segments and a locked batch is unchecked", "[function_buttons][s3]")
+{
+    const cmd_folders folders {};
+    const std::filesystem::path work { folders.onedrive() / L"work" };
+    const std::filesystem::path sub { folders.onedrive() / L"sub dir" };
+    REQUIRE(std::filesystem::create_directories(work));
+    REQUIRE(std::filesystem::create_directories(sub));
+    const std::string delayed_text { "@echo off\r\nset GMX=expanded\r\nsetlocal EnableDelayedExpansion\r\n\"%~dp0..\\gitman_process_test_child.exe\" echo-args %*\r\n" };
+    cmd_folders::write_batch(sub / L"x.bat", delayed_text);
+    cmd_folders::write_batch(work / L"y.bat", delayed_text);
+    const std::unique_ptr<gitman::vcs_file_probe> probe { gitman::win32::make_vcs_file_probe() };
+    const auto inspect = [&](const std::vector<gitman::cmd_argument>& arguments, const std::filesystem::path& working_directory)
+    {
+        gitman::cmd_target_query query { *gitman::find_cmd_target_query(arguments) };
+        query.working_directory = working_directory.u8string();
+        return gitman::inspect_cmd_target(*probe, query);
+    };
+    const auto call_with_bang = [](const std::u8string_view target)
+    {
+        return std::vector<gitman::cmd_argument> { { { literal(u8"/d") } }, { { literal(u8"/c") } }, { { literal(target) } }, { { value(u8"!GMX!") } } };
+    };
+    const std::optional<gitman::cmd_batch_findings> delayed { gitman::cmd_batch_findings { true, false, false } };
+
+    // `.\`·`..\`로 부른 배치도 읽어 경고한다. 그대로 두면 cmd는 실제로 `!GMX!`를 펼친다 (S3 검토의 재현).
+    // 작업 폴더에 `..`가 들어도 같다.
+    // `./y.bat`은 cmd가 `/y.bat`을 스위치로 읽어 실행하지 못하지만 읽기는 같은 파일에 닿는다(넘치는 쪽의 경고).
+    REQUIRE(inspect(call_with_bang(u8"./y.bat"), work).batch == delayed);
+    const std::array<std::pair<std::u8string_view, std::filesystem::path>, 3> dotted_cases {
+        std::pair<std::u8string_view, std::filesystem::path> { u8".\\y.bat", work },
+        std::pair<std::u8string_view, std::filesystem::path> { u8".\\y.bat", work / L".." / L"work" },
+        std::pair<std::u8string_view, std::filesystem::path> { u8"..\\work\\y.bat", work },
+    };
+    for (const auto& [target, working_directory] : dotted_cases)
+    {
+        INFO(reinterpret_cast<const char*>(std::u8string { target }.c_str()));
+        const std::vector<gitman::cmd_argument> arguments { call_with_bang(target) };
+        const gitman::cmd_target_facts facts { inspect(arguments, working_directory) };
+        REQUIRE(facts.batch == delayed);
+        // 실행은 정규화한 같은 폴더에서 한다. 여기서 보는 것은 `..`가 든 작업 폴더를 읽기 쪽이 접는지다.
+        const cmd_run run { run_assembled(arguments, work, &facts) };
+        INFO(reinterpret_cast<const char*>(run.assembly.text.c_str()));
+        REQUIRE(has_warning(run.assembly, gitman::cmd_warning_kind::batch_delayed_expansion, 2u));
+        REQUIRE(run.lines == std::vector<std::u8string> { u8"[expanded]" });
+    }
+
+    // 공백이 든 상대 경로에 `.\`·`..\`가 있어도 있는 파일이면 경로 하나로 넘겨 배치가 돈다.
+    for (const std::u8string_view target : { std::u8string_view { u8"..\\sub dir\\x.bat" }, std::u8string_view { u8"../sub dir/x.bat" } })
+    {
+        INFO(reinterpret_cast<const char*>(std::u8string { target }.c_str()));
+        const std::vector<gitman::cmd_argument> arguments { call_with_bang(target) };
+        const gitman::cmd_target_facts facts { inspect(arguments, work) };
+        REQUIRE(facts.path_exists);
+        REQUIRE(facts.batch == delayed);
+        const cmd_run run { run_assembled(arguments, work, &facts) };
+        INFO(reinterpret_cast<const char*>(run.assembly.text.c_str()));
+        REQUIRE(run.result.exit_code == std::optional<std::int32_t> { 0 });
+        REQUIRE(run.lines == std::vector<std::u8string> { u8"[expanded]" });
+    }
+    const std::vector<gitman::cmd_argument> dotted { call_with_bang(u8".\\sub dir\\x.bat") };
+    REQUIRE(inspect(dotted, folders.onedrive()).path_exists);
+
+    // 있는데 열지 못한 배치(다른 프로세스가 잠금)는 없는 것과 달리 확인하지 못했다고 경고한다.
+    {
+        const HANDLE locked { CreateFileW((work / L"y.bat").c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) };
+        REQUIRE(locked != INVALID_HANDLE_VALUE);
+        const gitman::cmd_target_facts facts { inspect(call_with_bang(u8"y.bat"), work) };
+        CloseHandle(locked);
+        REQUIRE(facts.batch == std::optional<gitman::cmd_batch_findings> { gitman::cmd_batch_findings { false, false, true } });
+    }
+    // 다른 드라이브의 드라이브 상대 경로는 이을 수 없어 확인하지 못했다고 경고한다. 정말 없는 배치는 경고가 없다.
+    const wchar_t other_drive { work.wstring().front() == L'Z' || work.wstring().front() == L'z' ? L'Y' : L'Z' };
+    const std::u8string other { std::u8string { static_cast<char8_t>(other_drive) } + u8":y.bat" };
+    REQUIRE(inspect(call_with_bang(other), work).batch == std::optional<gitman::cmd_batch_findings> { gitman::cmd_batch_findings { false, false, true } });
+    REQUIRE(inspect(call_with_bang(u8"absent.bat"), work).batch.has_value() == false);
 }

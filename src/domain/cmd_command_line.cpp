@@ -236,6 +236,268 @@ namespace gitman {
             return false;
         }
 
+        bool ends_with_extension(const std::u8string_view text, const std::u8string_view extension) noexcept
+        {
+            return text.size() >= extension.size() && equal_ignoring_case(text.substr(text.size() - extension.size()), extension);
+        }
+
+        // 배치 파일(`.bat`·`.cmd`)을 가리키는 글이다.
+        bool is_batch_path(const std::u8string_view text) noexcept
+        {
+            return ends_with_extension(text, u8".bat") || ends_with_extension(text, u8".cmd");
+        }
+
+        // 명령 문장의 첫 토큰이다. cmd가 명령 앞에서 건너뛰는 `@`·`(`·구분자(`, ; =`)는 벗긴다. 따옴표로 시작하면 닫는
+        // 따옴표까지의 안쪽, 아니면 공백이나 cmd 연산자 앞까지이고 `^`는 cmd처럼 지우고 다음 글자를 그대로 둔다(`^x.bat`,
+        // `run^ x.bat`). 그 뒤의 글자는 이 토큰과 상관없다 (S3 검토).
+        std::u8string first_sentence_token(std::u8string_view text)
+        {
+            const std::size_t start { text.find_first_not_of(u8" \t@(,;=") };
+            if (start == std::u8string_view::npos)
+                return {};
+            text.remove_prefix(start);
+            if (text.starts_with(u8'"'))
+            {
+                text.remove_prefix(1);
+                return std::u8string { text.substr(0, text.find(u8'"')) };
+            }
+            constexpr std::u8string_view ends { u8" \t&|<>()" };
+            std::u8string token {};
+            for (std::size_t index = 0; index < text.size(); ++index)
+            {
+                if (text[index] == u8'^' && index + 1 < text.size())
+                {
+                    ++index;
+                    token.push_back(text[index]);
+                    continue;
+                }
+                if (ends.find(text[index]) != std::u8string_view::npos)
+                    break;
+                token.push_back(text[index]);
+            }
+            return token;
+        }
+
+        // 스위치 줄 다음의 명령 첫 인자 순번이다. 스위치뿐이면 값이 없다. `assemble_cmd_command_line`과 같은 판정이다.
+        std::optional<std::size_t> command_argument_index(const std::span<const cmd_argument> arguments)
+        {
+            std::size_t index { 0 };
+            while (index < arguments.size() && is_cmd_switch(arguments[index].text()))
+            {
+                const bool command { is_cmd_command_switch(arguments[index].text()) };
+                ++index;
+                if (command)
+                    break;
+            }
+            if (index == arguments.size())
+                return std::nullopt;
+            return index;
+        }
+
+        constexpr char ascii_lower_byte(const char value) noexcept
+        {
+            return value >= 'A' && value <= 'Z' ? static_cast<char>(value - 'A' + 'a') : value;
+        }
+
+        bool equal_ignoring_case_bytes(const std::string_view left, const std::string_view right) noexcept
+        {
+            if (left.size() != right.size())
+                return false;
+            for (std::size_t index = 0; index < left.size(); ++index)
+            {
+                if (ascii_lower_byte(left[index]) != ascii_lower_byte(right[index]))
+                    return false;
+            }
+            return true;
+        }
+
+        bool contains_ignoring_case_bytes(const std::string_view text, const std::string_view word) noexcept
+        {
+            for (std::size_t index = 0; index + word.size() <= text.size(); ++index)
+            {
+                if (equal_ignoring_case_bytes(text.substr(index, word.size()), word))
+                    return true;
+            }
+            return false;
+        }
+
+        // cmd가 낱말을 가르는 글자(공백, 탭, `, ; =`, VT, FF, 0xFF)와 연산자·따옴표·`@`다. 배치 글의 낱말 경계다. 공백만
+        // 보면 `setlocal EnableDelayedExpansion&echo`, `(setlocal …)`, `call,x`처럼 cmd가 그대로 실행하는 줄을 놓친다
+        // (S3 검토, 실제 cmd.exe로 확인).
+        bool is_batch_word_boundary(const char value) noexcept
+        {
+            constexpr std::string_view boundaries { " \t,;=\x0B\x0C\xFF&|<>()\"@" };
+            return boundaries.find(value) != std::string_view::npos;
+        }
+
+        // 줄에 낱말 `word`가 있다. 대소문자를 가리지 않는다. 앞뒤가 줄 끝이나 cmd의 낱말 경계이고, 뒤는 `call:label`·
+        // `call/?`처럼 `:`·`/`도 받는다.
+        bool has_batch_word(const std::string_view line, const std::string_view word) noexcept
+        {
+            for (std::size_t index = 0; index + word.size() <= line.size(); ++index)
+            {
+                if (equal_ignoring_case_bytes(line.substr(index, word.size()), word) == false)
+                    continue;
+                const std::size_t next { index + word.size() };
+                const bool start { index == 0 || is_batch_word_boundary(line[index - 1]) };
+                const bool end { next == line.size() || is_batch_word_boundary(line[next]) || line[next] == ':' || line[next] == '/' };
+                if (start && end)
+                    return true;
+            }
+            return false;
+        }
+
+        // 줄이 자식 cmd의 지연 확장을 켠다(`cmd /v:on /c …`, `cmd /v /c …`). `/v`만으로는 `findstr /v`와 같으므로 같은
+        // 줄에 `cmd`가 있을 때만 본다. `/v:off`는 끈다.
+        bool has_delayed_expansion_switch(const std::string_view line) noexcept
+        {
+            if (contains_ignoring_case_bytes(line, "/v:on"))
+                return true;
+            if (contains_ignoring_case_bytes(line, "cmd") == false)
+                return false;
+            for (std::size_t index = 0; index + 2 <= line.size(); ++index)
+            {
+                if (equal_ignoring_case_bytes(line.substr(index, 2), "/v") == false)
+                    continue;
+                if (index + 2 == line.size() || is_batch_word_boundary(line[index + 2]))
+                    return true;
+            }
+            return false;
+        }
+
+        // cmd가 따옴표 밖에서 지우는 `^`를 지운 사본이다. `set^local`, `ca^ll`도 그 낱말이다.
+        std::string without_carets(const std::string_view line)
+        {
+            std::string result {};
+            result.reserve(line.size());
+            for (const char value : line)
+            {
+                if (value != '^')
+                    result.push_back(value);
+            }
+            return result;
+        }
+
+        // `%…%` 구간을 지운 사본이다. 정의되지 않은 변수는 빈 글로 펼쳐지므로 `%nothing%call`, `set%x%local`도 그
+        // 낱말일 수 있다. 짝이 없는 `%`부터는 그대로 둔다. `%~1 call %~2`처럼 구간이 낱말을 삼킬 수 있어 원래 줄과 함께 본다.
+        std::string without_percent_spans(const std::string_view line)
+        {
+            std::string result {};
+            result.reserve(line.size());
+            std::size_t index { 0 };
+            while (index < line.size())
+            {
+                if (line[index] != '%')
+                {
+                    result.push_back(line[index]);
+                    ++index;
+                    continue;
+                }
+                const std::size_t close { line.find('%', index + 1) };
+                if (close == std::string_view::npos)
+                {
+                    result.append(line.substr(index));
+                    break;
+                }
+                index = close + 1;
+            }
+            return result;
+        }
+
+        // `rem`·`@rem`·`::`로 시작하는 주석 줄이다.
+        bool is_batch_comment(std::string_view line) noexcept
+        {
+            const std::size_t start { line.find_first_not_of(" \t") };
+            if (start == std::string_view::npos)
+                return false;
+            line.remove_prefix(start);
+            if (line.starts_with("::"))
+                return true;
+            if (line.starts_with('@'))
+                line.remove_prefix(1);
+            return line.size() >= 3
+                && equal_ignoring_case_bytes(line.substr(0, 3), "rem")
+                && (line.size() == 3 || line[3] == ' ' || line[3] == '\t');
+        }
+
+        // 배치 한 줄의 글자 검사다. 주석 줄은 건너뛴다. `EnableDelayedExpansion`은 낱말 경계 없이 찾는다 — 다른 뜻으로 쓰일
+        // 글이 아니고, 경계를 따지면 `setlocal EnableDelayedExpansion>nul` 같은 꼴을 놓친다.
+        void scan_batch_line(const std::string_view line, cmd_batch_findings& findings)
+        {
+            if (is_batch_comment(line))
+                return;
+            if (contains_ignoring_case_bytes(line, "enabledelayedexpansion") || has_delayed_expansion_switch(line))
+                findings.delayed_expansion = true;
+            if (has_batch_word(line, "call"))
+                findings.call = true;
+        }
+
+        std::u8string backslashed(const std::u8string_view path)
+        {
+            std::u8string result { path };
+            for (char8_t& value : result)
+            {
+                if (value == u8'/')
+                    value = u8'\\';
+            }
+            return result;
+        }
+
+        // Win32가 `.`·`..`를 풀지 않는 장치 경로(`\\?\`, `\\.\`)다.
+        bool is_device_path(const std::u8string_view path) noexcept
+        {
+            return path.starts_with(u8"\\\\?\\") || path.starts_with(u8"\\\\.\\");
+        }
+
+        // `\`로 고친 절대 경로의 뿌리 길이다. `X:\`는 3, `\\server\share`는 share 뒤의 `\`까지(없으면 끝까지)다. 뿌리가
+        // 아니거나 장치 경로면 0이다.
+        std::size_t absolute_root_length(const std::u8string_view path) noexcept
+        {
+            if (path.size() >= 3 && is_ascii_letter(path[0]) && path[1] == u8':' && path[2] == u8'\\')
+                return 3;
+            if (path.starts_with(u8"\\\\") == false || is_device_path(path))
+                return 0;
+            const std::size_t server_end { path.find(u8'\\', 2) };
+            if (server_end == std::u8string_view::npos || server_end == 2)
+                return 0;
+            const std::size_t share_end { path.find(u8'\\', server_end + 1) };
+            if (share_end == server_end + 1)
+                return 0;
+            return share_end == std::u8string_view::npos ? path.size() : share_end + 1;
+        }
+
+        // 뿌리 뒤의 빈 구간과 `.`을 빼고 `..`는 앞 구간을 지운다. 뿌리 위로는 올라가지 않는다(Win32의 경로 정규화와 같다).
+        // probe가 붙이는 `\\?\`는 이 정규화를 끄므로 이어 붙인 경로를 그대로 넘기면 있는 파일도 없다고 나온다 (S3 검토).
+        std::u8string collapse_path(const std::u8string_view root, std::u8string_view rest)
+        {
+            std::vector<std::u8string_view> segments {};
+            while (rest.empty() == false)
+            {
+                const std::size_t end { rest.find(u8'\\') };
+                const std::u8string_view segment { rest.substr(0, end) };
+                rest = end == std::u8string_view::npos ? std::u8string_view {} : rest.substr(end + 1);
+                if (segment.empty() || segment == u8".")
+                    continue;
+                if (segment == u8"..")
+                {
+                    if (segments.empty() == false)
+                        segments.pop_back();
+                    continue;
+                }
+                segments.push_back(segment);
+            }
+            std::u8string result { root };
+            if (result.ends_with(u8'\\') == false)
+                result.push_back(u8'\\');
+            for (std::size_t index = 0; index < segments.size(); ++index)
+            {
+                if (index > 0)
+                    result.push_back(u8'\\');
+                result.append(segments[index]);
+            }
+            return result;
+        }
+
         // 명령의 첫 인자가 명령 문장인지다. 글자 그대로 쓴 부분에 공백·탭이 없으면 토큰이다. 절대 경로로 시작하면
         // 경로로 보되, 글자 그대로 쓴 부분에서 실행 확장자 뒤에 공백이 오면 경로 뒤에 인자를 이어 쓴 문장이다.
         // - `C:\Program Files\x.exe`는 경로, `C:\tools\x.exe echo-args one`은 문장이다.
@@ -451,7 +713,7 @@ namespace gitman {
         return corrections.empty() == false || warnings.empty() == false;
     }
 
-    cmd_command_line assemble_cmd_command_line(const cmd_text_piece& executable, const std::span<const cmd_argument> arguments, const std::span<const cmd_exported_value> exported)
+    cmd_command_line assemble_cmd_command_line(const cmd_text_piece& executable, const std::span<const cmd_argument> arguments, const std::span<const cmd_exported_value> exported, const cmd_target_facts* const facts)
     {
         cmd_command_line result {};
         for (std::size_t index = 0; index < arguments.size() && result.rejection.has_value() == false; ++index)
@@ -517,7 +779,14 @@ namespace gitman {
         for (std::size_t current = index; current < arguments.size(); ++current)
         {
             const cmd_argument& argument { arguments[current] };
-            const bool sentence { current == index && argument.pieces.empty() == false && is_sentence(argument) };
+            // 공백이 든 상대 경로는 글자만으로는 문장이다. worker가 작업 폴더에서 그 파일을 찾았으면 경로 하나다 (S3).
+            const bool existing_path {
+                facts != nullptr
+                && facts->path_exists
+                && facts->query.relative_path.has_value()
+                && facts->query.argument == current
+            };
+            const bool sentence { current == index && argument.pieces.empty() == false && existing_path == false && is_sentence(argument) };
             if (current != index)
             {
                 command.push_back(u8' ');
@@ -563,8 +832,131 @@ namespace gitman {
         const std::u8string tail { (has_s_switch ? std::u8string {} : std::u8string { u8" /s" }) + u8" " + command_switch + u8" \"" };
         result.text += switches + inserted + tail + command + u8"\"";
         result.display_text += switches_display + inserted + tail + command_display + u8"\"";
+        // 부르는 배치 파일 안의 일은 명령줄로 고칠 수 없다. worker가 읽은 결과를 경고로 보인다 (S3).
+        if (facts != nullptr && facts->batch.has_value())
+        {
+            const std::optional<std::size_t> argument { facts->query.argument };
+            if (facts->batch->delayed_expansion)
+                result.warnings.push_back({ cmd_warning_kind::batch_delayed_expansion, {}, {}, argument, u8'!' });
+            if (facts->batch->call)
+                result.warnings.push_back({ cmd_warning_kind::batch_call, {}, {}, argument, u8'^' });
+            if (facts->batch->unchecked)
+                result.warnings.push_back({ cmd_warning_kind::batch_unchecked, {}, {}, argument, u8'!' });
+        }
         append_exported_warnings(result.warnings, exported);
         return result;
+    }
+
+    std::optional<cmd_target_query> find_cmd_target_query(const std::span<const cmd_argument> arguments)
+    {
+        const std::optional<std::size_t> index { command_argument_index(arguments) };
+        if (index.has_value() == false || arguments[*index].pieces.empty())
+            return std::nullopt;
+
+        const cmd_argument& argument { arguments[*index] };
+        const std::u8string text { argument.text() };
+        cmd_target_query query {};
+        query.argument = *index;
+        query.sentence = is_sentence(argument);
+        // 공백이 든 상대 경로다. 경로 꼴(`\`·`/`가 있거나 실행 확장자로 끝남)일 때만 묻는다. `echo hi`는 경로일 리 없다.
+        if (query.sentence
+            && starts_with_absolute_path(text) == false
+            && text.find(u8'"') == std::u8string::npos
+            && (text.find_first_of(u8"\\/") != std::u8string::npos || (text.size() >= 4 && equal_extension(std::u8string_view { text }.substr(text.size() - 4)))))
+            query.relative_path = text;
+        if ((query.sentence == false || query.relative_path.has_value()) && is_batch_path(text))
+            query.batch_if_path = text;
+        if (query.sentence)
+        {
+            std::u8string token { first_sentence_token(text) };
+            if (is_batch_path(token))
+                query.batch_if_sentence = std::move(token);
+        }
+        if (query.relative_path.has_value() == false && query.batch_if_path.empty() && query.batch_if_sentence.empty())
+            return std::nullopt;
+        return query;
+    }
+
+    std::u8string cmd_target_batch_path(const cmd_target_query& query, const bool path_exists)
+    {
+        const bool sentence { query.sentence && (query.relative_path.has_value() == false || path_exists == false) };
+        return sentence ? query.batch_if_sentence : query.batch_if_path;
+    }
+
+    std::u8string cmd_target_absolute_path(const std::u8string_view working_directory, const std::u8string_view path)
+    {
+        const std::u8string target { backslashed(path) };
+        if (is_device_path(target))
+            return target;
+        const std::size_t target_root { absolute_root_length(target) };
+        if (target_root > 0)
+            return collapse_path(std::u8string_view { target }.substr(0, target_root), std::u8string_view { target }.substr(target_root));
+
+        const std::u8string base { backslashed(working_directory) };
+        const std::size_t base_root { absolute_root_length(base) };
+        if (base_root == 0)
+            return {};
+        const std::u8string_view root { std::u8string_view { base }.substr(0, base_root) };
+        // 드라이브 상대 경로(`C:x.bat`)는 그 드라이브의 현재 폴더 기준이다. cmd는 작업 폴더에서 시작하므로 같은 드라이브면
+        // 작업 폴더이고, 다른 드라이브의 현재 폴더는 알 수 없다.
+        if (target.size() >= 2 && is_ascii_letter(target[0]) && target[1] == u8':')
+        {
+            if (base_root != 3 || ascii_lower(base[0]) != ascii_lower(target[0]))
+                return {};
+            return collapse_path(root, std::u8string { std::u8string_view { base }.substr(base_root) } + u8"\\" + target.substr(2));
+        }
+        // 루트 상대 경로(`\tools\x.bat`)는 작업 폴더의 드라이브나 share 뿌리 기준이다.
+        if (target.starts_with(u8'\\'))
+            return collapse_path(root, std::u8string_view { target }.substr(1));
+        return collapse_path(root, std::u8string { std::u8string_view { base }.substr(base_root) } + u8"\\" + target);
+    }
+
+    bool cmd_target_is_local(const cmd_target_query& query)
+    {
+        const auto local = [&](const std::u8string_view path)
+        {
+            const std::u8string absolute { cmd_target_absolute_path(query.working_directory, path) };
+            return absolute.size() >= 3 && is_ascii_letter(absolute[0]) && absolute[1] == u8':' && absolute[2] == u8'\\';
+        };
+        return (query.relative_path.has_value() == false || local(*query.relative_path))
+            && (query.batch_if_path.empty() || local(query.batch_if_path))
+            && (query.batch_if_sentence.empty() || local(query.batch_if_sentence));
+    }
+
+    cmd_target_facts cmd_target_unread_facts(const cmd_target_query& query)
+    {
+        cmd_target_facts facts {};
+        facts.query = query;
+        // 경로로 볼지 문장으로 볼지도 모르므로 어느 쪽이든 배치를 부를 수 있으면 확인하지 못했다고 경고한다.
+        if (query.batch_if_path.empty() == false || query.batch_if_sentence.empty() == false)
+            facts.batch = cmd_batch_findings { .unchecked = true };
+        return facts;
+    }
+
+    cmd_batch_findings scan_cmd_batch_text(std::string_view text)
+    {
+        cmd_batch_findings findings {};
+        // UTF-8 BOM은 cmd에게 첫 줄의 글자다. 지우지 않으면 첫 줄이 `call`로 시작해도 낱말 경계가 맞지 않는다.
+        if (text.starts_with("\xEF\xBB\xBF"))
+            text.remove_prefix(3);
+        std::size_t start { 0 };
+        while (start <= text.size())
+        {
+            const std::size_t end { text.find('\n', start) };
+            std::string_view line { text.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start) };
+            if (line.ends_with('\r'))
+                line.remove_suffix(1);
+            // cmd가 지우는 `^`와 빈 변수로 가른 낱말(`set^local`, `%x%call`)도 본다. 원래 줄도 함께 보는 것은 `%…%` 구간이
+            // 낱말을 삼킬 수 있어서다.
+            const std::string uncareted { without_carets(line) };
+            scan_batch_line(line, findings);
+            scan_batch_line(uncareted, findings);
+            scan_batch_line(without_percent_spans(uncareted), findings);
+            if (end == std::string_view::npos)
+                break;
+            start = end + 1;
+        }
+        return findings;
     }
 
     std::u8string cmd_correction_reason(const std::span<const cmd_correction_kind> kinds)
@@ -625,6 +1017,15 @@ namespace gitman {
             else
                 message += u8"의 값은 앞의 명령 문장이 따옴표를 연 채로 끝나 따옴표로 보호되지 않습니다.";
             message += u8" 값의 & | < > %를 cmd가 해석할 수 있습니다.";
+            break;
+        case cmd_warning_kind::batch_delayed_expansion:
+            message = argument_name(warning.argument) + u8"이 부르는 배치 파일이 지연 확장을 켭니다(EnableDelayedExpansion, cmd /v:on). 넘긴 값의 !NAME!을 배치 안에서 cmd가 환경 변수로 펼칠 수 있습니다(/v:off로 막지 못합니다).";
+            break;
+        case cmd_warning_kind::batch_call:
+            message = argument_name(warning.argument) + u8"이 부르는 배치 파일이 call을 씁니다. call로 다시 넘긴 값은 ^가 두 배가 되고 %가 한 번 더 펼쳐져 인자 경계가 바뀔 수 있습니다.";
+            break;
+        case cmd_warning_kind::batch_unchecked:
+            message = argument_name(warning.argument) + u8"이 부르는 배치 파일을 읽지 못하거나 커서(256KiB 넘음) 지연 확장과 call을 확인하지 못했습니다.";
             break;
         }
         return message;

@@ -60,6 +60,9 @@ namespace gitman {
         // 있도록 세대별로 들고 있다가 큐가 비면 버린다.
         struct generation_state
         {
+            // 문서 경로다. 파일 머리글의 `# 문서:` 줄이 쓴다.
+            std::u8string document_path {};
+            // 로그 폴더(`.<문서 이름>.log`)다. 비면 적재하지 않는다.
             std::u8string root {};
             std::unordered_map<std::u8string, target_state> targets {};
             // 폴더 생성·쓰기 실패로 이 문서의 파일 로그를 껐다.

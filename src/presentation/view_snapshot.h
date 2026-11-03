@@ -473,6 +473,9 @@ namespace gitman {
         // 목록 아래 경고 줄이다 (신뢰가 덮지 않는 것). 비면 그리지 않는다.
         std::vector<std::u8string> note {};
         std::u8string confirm_label {};
+        // 확인 버튼을 누를 수 있다. 앱 종료 확인이 진행 중인 저장의 결과를 기다리는 동안만 거짓이다 (S3, 4.10). 결과가
+        // 오거나 기다림이 상한을 넘으면 logic이 dialog를 다시 지어 참으로 바꾼다.
+        bool confirm_enabled { true };
         // 실행 중인 기능 확인을 앱 종료에서 열었다 (4.10). 확인 버튼이 logic intent 대신 UI thread의 앱 끝내기
         // 명령을 낸다 — 종료는 창의 닫힘 훅을 받아 간 뒤라 logic이 끝낼 길이 없다.
         bool exit_application { false };

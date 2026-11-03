@@ -29,6 +29,7 @@ namespace gitman {
             case operation_kind::query_svn_directory:
             case operation_kind::query_local_changes:
             case operation_kind::query_file_diff:
+            case operation_kind::inspect_cmd_target:
                 break;
             }
             return false;
@@ -46,6 +47,8 @@ namespace gitman {
             case operation_kind::query_svn_directory:
             case operation_kind::query_local_changes:
             case operation_kind::query_file_diff:
+            // 기능 실행을 누른 사용자가 결과를 기다린다. 파일 하나를 읽을 뿐이라 카드 lane의 refresh·update 뒤에 세우지 않는다.
+            case operation_kind::inspect_cmd_target:
                 return true;
             case operation_kind::load_document:
             case operation_kind::generate_document:

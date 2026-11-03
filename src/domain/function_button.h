@@ -364,7 +364,10 @@ namespace gitman {
     // 경고한다(R4에서 거부를 경고로 바꿈). 문서 출처 값(`GITMAN_WORKSPACE_FOLDER` 등)은 문서 작성자의 것이라 넣지 않는다.
     [[nodiscard]] std::vector<cmd_exported_value> function_cmd_exported_values(std::span<const variable_binding> builtins);
     // `program`이 `cmd.exe`인 기능의 명령줄, 보정, 경고다 (4.3, D30). `builtins`가 비면 환경 변수 경고를 보지 않는다.
-    [[nodiscard]] cmd_command_line assemble_function_cmd_command_line(const variable_expansion& program, std::span<const variable_expansion> arguments, std::span<const variable_binding> builtins);
+    // `facts`는 worker가 확인한 명령 대상(배치 파일, 공백 상대 경로)이다 (S3). 없으면 글자만으로 짓는다.
+    [[nodiscard]] cmd_command_line assemble_function_cmd_command_line(const variable_expansion& program, std::span<const variable_expansion> arguments, std::span<const variable_binding> builtins, const cmd_target_facts* facts = nullptr);
+    // cmd 기능에서 worker가 실행 전에 확인할 명령 대상이다 (S3, `find_cmd_target_query`). 작업 폴더는 부르는 쪽이 채운다.
+    [[nodiscard]] std::optional<cmd_target_query> function_cmd_target_query(std::span<const variable_expansion> arguments);
 
     // 정적 검사(3.7)가 받는 사용자 변수 이름이다. 문서 변수와, `project_ids`(카드로 읽은 project)의 덮어쓰기 중 쓸 수
     // 있는 것이다. 카드 목록에 없는 project의 덮어쓰기는 어느 카드에서도 풀리지 않으므로 세지 않는다. 파서와 편집

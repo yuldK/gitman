@@ -76,6 +76,13 @@ namespace gitman {
 
         [[nodiscard]] std::shared_ptr<const view_snapshot> make_view_snapshot() const;
 
+        // 시간이 흘러야 바뀌는 상태의 예고다 (luil `logic_driver::next_tick`). 종료 확인이 저장을 기다리는 상한과 cmd 기능이
+        // 배치 파일 확인을 기다리는 상한 중 이른 것이다 (function-buttons-design 4.3·4.10, S3). 없으면 깨울 일이 없다.
+        [[nodiscard]] std::optional<std::chrono::steady_clock::time_point> next_tick() const noexcept;
+        // `next_tick`이 예고한 시각이 지나면 driver가 부른다. 종료 확인의 기다림이 상한을 넘었으면 dialog를 바꿔 지어 기다리지
+        // 않고 종료할 수 있게 하고, 배치 파일 확인이 상한을 넘었으면 실행하지 않고 로그를 남긴다.
+        void tick(std::chrono::steady_clock::time_point now);
+
         // 카드의 로그 buffer다. 없는 카드는 nullptr다. logic thread에서만 호출한다
         // (view snapshot 구성과 test 관찰용 읽기 전용 접근).
         [[nodiscard]] const operation_log_buffer* card_log(const project_id& id) const noexcept;
@@ -177,14 +184,24 @@ namespace gitman {
             // `program`이 `cmd.exe`일 때의 최종 명령줄, 보정, 경고다 (4.3, D30). 요청의 `command_line`이 되고, 보정이나
             // 경고가 있으면 실행 전에 사용자의 최종 승인을 받는다.
             std::optional<cmd_command_line> cmd {};
+            // cmd 명령이 부를 대상을 worker가 아직 확인하지 않았다 (S3). 값이 있으면 이 값으로 확인을 내고 그 답으로 다시 짓는다.
+            std::optional<cmd_target_query> cmd_target {};
+            // 명령줄을 지을 때 쓴 worker의 답이다. 확인 dialog를 거친 실행은 확인할 때 이 답으로 다시 지어 같은지 본다.
+            std::optional<cmd_target_facts> cmd_facts {};
         };
 
         // 기능 버튼 실행이다 (4.5). 활성 재판정 → 치환 → 허용 목록·절대 경로·cmd 방어와 조립 → 신뢰 확인
         // 또는 `confirm` 미리보기 또는 cmd 보정 확인(D30, 하나의 dialog) → 풀 자리 → 제출 순서다.
         void handle_run_function(const run_function_intent& intent);
+        // `handle_run_function`의 몸통이다. `cmd_facts`는 worker가 확인한 cmd 명령 대상이다 (S3). 없는데 확인할 것이
+        // 있으면 확인을 내고 기다린다.
+        void run_function(const run_function_intent& intent, const cmd_target_facts* cmd_facts);
+        // worker의 cmd 명령 대상 확인 결과다 (S3). 기다리던 실행을 그 답으로 이어 한다.
+        void handle_cmd_target_inspected(cmd_target_inspected_event event);
         // 활성 재판정과 클릭 시점 검사다. 걸리면 로그를 남기고(늦은 클릭은 아무것도 남기지 않고)
-        // 값이 없다.
-        [[nodiscard]] std::optional<prepared_function_run> prepare_function_run(card_state& card, const function_button& button);
+        // 값이 없다. `cmd_facts`가 지금 명령의 대상과 맞으면 그 답으로 cmd 명령줄을 짓고, 아니면 확인할 대상을
+        // `cmd_target`에 싣는다.
+        [[nodiscard]] std::optional<prepared_function_run> prepare_function_run(card_state& card, const function_button& button, const cmd_target_facts* cmd_facts = nullptr);
         // 풀 자리를 보고 제출한다. 확인 dialog를 거쳤으면 확인할 때 다시 만든 값이다.
         void submit_function_run(card_state& card, const function_button& button, const prepared_function_run& prepared);
         // 지금 문서의 신뢰 해시다 (3.10). 기능 버튼 절이 없으면 비어 있다. 입력은 `function_trust.h`
@@ -703,6 +720,19 @@ namespace gitman {
             exit_application,
         };
 
+        // 진행 중·대기 중인 저장의 결과를 기다리는 닫기·다른 문서 열기다 (S3, 4.10). 그 저장이 실패하면 변경이 모델에만
+        // 남으므로, 결과를 버리고 문서를 바꾸면 변경이 말없이 사라진다. 저장이 모두 끝나면 성공이면 그 일을 하고 실패면
+        // 저장하지 못한 변경 확인을 띄운다. 새 요청이 앞 요청을 대신하고, 문서를 바꾸면 버린다.
+        struct document_change_after_save
+        {
+            running_function_action action { running_function_action::close_document };
+            std::u8string path {};
+            // 실행 중인 기능 확인을 이미 거쳤다. 거치지 않았는데 기다리는 사이 출력 수집 기능이 시작됐으면 그때 묻는다.
+            bool confirmed { false };
+            // 다른 문서 열기가 새 문서 만들기의 결과다. 묻고 취소하면 만든 파일이 있다는 것을 알린다.
+            bool generated_document { false };
+        };
+
         // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있으면 실행 중인 기능 확인 dialog를 열고 false다. 둘 다
         // 없으면 true이고, 부르는 쪽이 곧바로 그 일을 한다. 분리 실행만 있으면 묻지 않는다 (4.10, D28).
         [[nodiscard]] bool confirm_document_change(running_function_action action, std::u8string_view path = {});
@@ -710,6 +740,17 @@ namespace gitman {
         void open_document_change_confirm(running_function_action action, std::u8string_view path = {});
         // 저장이 실패해 모델에만 있는 변경이 있다 (D28). 저장이 진행 중이면 아직 실패하지 않았으므로 아니다.
         [[nodiscard]] bool has_unsaved_changes() const noexcept;
+        // 낸 저장이 진행 중이거나 대기열에 있다. 그 결과가 오기 전에는 변경이 저장됐는지 모른다 (S3, 4.10).
+        [[nodiscard]] bool save_in_progress() const noexcept;
+        // 확인을 거쳤거나 묻지 않아도 되는 닫기·다른 문서 열기를 한다. 저장이 진행 중이면 그 결과를 기다리도록 미루고,
+        // 대기열의 저장이 다시 읽기를 기다리고 있으면 다시 읽기를 버리고 그 저장을 지금 낸다 (S3, 4.10).
+        void change_document_after_save(document_change_after_save change);
+        // 미뤄 둔 닫기·다른 문서 열기를 지금 한다.
+        void change_document_now(running_function_action action, std::u8string path);
+        // 앱 종료 확인이 저장을 기다리는 상태로 떠 있다.
+        [[nodiscard]] bool exit_confirm_waiting_for_save() const noexcept;
+        // 종료 확인이 저장을 기다리는 상한이 지났으면 dialog를 기다리지 않고 종료할 수 있게 다시 짓는다 (`tick`).
+        void tick_exit_save_wait(std::chrono::steady_clock::time_point now);
         // 기능 실행 확인 dialog의 취소다. 실행도, 미뤄 둔 일도 하지 않는다.
         void handle_cancel_function_run();
         // 실행 중인 기능 확인의 표시 모델이다. 지금 실행 중인 출력 수집 기능을 카드 순서대로 싣는다.
@@ -896,6 +937,17 @@ namespace gitman {
         // 이미 신뢰한 정의도 다시 묻는다. 읽기가 끝나면 그때 판정한다. 기다리는 실행은 하나이고, 기다리는 동안 온 다른
         // 실행은 버린다. 문서를 바꾸면(열기·교체·닫기) 버린다.
         std::optional<run_function_intent> run_waiting_for_app_settings_ {};
+        // cmd 명령 대상(배치 파일, 공백 상대 경로)을 worker가 확인하는 동안 기다리는 실행이다 (S3). 기다리는 실행은 하나이고,
+        // 기다리는 동안 온 다른 실행은 버린다. 문서를 바꾸면 버리고, 상한(`deadline`)이 지나면 로그를 남기고 버린다.
+        struct cmd_target_wait
+        {
+            std::uint64_t operation_id { 0 };
+            run_function_intent intent {};
+            // 답을 기다리는 상한이다. 지나면 `tick`이 실행하지 않고 기다림을 푼다 (S3 검토).
+            std::chrono::steady_clock::time_point deadline {};
+        };
+
+        std::optional<cmd_target_wait> run_waiting_for_cmd_target_ {};
         std::uint64_t pending_app_settings_save_id_ { 0 };
         bool app_settings_save_queued_ { false };
         // 저장 실패 문구는 한 번만 알린다. 반복 실패가 배너를 도배하지 않게 한다.
@@ -918,6 +970,14 @@ namespace gitman {
         std::uint64_t pending_reload_operation_id_ { 0 };
         // 진행 중인 저장이 끝나면 다시 읽는다 (4.9의 2).
         bool reload_after_save_ { false };
+        // 저장 결과를 기다리는 닫기·다른 문서 열기다 (`document_change_after_save`).
+        std::optional<document_change_after_save> change_after_save_ {};
+        // 앱 종료 확인이 저장을 기다리는 상한이다 (S3, 4.10). 값이 있으면 기다리는 중이다. logic은 UI thread의 앱 끝내기
+        // 명령을 낼 수 없어 성공해도 스스로 끝내지 못하고 확인 버튼을 다시 살린다. 저장이 매달리면 이 시각 뒤에 기다리지
+        // 않고 종료할 수 있게 한다.
+        std::optional<std::chrono::steady_clock::time_point> exit_save_deadline_ {};
+        // 종료 확인이 상한까지 기다렸으나 저장이 끝나지 않았다.
+        bool exit_save_wait_expired_ { false };
         // 문서를 열거나 닫아 버린 다시 읽기의 load 작업 id다. 열기 결과는 id를 보지 않으므로(test가 id 없이 넣는
         // 적재 결과도 받는다) 버린 다시 읽기의 결과가 새 문서로 설치되지 않게 따로 걸러 낸다.
         std::vector<std::uint64_t> abandoned_reload_operation_ids_ {};

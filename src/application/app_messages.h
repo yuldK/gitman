@@ -5,6 +5,7 @@
 #include "application/project_store.h"
 #include "application/repository_provider.h"
 #include "domain/app_settings.h"
+#include "domain/cmd_command_line.h"
 #include "domain/diagnostic.h"
 #include "domain/discovery.h"
 #include "domain/operation_log.h"
@@ -747,6 +748,10 @@ namespace gitman {
         // executor가 알고 있어 요청에는 담지 않는다. 문서 lane에서 직렬화된다.
         load_app_settings,
         save_app_settings,
+        // cmd 기능이 부를 명령 대상(공백 상대 경로의 존재, 배치 파일의 `setlocal EnableDelayedExpansion`·`call`)을
+        // 실행 전에 확인한다 (function-buttons-design 4.3, S3). 파일을 읽으므로 worker에서 한다. 실행을 누른 사용자가
+        // 결과를 기다리므로 대화형 조회 lane에서 한다.
+        inspect_cmd_target,
     };
 
     struct operation_request
@@ -780,6 +785,8 @@ namespace gitman {
         // 원본은 알 수 없는 키를 보존하는 데 쓴다.
         std::optional<app_settings> app_settings_payload {};
         std::u8string app_settings_shadow {};
+        // inspect_cmd_target 전용: 확인할 명령 대상이다. 작업 폴더가 들어 있다.
+        std::optional<cmd_target_query> cmd_target {};
         process_cancellation_token token {};
     };
 
@@ -926,6 +933,13 @@ namespace gitman {
         std::vector<diagnostic> diagnostics {};
     };
 
+    // cmd 명령 대상 확인 결과다 (S3). 확인하지 못했으면(내부 오류) `cmd_target_unread_facts`의 답이다.
+    struct cmd_target_inspected_event
+    {
+        std::uint64_t operation_id { 0 };
+        cmd_target_facts facts {};
+    };
+
     // 앱 설정 저장 결과다. 실패해도 앱 상태는 그대로 두고 진단만 알린다.
     struct app_settings_saved_event
     {
@@ -1006,7 +1020,7 @@ namespace gitman {
         startup_intent, relay_drain_intent,
         document_loaded_event, document_generated_event, query_completed_event, document_saved_event, operation_log_event, change_completed_event, switch_candidates_event, svn_directory_event,
         local_changes_event, file_diff_event, discovery_completed_event, projects_registered_event, app_settings_loaded_event, app_settings_saved_event,
-        function_started_event, function_log_event, function_completed_event, shutdown_message>;
+        cmd_target_inspected_event, function_started_event, function_log_event, function_completed_event, shutdown_message>;
 
     // logic이 만든 작업을 실행 계층으로 넘기는 경계다. 단계 6의 scheduler가 구현하고
     // test는 기록 대역을 주입한다.

@@ -62,6 +62,7 @@ namespace gitman {
         const std::vector<std::u8string> folders { log_folder_names(paths) };
 
         generation_state state {};
+        state.document_path = document_path;
         state.root = document_path.empty() ? std::u8string {} : log_root_path(document_path);
         for (std::size_t index = 0; index < targets.size(); ++index)
         {
@@ -230,9 +231,10 @@ namespace gitman {
                 }
 
                 target->second.file_path = file;
-                // 머리글 한 줄로 어떤 문서·저장소의 로그인지 남긴다 (A4.3).
+                // 머리글 한 줄로 어떤 문서·저장소의 로그인지 남긴다 (A4.3). 로그 폴더는 파일 경로에 이미 있으므로 문서 경로를
+                // 적는다 (function-buttons-design 5차 검수, S3).
                 text += u8"# 문서: ";
-                text += generation->second.root;
+                text += generation->second.document_path;
                 text += line_break;
                 text += u8"# 저장소: ";
                 text += target->second.display_name;

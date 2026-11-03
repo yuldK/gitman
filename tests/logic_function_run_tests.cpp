@@ -168,7 +168,21 @@ namespace {
         void run(const std::u8string_view id, const std::u8string_view button)
         {
             controller.handle(gitman::run_function_intent { gitman::project_id { std::u8string { id } }, std::u8string { button } });
+            // cmd가 부를 배치 파일은 worker가 읽는다 (S3). 파일이 없다는 답이라 S3 전의 판정 그대로다.
+            for (auto request = submitter.requests.rbegin(); request != submitter.requests.rend(); ++request)
+            {
+                if (request->kind != gitman::operation_kind::inspect_cmd_target || request->operation_id <= answered_cmd_inspection || request->cmd_target.has_value() == false)
+                    continue;
+                answered_cmd_inspection = request->operation_id;
+                gitman::cmd_target_inspected_event event {};
+                event.operation_id = request->operation_id;
+                event.facts.query = *request->cmd_target;
+                controller.handle(std::move(event));
+                break;
+            }
         }
+
+        std::uint64_t answered_cmd_inspection { 0 };
 
         // 떠 있는 확인 dialog다. cmd 보정의 최종 승인(D30)을 볼 때 쓴다.
         [[nodiscard]] std::optional<gitman::function_confirm_dialog_view> dialog() const

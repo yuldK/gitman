@@ -143,10 +143,18 @@ namespace gitman::win32 {
         relay_.unbind();
     }
 
+    std::optional<std::chrono::steady_clock::time_point> gitman_driver::next_tick()
+    {
+        if (shutting_down_.load(std::memory_order_acquire))
+            return std::nullopt;
+        return controller_->next_tick();
+    }
+
     void gitman_driver::tick(const std::chrono::steady_clock::time_point now)
     {
-        static_cast<void>(now);
         drain_relay();
+        if (shutting_down_.load(std::memory_order_acquire) == false)
+            controller_->tick(now);
     }
 
     std::shared_ptr<const view_snapshot> gitman_driver::last_view() const

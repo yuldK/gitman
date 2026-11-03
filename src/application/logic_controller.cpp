@@ -13,6 +13,7 @@
 #include "presentation/ui/settings_dialog_element.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -47,6 +48,12 @@ namespace gitman {
         constexpr std::u8string_view save_conflict_notice { u8"문서가 밖에서 바뀌어 저장하지 않았습니다. 문서 다시 읽기로 불러오십시오." };
         // 다시 읽기에 실패한 알림이다. 사유는 띠 tooltip의 상세 줄에 둔다.
         constexpr std::u8string_view reload_failed_notice { u8"문서를 다시 읽지 못해 지금 문서를 그대로 둡니다." };
+        // 앱 종료 확인이 진행 중인 저장의 결과를 기다리는 상한이다 (function-buttons-design 4.10, S3). 저장 한 번은 보통
+        // 1초 안에 끝난다. 느린 네트워크 폴더에서 쓰기가 매달려도 이만큼 뒤에는 기다리지 않고 종료할 수 있다.
+        constexpr std::chrono::seconds exit_save_wait_limit { 5 };
+        // cmd 기능이 부를 배치 파일을 worker가 확인하는 것을 기다리는 상한이다 (S3 검토). 로컬 파일 하나는 바로 읽힌다. 대화형
+        // 조회 lane의 느린 조회 뒤에 섰거나 네트워크 경로가 매달리면 이만큼 뒤에 실행하지 않고 기다림을 푼다.
+        constexpr std::chrono::seconds cmd_target_wait_limit { 5 };
 
         std::u8string decimal_text(const long long value)
         {
@@ -862,6 +869,8 @@ namespace gitman {
                     handle_app_settings_loaded(std::move(value));
                 else if constexpr (std::is_same_v<value_type, app_settings_saved_event>)
                     handle_app_settings_saved(std::move(value));
+                else if constexpr (std::is_same_v<value_type, cmd_target_inspected_event>)
+                    handle_cmd_target_inspected(std::move(value));
                 else if constexpr (std::is_same_v<value_type, function_started_event>)
                     handle_function_started(value);
                 else if constexpr (std::is_same_v<value_type, function_log_event>)
@@ -902,7 +911,7 @@ namespace gitman {
         // 이어 연다.
         if (confirm_document_change(running_function_action::open_document, intent.path) == false)
             return;
-        open_document_now(intent.path);
+        change_document_after_save({ .action = running_function_action::open_document, .path = intent.path });
     }
 
     void logic_controller::open_document_now(std::u8string path)
@@ -936,6 +945,7 @@ namespace gitman {
             composition_.reset();
         function_trust_after_save_ = false;
         run_waiting_for_app_settings_.reset();
+        run_waiting_for_cmd_target_.reset();
         function_notice_after_save_ = false;
         unsaved_ = {};
         function_button_problems_.clear();
@@ -954,9 +964,10 @@ namespace gitman {
         selected_.reset();
         scroll_offset_ = 0.0f;
         document_loading_ = true;
-        // 이전 문서의 진행 중 저장·생성 결과는 도착해도 버린다.
+        // 이전 문서의 진행 중 저장·생성 결과는 도착해도 버린다. 그 결과를 기다리던 문서 바꾸기도 끝났다 (S3).
         pending_save_operation_id_ = 0;
         save_queued_ = false;
+        change_after_save_.reset();
         pending_generation_operation_id_ = 0;
 
         operation_request request { make_request(operation_kind::load_document, nullptr, 0) };
@@ -1046,6 +1057,13 @@ namespace gitman {
             function_confirm_->generated_document = true;
             return;
         }
+        // 지금 문서의 저장이 진행 중이면 그 결과를 기다린 뒤 만든 파일을 다시 읽어 연다. 결과를 버리고 바꾸면 그 저장이
+        // 실패했을 때 변경이 말없이 사라진다 (S3, 4.10).
+        if (save_in_progress())
+        {
+            change_document_after_save({ .action = running_function_action::open_document, .path = std::move(event.document_path), .generated_document = true });
+            return;
+        }
 
         // 생성된 문서를 곧바로 연다. 이전 문서의 진행 중 결과가 새 문서에 적용되지
         // 않도록 열기와 같은 규칙으로 대기 상태를 정리한다. 문서를 여는 것이므로
@@ -1126,6 +1144,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         run_waiting_for_app_settings_.reset();
+        run_waiting_for_cmd_target_.reset();
         function_notice_after_save_ = false;
         unsaved_ = {};
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
@@ -1412,6 +1431,35 @@ namespace gitman {
         {
             save_queued_ = false;
             request_save();
+        }
+        // 저장 결과를 기다리던 닫기·다른 문서 열기다 (S3, 4.10). 이어 낸 저장이 있으면 그 결과까지 기다린다. 실패했으면
+        // 누를 때 묻지 않은 저장하지 못한 변경을 지금 묻는다. 그 사이 떠 있던 다른 기능 확인은 이 확인이 대신한다 — 사용자가
+        // 먼저 고른 일이다. 성공했으면 그 일을 한다. 실행 중인 기능 확인을 거치지 않았는데 기다리는 사이 출력 수집 기능이
+        // 시작됐으면 그것도 묻는다.
+        if (change_after_save_.has_value() && save_in_progress() == false)
+        {
+            const document_change_after_save change { std::move(*change_after_save_) };
+            change_after_save_.reset();
+            if (has_unsaved_changes() || (change.confirmed == false && running_capture_count() > 0))
+            {
+                open_document_change_confirm(change.action, change.path);
+                function_confirm_->generated_document = change.generated_document;
+            }
+            else
+                change_document_now(change.action, change.path);
+        }
+        // 저장을 기다리던 앱 종료 확인이다 (S3). 결과가 오면 기다림을 풀고 아래에서 dialog를 다시 지어 확인 버튼을 살린다.
+        const bool exit_wait_settled { exit_confirm_waiting_for_save() && save_in_progress() == false };
+        if (save_in_progress() == false)
+        {
+            exit_save_deadline_.reset();
+            exit_save_wait_expired_ = false;
+        }
+        if (exit_wait_settled)
+        {
+            const float scroll_offset { function_confirm_->view.scroll_offset };
+            function_confirm_->view = build_running_function_view(function_confirm_->action);
+            function_confirm_->view.scroll_offset = scroll_offset;
         }
         // 떠 있는 실행 중인 기능 확인은 열 때의 상태로 지었다. 저장이 진행 중일 때 열었으면 저장하지 못한 변경을 싣지
         // 않았으므로, 그 저장이 실패했으면 다시 지어 확인 전에 그 변경도 사라진다는 것을 보인다 (D28, R2 검토). 저장
@@ -1800,12 +1848,32 @@ namespace gitman {
                 run_waiting_for_app_settings_ = intent;
             return;
         }
+        // cmd 명령 대상을 worker가 확인하는 동안 누른 실행은 버린다. 기다리는 실행이 답을 받으면 이어 한다 (S3).
+        if (run_waiting_for_cmd_target_.has_value())
+            return;
+        run_function(intent, nullptr);
+    }
+
+    void logic_controller::handle_cmd_target_inspected(cmd_target_inspected_event event)
+    {
+        // 문서를 바꿔 버린 실행이나 앞 확인의 늦은 답은 쓰지 않는다.
+        if (run_waiting_for_cmd_target_.has_value() == false || run_waiting_for_cmd_target_->operation_id != event.operation_id)
+            return;
+        const run_function_intent intent { std::move(run_waiting_for_cmd_target_->intent) };
+        run_waiting_for_cmd_target_.reset();
+        if (shutting_down_ || function_confirm_.has_value())
+            return;
+        run_function(intent, &event.facts);
+    }
+
+    void logic_controller::run_function(const run_function_intent& intent, const cmd_target_facts* const cmd_facts)
+    {
         card_state* const card { find_card(intent.id) };
         const function_button* const button { find_function_button(intent.button_id) };
         if (card == nullptr || button == nullptr)
             return;
 
-        const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button) };
+        const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button, cmd_facts) };
         if (prepared.has_value() == false)
             return;
         // 편집 dialog가 바꾼 정의가 아직 파일에 없으면 해시 입력이 편집 전 원문이다. 그 해시로 판정하면 신뢰 dialog가 보일
@@ -1813,6 +1881,35 @@ namespace gitman {
         if (unsaved_.function_definition)
         {
             append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"기능 정의가 아직 저장되지 않아 실행하지 않습니다"));
+            return;
+        }
+        // cmd 명령이 부를 배치 파일이나 공백이 든 상대 경로는 글자만으로 정할 수 없다. 파일을 읽는 일이라 worker에 묻고(ADR-004)
+        // 답이 오면 그 답으로 처음부터 다시 판정한다 (S3, 4.3). 답을 받고도 다시 물어야 하면 그 사이 값이 바뀐 것이라 실행하지
+        // 않는다 — 되풀이해 묻지 않는다.
+        if (prepared->cmd_target.has_value())
+        {
+            if (cmd_facts != nullptr)
+            {
+                append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"배치 파일을 확인하는 동안 실행 값이 바뀌어 실행하지 않습니다"));
+                return;
+            }
+            // 신뢰하지 않은 정의가 고른 경로는 드라이브 문자로 시작하는 로컬 경로만 읽는다 (S3 검토). UNC·장치 경로는 읽는
+            // 것만으로 네트워크에 접속하고 worker를 오래 붙잡는다. 읽지 않은 답으로 지으면 배치 후보가 확인하지 못했다는
+            // 경고가 되어 아래 신뢰 dialog에 실리고, 신뢰 확인은 그 답으로 다시 지어 비교한다.
+            if (cmd_target_is_local(*prepared->cmd_target) == false
+                && is_function_definition_trusted(app_settings_, document_path_, current_function_digest()) == false)
+            {
+                const cmd_target_facts unread { cmd_target_unread_facts(*prepared->cmd_target) };
+                run_function(intent, &unread);
+                return;
+            }
+            operation_request request { make_request(operation_kind::inspect_cmd_target, card, card->generation) };
+            request.cmd_target = prepared->cmd_target;
+            const std::uint64_t operation_id { request.operation_id };
+            if (submitter_->submit(std::move(request)) == false)
+                return;
+            // 답이 오지 않으면(닿지 않는 네트워크 경로, 앞선 느린 조회) 상한 뒤에 기다림을 풀어 다른 실행을 막지 않는다.
+            run_waiting_for_cmd_target_ = { cmd_target_wait { operation_id, intent, std::chrono::steady_clock::now() + cmd_target_wait_limit } };
             return;
         }
 
@@ -1859,7 +1956,7 @@ namespace gitman {
         return std::ranges::none_of(cmd_approvals_, approved);
     }
 
-    std::optional<logic_controller::prepared_function_run> logic_controller::prepare_function_run(card_state& card, const function_button& button)
+    std::optional<logic_controller::prepared_function_run> logic_controller::prepare_function_run(card_state& card, const function_button& button, const cmd_target_facts* const cmd_facts)
     {
         // 버튼을 그릴 때와 같은 판정을 다시 한다. 클릭과 상태 변화가 엇갈린 늦은 클릭이다 (4.8).
         // 범위 밖이면 그 카드에 버튼이 없다. 이미 실행 중이면 `Alt+N`이 중지하지 않도록 아무것도
@@ -1927,7 +2024,16 @@ namespace gitman {
 
         if (is_cmd_program(prepared.program.text))
         {
-            prepared.cmd = assemble_function_cmd_command_line(prepared.program, prepared.arguments, lookup.builtins);
+            // 부를 배치 파일이나 공백이 든 상대 경로는 worker가 확인한 답으로 짓는다 (S3). 답이 지금 인자와 작업 폴더로
+            // 물은 것이 아니면 쓰지 않고 다시 물을 대상을 싣는다 — 부르는 쪽이 확인을 내거나 바뀐 것으로 보고 멈춘다.
+            std::optional<cmd_target_query> target { function_cmd_target_query(prepared.arguments) };
+            if (target.has_value())
+                target->working_directory = prepared.working_directory.text;
+            if (target.has_value() && (cmd_facts == nullptr || cmd_facts->query != *target))
+                prepared.cmd_target = std::move(target);
+            else if (target.has_value())
+                prepared.cmd_facts = *cmd_facts;
+            prepared.cmd = assemble_function_cmd_command_line(prepared.program, prepared.arguments, lookup.builtins, prepared.cmd_facts.has_value() ? &*prepared.cmd_facts : nullptr);
             // 위 검사가 같은 글자를 먼저 거르므로 오지 않는다. 조립이 거부한 명령줄을 실행 요청에 싣지 않으려는 마지막 자리다.
             if (prepared.cmd->rejection.has_value())
             {
@@ -2312,10 +2418,9 @@ namespace gitman {
             switch (pending.action)
             {
             case running_function_action::close_document:
-                close_document_now();
-                break;
             case running_function_action::open_document:
-                open_document_now(pending.path);
+                // 진행 중인 저장이 있으면 그 결과를 기다린다. 실패하면 변경까지 실어 다시 묻는다 (S3, 4.10).
+                change_document_after_save({ .action = pending.action, .path = pending.path, .confirmed = true, .generated_document = pending.generated_document });
                 break;
             case running_function_action::reload_document:
                 begin_reload_document();
@@ -2355,7 +2460,9 @@ namespace gitman {
 
         // 확인한 것과 같은 것만 실행한다 (4.5). dialog가 떠 있는 동안 조회 결과(`${branch}`)나 정의가
         // 바뀌었을 수 있으므로 처음부터 다시 판정하고 치환한다.
-        const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button) };
+        // cmd 명령 대상은 dialog를 열 때 worker가 확인한 답으로 다시 짓는다 (S3). 확인 사이에 파일이 바뀌었을 수 있지만
+        // 사용자는 그 답으로 지은 명령과 경고를 봤다. 대상(인자·작업 폴더)이 바뀌었으면 아래에서 멈춘다.
+        const std::optional<prepared_function_run> prepared { prepare_function_run(*card, *button, pending.prepared.cmd_facts.has_value() ? &*pending.prepared.cmd_facts : nullptr) };
         if (prepared.has_value() == false)
             return;
         // dialog가 떠 있는 동안 정의가 바뀌는 길은 편집 dialog의 Apply다 (문서 열기·교체·닫기·다시 읽기는 dialog를 닫는다).
@@ -2391,6 +2498,7 @@ namespace gitman {
             && prepared->working_directory.text == pending.prepared.working_directory.text
             && prepared->display_command_line == pending.prepared.display_command_line
             && same_cmd(prepared->cmd, pending.prepared.cmd)
+            && prepared->cmd_target.has_value() == false
         };
         if (same == false)
         {
@@ -2835,7 +2943,7 @@ namespace gitman {
         // 이어 닫는다.
         if (confirm_document_change(running_function_action::close_document) == false)
             return;
-        close_document_now();
+        change_document_after_save({ .action = running_function_action::close_document });
     }
 
     void logic_controller::close_document_now()
@@ -2880,6 +2988,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         run_waiting_for_app_settings_.reset();
+        run_waiting_for_cmd_target_.reset();
         function_notice_after_save_ = false;
         unsaved_ = {};
         function_button_problems_.clear();
@@ -2894,9 +3003,10 @@ namespace gitman {
         current_placement_ = app_settings_.window;
         if (window_placement_.has_value())
             ++window_placement_revision_;
-        // 진행 중이던 저장·생성 결과는 도착해도 버린다.
+        // 진행 중이던 저장·생성 결과는 도착해도 버린다. 그 결과를 기다리던 문서 바꾸기도 끝났다 (S3).
         pending_save_operation_id_ = 0;
         save_queued_ = false;
+        change_after_save_.reset();
         pending_generation_operation_id_ = 0;
         // 문서를 닫으면 더 쌓을 로그가 없다. 파일은 그대로 두고 적재만 멈춘다.
         publish_log_targets();
@@ -3036,6 +3146,28 @@ namespace gitman {
             return;
         // driver는 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있을 때만 닫힘 훅을 건다. 그 frame을 게시한 뒤
         // 기능이 끝났으면 실행 중인 것이 없다는 dialog가 뜬다 — logic은 UI thread의 끝내기 명령을 낼 수 없어 확인 버튼에 맡긴다.
+        // 저장이 진행 중이면 그 결과를 보기 전에 끝내지 않게 확인 버튼을 막고 결과를 기다린다. logic은 성공해도 스스로 끝낼 수
+        // 없으므로 결과가 오면 dialog를 다시 지어 버튼을 살린다. 저장이 매달려도 상한 뒤에는 기다리지 않고 끝낼 수 있다 (S3, 4.10).
+        // 닫기를 거듭 눌러도 상한은 처음 누른 때부터다. 저장을 기다리던 닫기·다른 문서 열기는 종료가 대신한다 — 남기면
+        // 저장이 끝날 때 문서를 바꾸며 이 dialog를 닫는다.
+        change_after_save_.reset();
+        // 저장을 기다리던 종료 확인이 다른 길(다시 읽기 성공, 문서 바꾸기)로 사라졌으면 그때의 기한은 지금 닫기와 상관없다.
+        // 남기면 지난 기한으로 곧바로 `기다리지 않고 종료`가 뜬다 (S3 검토).
+        if (exit_confirm_waiting_for_save() == false)
+        {
+            exit_save_deadline_.reset();
+            exit_save_wait_expired_ = false;
+        }
+        if (save_in_progress())
+        {
+            if (exit_save_deadline_.has_value() == false && exit_save_wait_expired_ == false)
+                exit_save_deadline_ = std::chrono::steady_clock::now() + exit_save_wait_limit;
+        }
+        else
+        {
+            exit_save_deadline_.reset();
+            exit_save_wait_expired_ = false;
+        }
         function_confirm_state state {};
         state.mode = function_confirm_mode::running;
         state.action = running_function_action::exit_application;
@@ -3061,7 +3193,99 @@ namespace gitman {
     bool logic_controller::has_unsaved_changes() const noexcept
     {
         // 진행 중인 저장은 아직 실패하지 않았다. 그 결과를 기다리는 다시 읽기는 실패하면 그때 묻는다 (`handle_document_saved`).
-        return unsaved_.document && pending_save_operation_id_ == 0;
+        // 대기열의 저장(앞 저장이나 다시 읽기의 결과를 기다림)도 반드시 나가므로 같다. 넣지 않으면 다시 읽는 사이 낸 변경으로
+        // 닫기·종료가 `버리고 …`를 물어 실제로는 저장될 변경을 잃는다고 말했다 (S3 검토).
+        return unsaved_.document && save_in_progress() == false;
+    }
+
+    bool logic_controller::save_in_progress() const noexcept
+    {
+        // 대기열의 저장은 앞 저장이나 다시 읽기의 결과를 기다린다. 앞 저장의 성공은 뒤 변경을 싣지 않았다.
+        return pending_save_operation_id_ != 0 || save_queued_;
+    }
+
+    void logic_controller::change_document_after_save(document_change_after_save change)
+    {
+        if (save_in_progress() == false)
+        {
+            change_document_now(change.action, std::move(change.path));
+            return;
+        }
+        // 대기열의 저장이 다시 읽기의 결과를 기다리고 있다. 문서를 바꾸면 그 다시 읽기는 쓰지 않으므로 버리고, 저장을 지금 내
+        // 그 결과를 기다린다. 버리지 않으면 저장이 나가지 않아 변경이 말없이 사라진다.
+        if (pending_save_operation_id_ == 0)
+        {
+            abandon_reload();
+            save_queued_ = false;
+            request_save();
+        }
+        change_after_save_ = { std::move(change) };
+    }
+
+    void logic_controller::change_document_now(const running_function_action action, std::u8string path)
+    {
+        switch (action)
+        {
+        case running_function_action::close_document:
+            close_document_now();
+            break;
+        case running_function_action::open_document:
+            open_document_now(std::move(path));
+            break;
+        case running_function_action::reload_document:
+        case running_function_action::exit_application:
+            break;
+        }
+    }
+
+    bool logic_controller::exit_confirm_waiting_for_save() const noexcept
+    {
+        return function_confirm_.has_value()
+            && function_confirm_->mode == function_confirm_mode::running
+            && function_confirm_->action == running_function_action::exit_application
+            && (exit_save_deadline_.has_value() || exit_save_wait_expired_);
+    }
+
+    std::optional<std::chrono::steady_clock::time_point> logic_controller::next_tick() const noexcept
+    {
+        std::optional<std::chrono::steady_clock::time_point> next {};
+        if (exit_confirm_waiting_for_save())
+            next = exit_save_deadline_;
+        if (run_waiting_for_cmd_target_.has_value() && (next.has_value() == false || run_waiting_for_cmd_target_->deadline < *next))
+            next = run_waiting_for_cmd_target_->deadline;
+        return next;
+    }
+
+    void logic_controller::tick(const std::chrono::steady_clock::time_point now)
+    {
+        // 배치 파일 확인의 답이 상한까지 오지 않았다. 기다림을 풀어 다른 실행을 받고, 누른 실행은 하지 않는다. 늦게 온 답은
+        // 작업 id가 맞지 않아 버린다 (S3 검토).
+        if (run_waiting_for_cmd_target_.has_value() && now >= run_waiting_for_cmd_target_->deadline)
+        {
+            const run_function_intent intent { std::move(run_waiting_for_cmd_target_->intent) };
+            run_waiting_for_cmd_target_.reset();
+            card_state* const card { find_card(intent.id) };
+            const function_button* const button { find_function_button(intent.button_id) };
+            if (card != nullptr && button != nullptr)
+                append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"배치 파일을 확인하지 못해 실행하지 않습니다"));
+        }
+        tick_exit_save_wait(now);
+    }
+
+    void logic_controller::tick_exit_save_wait(const std::chrono::steady_clock::time_point now)
+    {
+        if (exit_save_deadline_.has_value() == false || now < *exit_save_deadline_)
+            return;
+        const bool waiting { exit_confirm_waiting_for_save() };
+        exit_save_deadline_.reset();
+        if (waiting == false)
+            return;
+        // 상한까지 저장이 끝나지 않았다. 종료가 매달리지 않게 확인 버튼을 살리고 무엇을 잃을 수 있는지 말한다. 그 뒤에 결과가
+        // 오면 `handle_document_saved`가 다시 짓는다.
+        exit_save_wait_expired_ = true;
+        const float scroll_offset { function_confirm_->view.scroll_offset };
+        function_confirm_->view = build_running_function_view(function_confirm_->action);
+        function_confirm_->view.scroll_offset = scroll_offset;
     }
 
     bool logic_controller::confirm_document_change(const running_function_action action, const std::u8string_view path)
@@ -3093,6 +3317,9 @@ namespace gitman {
             return;
         const function_confirm_state pending { std::move(*function_confirm_) };
         function_confirm_.reset();
+        // 종료를 거두면 저장을 기다리던 것도 끝난다. 다시 닫으면 그때부터 다시 잰다.
+        exit_save_deadline_.reset();
+        exit_save_wait_expired_ = false;
         // 새 문서 만들기의 결과를 열지 않았다. 생성 dialog는 이미 닫혔고 파일은 디스크에 있으므로 그 경로를 알린다 —
         // 알리지 않으면 만든 문서가 어디 있는지 다시 찾아야 한다.
         if (pending.mode == function_confirm_mode::running && pending.generated_document)
@@ -3179,6 +3406,31 @@ namespace gitman {
             view.confirm_label = u8"중지하고 종료";
             break;
         }
+        // 앱 종료 확인이 진행 중인 저장의 결과를 기다린다 (S3, 4.10). 결과를 보기 전에 끝내면 실패한 변경이 말없이 사라지므로
+        // 확인 버튼을 막는다. 상한을 넘기면 버튼을 살리고 잃을 수 있는 것을 경고 줄로 말한다.
+        const bool saving { view.exit_application && save_in_progress() };
+        const bool waiting { saving && exit_save_wait_expired_ == false };
+        constexpr std::u8string_view waiting_text { u8"저장이 끝나면 종료할 수 있습니다." };
+        // 상한을 넘긴 경고는 두 줄이다. 한 줄로 두면 최소 창·150%에서 note 줄의 끝 말줄임에 뒤가 잘린다 (S3 검토).
+        const std::array<std::u8string_view, 2> expired_text { u8"저장이 끝나지 않았습니다.", u8"지금 종료하면 저장하지 못한 변경이 사라질 수 있습니다." };
+        if (entries.empty() && saving)
+        {
+            view.title = u8"문서 저장 중";
+            view.subject = u8"문서를 저장하는 중입니다";
+            if (waiting)
+            {
+                view.description = { std::u8string { waiting_text } };
+                view.confirm_label = u8"종료";
+                view.confirm_enabled = false;
+            }
+            else
+            {
+                view.description.clear();
+                view.note.assign(expired_text.begin(), expired_text.end());
+                view.confirm_label = u8"기다리지 않고 종료";
+            }
+            return view;
+        }
         if (entries.empty())
         {
             // 닫힘 훅을 건 frame 뒤에 기능이 끝났거나, 훅을 건 저장하지 못한 변경의 다시 저장이 진행 중이다 (앱 종료에서만
@@ -3193,6 +3445,13 @@ namespace gitman {
         // 저장하지 못한 변경도 같은 확인으로 버린다. dialog를 둘 띄우지 않고 경고 줄 하나를 더한다 (D28).
         if (view.unsaved_changes)
             view.note.push_back(u8"저장하지 못한 변경도 사라집니다.");
+        if (waiting)
+        {
+            view.description.emplace_back(waiting_text);
+            view.confirm_enabled = false;
+        }
+        else if (saving)
+            view.note.insert(view.note.end(), expired_text.begin(), expired_text.end());
         return view;
     }
 
@@ -5333,7 +5592,13 @@ namespace gitman {
 
         // 종료 저장은 취소 전파 뒤에도 한 번 나간다. runtime의 종료 순서가 이 요청이
         // worker inbox에 들어간 뒤에 inbox를 닫으므로 join 안에서 끝까지 실행된다.
-        if (window_placement_dirty_ && document_.has_value())
+        // 대기열의 저장(다시 읽기나 앞 저장의 결과를 기다리던 변경)도 같이 낸다. 종료 뒤에는 그 결과를 기다려 이어 낼 길이
+        // 없어 두면 버려진다 (S3). 앞 저장이 아직 진행 중이면 이 저장은 그보다 앞의 revision을 써서 충돌로 실패할 수 있다 —
+        // 종료 확인이 저장을 기다리므로 상한을 넘긴 종료와 세션 종료에서만 생긴다 (4.10).
+        const bool queued { save_queued_ };
+        save_queued_ = false;
+        change_after_save_.reset();
+        if ((window_placement_dirty_ || queued) && document_.has_value())
         {
             window_placement_dirty_ = false;
             operation_request request { make_request(operation_kind::save_document, nullptr, 0) };
@@ -5734,7 +5999,8 @@ namespace gitman {
         snapshot->document_generating = pending_generation_operation_id_ != 0;
         snapshot->shutting_down = shutting_down_;
         // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있으면 창을 닫기 전에 묻는다 (function-buttons-design 4.10, D28).
-        snapshot->exit_needs_confirmation = shutting_down_ == false && (running_capture_count() > 0 || has_unsaved_changes());
+        // 진행 중·대기 중인 저장도 닫힘을 받는다. 받지 않으면 종료가 그 결과를 버려 실패한 변경이 말없이 사라진다 (S3, 4.10).
+        snapshot->exit_needs_confirmation = shutting_down_ == false && (running_capture_count() > 0 || has_unsaved_changes() || (document_.has_value() && save_in_progress()));
         snapshot->cards = build_ordered_cards();
 
         // 선택 카드의 로그 뷰다. 필터를 통과한 record만 담고 스크롤은 이미 고정된

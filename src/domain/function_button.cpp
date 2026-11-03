@@ -766,7 +766,16 @@ namespace gitman {
         return values;
     }
 
-    cmd_command_line assemble_function_cmd_command_line(const variable_expansion& program, const std::span<const variable_expansion> arguments, const std::span<const variable_binding> builtins)
+    std::optional<cmd_target_query> function_cmd_target_query(const std::span<const variable_expansion> arguments)
+    {
+        std::vector<cmd_argument> pieces {};
+        pieces.reserve(arguments.size());
+        for (const variable_expansion& argument : arguments)
+            pieces.push_back(make_cmd_argument(argument));
+        return find_cmd_target_query(pieces);
+    }
+
+    cmd_command_line assemble_function_cmd_command_line(const variable_expansion& program, const std::span<const variable_expansion> arguments, const std::span<const variable_binding> builtins, const cmd_target_facts* const facts)
     {
         std::vector<cmd_argument> pieces {};
         pieces.reserve(arguments.size());
@@ -777,7 +786,7 @@ namespace gitman {
         executable.text = program.text;
         executable.display = display_text(program);
         const std::vector<cmd_exported_value> exported { function_cmd_exported_values(builtins) };
-        return assemble_cmd_command_line(executable, pieces, exported);
+        return assemble_cmd_command_line(executable, pieces, exported, facts);
     }
 
     std::vector<std::u8string> function_user_variable_names(const function_buttons_definition& definition, const std::span<const std::u8string> project_ids)

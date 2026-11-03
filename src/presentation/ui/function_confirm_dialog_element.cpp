@@ -369,6 +369,9 @@ namespace gitman::ui {
         {
             confirm->set_action(ui_trigger::left_click, make_logic_click(confirm_function_run_intent {}));
         }
+        // 앱 종료 확인이 진행 중인 저장의 결과를 기다리는 동안은 누를 수 없다. 끝내기 명령은 logic을 거치지 않으므로 logic이
+        // 막을 수 없고, 저장 결과를 보기 전에 끝내면 실패한 변경이 말없이 사라진다 (S3, 4.10).
+        confirm->set_enabled(dialog_.confirm_enabled);
         add_child(std::move(confirm));
 
         auto cancel {

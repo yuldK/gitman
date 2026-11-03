@@ -175,7 +175,27 @@ namespace {
         void run(const std::u8string_view id, const std::u8string_view button)
         {
             controller.handle(gitman::run_function_intent { gitman::project_id { std::u8string { id } }, std::u8string { button } });
+            static_cast<void>(answer_cmd_inspection());
         }
+
+        // worker가 할 cmd 대상 확인(배치 파일 읽기, S3)에 답한다. 답하지 않은 요청 중 마지막 것이다. 기본은 파일이 없다는
+        // 답이라 S3 전의 판정 그대로다. 답할 요청이 없으면 거짓이다.
+        bool answer_cmd_inspection(const std::optional<gitman::cmd_batch_findings> batch = std::nullopt, const bool path_exists = false)
+        {
+            const gitman::operation_request* const request { submitter.last_of(gitman::operation_kind::inspect_cmd_target) };
+            if (request == nullptr || request->operation_id <= answered_cmd_inspection || request->cmd_target.has_value() == false)
+                return false;
+            answered_cmd_inspection = request->operation_id;
+            gitman::cmd_target_inspected_event event {};
+            event.operation_id = request->operation_id;
+            event.facts.query = *request->cmd_target;
+            event.facts.path_exists = path_exists;
+            event.facts.batch = batch;
+            controller.handle(std::move(event));
+            return true;
+        }
+
+        std::uint64_t answered_cmd_inspection { 0 };
 
         void confirm()
         {
@@ -1182,6 +1202,8 @@ TEST_CASE("Alt+N and the function menu reach the same cmd approval", "[function_
         fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::run_function, u8"batch" });
     }
 
+    // 두 길 모두 배치 파일 확인(S3)을 거친다.
+    REQUIRE(fixture.answer_cmd_inspection());
     REQUIRE(fixture.functions.requests.empty());
     REQUIRE(fixture.dialog().has_value());
     REQUIRE(fixture.dialog()->mode == gitman::function_confirm_mode::correction);
@@ -1330,4 +1352,162 @@ TEST_CASE("An approved cmd correction is asked again when the working folder cha
     REQUIRE(fixture.dialog().has_value());
     REQUIRE(fixture.dialog()->mode == gitman::function_confirm_mode::correction);
     REQUIRE(fixture.functions.requests.size() == 3u);
+}
+
+TEST_CASE("A cmd batch is read on a worker before the run and its findings join the final approval", "[function_buttons][s3]")
+{
+    trust_fixture fixture {};
+    open_trusted(fixture, { cmd_batch() });
+    fixture.query(u8"alpha", u8"main");
+
+    // 배치 파일을 읽는 것은 파일 I/O라 logic이 하지 않고 worker에 맡긴다 (ADR-004). 답이 올 때까지 실행하지 않는다.
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(fixture.dialog().has_value() == false);
+    const gitman::operation_request* const request { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target) };
+    REQUIRE(request != nullptr);
+    REQUIRE(request->project.id.value == u8"alpha");
+    REQUIRE(request->cmd_target.has_value());
+    REQUIRE(request->cmd_target->working_directory == u8"C:\\work\\alpha");
+    REQUIRE(request->cmd_target->argument == 2u);
+    REQUIRE(request->cmd_target->batch_if_path == u8"C:\\work\\alpha\\tools\\run.bat");
+    const std::uint64_t first { request->operation_id };
+
+    // 기다리는 동안 다시 눌러도 확인을 또 내지 않는다.
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    std::size_t inspections { 0 };
+    for (const gitman::operation_request& value : fixture.submitter.requests)
+    {
+        if (value.kind == gitman::operation_kind::inspect_cmd_target)
+            ++inspections;
+    }
+    REQUIRE(inspections == 1u);
+    REQUIRE(first == fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id);
+
+    // 배치가 지연 확장을 켜고 call을 쓰면 보정이 없어도 확인 창에 경고로 보인다.
+    REQUIRE(fixture.answer_cmd_inspection(gitman::cmd_batch_findings { true, true, false }));
+    std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    REQUIRE(dialog->mode == gitman::function_confirm_mode::correction);
+    REQUIRE(has_warning_line(dialog->items.front(), u8"EnableDelayedExpansion"));
+    REQUIRE(has_warning_line(dialog->items.front(), u8"call을 씁니다"));
+    REQUIRE(dialog->description.front() == u8"cmd.exe 명령에 확인할 경고가 있습니다.");
+
+    // 확인은 그때 읽은 결과로 다시 짓는다. 다시 읽지 않는다.
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 1u);
+    REQUIRE(fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id == first);
+    fixture.completed_all();
+
+    // 다음 클릭은 파일을 다시 읽는다. 같은 경고면 승인 기억이 맞아 묻지 않는다.
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    REQUIRE(fixture.answer_cmd_inspection(gitman::cmd_batch_findings { true, true, false }));
+    REQUIRE(fixture.dialog().has_value() == false);
+    REQUIRE(fixture.functions.requests.size() == 2u);
+    fixture.completed_all();
+
+    // 배치가 바뀌어 경고가 없어지면 묻지 않고, 늦게 온 앞 결과는 버린다.
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    gitman::cmd_target_inspected_event stale {};
+    stale.operation_id = first;
+    stale.facts.query = *fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->cmd_target;
+    stale.facts.batch = gitman::cmd_batch_findings { true, false, false };
+    fixture.controller.handle(std::move(stale));
+    REQUIRE(fixture.functions.requests.size() == 2u);
+    REQUIRE(fixture.answer_cmd_inspection(gitman::cmd_batch_findings {}));
+    REQUIRE(fixture.dialog().has_value() == false);
+    REQUIRE(fixture.functions.requests.size() == 3u);
+}
+
+TEST_CASE("A cmd run waiting for its batch check is dropped when the document changes", "[function_buttons][s3]")
+{
+    trust_fixture fixture {};
+    open_trusted(fixture, { cmd_batch() });
+    fixture.query(u8"alpha", u8"main");
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    const std::uint64_t waiting { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id };
+
+    // 같은 문서를 다시 열었다. 앞 문서에서 누른 실행의 답이 와도 실행하지 않는다.
+    fixture.open({ make_project(u8"alpha") }, make_definition({ cmd_batch() }));
+    fixture.query(u8"alpha", u8"main");
+    gitman::cmd_target_inspected_event late {};
+    late.operation_id = waiting;
+    late.facts.query.working_directory = u8"C:\\work\\alpha";
+    fixture.controller.handle(std::move(late));
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(fixture.dialog().has_value() == false);
+}
+
+TEST_CASE("An untrusted definition does not read a batch outside local drives before the trust", "[function_buttons][s3]")
+{
+    // 신뢰하지 않은 문서의 작업 폴더가 UNC다. 누르기만으로 그 share를 읽지 않는다 (S3 검토). 읽지 않았다는 경고가 신뢰
+    // dialog에 실리고, 신뢰 확인은 같은 답으로 다시 지어 실행한다.
+    trust_fixture fixture {};
+    fixture.load_settings();
+    fixture.open({ make_project(u8"alpha", u8"\\\\host\\share\\") }, make_definition({ cmd_batch() }));
+    fixture.query(u8"alpha", u8"main");
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    REQUIRE(fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target) == nullptr);
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    REQUIRE(dialog->mode == gitman::function_confirm_mode::trust);
+    REQUIRE(has_warning_line(dialog->items.front(), u8"확인하지 못했습니다"));
+    fixture.confirm();
+    REQUIRE(fixture.functions.requests.size() == 1u);
+    fixture.completed_all();
+
+    // 신뢰한 뒤에는 그 경로도 worker가 읽는다.
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    const gitman::operation_request* const request { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target) };
+    REQUIRE(request != nullptr);
+    REQUIRE(request->cmd_target->batch_if_path == u8"\\\\host\\share\\alpha\\tools\\run.bat");
+}
+
+TEST_CASE("An untrusted definition still reads a batch on a local drive before the trust dialog", "[function_buttons][s3]")
+{
+    trust_fixture fixture {};
+    fixture.load_settings();
+    fixture.open({ make_project(u8"alpha") }, make_definition({ cmd_batch() }));
+    fixture.query(u8"alpha", u8"main");
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    REQUIRE(fixture.dialog().has_value() == false);
+    REQUIRE(fixture.answer_cmd_inspection(gitman::cmd_batch_findings { true, false, false }));
+    const std::optional<gitman::function_confirm_dialog_view> dialog { fixture.dialog() };
+    REQUIRE(dialog.has_value());
+    REQUIRE(dialog->mode == gitman::function_confirm_mode::trust);
+    REQUIRE(has_warning_line(dialog->items.front(), u8"EnableDelayedExpansion"));
+}
+
+TEST_CASE("A cmd run whose batch check does not answer is dropped after a time limit", "[function_buttons][s3]")
+{
+    trust_fixture fixture {};
+    open_trusted(fixture, { cmd_batch() });
+    fixture.query(u8"alpha", u8"main");
+    REQUIRE(fixture.controller.next_tick().has_value() == false);
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    const std::uint64_t first { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id };
+
+    // 답이 오지 않으면 driver가 깨울 시각이 있다. 그 전에는 그대로 기다린다.
+    const std::optional<std::chrono::steady_clock::time_point> deadline { fixture.controller.next_tick() };
+    REQUIRE(deadline.has_value());
+    fixture.controller.tick(*deadline - std::chrono::milliseconds { 1 });
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    REQUIRE(fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id == first);
+
+    // 상한이 지나면 실행하지 않고 그렇다고 남긴 뒤 다른 실행을 받는다.
+    fixture.controller.tick(*deadline);
+    REQUIRE(fixture.last_log(u8"alpha").text == u8"[배치] 배치 파일을 확인하지 못해 실행하지 않습니다");
+    REQUIRE(fixture.controller.next_tick().has_value() == false);
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    const std::uint64_t second { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id };
+    REQUIRE(second != first);
+
+    // 늦게 온 앞 답은 버리고, 새 답으로 실행한다.
+    gitman::cmd_target_inspected_event late {};
+    late.operation_id = first;
+    late.facts.query = *fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->cmd_target;
+    fixture.controller.handle(std::move(late));
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(fixture.answer_cmd_inspection());
+    REQUIRE(fixture.functions.requests.size() == 1u);
 }

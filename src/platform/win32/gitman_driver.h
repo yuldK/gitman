@@ -32,6 +32,7 @@
 #include <chrono>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 namespace gitman::win32 {
     // luil logic thread에 꽂는 gitman 구동기다 (설계 L3). 예전 `app_runtime::assembly`가
@@ -55,6 +56,8 @@ namespace gitman::win32 {
         [[nodiscard]] luil::app_message make_close_message() override;
         [[nodiscard]] bool shutdown_completed() const override;
         void stop_workers() override;
+        // 종료 확인이 저장을 기다리는 상한처럼 시간이 흘러야 바뀌는 logic 상태의 예고다 (function-buttons-design 4.10, S3).
+        [[nodiscard]] std::optional<std::chrono::steady_clock::time_point> next_tick() override;
         void tick(std::chrono::steady_clock::time_point now) override;
 
         // 마지막으로 만든 view다 (test 관찰용). logic thread 밖에서 읽어도 되도록

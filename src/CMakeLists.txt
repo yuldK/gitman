@@ -212,6 +212,8 @@ gitman_add_source_filter(gitman_lib_files "infrastructure/process"
 
 # 기능 버튼 실행 요청 조립(캡처 상한·timeout·`GITMAN_*` 환경)과 기능 실행 executor다. VCS 정책과 따로 둔다.
 gitman_add_source_filter(gitman_lib_files "infrastructure/function_buttons"
+    infrastructure/cmd_target_inspection.cpp
+    infrastructure/cmd_target_inspection.h
     infrastructure/function_execution_policy.cpp
     infrastructure/function_execution_policy.h
     infrastructure/function_process_executor.cpp

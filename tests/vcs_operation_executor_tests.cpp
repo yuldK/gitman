@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -148,6 +149,32 @@ TEST_CASE("The executor loads documents through the store", "[executor][app]")
     REQUIRE(event->document.has_value());
     REQUIRE(event->document->projects.size() == 1u);
     REQUIRE(event->diagnostics.size() == 1u);
+}
+
+TEST_CASE("The executor checks a cmd target on the worker and answers with what it found", "[executor][app][function_buttons][s3]")
+{
+    // 공백이 든 상대 경로가 작업 폴더에 있고, 그 배치가 call을 쓴다 (function-buttons-design 4.3, S3).
+    executor_fixture fixture {};
+    fixture.probe.add_file(u8"D:\\ws\\tools\\Build Tools\\run.bat", u8"@echo off\r\ncall other.bat %*\r\n");
+    gitman::cmd_target_query query {};
+    query.working_directory = u8"D:\\ws";
+    query.argument = 1;
+    query.sentence = true;
+    query.relative_path = u8"tools\\Build Tools\\run.bat";
+    query.batch_if_path = u8"tools\\Build Tools\\run.bat";
+    gitman::operation_request request {};
+    request.operation_id = 9;
+    request.kind = gitman::operation_kind::inspect_cmd_target;
+    request.cmd_target = query;
+    fixture.run(request);
+
+    REQUIRE(fixture.emitted.size() == 1u);
+    const auto* const event { std::get_if<gitman::cmd_target_inspected_event>(&fixture.emitted.front()) };
+    REQUIRE(event != nullptr);
+    REQUIRE(event->operation_id == 9u);
+    REQUIRE(event->facts.query == query);
+    REQUIRE(event->facts.path_exists);
+    REQUIRE(event->facts.batch == std::optional<gitman::cmd_batch_findings> { gitman::cmd_batch_findings { false, true, false } });
 }
 
 TEST_CASE("The executor saves documents through the store and reports the new revision", "[executor][app]")

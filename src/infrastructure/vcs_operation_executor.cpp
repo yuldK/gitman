@@ -4,6 +4,7 @@
 #include "application/project_registration_service.h"
 #include "application/version_list_generation_service.h"
 #include "domain/discovery.h"
+#include "infrastructure/cmd_target_inspection.h"
 #include "infrastructure/git_repository_provider.h"
 #include "infrastructure/operation_log_forwarder.h"
 #include "infrastructure/svn_repository_provider.h"
@@ -156,6 +157,16 @@ namespace gitman {
                 return;
             }
 
+            if (request.kind == operation_kind::inspect_cmd_target)
+            {
+                cmd_target_inspected_event event {};
+                event.operation_id = request.operation_id;
+                if (request.cmd_target.has_value())
+                    event.facts = inspect_cmd_target(*probe_, *request.cmd_target);
+                emit(std::move(event));
+                return;
+            }
+
             execute_query(request, emit);
         }
         catch (...)
@@ -248,6 +259,16 @@ namespace gitman {
                     failure.operation_id = request.operation_id;
                     failure.id = request.project.id;
                     failure.result.diagnostics.push_back(std::move(value));
+                    emit(std::move(failure));
+                }
+                else if (request.kind == operation_kind::inspect_cmd_target)
+                {
+                    // 확인하지 못했으면 배치를 부를 수 있을 때 그렇다고 경고하는 답이다(없는 것으로 보면 경고 없이 실행된다,
+                    // S3 검토). logic의 기다림은 이 답이나 상한으로 풀린다.
+                    cmd_target_inspected_event failure {};
+                    failure.operation_id = request.operation_id;
+                    if (request.cmd_target.has_value())
+                        failure.facts = cmd_target_unread_facts(*request.cmd_target);
                     emit(std::move(failure));
                 }
                 else if (request.kind == operation_kind::query_file_diff)

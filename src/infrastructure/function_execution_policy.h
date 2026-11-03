@@ -28,13 +28,14 @@ namespace gitman {
     [[nodiscard]] std::vector<process_environment_override> function_environment_overrides(std::span<const variable_binding> builtins, function_run_mode mode);
 
     // 출력 수집 실행 요청이다. VCS 정책(`make_vcs_process_request`)의 인자와 환경을 쓰지 않는다 (4.1).
+    // 두 요청 모두 `program`이 `cmd.exe`이면 `command_line_syntax::cmd`로 조립한다 (4.3, D27).
     [[nodiscard]] process_request make_function_process_request(function_command command, std::int32_t timeout_seconds, std::span<const variable_binding> builtins);
     // 분리 실행 요청이다. timeout이 없고 `GIT_TERMINAL_PROMPT`를 싣지 않는다.
     [[nodiscard]] process_launch_request make_function_launch_request(function_command command, std::span<const variable_binding> builtins);
     // 모드에 맞는 요청이다 (`function_command_factory`의 구현). 분리 실행은 `timeout_seconds`를
     // 보지 않는다. 문서의 `detached` 버튼에 남은 값은 파서가 경고만 하고 모델에 둔다 (3.2).
     [[nodiscard]] std::variant<process_request, process_launch_request> make_function_command(function_command command, function_run_mode mode, std::int32_t timeout_seconds, std::span<const variable_binding> builtins);
-    // 운영 조립이 logic에 넘기는 묶음이다. 인용은 `build_windows_command_line`, 가리기는
+    // 운영 조립이 logic에 넘기는 묶음이다. 인용은 `build_process_command_line`(cmd면 cmd 전용 조립), 가리기는
     // `mask_secrets`, 요청은 `make_function_command`이고 환경 변수 읽기만 부르는 쪽이 준다.
     [[nodiscard]] function_run_services make_function_run_services(function_environment_lookup environment);
 } // namespace gitman

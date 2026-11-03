@@ -110,6 +110,7 @@ gitman_add_source_filter(gitman_test_files "infrastructure/process"
     win32_text_transcoder_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "infrastructure/function_buttons"
+    function_cmd_line_tests.cpp
     function_execution_policy_tests.cpp
     function_execution_tests.cpp)
 

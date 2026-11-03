@@ -407,7 +407,7 @@ namespace gitman::win32 {
 
             // 실제 실행에 쓰는 명령줄과 기록용 값을 분리한다. 마스킹은 기록용 값에만
             // 적용하므로 자식에게 전달하는 인자는 바뀌지 않는다.
-            const std::u8string command_line_text { build_windows_command_line(request.executable, request.arguments) };
+            const std::u8string command_line_text { build_process_command_line(request.executable, request.arguments, request.syntax) };
             result.masked_command_line = mask_secrets(command_line_text);
 
             const auto executable { utf8_to_utf16(request.executable) };

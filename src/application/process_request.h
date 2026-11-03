@@ -2,6 +2,7 @@
 
 #include "domain/diagnostic.h"
 #include "domain/path_syntax.h"
+#include "domain/process_execution.h"
 
 #include <chrono>
 #include <cstddef>
@@ -50,6 +51,9 @@ namespace gitman {
         std::size_t maximum_captured_bytes_per_stream {};
         std::size_t maximum_record_bytes { default_process_record_byte_limit };
         process_text_encoding text_encoding { process_text_encoding::utf8 };
+        // `cmd`는 기능 버튼의 `program`이 `cmd.exe`일 때만 쓴다. 그때는 `cmd_uncorrectable_characters`가 든
+        // 인자를 요청 오류로 본다.
+        command_line_syntax syntax { command_line_syntax::argv };
     };
 
     // 분리 실행(`process_launcher`) 요청이다. 기다리지 않고 출력도 모으지 않으므로
@@ -61,6 +65,7 @@ namespace gitman {
         std::vector<std::u8string> arguments {};
         std::u8string working_directory {};
         std::vector<process_environment_override> environment_overrides {};
+        command_line_syntax syntax { command_line_syntax::argv };
     };
 
     // 요청 값만으로 판정할 수 있는 오류를 반환한다. filesystem 조회는 하지 않는다.

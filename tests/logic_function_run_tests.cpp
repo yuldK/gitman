@@ -730,13 +730,48 @@ TEST_CASE("The cmd defence refuses a runtime value at click time with a failure 
     fixture.run(u8"alpha", u8"echo");
     REQUIRE(fixture.functions.requests.empty());
     REQUIRE(fixture.last_log(u8"alpha").severity == gitman::diagnostic_severity::error);
-    // 접두 `실행하지 않습니다:`는 거부 줄에 한 번만 있다.
-    REQUIRE(fixture.last_log(u8"alpha").text == u8"[브랜치 출력] 실행하지 않습니다: cmd.exe에 넘기는 ${branch} 값에 cmd가 다시 해석하는 문자(&)가 있습니다.");
+    // 접두 `실행하지 않습니다:`는 거부 줄에 한 번만 있다. 인자의 `&`는 보정하지만(D27) 같은 값이
+    // `GITMAN_BRANCH`로도 나가므로 cmd 아래에서는 실행하지 않는다 (D26, R1).
+    REQUIRE(fixture.last_log(u8"alpha").text == u8"[브랜치 출력] 실행하지 않습니다: cmd.exe에 내보내는 GITMAN_BRANCH 값에 cmd가 다시 해석하는 문자(&)가 있습니다.");
     REQUIRE(fixture.state(u8"alpha", u8"echo").failed);
 
     // 메타 문자가 없는 값은 통과한다.
     fixture.run(u8"beta", u8"echo");
     REQUIRE(fixture.functions.requests.size() == 1u);
+}
+
+TEST_CASE("A cmd batch is refused when the branch it can read from GITMAN_BRANCH has cmd metacharacters", "[function_buttons][r1]")
+{
+    // 배치 안의 `echo %GITMAN_BRANCH%`는 gitman이 고칠 수 없다. 인자에 `${branch}`를 쓰지 않아도 거부한다.
+    gitman::function_button button { make_button(u8"env", u8"배치", u8"C:\\Windows\\System32\\cmd.exe") };
+    button.args = { u8"/d", u8"/c", u8"${projectRoot}\\tools\\echo-branch.bat" };
+    function_fixture fixture { { make_project(u8"alpha"), make_project(u8"beta") }, { button } };
+    fixture.query(u8"alpha", u8"main&whoami");
+    fixture.query(u8"beta", u8"main");
+
+    fixture.run(u8"alpha", u8"env");
+    REQUIRE(fixture.functions.requests.empty());
+    REQUIRE(fixture.last_log(u8"alpha").severity == gitman::diagnostic_severity::error);
+    REQUIRE(fixture.last_log(u8"alpha").text == u8"[배치] 실행하지 않습니다: cmd.exe에 내보내는 GITMAN_BRANCH 값에 cmd가 다시 해석하는 문자(&)가 있습니다.");
+    REQUIRE(fixture.state(u8"alpha", u8"env").failed);
+
+    fixture.run(u8"beta", u8"env");
+    REQUIRE(fixture.functions.requests.size() == 1u);
+}
+
+TEST_CASE("A cmd button in an R&D document folder runs with the cmd command line it logs", "[function_buttons][r1]")
+{
+    gitman::function_button button { make_button(u8"build", u8"빌드", u8"C:\\Windows\\System32\\cmd.exe") };
+    button.args = { u8"/d", u8"/c", u8"${workspaceFolder}\\tools\\build.bat", u8"${projectName}" };
+    function_fixture fixture { { make_project(u8"alpha") }, { button }, u8"C:\\R&D\\projects.version-list" };
+    fixture.query(u8"alpha");
+
+    fixture.run(u8"alpha", u8"build");
+    REQUIRE(fixture.functions.requests.size() == 1u);
+    const gitman::process_request& command { std::get<gitman::process_request>(fixture.functions.requests.front().command) };
+    REQUIRE(command.syntax == gitman::command_line_syntax::cmd);
+    REQUIRE(command.arguments == std::vector<std::u8string> { u8"/d", u8"/c", u8"C:\\R&D\\tools\\build.bat", u8"alpha" });
+    REQUIRE(fixture.last_log(u8"alpha").text == u8"[빌드] 실행: \"C:\\Windows\\System32\\cmd.exe\" /d /s /c \"\"C:\\R&D\\tools\\build.bat\" alpha\"");
 }
 
 TEST_CASE("A program that is not allowed is refused at click time", "[function_buttons][t6]")

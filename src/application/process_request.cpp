@@ -87,6 +87,19 @@ namespace gitman {
                     diagnostics.push_back(make_invalid_request(u8"인자 " + to_u8string(index) + u8"에 NUL 문자를 포함할 수 없습니다."));
         }
 
+        // cmd 조립은 따옴표로만 보정하므로 따옴표로 지킬 수 없는 문자가 든 인자는 실행하지 않는다. 기능 버튼은
+        // logic이 먼저 거르고(4.3), 이 검사는 다른 길로 온 요청을 막는 마지막 자리다.
+        void validate_cmd_arguments(const std::vector<std::u8string>& arguments, const command_line_syntax syntax, std::vector<diagnostic>& diagnostics)
+        {
+            if (syntax != command_line_syntax::cmd)
+                return;
+            for (std::size_t index = 0; index < arguments.size(); ++index)
+            {
+                if (arguments[index].find_first_of(cmd_uncorrectable_characters) != std::u8string::npos)
+                    diagnostics.push_back(make_invalid_request(u8"인자 " + to_u8string(index) + u8"에 cmd.exe 명령줄로 보정할 수 없는 문자(% ! \" 줄바꿈)가 있습니다."));
+            }
+        }
+
         void validate_environment(const std::vector<process_environment_override>& environment_overrides, std::vector<diagnostic>& diagnostics)
         {
             for (std::size_t index = 0; index < environment_overrides.size(); ++index)
@@ -137,6 +150,7 @@ namespace gitman {
         validate_executable(request.executable, diagnostics);
         validate_working_directory(request.working_directory, diagnostics);
         validate_arguments(request.arguments, diagnostics);
+        validate_cmd_arguments(request.arguments, request.syntax, diagnostics);
         validate_environment(request.environment_overrides, diagnostics);
         validate_limits(request, diagnostics);
         return diagnostics;
@@ -148,6 +162,7 @@ namespace gitman {
         validate_executable(request.executable, diagnostics);
         validate_working_directory(request.working_directory, diagnostics);
         validate_arguments(request.arguments, diagnostics);
+        validate_cmd_arguments(request.arguments, request.syntax, diagnostics);
         validate_environment(request.environment_overrides, diagnostics);
         return diagnostics;
     }

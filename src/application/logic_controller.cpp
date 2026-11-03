@@ -1839,10 +1839,18 @@ namespace gitman {
             reject_function_run(card, button, u8"작업 폴더(cwd)가 절대 경로가 아닙니다");
             return std::nullopt;
         }
+        // cmd는 인자의 메타 문자를 따옴표로 보정해 넘기고(D27) 보정할 수 없는 문자만 거부한다. 배치 안에서 읽힐
+        // `GITMAN_BRANCH` 같은 런타임 값은 gitman이 보정할 수 없어 메타 문자가 있으면 실행하지 않는다 (D26, 4.3).
         const std::optional<cmd_injection_finding> injection { find_cmd_injection(prepared.program, prepared.arguments) };
         if (injection.has_value())
         {
             reject_function_run(card, button, cmd_injection_message(*injection));
+            return std::nullopt;
+        }
+        const std::optional<cmd_environment_finding> exported { find_cmd_environment_injection(prepared.program.text, lookup.builtins) };
+        if (exported.has_value())
+        {
+            reject_function_run(card, button, cmd_environment_injection_message(*exported));
             return std::nullopt;
         }
 

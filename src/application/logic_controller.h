@@ -289,6 +289,7 @@ namespace gitman {
         [[nodiscard]] bool reload_available() const noexcept;
         // 주 창의 닫힘 요청이다 (4.10). 실행 중인 기능 확인을 앱 종료 모드로 연다.
         void handle_request_exit();
+        void request_application_exit();
         void handle_show_notice(show_notice_intent intent);
         void handle_app_settings_loaded(app_settings_loaded_event event);
         void handle_app_settings_saved(app_settings_saved_event event);
@@ -427,7 +428,7 @@ namespace gitman {
         // 선택 카드가 있어 하단 로그 pane이 보이는 상태다. layout 계산과 view 구성이
         // 같은 판정을 써야 스크롤 한계가 어긋나지 않는다.
         [[nodiscard]] bool has_log_pane() const noexcept;
-        void handle_log_scroll(float delta, std::optional<float> offset = std::nullopt);
+        void handle_log_scroll(float delta, std::optional<float> offset = std::nullopt, std::optional<float> percent = std::nullopt);
         // 선택 카드 로그의 필터 적용 후 내용 높이다 (논리 픽셀).
         [[nodiscard]] float log_content_height() const noexcept;
         // 로그 본문 높이다 (논리 픽셀). 기능 줄 유무(`has_function_bar()`)는 카드를 훑는 판정이라 부르는 쪽이 한 번 구해 넘긴다.
@@ -985,5 +986,6 @@ namespace gitman {
         // 다시 읽기를 다시 하거나 문서를 바꾸면 지운다.
         std::optional<notice_view_model> reload_notice_ {};
         bool shutting_down_ { false };
+        bool application_exit_requested_ { false };
     };
 } // namespace gitman

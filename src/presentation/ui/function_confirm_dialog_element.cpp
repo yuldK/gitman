@@ -353,9 +353,8 @@ namespace gitman::ui {
             std::make_unique<luil::text_button_element>(
                 ui_element_id { kind_function_confirm_dialog_confirm }, luil::text_button_config { .text = dialog_.confirm_label, .visual = luil::text_button_visual::accent }),
         };
-        // 앱 종료에서 연 실행 중인 기능 확인은 UI thread의 앱 끝내기 명령을 곧바로 낸다 (4.10). 종료는 주 창의 닫힘 훅을
-        // 받아 간 뒤라 logic이 끝낼 길이 없고, 끝내기는 그 훅을 비켜 기존 종료 순서(`cancel`이 출력 수집 기능을 취소 →
-        // close → worker join)를 밟는다.
+        // 사용자가 승인한 앱 종료 확인은 UI thread의 끝내기 명령을 곧바로 낸다 (4.10). 저장 성공 뒤 자동 종료는 driver가
+        // 같은 명령을 낸다. 둘 다 닫힘 훅을 비켜 기존 종료 순서(`cancel`이 출력 수집 기능을 취소 → close → worker join)를 밟는다.
         if (dialog_.exit_application)
         {
             confirm->set_action(ui_trigger::left_click

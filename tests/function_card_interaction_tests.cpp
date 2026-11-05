@@ -400,6 +400,30 @@ TEST_CASE("Pressing a card function button makes its card the focus card", "[fun
     REQUIRE(fixture.menu().items.empty() == false);
 }
 
+TEST_CASE("An accessible card function click makes its card the shortcut target", "[function_buttons][d36][ui][interaction]")
+{
+    // D36: UIA가 실행을 배분한 뒤 보내는 클릭 알림도 마우스와 같은 카드로 잇는다. Tab 자리가 아닌 기능 버튼이라
+    // luil 초점은 비어 있고, 선택한 카드도 그대로인 상태에서 다음 Alt 단축키의 대상만 누른 카드가 되어야 한다.
+    function_card_fixture fixture { make_function_card_projects(3), shortcut_buttons() };
+    fixture.controller.handle(gitman::select_card_intent { gitman::project_id { u8"p00" } });
+    const auto tree { fixture.tree() };
+    interaction_harness harness { tree };
+    const luil::ui_element_id button { ui::kind_card_function, u8"p01:a" };
+    const luil::ui_element* const element { tree->find(button) };
+    REQUIRE(element != nullptr);
+    const auto actions { luil::plan_access_request(*element, { luil::access_command::invoke }) };
+    REQUIRE(actions.has_value());
+    REQUIRE(forward(fixture, *actions));
+    REQUIRE(harness.process(luil::access_click_event { button }).empty());
+    REQUIRE(fixture.functions.requests.size() == 1u);
+    REQUIRE(submitted_card(fixture, 0) == u8"p01");
+    REQUIRE(harness.snapshot().focused == luil::ui_element_id {});
+    REQUIRE(harness.policy.focused_card() == std::optional<gitman::project_id> { gitman::project_id { u8"p01" } });
+    REQUIRE(shortcut_target(harness, luil::key_code::key_2) == std::optional<std::u8string> { u8"p01" });
+    REQUIRE(shortcut_target(harness, luil::key_code::arrow_down) == std::optional<std::u8string> { u8"p01" });
+    REQUIRE(fixture.snapshot()->selected == std::optional<gitman::project_id> { gitman::project_id { u8"p00" } });
+}
+
 TEST_CASE("Shift+F10 on a focused more button opens that card's menu", "[function_buttons][t9][ui][interaction]")
 {
     // luil이 policy보다 먼저 초점의 조상에서 우클릭 액션을 찾는다 (2.3.4). `⋯`의 조상은 카드 body라 그 카드의
@@ -625,10 +649,14 @@ TEST_CASE("The function menu default key is the first enabled function only whil
     REQUIRE(root != nullptr);
     REQUIRE(root->config().default_key == u8"run_function:build");
 
-    // 메뉴를 열고 Enter 한 번이면 그 기능이 실행된다.
+    // `⋯`에서 누른 채 둔 Enter가 메뉴로 이어져도 실행하지 않고, 새로 누른 Enter 한 번에만 그 기능이 실행된다.
     {
         interaction_harness harness { fixture.tree() };
         harness.controller.set_surface_trees({ { popup.id, popup.tree } });
+        luil::key_pressed_event repeated { luil::key_code::enter };
+        repeated.repeat = true;
+        REQUIRE(harness.process(repeated).empty());
+        REQUIRE(fixture.functions.requests.empty());
         const auto actions { harness.process(luil::key_pressed_event { luil::key_code::enter }) };
         const auto* const select { as_intent<gitman::select_context_menu_item_intent>(actions) };
         REQUIRE(select != nullptr);

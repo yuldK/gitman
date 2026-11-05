@@ -799,6 +799,8 @@ namespace gitman {
         // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있어 창을 닫기 전에 확인을 받아야 한다 (function-buttons-design
         // 4.10, D28). driver가 이 값일 때만 frame의 닫힘 훅을 건다. 분리 실행만 있으면 묻지 않는다.
         bool exit_needs_confirmation { false };
+        // 저장을 기다리던 닫기 요청을 마쳤다. driver가 UI thread에 종료 명령을 한 번만 넘긴다.
+        bool application_exit_requested { false };
         bool shutting_down { false };
     };
 } // namespace gitman

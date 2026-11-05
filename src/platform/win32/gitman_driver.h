@@ -94,6 +94,11 @@ namespace gitman::win32 {
         std::unique_ptr<function_execution_pool> function_pool_ {};
         std::unique_ptr<logic_controller> controller_ {};
 
+        // host는 logic join 뒤에 사라진다. UI thread의 bind·종료와 logic의 명령 게시 사이에서 포인터만 원자적으로 나른다.
+        std::atomic<luil::win32::app_host*> host_ { nullptr };
+        // logic thread 전용이다. 같은 종료 상태로 frame을 다시 지어도 명령은 한 번만 낸다.
+        bool exit_command_posted_ { false };
+
         // 종료가 시작됐다. UI thread의 `cancel()`이 세우고 logic thread가 읽는다.
         std::atomic<bool> shutting_down_ { false };
         // close intent를 처리해 종료 저장까지 내보냈다.

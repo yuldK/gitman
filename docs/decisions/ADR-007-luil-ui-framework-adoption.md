@@ -119,6 +119,16 @@ Skia 취득 측면에서 ADR-006의 구성은 submodule 10개(그중 ICU는
 - 시작 실패 메시지 상자의 제목·첫 문단을 `window_config::startup_error`로 한국어로
   정한다 (설계 2.4의 "한국어 브랜딩 메시지가 사라진다"를 되돌린다).
 
+## 갱신 (2026-11-05)
+
+- 사용자 지정 요청 브랜치 `claude/blissful-mccarthy-1bmvzg`의 최신
+  `077262ec8abfab9d06c3fe926d1c5bef724dc283`으로 핀을 옮긴다. 요청 구현 `91ab3c9`와
+  긴 popup 좌표 보정 `077262e`를 함께 소비한다. Skia 157 패키지와 WebView OFF는 유지한다.
+- 같은 날 확인한 luil main `0e3927e`는 요청 브랜치를 포함하지 않는다. 이번 선택은 main
+  최신판으로의 이동이 아니라 사용자가 완료한 요청판으로의 이동이다.
+- 자동 적용과 앱 연결이 필요한 항목, 검증 결과는
+  [요청 완료판 검증](../verification/2026-11-05-luil-requests.md)에 기록한다.
+
 ## 근거 자료
 
 - luil `docs/concepts/consumer-contract.md`, `docs/concepts/build-system.md`,

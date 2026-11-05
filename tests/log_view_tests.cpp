@@ -427,6 +427,10 @@ TEST_CASE("A short log hides the pane scrollbar", "[log][ui]")
     const luil::ui_element* const scrollbar { find(*tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log) };
     REQUIRE(scrollbar != nullptr);
     REQUIRE(scrollbar->visible() == false);
+    const auto scroll { find(*tree, gitman::ui::kind_log_lines, u8"alpha")->accessibility().scroll };
+    REQUIRE(scroll.has_value());
+    REQUIRE(scroll->vertical_percent == luil::access_no_scroll);
+    REQUIRE(scroll->vertical_view_size == 100.0f);
 }
 
 TEST_CASE("The wheel over the log pane scrolls the log instead of the list", "[log][ui]")
@@ -636,8 +640,7 @@ TEST_CASE("Setting a published log scrollbar to its own end follows even after m
     REQUIRE(middle != nullptr);
     REQUIRE(middle->offset == std::optional<float> { stale_end - 40.0f });
 
-    // 한계(S4 검토, luil 요청 후보): 보조 기술이 옛 발행본에서 읽은 끝을 새 발행본의 막대에 정하면 그 값은 끝보다 앞이라
-    // 그 자리에 서고 따라가기가 꺼진다. 막대 값만으로는 "끝"을 실을 수 없다 — luil에 Scroll 패턴(`SetScrollPercent`)이 없다.
+    // RangeValue의 한계: 옛 끝을 새 막대에 정하면 그 픽셀에 선다. 끝을 뜻하려면 아래 Scroll 백분율 경로를 쓴다.
     fixture.controller.handle(gitman::log_scroll_intent { 0.0f, 0.0f });
     const auto read_tree { make_tree(*fixture.controller.make_view_snapshot()) };
     const float read_end { find(*read_tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log)->accessibility().range->maximum };
@@ -655,4 +658,47 @@ TEST_CASE("Setting a published log scrollbar to its own end follows even after m
     // 값을 정하는 길이 NaN을 보내도 스크롤 값에 남지 않는다 (S4 검토). luil의 범위 확인은 NaN을 거르지 않는다.
     fixture.controller.handle(gitman::log_scroll_intent { 0.0f, std::numeric_limits<float>::quiet_NaN() });
     REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == read_end);
+}
+
+TEST_CASE("Log Scroll percentages use the latest length and keep following at 100 percent", "[function_buttons][luil_followup][log][ui]")
+{
+    log_fixture fixture {};
+    add_long_log(fixture);
+    const auto tree { make_tree(*fixture.controller.make_view_snapshot()) };
+    const luil::ui_element* const list { find(*tree, gitman::ui::kind_log_lines, u8"alpha") };
+    REQUIRE(list != nullptr);
+    const auto state { list->accessibility().scroll };
+    REQUIRE(state.has_value());
+    REQUIRE(state->horizontal_percent == luil::access_no_scroll);
+    REQUIRE(state->vertical_percent == 100.0f);
+    REQUIRE(state->vertical_view_size > 0.0f);
+    REQUIRE(state->vertical_view_size < 100.0f);
+    const auto middle { luil::plan_access_request(*list, { .command = luil::access_command::set_scroll_percent, .vertical_percent = 50.0f }) };
+    const auto end { luil::plan_access_request(*list, { .command = luil::access_command::set_scroll_percent, .vertical_percent = 100.0f }) };
+    REQUIRE(middle.has_value());
+    REQUIRE(end.has_value());
+    REQUIRE(as_intent<gitman::log_scroll_intent>(*middle)->percent == 50.0f);
+
+    // 읽은 발행본 뒤에 출력이 늘어도 처리하는 순간의 길이에서 중간과 끝을 찾는다.
+    add_long_log(fixture);
+    const auto longer { make_tree(*fixture.controller.make_view_snapshot()) };
+    const float maximum { find(*longer, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_log)->accessibility().range->maximum };
+    fixture.controller.handle(*as_intent<gitman::log_scroll_intent>(*middle));
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == maximum * 0.5f);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->auto_scroll == false);
+    add_long_log(fixture);
+    fixture.controller.handle(*as_intent<gitman::log_scroll_intent>(*end));
+    REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset > maximum);
+    REQUIRE(fixture.controller.make_view_snapshot()->log->auto_scroll);
+
+    // 같은 100%도 실행한다. 흐르는 로그를 따라가는 절대 명령이라 현재 값과 같아도 생략하지 않는다.
+    REQUIRE(luil::plan_access_request(*list, { .command = luil::access_command::set_scroll_percent, .vertical_percent = 100.0f })->empty() == false);
+    REQUIRE(luil::plan_access_request(*list, { .command = luil::access_command::set_scroll_percent })->empty());
+    for (const float invalid : { -2.0f, 101.0f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
+    {
+        REQUIRE(luil::plan_access_request(*list, { .command = luil::access_command::set_scroll_percent, .vertical_percent = invalid }).has_value() == false);
+        const float before { fixture.controller.make_view_snapshot()->log->scroll_offset };
+        fixture.controller.handle(gitman::log_scroll_intent { .percent = invalid });
+        REQUIRE(fixture.controller.make_view_snapshot()->log->scroll_offset == before);
+    }
 }

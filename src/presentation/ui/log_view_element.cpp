@@ -15,7 +15,9 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <memory>
@@ -90,6 +92,8 @@ namespace gitman::ui {
                 : ui_element { ui_element_id { kind_log_lines, log.card.value } }
                 , name_ { log_list_access_name(log) }
                 , scroll_offset_ { log.scroll_offset }
+                , viewport_height_ { std::max(0.0f, viewport_height) }
+                , content_height_ { static_cast<float>(log.lines.size()) * layout_log_line_height() + layout_log_text_inset * 2.0f }
             {
                 set_tab_stop(false);
                 // 걸친 줄은 본문 위로 한 줄 높이까지 나간다. 자르지 않으면 그 사각형(UIA BoundingRectangle)이 헤더와 겹치고,
@@ -128,12 +132,34 @@ namespace gitman::ui {
 
             [[nodiscard]] access_info accessibility() const override
             {
-                return { .role = access_role::list, .name = name_ };
+                access_info info { .role = access_role::list, .name = name_ };
+                luil::access_scroll_state scroll {};
+                const float maximum { content_height_ - viewport_height_ };
+                if (maximum > 0.0f && viewport_height_ > 0.0f)
+                {
+                    scroll.vertical_percent = std::clamp(scroll_offset_ / maximum * 100.0f, 0.0f, 100.0f);
+                    scroll.vertical_view_size = std::clamp(viewport_height_ / content_height_ * 100.0f, 0.0f, 100.0f);
+                }
+                info.scroll = scroll;
+                return info;
+            }
+
+            [[nodiscard]] std::optional<std::vector<input_action>> access_actions(const luil::access_request& request) const override
+            {
+                if (request.command != luil::access_command::set_scroll_percent)
+                    return ui_element::access_actions(request);
+                if (request.vertical_percent == luil::access_no_scroll)
+                    return std::vector<input_action> {};
+                if (std::isfinite(request.vertical_percent) == false || request.vertical_percent < 0.0f || request.vertical_percent > 100.0f)
+                    return std::nullopt;
+                return std::vector<input_action> { make_logic_action(log_scroll_intent { .percent = request.vertical_percent }) };
             }
 
         private:
             std::u8string name_ {};
             float scroll_offset_ { 0.0f };
+            float viewport_height_ { 0.0f };
+            float content_height_ { 0.0f };
         };
     } // namespace
 

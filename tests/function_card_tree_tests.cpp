@@ -762,6 +762,56 @@ TEST_CASE("An absolute card list offset scrolls there within the limit", "[funct
     REQUIRE(gitman::scroll_target(10.0f, 5.0f, 0.0f) == 0.0f);
 }
 
+TEST_CASE("Function status changes are polite live regions and elapsed time is silent", "[function_buttons][luil_followup][ui][tree]")
+{
+    for (const std::u8string_view button_id : { u8"build", u8"lint" })
+    {
+        function_card_fixture fixture { make_function_card_projects(1), sample_buttons() };
+        fixture.controller.handle(gitman::select_card_intent { gitman::project_id { u8"p00" } });
+        const auto before { fixture.tree() };
+        const luil::ui_element_id target { button_id == u8"build" ? ui::kind_card_function : ui::kind_function_bar_button, ui::card_function_owner(u8"p00", button_id) };
+        REQUIRE(luil::access_info_of(*before->find(target)).live == luil::access_live::polite);
+        fixture.run(u8"p00", button_id);
+        REQUIRE(fixture.functions.requests.size() == 1u);
+        const auto running { fixture.tree() };
+        const auto running_access { luil::make_access_snapshot(*running) };
+        const auto began { luil::diff_access_snapshots(luil::make_access_snapshot(*before), running_access) };
+        const auto announced = [&target](const std::vector<luil::access_change>& changes)
+        {
+            return std::ranges::any_of(changes, [&target](const luil::access_change& change)
+                {
+                    return change.kind == luil::access_change_kind::live_region && change.id == target;
+                }
+            );
+        };
+        REQUIRE(announced(began));
+        auto timer_view { *fixture.snapshot() };
+        timer_view.cards.front().running_function_started_at = at(-90000);
+        const auto timer { luil::diff_access_snapshots(running_access, luil::make_access_snapshot(*make_tree(timer_view))) };
+        REQUIRE(std::ranges::none_of(timer, [](const luil::access_change& change)
+            {
+                return change.kind == luil::access_change_kind::live_region;
+            }
+        ));
+        REQUIRE(luil::access_info_of(*find(*running, ui::kind_log_lines, u8"p00")).live == luil::access_live::off);
+        fixture.completed(fixture.functions.requests.front(), gitman::function_run_outcome::exited, 1);
+        const auto failed { fixture.tree() };
+        REQUIRE(announced(luil::diff_access_snapshots(running_access, luil::make_access_snapshot(*failed))));
+
+        auto notice_view { *fixture.snapshot() };
+        notice_view.notices.push_back({ u8"저장하지 못했습니다", {} });
+        const auto notice_tree { make_tree(notice_view) };
+        const luil::ui_element* const notice { find(*notice_tree, ui::kind_notice) };
+        REQUIRE(luil::access_info_of(*notice).live == luil::access_live::polite);
+        const auto notices { luil::diff_access_snapshots(luil::make_access_snapshot(*failed), luil::make_access_snapshot(*notice_tree)) };
+        REQUIRE(std::ranges::any_of(notices, [](const luil::access_change& change)
+            {
+                return change.kind == luil::access_change_kind::live_region && change.id.kind == ui::kind_notice;
+            }
+        ));
+    }
+}
+
 TEST_CASE("The running reason picks the subject particle from the label's last syllable", "[function_buttons][s6][ui][tree]")
 {
     // 앱 점검에서 `기능 "핑"가 실행 중입니다`가 나왔다 (S6). 받침이 있는 한글 끝 글자는 `이`, 없으면 `가`다.

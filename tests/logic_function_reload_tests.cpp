@@ -1008,7 +1008,7 @@ TEST_CASE("Exiting during a save waits for its result within a time limit", "[fu
     REQUIRE(dialog.has_value());
     REQUIRE(dialog->exit_application);
     REQUIRE(dialog->subject == u8"문서를 저장하는 중입니다");
-    REQUIRE(dialog->description == std::vector<std::u8string> { u8"저장이 끝나면 종료할 수 있습니다." });
+    REQUIRE(dialog->description == std::vector<std::u8string> { u8"저장이 끝나면 종료합니다." });
     REQUIRE(dialog->confirm_label == u8"종료");
     REQUIRE(dialog->confirm_enabled == false);
     // 누를 수 없는 확인 버튼이다. 취소는 그대로 누를 수 있다.
@@ -1025,16 +1025,27 @@ TEST_CASE("Exiting during a save waits for its result within a time limit", "[fu
     const std::optional<std::chrono::steady_clock::time_point> deadline { fixture.controller.next_tick() };
     REQUIRE(deadline.has_value());
 
-    SECTION("저장이 성공하면 바로 종료할 수 있다")
+    SECTION("저장이 성공하면 다시 묻지 않고 종료를 요청한다")
     {
         fixture.saved_ok(save_id);
         dialog = fixture.dialog();
-        REQUIRE(dialog.has_value());
-        REQUIRE(dialog->confirm_enabled);
-        REQUIRE(dialog->confirm_label == u8"종료");
-        REQUIRE(dialog->unsaved_changes == false);
+        REQUIRE(dialog.has_value() == false);
+        REQUIRE(fixture.snapshot()->application_exit_requested);
         REQUIRE(fixture.controller.next_tick().has_value() == false);
         REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
+    }
+
+    SECTION("이어 나갈 저장이 있으면 마지막 성공까지 기다린다")
+    {
+        fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p01" }, gitman::project_id { u8"p00" }, true });
+        fixture.saved_ok(save_id);
+        REQUIRE(fixture.snapshot()->application_exit_requested == false);
+        REQUIRE(fixture.dialog()->confirm_enabled == false);
+        const std::uint64_t next_save { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+        REQUIRE(next_save != save_id);
+        fixture.saved_ok(next_save);
+        REQUIRE(fixture.snapshot()->application_exit_requested);
+        REQUIRE(fixture.dialog().has_value() == false);
     }
 
     SECTION("저장이 실패하면 저장하지 못한 변경 확인이 된다")
@@ -1045,6 +1056,7 @@ TEST_CASE("Exiting during a save waits for its result within a time limit", "[fu
         REQUIRE(dialog->confirm_enabled);
         REQUIRE(dialog->unsaved_changes);
         REQUIRE(dialog->confirm_label == u8"버리고 종료");
+        REQUIRE(fixture.snapshot()->application_exit_requested == false);
     }
 
     SECTION("상한 전에는 그대로 기다린다")
@@ -1073,6 +1085,28 @@ TEST_CASE("Exiting during a save waits for its result within a time limit", "[fu
         fixture.controller.handle(gitman::cancel_function_run_intent {});
         REQUIRE(fixture.dialog().has_value() == false);
         REQUIRE(fixture.controller.next_tick().has_value() == false);
+        fixture.saved_ok(save_id);
+        REQUIRE(fixture.snapshot()->application_exit_requested == false);
+    }
+
+    SECTION("상한 뒤에도 취소하지 않았으면 성공한 저장 뒤 종료한다")
+    {
+        fixture.controller.tick(*deadline);
+        fixture.saved_ok(save_id);
+        REQUIRE(fixture.snapshot()->application_exit_requested);
+        REQUIRE(fixture.dialog().has_value() == false);
+    }
+
+    SECTION("실행 중인 기능이 있으면 저장 성공 뒤에도 확인을 받는다")
+    {
+        fixture.controller.handle(gitman::cancel_function_run_intent {});
+        fixture.run(u8"p00", u8"build");
+        REQUIRE(fixture.functions.requests.size() == 1u);
+        fixture.controller.handle(gitman::request_exit_intent {});
+        fixture.saved_ok(save_id);
+        REQUIRE(fixture.snapshot()->application_exit_requested == false);
+        REQUIRE(fixture.dialog()->confirm_enabled);
+        REQUIRE(fixture.dialog()->confirm_label == u8"중지하고 종료");
     }
 }
 
@@ -1338,12 +1372,8 @@ TEST_CASE("Exit asks while a capture runs and its confirm button ends the applic
         fixture.completed(fixture.functions.requests.front(), gitman::function_run_outcome::exited, 0);
         REQUIRE(fixture.snapshot()->exit_needs_confirmation == false);
         fixture.controller.handle(gitman::request_exit_intent {});
-        REQUIRE(fixture.dialog().has_value());
-        REQUIRE(fixture.dialog()->items.empty());
-        REQUIRE(fixture.dialog()->subject == u8"실행 중인 기능이 없습니다");
-        // 안내는 대상 줄을 되풀이하지 않는다. 훅을 건 까닭이 저장하지 못한 변경일 수도 있어 원인은 말하지 않는다 (R2 검토).
-        REQUIRE(fixture.dialog()->description == std::vector<std::u8string> { u8"지금은 멈출 기능이 없어 바로 종료할 수 있습니다." });
-        REQUIRE(fixture.dialog()->confirm_label == u8"종료");
+        REQUIRE(fixture.dialog().has_value() == false);
+        REQUIRE(fixture.snapshot()->application_exit_requested);
     }
 
     SECTION("다른 dialog의 확인은 logic intent 그대로다")

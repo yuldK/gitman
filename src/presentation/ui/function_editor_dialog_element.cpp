@@ -743,7 +743,7 @@ namespace gitman::ui {
             add_child(std::make_unique<editor_text_element>(u8"preview", access_role::static_text, preview_access_name(dialog_)));
         else
             add_child(std::make_unique<editor_text_element>(u8"variables", access_role::static_text, variables_access_name(dialog_)));
-        // 거절·검증 사유다. luil에는 알림(live region) 경로가 없어 alert 역할의 글로 둔다.
+        // 거절·검증 사유다. alert 역할은 luil이 assertive live region으로 알려 곧바로 읽는다.
         if (dialog_.message.empty() == false)
             add_child(std::make_unique<editor_text_element>(u8"message", access_role::alert, dialog_.message));
 

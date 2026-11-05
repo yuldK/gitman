@@ -36,7 +36,8 @@ namespace {
         gitman::ui::gitman_policy policy {};
         luil::win32::app_host host { luil::win32::app_host::config {}, driver, &policy };
 
-        driver_harness()
+        explicit driver_harness(luil::win32::app_host::config config = {})
+            : host { std::move(config), driver, &policy }
         {
             // `gitman_delegate::on_started`와 같은 순서다. bind가 먼저라야 묶이기
             // 전에 끝난 worker 결과도 깨우기를 받는다.
@@ -430,4 +431,31 @@ TEST_CASE("Messages that are not logic messages are ignored", "[driver][frame]")
     driver.handle(luil::app_message { std::u8string { u8"not a logic message" } });
     REQUIRE(driver.shutdown_completed() == false);
     REQUIRE(driver.make_frame() != nullptr);
+}
+
+TEST_CASE("A logic exit request reaches the host UI queue exactly once", "[driver][luil_followup]")
+{
+    luil::win32::app_host::config config {};
+    config.wake.ui_command = []
+    {
+    };
+    driver_harness harness { std::move(config) };
+    harness.post(gitman::request_exit_intent {});
+    const auto requested { harness.wait_for_view(std::chrono::milliseconds { 5000 }, [](const gitman::view_snapshot& view)
+        {
+            return view.application_exit_requested;
+        })
+    };
+    REQUIRE(requested != nullptr);
+    REQUIRE(requested->function_confirm_dialog.has_value() == false);
+    REQUIRE(harness.host.take_ui_commands() == std::vector<luil::ui_command> { luil::ui_command::application_exit });
+
+    // 빈 메시지도 다음 frame을 짓는다. 같은 종료 상태를 다시 게시해도 명령은 더 나오지 않는다.
+    harness.host.post_app_message(luil::app_message {});
+    REQUIRE(harness.wait_for_view(std::chrono::milliseconds { 5000 }, [&requested](const gitman::view_snapshot& view)
+        {
+            return &view != requested.get();
+        }) != nullptr
+    );
+    REQUIRE(harness.host.take_ui_commands().empty());
 }

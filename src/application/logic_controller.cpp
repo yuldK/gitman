@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -569,6 +570,11 @@ namespace gitman {
 
     void logic_controller::handle(logic_message message)
     {
+        // UI thread가 종료 명령을 받는 사이의 늦은 입력으로 새 변경을 만들지 않는다. 창 배치는 기존 종료 순서가 close보다
+        // 먼저 보내므로 받아 두고, close는 종료 저장까지 처리한다.
+        if (application_exit_requested_ && std::holds_alternative<close_intent>(message) == false
+            && std::holds_alternative<window_placement_intent>(message) == false)
+            return;
         std::visit(
             [this](auto&& value) {
                 using value_type = std::decay_t<decltype(value)>;
@@ -630,7 +636,7 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, set_log_auto_scroll_intent>)
                     log_auto_scroll_ = value.enabled;
                 else if constexpr (std::is_same_v<value_type, log_scroll_intent>)
-                    handle_log_scroll(value.delta, value.offset);
+                    handle_log_scroll(value.delta, value.offset, value.percent);
                 else if constexpr (std::is_same_v<value_type, begin_switch_intent>)
                     handle_begin_switch(value);
                 else if constexpr (std::is_same_v<value_type, select_switch_candidate_intent>)
@@ -1327,7 +1333,7 @@ namespace gitman {
         return body > 0.0f ? body : 0.0f;
     }
 
-    void logic_controller::handle_log_scroll(const float delta, const std::optional<float> offset)
+    void logic_controller::handle_log_scroll(const float delta, const std::optional<float> offset, const std::optional<float> percent)
     {
         if (has_log_pane() == false)
             return;
@@ -1337,6 +1343,13 @@ namespace gitman {
             maximum = 0.0f;
         // 따라가는 중이면 지금 자리는 끝이다. 막대 값으로 정한 절대 자리(`offset`)는 그것을 보지 않는다 (S4).
         float next { scroll_target(log_auto_scroll_ ? maximum : log_scroll_offset_, delta, offset) };
+        if (percent.has_value())
+        {
+            if (std::isfinite(*percent) == false || *percent < 0.0f || *percent > 100.0f)
+                return;
+            // 발행본의 픽셀이 아니라 처리하는 순간의 길이에서 잰다. 100은 그 뒤에도 끝을 따라간다.
+            next = maximum * (*percent / 100.0f);
+        }
         if (next < 0.0f)
             next = 0.0f;
         if (next > maximum)
@@ -1448,7 +1461,8 @@ namespace gitman {
             else
                 change_document_now(change.action, change.path);
         }
-        // 저장을 기다리던 앱 종료 확인이다 (S3). 결과가 오면 기다림을 풀고 아래에서 dialog를 다시 지어 확인 버튼을 살린다.
+        // 종료를 막던 저장이 모두 성공했고 멈출 기능도 없으면 처음 닫기 요청을 마친다. 실패나 실행 중인 기능이 남으면
+        // 확인을 유지한다. 취소한 기다림은 여기 들어오지 않는다.
         const bool exit_wait_settled { exit_confirm_waiting_for_save() && save_in_progress() == false };
         if (save_in_progress() == false)
         {
@@ -1457,9 +1471,14 @@ namespace gitman {
         }
         if (exit_wait_settled)
         {
-            const float scroll_offset { function_confirm_->view.scroll_offset };
-            function_confirm_->view = build_running_function_view(function_confirm_->action);
-            function_confirm_->view.scroll_offset = scroll_offset;
+            if (has_unsaved_changes() == false && running_capture_count() == 0)
+                request_application_exit();
+            else
+            {
+                const float scroll_offset { function_confirm_->view.scroll_offset };
+                function_confirm_->view = build_running_function_view(function_confirm_->action);
+                function_confirm_->view.scroll_offset = scroll_offset;
+            }
         }
         // 떠 있는 실행 중인 기능 확인은 열 때의 상태로 지었다. 저장이 진행 중일 때 열었으면 저장하지 못한 변경을 싣지
         // 않았으므로, 그 저장이 실패했으면 다시 지어 확인 전에 그 변경도 사라진다는 것을 보인다 (D28, R2 검토). 저장
@@ -3143,12 +3162,15 @@ namespace gitman {
 
     void logic_controller::handle_request_exit()
     {
-        if (shutting_down_)
+        if (shutting_down_ || application_exit_requested_)
             return;
-        // driver는 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있을 때만 닫힘 훅을 건다. 그 frame을 게시한 뒤
-        // 기능이 끝났으면 실행 중인 것이 없다는 dialog가 뜬다 — logic은 UI thread의 끝내기 명령을 낼 수 없어 확인 버튼에 맡긴다.
-        // 저장이 진행 중이면 그 결과를 보기 전에 끝내지 않게 확인 버튼을 막고 결과를 기다린다. logic은 성공해도 스스로 끝낼 수
-        // 없으므로 결과가 오면 dialog를 다시 지어 버튼을 살린다. 저장이 매달려도 상한 뒤에는 기다리지 않고 끝낼 수 있다 (S3, 4.10).
+        // 닫힘 훅을 건 frame 뒤에 기능이나 저장이 끝났으면 더 묻지 않고 그 닫기를 마친다. 아직 저장 중이면 결과를 기다리고,
+        // 저장이 매달려도 상한 뒤에는 기다리지 않고 끝낼 수 있다 (S3, 4.10).
+        if (save_in_progress() == false && has_unsaved_changes() == false && running_capture_count() == 0)
+        {
+            request_application_exit();
+            return;
+        }
         // 닫기를 거듭 눌러도 상한은 처음 누른 때부터다. 저장을 기다리던 닫기·다른 문서 열기는 종료가 대신한다 — 남기면
         // 저장이 끝날 때 문서를 바꾸며 이 dialog를 닫는다.
         change_after_save_.reset();
@@ -3175,6 +3197,14 @@ namespace gitman {
         state.view = build_running_function_view(running_function_action::exit_application);
         context_menu_.reset();
         function_confirm_ = { std::move(state) };
+    }
+
+    void logic_controller::request_application_exit()
+    {
+        application_exit_requested_ = true;
+        function_confirm_.reset();
+        exit_save_deadline_.reset();
+        exit_save_wait_expired_ = false;
     }
 
     std::size_t logic_controller::running_capture_count() const noexcept
@@ -3420,7 +3450,7 @@ namespace gitman {
             view.subject = u8"문서를 저장하는 중입니다";
             if (waiting)
             {
-                view.description = { std::u8string { waiting_text } };
+                view.description = { u8"저장이 끝나면 종료합니다." };
                 view.confirm_label = u8"종료";
                 view.confirm_enabled = false;
             }
@@ -6001,7 +6031,10 @@ namespace gitman {
         snapshot->shutting_down = shutting_down_;
         // 출력 수집 기능이 실행 중이거나 저장하지 못한 변경이 있으면 창을 닫기 전에 묻는다 (function-buttons-design 4.10, D28).
         // 진행 중·대기 중인 저장도 닫힘을 받는다. 받지 않으면 종료가 그 결과를 버려 실패한 변경이 말없이 사라진다 (S3, 4.10).
-        snapshot->exit_needs_confirmation = shutting_down_ == false && (running_capture_count() > 0 || has_unsaved_changes() || (document_.has_value() && save_in_progress()));
+        snapshot->exit_needs_confirmation = shutting_down_ == false && application_exit_requested_ == false
+            && (running_capture_count() > 0 || has_unsaved_changes() || (document_.has_value() && save_in_progress()))
+        ;
+        snapshot->application_exit_requested = application_exit_requested_;
         snapshot->cards = build_ordered_cards();
 
         // 선택 카드의 로그 뷰다. 필터를 통과한 record만 담고 스크롤은 이미 고정된

@@ -1,5 +1,28 @@
 # 변경 이력
 
+## 2026-11-05 - luil 요청 완료판 갱신
+
+### 앱 연결 후속
+
+- 사용자 진행 지시로 배너·기능 상태 live region, 로그 Scroll 백분율, 저장 성공 후 자동 종료를 연결했다.
+  로그·경과 시간의 반복 낭독은 피하고, 저장 실패·취소·연속 저장·실행 중인 기능의 확인은 유지한다.
+- UIA에서 흐르는 로그의 0%·100%와 LiveRegionChanged 수신을 확인했다. 새 회귀 검사 셋을 더했고,
+  Debug·Release 전체 CTest 각 1210건 중 통과 1207·건너뜀 3·실패 0이다. 현재 기록과 커밋 제안은
+  [앱 연결 검증](verification/2026-11-05-luil-integration.md)에 있다.
+
+### 앞선 핀 갱신
+
+- luil 핀을 `d87096b`에서 사용자 지정 `claude/blissful-mccarthy-1bmvzg`의 최신 `077262e`로
+  옮겼다. 요청 구현과 긴 popup 좌표 보정을 포함하며 Skia 패키지 핀은 그대로다. luil main
+  `0e3927e`에는 아직 이 요청 브랜치가 없다.
+- 접근 클릭 뒤 카드 단축키 대상(D36)과 메뉴 Enter 자동 반복을 Gitman 상호작용 검사에 더했다.
+  Gitman production code는 바꾸지 않았다.
+- 설명서의 Windows 텍스트 크기·긴 메뉴·반복 Enter 동작을 맞췄다. 일반 상태 낭독, 로그 Scroll
+  백분율, 저장 완료 후 종료 명령은 앱 연결 후속으로 남긴다.
+- 근거와 검증은 [요청 완료판 검증](verification/2026-11-05-luil-requests.md)에 있다.
+- Debug·Release 전체 CTest 각 1207건(통과 1204, 건너뜀 3, 실패 0), UIA 기능 실행·중지와
+  IsEnabled·HelpText 알림, 소스 스타일과 설명서 HTML 일치 검사를 통과했다.
+
 ## 2026-11-02 ~ 2026-11-04 - 저장소 카드의 기능 버튼 (feature/function-buttons)
 
 ### 사용자 지시

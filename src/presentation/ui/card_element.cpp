@@ -152,6 +152,8 @@ namespace gitman::ui {
             button->set_tooltip(function_button_tooltip(function));
             // 경과 시간이 없는 고정 이름이다. 초마다 바뀌면 낭독이 되풀이된다 (2.3.4).
             button->set_access_name(function_button_access_name(function, card_.display_name));
+            // 글과 사유만 알린다. 경과 시간은 접근 이름에 없으므로 매초 다시 읽지 않는다.
+            button->set_live_region(luil::access_live::polite);
             // 비활성 버튼에도 액션을 단다. luil은 비활성 element의 액션을 실행하지 않고, 액션이 있어야
             // 접근 tree에 단추로 서서 비활성 기능의 이름도 읽힌다. logic이 누른 시점에 다시 판정한다.
             if (function.running)
@@ -177,6 +179,7 @@ namespace gitman::ui {
             // 상태 수는 접힘이 정해지는 배치 때 붙인다 (`arrange`).
             more->set_tooltip(function_more_tooltip({}));
             more->set_access_name(function_more_access_name(card_.display_name, card_.functions.size()));
+            more->set_live_region(luil::access_live::polite);
             // 메뉴는 `⋯`의 왼쪽 아래에 연다. 클릭 액션은 누른 점만 주므로 버튼 자신의 자리를 읽는다.
             // lambda는 element가 소유하고 tree는 게시 후 불변이라 포인터 캡처가 안전하다 (drag 출발과 같다).
             const ui_element* const anchor { more.get() };

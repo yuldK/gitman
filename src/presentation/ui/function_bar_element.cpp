@@ -62,6 +62,7 @@ namespace gitman::ui {
             // 경과 시간은 넣지 않는다. tooltip도 snapshot마다 다시 지어지므로 시간을 넣으면 접근 이름처럼 흔들린다
             // (T9의 카드 버튼과 같다). 흐르는 시간은 카드 3번째 줄 칩과 로그 헤더가 보인다.
             button->set_tooltip(function_button_tooltip(function));
+            button->set_live_region(luil::access_live::polite);
             // 비활성 버튼에도 액션을 단다. luil은 비활성 element의 액션을 실행하지 않는다 (우클릭도, `Shift+F10`도). 카드
             // 버튼처럼 logic이 누른 시점에 다시 판정한다.
             if (function.running)

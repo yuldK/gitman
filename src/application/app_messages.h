@@ -169,6 +169,8 @@ namespace gitman {
         float delta { 0.0f };
         // 막대 값으로 정한 절대 자리다 (`scroll_intent::offset`과 같다).
         std::optional<float> offset {};
+        // UIA Scroll의 절대 백분율이다. 출력이 늘어도 100은 최신 끝을 따라간다는 뜻이다.
+        std::optional<float> percent {};
     };
 
     // 카드의 switch 버튼이 여는 switch dialog다. Git은 remote-first 후보 조회를,

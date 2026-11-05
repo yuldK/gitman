@@ -135,6 +135,7 @@ namespace gitman::ui {
                 notice_config.background = luil::label_background_role::notice;
                 notice_config.padding = layout_margin;
                 auto notice { std::make_unique<luil::label_element>(ui_element_id { kind_notice }, std::move(notice_config)) };
+                notice->set_live_region(luil::access_live::polite);
                 notice->set_visible(view.notices.empty() == false);
                 if (notice_tooltip.empty() == false)
                     notice->set_tooltip(std::move(notice_tooltip));

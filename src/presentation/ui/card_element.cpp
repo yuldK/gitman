@@ -173,9 +173,8 @@ namespace gitman::ui {
             function_buttons_.push_back({ button.get(), nullptr, index });
             add_child(std::move(button));
         }
-        if (card_.functions.empty() == false)
         {
-            auto more { std::make_unique<luil::button_element>(ui_element_id { kind_card_function_more, card_.id.value }, luil::button_config { .glyph = codicons::icon_ellipsis }) };
+            auto more { std::make_unique<luil::button_element>(ui_element_id { kind_card_function_more, card_.id.value }, luil::button_config { .glyph = card_.functions.empty() ? codicons::icon_add : codicons::icon_ellipsis }) };
             // 상태 수는 접힘이 정해지는 배치 때 붙인다 (`arrange`).
             more->set_tooltip(function_more_tooltip({}));
             more->set_access_name(function_more_access_name(card_.display_name, card_.functions.size()));
@@ -184,8 +183,10 @@ namespace gitman::ui {
             // lambda는 element가 소유하고 tree는 게시 후 불변이라 포인터 캡처가 안전하다 (drag 출발과 같다).
             const ui_element* const anchor { more.get() };
             more->set_action(ui_trigger::left_click
-                , [id = card_.id, anchor](const ui_action_context&) -> std::vector<input_action>
+                , [id = card_.id, anchor, empty = card_.functions.empty()](const ui_action_context&) -> std::vector<input_action>
                 {
+                    if (empty)
+                        return { make_logic_action(open_function_editor_intent { {}, id, true }) };
                     const rect_f box { anchor->bounds() };
                     return { make_logic_action(open_function_menu_intent { id, box.x, box.y + box.height }) };
                 }
@@ -346,6 +347,11 @@ namespace gitman::ui {
         const function_more_status status { function_more_status_of(card_.functions, on_card) };
         more_->set_access_name(function_more_access_name(card_.display_name, card_.functions.size(), status));
         more_->set_tooltip(function_more_tooltip(status));
+        if (card_.functions.empty())
+        {
+            more_->set_access_name(card_.display_name + u8"에 기능 추가");
+            more_->set_tooltip(u8"이 저장소에 기능 추가");
+        }
         if (more_marker_ == nullptr)
             return;
 

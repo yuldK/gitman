@@ -284,7 +284,8 @@ TEST_CASE("A card without applicable functions keeps the previous column", "[fun
     function_card_fixture fixture { make_function_card_projects(12), { only_p00 } };
     const auto tree { fixture.tree() };
 
-    REQUIRE(find(*tree, ui::kind_card_function_more, u8"p01") == nullptr);
+    REQUIRE(find(*tree, ui::kind_card_function_more, u8"p01") != nullptr);
+    REQUIRE(find(*tree, ui::kind_card_function_more, u8"p01")->accessibility().name == u8"p01에 기능 추가");
     REQUIRE(find(*tree, ui::kind_card_function, u8"p01:build") == nullptr);
     REQUIRE(find(*tree, ui::kind_card_function_more, u8"p00") != nullptr);
     const luil::rect_f card_0 { bounds_of(*tree, ui::kind_card_body, u8"p00") };
@@ -359,7 +360,7 @@ TEST_CASE("Each card has four tab stops with functions and three without", "[fun
     without.query(u8"p02");
     const auto plain { without.tree() };
     REQUIRE(card_tab_stops(*plain, u8"p00") == 4u);
-    REQUIRE(card_tab_stops(*plain, u8"p01") == 3u);
+    REQUIRE(card_tab_stops(*plain, u8"p01") == 4u);
 }
 
 TEST_CASE("Card height stays layout_card_height with function buttons", "[function_buttons][t9][ui][tree]")
@@ -827,4 +828,29 @@ TEST_CASE("The running reason picks the subject particle from the label's last s
     REQUIRE(gitman::function_running_reason(u8"build") == u8"기능 \"build\"가 실행 중입니다");
     REQUIRE(gitman::function_running_reason(u8"빌드)") == u8"기능 \"빌드)\"가 실행 중입니다");
     REQUIRE(gitman::function_running_reason(u8"") == u8"기능 \"\"가 실행 중입니다");
+}
+
+TEST_CASE("Each repository owns three card slots and numbers its shortcuts from one", "[function_buttons][redesign][ui][tree]")
+{
+    std::vector<gitman::function_button> buttons {};
+    for (const auto project : { std::u8string_view { u8"p00" }, std::u8string_view { u8"p01" } })
+    {
+        for (const auto id : { std::u8string_view { u8"one" }, std::u8string_view { u8"two" }, std::u8string_view { u8"three" } })
+        {
+            auto button { make_function_card_button(std::u8string { project } + u8"-" + std::u8string { id }, id, u8"card") };
+            button.project_ids = std::vector<std::u8string> { std::u8string { project } };
+            buttons.push_back(std::move(button));
+        }
+    }
+    function_card_fixture fixture { make_function_card_projects(2), buttons };
+    for (const auto project : { std::u8string_view { u8"p00" }, std::u8string_view { u8"p01" } })
+    {
+        const auto card { fixture.card(project) };
+        REQUIRE(card.functions.size() == 3u);
+        for (std::size_t index = 0; index < card.functions.size(); ++index)
+        {
+            REQUIRE(card.functions[index].placement == gitman::function_placement::card);
+            REQUIRE(card.functions[index].shortcut == index + 1);
+        }
+    }
 }

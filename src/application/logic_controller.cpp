@@ -790,6 +790,8 @@ namespace gitman {
                     handle_local_changes(std::move(value));
                 else if constexpr (std::is_same_v<value_type, file_diff_event>)
                     handle_file_diff(std::move(value));
+                else if constexpr (std::is_same_v<value_type, select_settings_scope_intent>)
+                    handle_select_settings_scope(value.document_mode);
                 else if constexpr (std::is_same_v<value_type, open_settings_intent>)
                     handle_open_settings();
                 else if constexpr (std::is_same_v<value_type, set_settings_executable_intent>)
@@ -831,7 +833,10 @@ namespace gitman {
                 else if constexpr (std::is_same_v<value_type, confirm_settings_intent>)
                     handle_confirm_settings();
                 else if constexpr (std::is_same_v<value_type, cancel_settings_dialog_intent>)
+                {
                     settings_dialog_.reset();
+                    settings_scope_draft_.reset();
+                }
                 else if constexpr (std::is_same_v<value_type, window_metrics_intent>)
                 {
                     window_width_ = value.width;
@@ -956,6 +961,7 @@ namespace gitman {
         // dialog가 이전 문서의 초안을 든 채 남고 그 Apply는 문서가 없어 아무 말 없이 버려진다 (`close_document_now`와 같다).
         switch_dialog_.reset();
         settings_dialog_.reset();
+        settings_scope_draft_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
         function_focus_.reset();
@@ -1151,6 +1157,7 @@ namespace gitman {
         // 탐색을 취소하고 닫는다.
         switch_dialog_.reset();
         settings_dialog_.reset();
+        settings_scope_draft_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
         // 기능 실행 확인은 이전 문서의 카드와 정의를 가리킨다. 초점 옮기기 요청도 이전 문서의 카드 id다 — 새 문서에
@@ -1817,18 +1824,28 @@ namespace gitman {
         return state;
     }
 
+    project_definition logic_controller::function_scope_project(const card_state& card) const
+    {
+        project_definition project { card.project };
+        if (card.has_local_result && project.hint == vcs_hint::automatic)
+        {
+            if (card.snapshot.kind == repository_kind::git)
+                project.hint = vcs_hint::git;
+            else if (card.snapshot.kind == repository_kind::subversion)
+                project.hint = vcs_hint::subversion;
+        }
+        return project;
+    }
+
     std::vector<card_function_view> logic_controller::card_function_views(const card_state& card, std::span<const std::optional<function_placement>> placements) const
     {
         std::vector<card_function_view> views {};
         if (document_.has_value() == false || document_->function_buttons.has_value() == false)
             return views;
         const std::span<const function_button_entry> buttons { document_->function_buttons->buttons };
-        std::vector<std::optional<function_placement>> own_placements {};
-        if (placements.size() != buttons.size())
-        {
-            own_placements = resolve_visible_placements(buttons);
-            placements = own_placements;
-        }
+        const project_definition scope { function_scope_project(card) };
+        const std::vector<std::optional<function_placement>> own_placements { resolve_visible_placements(buttons, &scope) };
+        placements = own_placements;
 
         // 치환 값 묶음은 카드마다 한 번 만든다 (T6에서 넘어온 일). 적용 범위 밖 기능에는 쓰이지 않는다.
         const variable_lookup preview { make_function_preview_lookup(card) };
@@ -1841,9 +1858,6 @@ namespace gitman {
             if (button == nullptr || placements[index].has_value() == false)
                 continue;
             const function_placement placement { *placements[index] };
-            // `Alt+N`의 N은 문서 전체의 보이는 `card` 순서다. 이 카드에 적용되지 않는 `card`도 번호를 차지한다 (2.3.4).
-            if (placement == function_placement::card)
-                ++card_number;
             // 카드당 적용 기능은 20개까지다. 넘친 것은 그 카드에서 쓰지 않고 파서가 경고했다 (2.3.2, 3.8). 파서와 같은
             // 정적 기준으로 센다 — 조회 뒤 범위 밖이 된 `vcs` 한정 기능이 자리를 비워도 21번째가 올라오지 않는다.
             if (function_counts_toward_card(*button, card.project) == false || ++counted > maximum_functions_per_card)
@@ -1857,7 +1871,7 @@ namespace gitman {
             view.label = button->label;
             view.icon = std::u8string { button->icon_name() };
             view.placement = placement;
-            view.shortcut = placement == function_placement::card ? card_number : 0;
+            view.shortcut = placement == function_placement::card ? ++card_number : 0;
             view.enabled = state->enabled;
             view.disabled_reason = state->disabled_reason;
             view.running = state->running;
@@ -3041,6 +3055,7 @@ namespace gitman {
         // 이전 문서를 가리키던 dialog와 메뉴는 의미가 없다.
         switch_dialog_.reset();
         settings_dialog_.reset();
+        settings_scope_draft_.reset();
         local_changes_dialog_.reset();
         context_menu_.reset();
         // 기능 실행 확인과 초점 옮기기 요청은 이전 문서의 카드와 정의를 가리킨다. 편집 dialog도 같다.
@@ -3884,17 +3899,18 @@ namespace gitman {
         font_dialog_->scroll_offset = next;
     }
 
-    void logic_controller::handle_open_settings()
+    void logic_controller::handle_open_settings(const bool document_mode)
     {
         // 문서가 열려 있으면 문서 override를, 없으면 전역 설정을 편집한다 (G3.2).
         if (shutting_down_)
             return;
 
         settings_dialog_state dialog {};
-        dialog.document_mode = document_.has_value();
+        settings_scope_draft_.reset();
+        dialog.document_mode = document_mode && document_.has_value();
         // 초안은 유효 값에서 시작한다. 문서 모드에서 건드리지 않은 행은 정의되지
         // 않은 채 남아 앱 설정을 따른다.
-        const workspace_settings effective { effective_settings() };
+        const workspace_settings effective { dialog.document_mode ? effective_settings() : app_settings_.settings };
         dialog.git_path = effective.git_executable;
         dialog.svn_path = effective.svn_executable;
         if (effective.query_timeout_seconds.has_value())
@@ -3906,10 +3922,10 @@ namespace gitman {
         dialog.ignore_local_changes = effective.ignore_local_changes;
         dialog.write_log_files = effective.write_log_files;
         // 외양도 같은 초안 규칙이다 (D4). 유효 값에서 시작한다.
-        const appearance_settings appearance { effective_appearance() };
+        const appearance_settings appearance { dialog.document_mode ? effective_appearance() : app_settings_.appearance };
         dialog.theme = appearance.theme;
         dialog.accent_id = appearance.accent_id;
-        const font_settings fonts { effective_fonts() };
+        const font_settings fonts { dialog.document_mode ? effective_fonts() : app_settings_.fonts };
         dialog.ui_font_family = fonts.ui_family;
         dialog.code_font_family = fonts.code_family;
         if (dialog.document_mode)
@@ -3926,6 +3942,53 @@ namespace gitman {
             dialog.code_font_defined = document_->fonts.code_family.has_value();
         }
         settings_dialog_ = { std::move(dialog) };
+    }
+
+    void logic_controller::handle_select_settings_scope(const bool document_mode)
+    {
+        if (settings_dialog_.has_value() == false || settings_dialog_->document_mode == document_mode || (document_mode && document_.has_value() == false))
+            return;
+        const settings_tab tab { settings_dialog_->active_tab };
+        if (settings_scope_draft_.has_value())
+            std::swap(settings_dialog_, settings_scope_draft_);
+        else
+        {
+            std::optional<settings_dialog_state> previous { std::move(settings_dialog_) };
+            handle_open_settings(document_mode);
+            settings_scope_draft_ = std::move(previous);
+        }
+        settings_dialog_->active_tab = tab;
+        settings_dialog_->scroll_offset = 0.0f;
+        composition_.reset();
+        sync_settings_inheritance();
+    }
+
+    void logic_controller::sync_settings_inheritance()
+    {
+        if (settings_dialog_.has_value() == false || settings_dialog_->document_mode == false || settings_scope_draft_.has_value() == false)
+            return;
+        settings_dialog_state& draft { *settings_dialog_ };
+        const settings_dialog_state& global { *settings_scope_draft_ };
+        if (draft.git_defined == false)
+            draft.git_path = global.git_path;
+        if (draft.svn_defined == false)
+            draft.svn_path = global.svn_path;
+        if (draft.timeout_defined == false)
+            draft.timeout = global.timeout;
+        if (draft.submodules_defined == false)
+            draft.update_submodules = global.update_submodules;
+        if (draft.ignore_local_defined == false)
+            draft.ignore_local_changes = global.ignore_local_changes;
+        if (draft.log_files_defined == false)
+            draft.write_log_files = global.write_log_files;
+        if (draft.theme_defined == false)
+            draft.theme = global.theme;
+        if (draft.accent_defined == false)
+            draft.accent_id = global.accent_id;
+        if (draft.ui_font_defined == false)
+            draft.ui_font_family = global.ui_font_family;
+        if (draft.code_font_defined == false)
+            draft.code_font_family = global.code_font_family;
     }
 
     void logic_controller::handle_set_settings_executable(set_settings_executable_intent intent)
@@ -3989,6 +4052,9 @@ namespace gitman {
     settings_dialog_view logic_controller::build_settings_dialog_view() const
     {
         settings_dialog_view dialog {};
+        dialog.document_available = document_.has_value();
+        const std::size_t separator { document_path_.find_last_of(u8"\\/") };
+        dialog.workspace_name = separator == std::u8string::npos ? document_path_ : document_path_.substr(separator + 1);
         dialog.active_tab = settings_dialog_->active_tab;
         dialog.document_mode = settings_dialog_->document_mode;
         dialog.git_path = settings_dialog_->git_path;
@@ -4036,6 +4102,7 @@ namespace gitman {
             dialog.message = std::u8string { u8"SVN: " } + std::u8string { svn_error };
         else if (timeout_error.empty() == false)
             dialog.message = std::u8string { timeout_error };
+        dialog.timeout_error = timeout_error;
         dialog.can_confirm = git_error.empty() && svn_error.empty() && timeout_error.empty();
         return dialog;
     }
@@ -4046,7 +4113,7 @@ namespace gitman {
 
         // element와 같은 함수로 한계를 구한다. 다르면 휠이 헛돌거나 마지막 항목이
         // 잘린다 (E1.3).
-        const float maximum { ui::settings_dialog_metrics(build_settings_dialog_view(), window_height_ / scale_).maximum_scroll };
+        const float maximum { ui::settings_dialog_metrics(build_settings_dialog_view(), window_height_ / scale_, window_width_ / scale_).maximum_scroll };
         float next { scroll_target(settings_dialog_->scroll_offset, delta, offset) };
         if (next < 0.0f)
             next = 0.0f;
@@ -4111,6 +4178,7 @@ namespace gitman {
             settings_dialog_->code_font_defined = false;
             break;
         }
+        sync_settings_inheritance();
     }
 
     void logic_controller::handle_confirm_settings()
@@ -4126,6 +4194,25 @@ namespace gitman {
         if (settings_executable_error(settings_dialog_->git_path).empty() == false || settings_executable_error(settings_dialog_->svn_path).empty() == false
             || settings_timeout_error(settings_dialog_->timeout.text).empty() == false)
             return;
+
+        if (settings_scope_draft_.has_value())
+        {
+            const settings_dialog_state& other { *settings_scope_draft_ };
+            if (settings_executable_error(other.git_path).empty() == false || settings_executable_error(other.svn_path).empty() == false || settings_timeout_error(other.timeout.text).empty() == false)
+            {
+                handle_select_settings_scope(other.document_mode);
+                return;
+            }
+            // 앱 기본값을 먼저 반영해야 작업공간의 상속 값과 실행 설정이 최종 값으로 계산된다.
+            if (settings_dialog_->document_mode)
+                std::swap(settings_dialog_, settings_scope_draft_);
+            std::optional<settings_dialog_state> workspace { std::move(settings_scope_draft_) };
+            settings_scope_draft_.reset();
+            handle_confirm_settings();
+            settings_dialog_ = std::move(workspace);
+            handle_confirm_settings();
+            return;
+        }
 
         const std::optional<std::int32_t> timeout { parse_settings_timeout(settings_dialog_->timeout.text) };
         const workspace_settings previous_effective { effective_settings() };
@@ -4232,6 +4319,7 @@ namespace gitman {
         else
             refresh_cards_after_request_settings_change(previous_request);
         settings_dialog_.reset();
+        settings_scope_draft_.reset();
     }
 
     void logic_controller::handle_begin_switch(const begin_switch_intent& intent)
@@ -4984,7 +5072,9 @@ namespace gitman {
 
         // `card`는 문서 전체에 보이는 `card`가 3개 미만일 때만이다. 그 기능이 이미 보이는 `card`면 통과한다. 메뉴에서
         // 이미 비활성이라 여기 오는 것은 메뉴가 떠 있는 사이 다른 길로 바뀐 경우뿐이다.
-        const std::vector<std::optional<function_placement>> before { resolve_visible_placements(buttons) };
+        const card_state* const context { find_card(intent.project) };
+        const std::optional<project_definition> scope { context != nullptr ? std::optional { function_scope_project(*context) } : std::nullopt };
+        const std::vector<std::optional<function_placement>> before { resolve_visible_placements(buttons, scope.has_value() ? &*scope : nullptr) };
         if (intent.placement == function_placement::card && before[index] != function_placement::card)
         {
             const auto visible_cards { std::ranges::count(before, std::optional<function_placement> { function_placement::card }) };
@@ -5186,12 +5276,13 @@ namespace gitman {
             else if (item.entry == context_menu_entry::place_function_on_bar)
                 placement = function_placement::bar;
             const std::optional<project_id> focus_card { menu.from_bar ? std::optional<project_id> { menu.card } : std::nullopt };
-            handle_set_function_placement(set_function_placement_intent { item.argument, placement }, focus_card);
+            handle_set_function_placement(set_function_placement_intent { item.argument, placement, menu.card }, focus_card);
             break;
         }
+        case context_menu_entry::add_function:
         case context_menu_entry::edit_functions:
             // 편집 dialog다 (2.7). 배치 메뉴에서 고르면 argument가 그 기능이다.
-            handle_open_function_editor(open_function_editor_intent { item.argument });
+            handle_open_function_editor(open_function_editor_intent { item.argument, menu.card, item.entry == context_menu_entry::add_function });
             break;
         case context_menu_entry::trust_document_executables:
             open_vcs_executables_confirm();
@@ -5245,12 +5336,13 @@ namespace gitman {
         // 연다 (D34). 하위 메뉴는 쓰지 않는다. 기능 메뉴 쪽 크기(12)보다 작은 것은 이 메뉴가 가장 긴 메뉴라 작은 작업
         // 영역에서도 통째로 들게 하려는 것이다 (`list_metrics.h`).
         const std::vector<card_function_view> functions { card_function_views(card) };
-        if (functions.empty())
-            return items;
+        context_menu_item_view add { function_add_menu_item() };
+        add.separator_above = true;
+        items.push_back(std::move(add));
         for (std::size_t index = 0; index < functions.size() && index < card_menu_function_count; ++index)
         {
             context_menu_item_view item { function_menu_item(functions[index], opened_at) };
-            item.separator_above = index == 0;
+            item.separator_above = false;
             items.push_back(std::move(item));
         }
         if (functions.size() > card_menu_function_count)
@@ -5280,6 +5372,7 @@ namespace gitman {
 
         // 아래 구역은 기능 목록과 구분선으로 가른다. 기능이 없으면 구분선도 없다.
         const std::size_t tail { items.size() };
+        items.push_back(function_add_menu_item());
         if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
             items.push_back(std::move(*edit));
         // 안전한 다시 읽기다 (4.9). 다시 읽기가 진행 중이면 비활성이다.
@@ -5308,17 +5401,28 @@ namespace gitman {
         return item;
     }
 
+    context_menu_item_view logic_controller::function_add_menu_item() const
+    {
+        context_menu_item_view item { .entry = context_menu_entry::add_function, .label = u8"기능 추가…", .icon = u8"add" };
+        if (pending_reload_operation_id_ != 0 || reload_after_save_)
+        {
+            item.label = u8"기능 추가… — 읽는 중";
+            item.enabled = false;
+        }
+        return item;
+    }
+
     std::optional<context_menu_item_view> logic_controller::function_edit_menu_item(const std::u8string_view button_id) const
     {
         // `기능 편집…`은 편집 dialog를 연다 (2.7, T12). 배치 메뉴의 항목만 그 기능의 id를 실어 그 기능을 고른 상태로 연다.
         if (document_.has_value() == false || document_path_.empty())
             return std::nullopt;
-        context_menu_item_view item { .entry = context_menu_entry::edit_functions, .label = u8"기능 편집…", .argument = std::u8string { button_id }, .icon = u8"gear" };
+        context_menu_item_view item { .entry = context_menu_entry::edit_functions, .label = u8"기능 관리…", .argument = std::u8string { button_id }, .icon = u8"gear" };
         // 다시 읽기 결과를 기다리는 동안은 열지 않는다. 다시 읽기가 성공하면 문서를 바꾸며 초안을 버리고, 그 사이 낸 Apply의
         // 저장도 버려진다 (4.9, T11).
         if (pending_reload_operation_id_ != 0 || reload_after_save_)
         {
-            item.label = u8"기능 편집… — 읽는 중";
+            item.label = u8"기능 관리… — 읽는 중";
             item.enabled = false;
         }
         return item;
@@ -5330,7 +5434,8 @@ namespace gitman {
         // 기능 줄의 `bar` 버튼이 연 자리 그대로인지 카드 view와 같은 판정으로 다시 본다.
         if (document_.has_value() == false || document_->function_buttons.has_value() == false)
             return {};
-        const std::vector<std::optional<function_placement>> placements { resolve_visible_placements(document_->function_buttons->buttons) };
+        const project_definition scope { function_scope_project(card) };
+        const std::vector<std::optional<function_placement>> placements { resolve_visible_placements(document_->function_buttons->buttons, &scope) };
         const function_placement expected { from_bar ? function_placement::bar : function_placement::card };
         std::optional<card_function_view> function {};
         for (card_function_view& candidate : card_function_views(card, placements))
@@ -5413,9 +5518,6 @@ namespace gitman {
         items.push_back({ .entry = context_menu_entry::open_document_in_vscode, .label = u8"VSCode로 열기", .target_path = folder, .icon = u8"vscode" });
         // 손으로 고친 문서를 불러오는 길이다 (function-buttons-design 4.9, 2.3.3). 기능 메뉴의 항목과 같은 동작이다.
         items.push_back(reload_menu_item());
-        // 편집 dialog다 (2.3.3, T12). 적용 기능이 0개인 카드에는 기능 절이 없으므로 정의가 0개인 문서의 진입은 여기뿐이다.
-        if (std::optional<context_menu_item_view> edit { function_edit_menu_item() }; edit.has_value())
-            items.push_back(std::move(*edit));
         // 문서가 지정한 실행 파일을 신뢰하지 않아 쓰지 않을 때만이다 (3.10, S1). 기능 버튼이 없는 문서도 이 길로 신뢰한다.
         if (vcs_executables_notice().has_value())
             items.push_back({ .entry = context_menu_entry::trust_document_executables, .label = u8"문서 실행 파일 신뢰…", .icon = u8"workspace-trusted", .separator_above = true });
@@ -6274,7 +6376,7 @@ namespace gitman {
         if (settings_dialog_.has_value())
         {
             settings_dialog_view dialog { build_settings_dialog_view() };
-            const float maximum { ui::settings_dialog_metrics(dialog, window_height_ / scale_).maximum_scroll };
+            const float maximum { ui::settings_dialog_metrics(dialog, window_height_ / scale_, window_width_ / scale_).maximum_scroll };
             dialog.scroll_offset = settings_dialog_->scroll_offset > maximum ? maximum : settings_dialog_->scroll_offset;
             snapshot->settings_dialog = { std::move(dialog) };
         }

@@ -269,6 +269,12 @@ namespace gitman {
         context_menu_.reset();
 
         function_editor_state state {};
+        const card_state* const context { intent.project.value.empty() ? nullptr : find_card(intent.project) };
+        if (intent.project.value.empty() == false && context == nullptr)
+            return;
+        state.project = intent.project;
+        if (context != nullptr)
+            handle_select_card(select_card_intent { intent.project });
         // 실행 중인 기능의 id는 새 id가 피한다. 실행 중에 지우면 Apply가 거절하지만 같은 id의 새 버튼이 그 검사를 비켜 간다.
         for (const card_state& card : cards_)
         {
@@ -280,6 +286,13 @@ namespace gitman {
             const std::vector<function_button_entry>& buttons { document_->function_buttons->buttons };
             for (std::size_t index = 0; index < buttons.size(); ++index)
             {
+                const function_button* const candidate { std::get_if<function_button>(&buttons[index]) };
+                const bool included { context == nullptr || (candidate != nullptr && scope_includes(context->project, context->has_local_result, context->snapshot.kind, *candidate)) };
+                state.edited_slots.push_back(included);
+                if (candidate != nullptr)
+                    state.reserved_ids.push_back(candidate->id);
+                if (included == false)
+                    continue;
                 function_editor_draft draft {};
                 draft.source_key = index;
                 if (const function_button* const button { std::get_if<function_button>(&buttons[index]) }; button != nullptr)
@@ -296,7 +309,7 @@ namespace gitman {
                     draft.initial_timeout = function_decimal_text(static_cast<std::size_t>(button->timeout_seconds < 0 ? 0 : button->timeout_seconds));
                     draft.timeout = text_state(draft.initial_timeout);
                     if (intent.button_id.empty() == false && button->id == intent.button_id)
-                        state.selected = index;
+                        state.selected = state.entries.size();
                 }
                 else
                 {
@@ -312,7 +325,7 @@ namespace gitman {
         // 미리보기는 선택 카드에서 시작한다. 없으면 첫 카드다.
         for (std::size_t index = 0; index < cards_.size(); ++index)
         {
-            if (selected_.has_value() && cards_[index].project.id == *selected_)
+            if (context != nullptr ? cards_[index].project.id == intent.project : selected_.has_value() && cards_[index].project.id == *selected_)
                 state.preview_card = index;
         }
         function_editor_ = std::move(state);
@@ -321,6 +334,8 @@ namespace gitman {
         // 배치 메뉴에서 연 기능이 목록 아래쪽이면 보이게 둔다.
         if (function_editor_->selected.has_value())
             handle_select_function_editor_entry(*function_editor_->selected);
+        if (intent.create_new)
+            handle_edit_function_editor_list(function_editor_list_edit::add);
     }
 
     void logic_controller::handle_select_function_editor_tab(const select_function_editor_tab_intent& intent)
@@ -370,6 +385,14 @@ namespace gitman {
         // 새 id는 초안의 모든 id, 열 때 문서에 있던 id와 실행 중인 기능의 id, 원문 항목에 보이는 id 글을 피한다 (3.9 template, 4.11).
         std::vector<std::u8string> taken { editor.reserved_ids };
         std::vector<function_source_text> sources {};
+        if (editor.project.value.empty() == false && document_.has_value() && document_->function_buttons.has_value())
+        {
+            for (const function_button_entry& entry : document_->function_buttons->buttons)
+            {
+                if (const auto* const source { std::get_if<function_source_text>(&entry) }; source != nullptr)
+                    sources.push_back(*source);
+            }
+        }
         for (const function_editor_draft& draft : editor.entries)
         {
             if (draft.source.has_value())
@@ -386,6 +409,11 @@ namespace gitman {
             function_editor_draft draft {};
             draft.original.id = make_function_button_id(u8"function", taken, sources);
             draft.original.label = std::u8string { new_function_label };
+            if (editor.project.value.empty() == false)
+            {
+                draft.original.project_ids = std::vector<std::u8string> { editor.project.value };
+                draft.original.placement = u8"bar";
+            }
             draft.edited = draft.original;
             draft.label = text_state(draft.original.label);
             draft.initial_timeout = function_decimal_text(static_cast<std::size_t>(default_function_timeout_seconds));
@@ -406,7 +434,7 @@ namespace gitman {
             copy.label = text_state(label);
             // 카드가 이미 3개면 `card` 기능의 복사본은 메뉴에 둔다. 그대로 두면 복사본이 원본 바로 뒤에 끼어 뒤쪽 카드
             // 기능을 기능 줄로 밀어내고 `Alt+N`이 바뀐다 — 배치 묶음의 `카드 — 3개까지` 거절과 같은 규칙이다 (2.7).
-            const std::vector<std::optional<function_placement>> visible { resolve_visible_placements(function_editor_entries()) };
+            const std::vector<std::optional<function_placement>> visible { function_editor_placements() };
             const std::size_t cards { static_cast<std::size_t>(std::ranges::count(visible, std::optional<function_placement> { function_placement::card })) };
             const bool card_copy { copy.edited.placement.has_value() && parse_function_placement(*copy.edited.placement) == std::optional<function_placement> { function_placement::card } };
             const bool lowered { card_copy && cards >= maximum_card_function_buttons };
@@ -513,7 +541,7 @@ namespace gitman {
             // 기능이 그중 하나가 아니면 받지 않고 묶음 아래에 알린다 (2.7).
             if (*placement == function_placement::card)
             {
-                const std::vector<std::optional<function_placement>> visible { resolve_visible_placements(function_editor_entries()) };
+                const std::vector<std::optional<function_placement>> visible { function_editor_placements() };
                 const std::size_t cards { static_cast<std::size_t>(std::ranges::count(visible, std::optional<function_placement> { function_placement::card })) };
                 if (visible[*editor.selected] != function_placement::card && cards >= maximum_card_function_buttons)
                 {
@@ -623,6 +651,37 @@ namespace gitman {
             problems.emplace_back();
         }
 
+        // 저장소에서 편집한 항목만 교체한다. 다른 저장소의 정의와 알 수 없는 원문은 지우지 않는다.
+        if (editor.project.value.empty() == false && document_->function_buttons.has_value())
+        {
+            std::vector<function_button_entry> merged {};
+            std::vector<std::u8string> merged_problems {};
+            std::size_t next { 0 };
+            for (std::size_t index = 0; index < current.buttons.size(); ++index)
+            {
+                if (index < editor.edited_slots.size() && editor.edited_slots[index])
+                {
+                    if (next < buttons.size())
+                    {
+                        merged.push_back(std::move(buttons[next]));
+                        merged_problems.push_back(std::move(problems[next++]));
+                    }
+                }
+                else
+                {
+                    merged.push_back(current.buttons[index]);
+                    merged_problems.push_back(index < function_button_problems_.size() ? function_button_problems_[index] : std::u8string {});
+                }
+            }
+            while (next < buttons.size())
+            {
+                merged.push_back(std::move(buttons[next]));
+                merged_problems.push_back(std::move(problems[next++]));
+            }
+            buttons = std::move(merged);
+            problems = std::move(merged_problems);
+        }
+
         // 실행 중인 출력 수집 기능을 지우거나 실행 중인 카드를 그 기능의 범위 밖으로 만드는 고침은 거절한다 (4.11). 그러면
         // 그 기능이 카드 열·기능 줄·기능 메뉴 어디에도 없어 중지할 길이 문서 닫기와 종료뿐이다.
         for (const card_state& card : cards_)
@@ -714,6 +773,23 @@ namespace gitman {
             request_app_settings_save();
     }
 
+    std::vector<std::optional<function_placement>> logic_controller::function_editor_placements() const
+    {
+        const std::vector<function_button_entry> entries { function_editor_entries() };
+        if (function_editor_.has_value())
+        {
+            for (const card_state& card : cards_)
+            {
+                if (card.project.id == function_editor_->project)
+                {
+                    const project_definition scope { function_scope_project(card) };
+                    return resolve_visible_placements(entries, &scope);
+                }
+            }
+        }
+        return resolve_visible_placements(entries);
+    }
+
     function_editor_view logic_controller::build_function_editor_view() const
     {
         function_editor_view view {};
@@ -721,7 +797,18 @@ namespace gitman {
             return view;
         const function_editor_state& editor { *function_editor_ };
         view.title = u8"기능 편집 · ";
-        view.title.append(file_name_of(document_path_));
+        const auto context { std::ranges::find_if(cards_, [&editor](const card_state& card)
+            {
+                return card.project.id == editor.project;
+            })
+        };
+        if (context != cards_.end())
+        {
+            view.title = u8"저장소 기능 · ";
+            view.title.append(card_name(context->project));
+        }
+        else
+            view.title.append(file_name_of(document_path_));
         view.tab = editor.tab;
         view.message = editor.message;
         view.locked = function_editor_lock_reason_.empty() == false;
@@ -729,8 +816,7 @@ namespace gitman {
             view.message = function_editor_lock_reason_;
 
         // 목록이다. 배치 표식과 `카드 k/3`은 지금 초안의 보이는 배치다 (2.2.2 규칙 4).
-        const std::vector<function_button_entry> entries { function_editor_entries() };
-        const std::vector<std::optional<function_placement>> visible { resolve_visible_placements(entries) };
+        const std::vector<std::optional<function_placement>> visible { function_editor_placements() };
         std::size_t cards { 0 };
         for (std::size_t index = 0; index < editor.entries.size(); ++index)
         {
@@ -747,6 +833,8 @@ namespace gitman {
             else
             {
                 row.label = draft.label.text.empty() ? draft.edited.id : draft.label.text;
+                if (editor.project.value.empty() == false && (draft.edited.project_ids.has_value() == false || draft.edited.project_ids->size() > 1))
+                    row.label.append(u8" · 공통");
                 row.key = u8"button-";
                 row.key.append(draft.edited.id);
                 row.icon = std::u8string { draft.edited.icon_name() };
@@ -777,6 +865,8 @@ namespace gitman {
                 view.variables.push_back({ {}, variable.name, value_text(variable.value), is_usable_function_variable(variable) == false });
             for (const function_project_variables& entry : document_->function_buttons->project_variables)
             {
+                if (editor.project.value.empty() == false && entry.project != editor.project.value)
+                    continue;
                 if (const auto* const variables { std::get_if<std::vector<function_variable>>(&entry.variables) }; variables != nullptr)
                 {
                     for (const function_variable& variable : *variables)

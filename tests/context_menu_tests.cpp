@@ -191,7 +191,7 @@ TEST_CASE("A right click intent selects the card and opens the menu with button 
     REQUIRE(view->context_menu->anchor_y == 240.0f);
     // 외부 열기 항목이 셸에 넘길 경로는 항목이 들고 있다 (T1).
     REQUIRE(view->context_menu->items[0].target_path == u8"C:\\work\\alpha");
-    REQUIRE(view->context_menu->items.size() == 6u);
+    REQUIRE(view->context_menu->items.size() == 8u);
     // VSCode 열기는 저장소 열기 바로 아래다 (2026-08-22 지시).
     REQUIRE(view->context_menu->items[0].entry == gitman::context_menu_entry::open_repository);
     REQUIRE(view->context_menu->items[1].entry == gitman::context_menu_entry::open_in_vscode);
@@ -660,9 +660,8 @@ TEST_CASE("A banner right click opens the document menu without changing the sel
     REQUIRE(view->context_menu->anchor_x == 40.0f);
     REQUIRE(view->context_menu->anchor_y == 50.0f);
 
-    // 셋째 항목은 `문서 다시 읽기`(function-buttons-design T11), 넷째는 `기능 편집…`(T12)이다.
-    REQUIRE(view->context_menu->items.size() == 4u);
-    REQUIRE(view->context_menu->items[3].entry == gitman::context_menu_entry::edit_functions);
+    // 셋째 항목은 `문서 다시 읽기`(function-buttons-design T11), 넷째는 `기능 관리…`(T12)이다.
+    REQUIRE(view->context_menu->items.size() == 3u);
     REQUIRE(view->context_menu->items[2].entry == gitman::context_menu_entry::reload_document);
     REQUIRE(view->context_menu->items[0].entry == gitman::context_menu_entry::open_document_folder);
     REQUIRE(view->context_menu->items[0].enabled);

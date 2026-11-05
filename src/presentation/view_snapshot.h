@@ -309,6 +309,7 @@ namespace gitman {
     // (function-buttons-design T9). 네 메뉴의 `기능 편집…`은 `edit_functions`다 (T12).
     enum class context_menu_entry
     {
+        add_function,
         open_repository,
         // 저장소를 VSCode로 연다 (2026-08-22 지시). 미추적·변경 정리는 앱이 아니라
         // 편집기에서 하는 편이 낫다.
@@ -674,6 +675,9 @@ namespace gitman {
 
     struct settings_dialog_view
     {
+        bool document_available { false };
+        std::u8string workspace_name {};
+        std::u8string timeout_error {};
         // 지금 보고 있는 탭이다 (S1.2). 초안과 무관하므로 탭을 옮겨도 다른 탭에서
         // 고친 값은 그대로 남는다.
         settings_tab active_tab { settings_tab::tools };

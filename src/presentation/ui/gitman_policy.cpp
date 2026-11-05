@@ -168,7 +168,7 @@ namespace gitman::ui {
         // 흘린다 (luil `route_reveal`, 얼마나는 그 element의 `scroll_delta_to_reveal`이 답한다). 그 밖의 화면은 키보드 초점이
         // 흘리는 창에 들지 않아 기본(빈 목록) 그대로다.
         if (tree_has(tree, kind_function_editor_dialog) == false)
-            return {};
+            return luil::route_reveal(tree, focused);
         const std::array<luil::scroll_route, 2> routes {
             luil::scroll_route {
                 luil::ui_element_id { kind_function_editor_form },

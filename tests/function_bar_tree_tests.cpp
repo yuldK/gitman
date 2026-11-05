@@ -381,9 +381,10 @@ TEST_CASE("The bar shows a hint without a selection or without bar items", "[fun
         fixture.controller.handle(*intent);
         const gitman::context_menu_view menu { fixture.menu() };
         REQUIRE(function_item_count(menu) == 0u);
-        REQUIRE(menu.items.size() == 2u);
-        REQUIRE(menu.items[0].label == u8"기능 편집…");
-        REQUIRE(menu.items[1].entry == gitman::context_menu_entry::reload_document);
+        REQUIRE(menu.items.size() == 3u);
+        REQUIRE(menu.items[0].entry == gitman::context_menu_entry::add_function);
+        REQUIRE(menu.items[1].label == u8"기능 관리…");
+        REQUIRE(menu.items[2].entry == gitman::context_menu_entry::reload_document);
     }
 
     SECTION("bar 기능이 있으면 힌트가 없고 이름 칸이 선다")

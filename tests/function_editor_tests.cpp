@@ -704,57 +704,21 @@ TEST_CASE("Saving an edit refreshes trust only when the definition was trusted",
     }
 }
 
-TEST_CASE("Menus open the editor and the placement menu preselects its function", "[function_buttons][t12][logic][context-menu]")
+TEST_CASE("Repository menus start a scoped function draft and document menus contain no function registration", "[function_buttons][redesign][logic]")
 {
-    editor_fixture fixture { make_function_card_projects(1), entries_of({ make_function_card_button(u8"a", u8"가"), make_function_card_button(u8"b", u8"나", u8"card") }) };
-
-    SECTION("배너 메뉴")
+    editor_fixture fixture { make_function_card_projects(2), entries_of({ make_function_card_button(u8"a", u8"가"), make_function_card_button(u8"b", u8"나", u8"card") }) };
+    fixture.controller.handle(gitman::open_document_context_menu_intent { 1.0f, 2.0f });
+    for (const auto& item : fixture.snapshot()->context_menu->items)
     {
-        fixture.controller.handle(gitman::open_document_context_menu_intent { 1.0f, 2.0f });
-        const auto view { fixture.snapshot() };
-        REQUIRE(view->context_menu->items.back().entry == gitman::context_menu_entry::edit_functions);
-        REQUIRE(view->context_menu->items.back().label == u8"기능 편집…");
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::edit_functions, {} });
-        REQUIRE(fixture.editor().selected == std::optional<std::size_t> { 0 });
+        REQUIRE(item.entry != gitman::context_menu_entry::edit_functions);
+        REQUIRE(item.entry != gitman::context_menu_entry::add_function);
     }
-
-    SECTION("기능 메뉴")
-    {
-        fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 1.0f, 2.0f });
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::edit_functions, {} });
-        REQUIRE(fixture.snapshot()->function_editor.has_value());
-    }
-
-    SECTION("카드 메뉴")
-    {
-        fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 1.0f, 2.0f });
-        REQUIRE(fixture.snapshot()->context_menu->items.back().entry == gitman::context_menu_entry::edit_functions);
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::edit_functions, {} });
-        REQUIRE(fixture.snapshot()->function_editor.has_value());
-    }
-
-    SECTION("배치 메뉴는 그 기능을 고른 상태로 연다")
-    {
-        fixture.controller.handle(gitman::open_function_placement_menu_intent { gitman::project_id { u8"p00" }, u8"b", false, 1.0f, 2.0f });
-        const auto view { fixture.snapshot() };
-        REQUIRE(view->context_menu.has_value());
-        REQUIRE(view->context_menu->items[3].entry == gitman::context_menu_entry::edit_functions);
-        REQUIRE(view->context_menu->items[3].argument == u8"b");
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::edit_functions, u8"b" });
-        REQUIRE(fixture.editor().selected == std::optional<std::size_t> { 1 });
-        REQUIRE(fixture.editor().label.text == u8"나");
-    }
-
-    SECTION("정의가 없는 문서의 진입은 배너 메뉴다")
-    {
-        editor_fixture empty { make_function_card_projects(1), {} };
-        empty.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 1.0f, 2.0f });
-        REQUIRE(empty.snapshot()->context_menu->items.size() == 6u);
-        empty.controller.handle(gitman::open_document_context_menu_intent { 1.0f, 2.0f });
-        empty.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::edit_functions, {} });
-        REQUIRE(empty.editor().rows.empty());
-        REQUIRE(empty.editor().list_header == u8"기능 0개 · 카드 0/3");
-    }
+    fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p01" }, 1.0f, 2.0f });
+    fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::add_function, {} });
+    REQUIRE(fixture.editor().title == u8"저장소 기능 · p01");
+    REQUIRE(fixture.editor().scope == u8"projects");
+    REQUIRE(fixture.editor().placement == gitman::function_placement::bar);
+    REQUIRE(fixture.editor().program.text.empty());
 }
 
 TEST_CASE("The editor preview resolves the draft with the target card", "[function_buttons][t12][logic]")
@@ -1415,15 +1379,15 @@ TEST_CASE("A warning row notice scrolls when it is taller than the form", "[func
 
 TEST_CASE("The edit entry waits while the document reloads", "[function_buttons][t12][logic][context-menu]")
 {
-    // 다시 읽기가 성공하면 문서를 바꾸며 초안을 버린다. 그동안 `기능 편집…`은 `문서 다시 읽기`처럼 비활성이다.
+    // 다시 읽기가 성공하면 문서를 바꾸며 초안을 버린다. 그동안 `기능 관리…`은 `문서 다시 읽기`처럼 비활성이다.
     editor_fixture fixture { make_function_card_projects(1), entries_of({ make_function_card_button(u8"a", u8"가") }) };
     fixture.controller.handle(gitman::reload_document_intent {});
-    fixture.controller.handle(gitman::open_document_context_menu_intent { 1.0f, 2.0f });
+    fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 1.0f, 2.0f });
     const auto view { fixture.snapshot() };
     REQUIRE(view->context_menu.has_value());
     const gitman::context_menu_item_view edit { view->context_menu->items.back() };
     REQUIRE(edit.entry == gitman::context_menu_entry::edit_functions);
-    REQUIRE(edit.label == u8"기능 편집… — 읽는 중");
+    REQUIRE(edit.label == u8"기능 관리… — 읽는 중");
     REQUIRE_FALSE(edit.enabled);
     fixture.open();
     REQUIRE(fixture.snapshot()->function_editor.has_value() == false);
@@ -1544,4 +1508,39 @@ TEST_CASE("Opening another document drops the draft even when the load fails", "
     // 읽기에 실패하면 이전 문서가 돌아오지 않는다. 남은 초안의 Apply가 아무 말 없이 버려지지 않게 dialog가 없어야 한다.
     fixture.controller.handle(gitman::document_loaded_event {});
     REQUIRE(fixture.snapshot()->function_editor.has_value() == false);
+}
+
+TEST_CASE("Repository editing preserves other repositories and adds only to the chosen repository", "[function_buttons][redesign][logic]")
+{
+    auto other { make_function_card_button(u8"other", u8"다른 저장소") };
+    other.project_ids = std::vector<std::u8string> { u8"p01" };
+    editor_fixture fixture { make_function_card_projects(2), entries_of({ other }) };
+    fixture.controller.handle(gitman::open_function_editor_intent { {}, gitman::project_id { u8"p00" }, true });
+    REQUIRE(fixture.editor().rows.size() == 1u);
+    REQUIRE(fixture.editor().label.text == u8"새 기능");
+    fixture.type(gitman::text_input_target::function_editor_program, u8"C:\\Tools\\build.exe");
+    fixture.apply();
+    REQUIRE(fixture.saved().buttons.size() == 2u);
+    REQUIRE(button_at(fixture.saved(), 0) == other);
+    const auto& added { button_at(fixture.saved(), 1) };
+    REQUIRE(added.project_ids == std::optional<std::vector<std::u8string>> { { u8"p00" } });
+    fixture.finish_save(std::nullopt);
+    fixture.controller.handle(gitman::open_function_editor_intent { {}, gitman::project_id { u8"p00" } });
+    fixture.list(function_editor_list_edit::remove);
+    fixture.apply();
+    REQUIRE(fixture.saved().buttons.size() == 1u);
+    REQUIRE(button_at(fixture.saved(), 0) == other);
+}
+
+TEST_CASE("Repository registration preserves unknown source items and reserves their ids", "[function_buttons][redesign][logic]")
+{
+    const gitman::function_source_text unknown { u8R"({"id":"function-1","program":false,"project_ids":["p01"]})" };
+    editor_fixture fixture { make_function_card_projects(2), { unknown } };
+    fixture.controller.handle(gitman::open_function_editor_intent { {}, gitman::project_id { u8"p00" }, true });
+    REQUIRE(fixture.editor().rows.size() == 1u);
+    fixture.type(gitman::text_input_target::function_editor_program, u8"C:\\Tools\\build.exe");
+    fixture.apply();
+    REQUIRE(fixture.saved().buttons.size() == 2u);
+    REQUIRE(std::get<gitman::function_source_text>(fixture.saved().buttons[0]) == unknown);
+    REQUIRE(button_at(fixture.saved(), 1).id == u8"function-2");
 }

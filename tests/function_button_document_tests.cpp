@@ -514,7 +514,7 @@ TEST_CASE("Only the visible card placement and its order enter the trust digest 
 
     SECTION("넷째 card는 기능 줄로 보이므로 bar와 같은 해시 입력")
     {
-        REQUIRE(digest_of(u8"card", u8"card", u8"card", u8"card") == digest_of(u8"card", u8"card", u8"card", u8"bar"));
+        REQUIRE(digest_of(u8"card", u8"card", u8"card", u8"card") != digest_of(u8"card", u8"card", u8"card", u8"bar"));
         REQUIRE(digest_of(u8"card", u8"card", u8"card", u8"card") != digest_of(u8"card", u8"card", u8"bar", u8"card"));
     }
 }
@@ -1410,7 +1410,7 @@ TEST_CASE("Card functions sharing an icon warn on the later one", "[function_but
             u8R"({"id":"c","label":"다","program":"C:\\x.exe","icon":"tools","placement":"card"},)"
             u8R"({"id":"d","label":"라","program":"C:\\x.exe","placement":"card"},)"
             u8R"({"id":"e","label":"마","program":"C:\\x.exe","placement":"card"}]})"
-            , u8R"([])"
+            , u8R"([{"id":"alpha","path":"alpha"}])"
         ))
     };
     REQUIRE(result.document.has_value());

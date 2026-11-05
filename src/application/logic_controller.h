@@ -256,7 +256,10 @@ namespace gitman {
         void handle_set_function_placement(const set_function_placement_intent& intent, const std::optional<project_id>& focus_card);
         // 문서의 카드 중 하나에라도 적용되는 `bar` 기능(보이는 배치 기준)이 있다 (2.2.2 규칙 5, D23-A). 그때만
         // 기능 줄이 서고 로그 본문이 준다. 스크롤 한계와 view가 같은 판정을 쓴다.
+        [[nodiscard]] project_definition function_scope_project(const card_state& card) const;
+        [[nodiscard]] std::vector<std::optional<function_placement>> function_editor_placements() const;
         [[nodiscard]] bool has_function_bar() const;
+        [[nodiscard]] context_menu_item_view function_add_menu_item() const;
         // 기능 줄의 표시 모델이다. `has_function_bar()`가 참일 때만 부른다.
         [[nodiscard]] function_bar_view build_function_bar_view() const;
         // 모든 카드에서 풀 자리를 차지한 실행 수다. 풀의 상한과 같은 기준이다 (4.4).
@@ -302,7 +305,9 @@ namespace gitman {
         void record_recent_document();
         void request_app_settings_save();
         void handle_discovery_dialog_scroll(float delta, std::optional<float> offset = std::nullopt);
-        void handle_open_settings();
+        void handle_open_settings(bool document_mode = true);
+        void handle_select_settings_scope(bool document_mode);
+        void sync_settings_inheritance();
         void handle_open_context_menu(const open_context_menu_intent& intent);
         void handle_open_document_context_menu(const open_document_context_menu_intent& intent);
         void handle_select_context_menu_item(const select_context_menu_item_intent& intent);
@@ -613,6 +618,8 @@ namespace gitman {
         };
 
         std::optional<settings_dialog_state> settings_dialog_ {};
+        // 범위를 옮겨도 다른 범위의 초안을 저장 또는 취소할 때까지 보관한다.
+        std::optional<settings_dialog_state> settings_scope_draft_ {};
 
         // IME 조합 상태다 (text-input-and-font-fallback-design E2.3). UI thread의
         // 그림자 문서가 보내 주며, 조합이 끝나면 비워진다. 확정 전의 글이라 어느
@@ -831,6 +838,9 @@ namespace gitman {
 
         struct function_editor_state
         {
+            project_id project {};
+            // 보이지 않는 다른 저장소의 정의는 적용할 때 원래 자리에 보존한다.
+            std::vector<bool> edited_slots {};
             function_editor_tab tab { function_editor_tab::functions };
             std::vector<function_editor_draft> entries {};
             std::optional<std::size_t> selected {};

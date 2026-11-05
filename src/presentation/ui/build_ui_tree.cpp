@@ -41,7 +41,7 @@ namespace gitman::ui {
             case view_empty_state::document_loading:
                 return u8"문서를 여는 중입니다...";
             case view_empty_state::no_projects:
-                return u8"문서에 등록된 프로젝트가 없습니다.";
+                return u8"등록된 저장소가 없습니다. 상단의 저장소 추가 버튼에서 폴더를 선택하세요.";
             case view_empty_state::no_filter_match:
                 return u8"필터와 일치하는 카드가 없습니다.";
             case view_empty_state::none:

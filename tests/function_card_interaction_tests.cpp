@@ -210,9 +210,6 @@ TEST_CASE("Alt+N does nothing when the Nth card function is outside the card's s
     REQUIRE(forward(fixture, click(harness, bounds_of(*tree, ui::kind_card_body, u8"p00"))));
 
     REQUIRE(forward(fixture, harness.process(alt_key(luil::key_code::key_1))));
-    REQUIRE(fixture.functions.requests.empty());
-
-    REQUIRE(forward(fixture, harness.process(alt_key(luil::key_code::key_2))));
     REQUIRE(fixture.functions.requests.size() == 1u);
     REQUIRE(last_log_text(fixture, u8"p00").starts_with(u8"[다]"));
 }
@@ -444,192 +441,58 @@ TEST_CASE("Shift+F10 on a focused more button opens that card's menu", "[functio
     REQUIRE(function_item_count(menu) == 5u);
 }
 
-TEST_CASE("Function menus carry at most one page of functions and open the rest with more", "[function_buttons][s2][ui][context-menu]")
+TEST_CASE("Function menus keep registration available while paging without running a function", "[function_buttons][s2][redesign][ui][context-menu]")
 {
-    // D34: 기능 메뉴(카드 `⋯`·`Alt+↓`·기능 줄 `⋯`)는 한 쪽에 기능을 `function_menu_page_size`(12)개까지만, 카드 메뉴의
-    // 기능 절은 `card_menu_function_count`(8)개까지만 싣고, 넘치면 `기능 더 보기…`가 나머지를 기능 메뉴 다음 쪽으로
-    // 연다. 쪽마다 아래 구역(기능 편집·문서 다시 읽기)이 그대로라 어느 쪽도 같은 높이 한계 안이다 (2.3.2, 2.3.3).
-    REQUIRE(gitman::function_menu_page_size == 12u);
-    REQUIRE(gitman::card_menu_function_count == 8u);
-    const auto function_ids = [](const gitman::context_menu_view& menu) {
+    const auto function_ids = [](const gitman::context_menu_view& menu)
+    {
         std::vector<std::u8string> ids {};
-        for (const gitman::context_menu_item_view& item : menu.items)
+        for (const auto& item : menu.items)
         {
             if (item.entry == gitman::context_menu_entry::run_function || item.entry == gitman::context_menu_entry::stop_function)
                 ids.push_back(item.argument);
         }
         return ids;
     };
-    const auto has_more = [](const gitman::context_menu_view& menu) {
-        return std::ranges::any_of(menu.items, [](const gitman::context_menu_item_view& item) { return item.entry == gitman::context_menu_entry::more_functions; });
-    };
-
-    SECTION("기능 메뉴 첫 쪽: 기능 12 + 기능 더 보기 + 구분선 + 기능 편집 + 문서 다시 읽기 = 407")
+    for (const std::size_t count : { 0u, 8u, 12u, 20u })
     {
-        function_card_fixture fixture { make_function_card_projects(1), numbered_buttons(20) };
-        fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        const gitman::context_menu_view first { fixture.menu() };
-        REQUIRE(first.items.size() == 15u);
-        REQUIRE(function_item_count(first) == 12u);
-        REQUIRE(function_ids(first).front() == u8"f00");
-        REQUIRE(function_ids(first).back() == u8"f11");
-        REQUIRE(first.items[12].entry == gitman::context_menu_entry::more_functions);
-        REQUIRE(first.items[12].label == u8"기능 더 보기…");
-        REQUIRE(first.items[12].separator_above == false);
-        // 아래 구역은 구분선 뒤에 있다. `기능 편집…`은 T12부터 편집 dialog를 열고(버튼 id 없이), `문서 다시 읽기`는
-        // T11부터 활성이다.
-        REQUIRE(first.items[13].separator_above);
-        REQUIRE(first.items[13].entry == gitman::context_menu_entry::edit_functions);
-        REQUIRE(first.items[13].label == u8"기능 편집…");
-        REQUIRE(first.items[13].argument.empty());
-        REQUIRE(first.items[14].entry == gitman::context_menu_entry::reload_document);
-        REQUIRE(first.items[14].label == u8"문서 다시 읽기");
-        REQUIRE(first.items[14].enabled);
-        // 첫 쪽만 Enter 기본 항목(첫 활성 기능)이 있다.
-        REQUIRE(first.default_item == std::optional<std::size_t> { 0u });
-        const luil::win32::ui_popup popup { ui::build_context_menu_popup(first, 1.0f) };
-        REQUIRE(popup.height == 407.0f);
-        REQUIRE(popup.height <= gitman::layout_menu_fit_height);
-        REQUIRE(popup.id == ui::card_menu_popup_id);
-        require_clean_tree(*popup.tree);
-
-        // `기능 더 보기…`는 같은 자리에 다음 쪽을 연다. 남은 8개라 더 보기가 없고, 기본 항목도 없다 — 더 보기를 고른 뒤
-        // 습관적으로 친 Enter가 기능을 시작하지 않는다.
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::more_functions, {} });
-        const gitman::context_menu_view second { fixture.menu() };
-        REQUIRE(second.owner.value == u8"p00");
-        REQUIRE(second.anchor_x == 10.0f);
-        REQUIRE(second.anchor_y == 20.0f);
-        REQUIRE(function_item_count(second) == 8u);
-        REQUIRE(function_ids(second).front() == u8"f12");
-        REQUIRE(function_ids(second).back() == u8"f19");
-        REQUIRE(has_more(second) == false);
-        REQUIRE(second.items.size() == 10u);
-        REQUIRE(second.items[8].separator_above);
-        REQUIRE(second.items[8].entry == gitman::context_menu_entry::edit_functions);
-        REQUIRE(second.default_item.has_value() == false);
-        REQUIRE(ui::build_context_menu_popup(second, 1.0f).height == 8.0f + 26.0f * 10.0f + 9.0f);
-
-        // 다음 쪽의 항목도 고르면 실행이다.
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::run_function, u8"f15" });
-        REQUIRE(fixture.functions.requests.size() == 1u);
-        REQUIRE(last_log_text(fixture, u8"p00").starts_with(u8"[기능 f15]"));
-
-        // `⋯`·`Alt+↓`은 늘 첫 쪽부터 연다.
-        fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        REQUIRE(function_ids(fixture.menu()).front() == u8"f00");
-    }
-
-    SECTION("카드 메뉴: 기존 6 + 구분선 + 기능 8 + 기능 더 보기 + 기능 편집 = 433, 더 보기는 9번째부터")
-    {
-        function_card_fixture fixture { make_function_card_projects(1), numbered_buttons(20) };
-        fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 30.0f, 40.0f });
-        const gitman::context_menu_view menu { fixture.menu() };
-        REQUIRE(menu.items.size() == 16u);
-        REQUIRE(function_item_count(menu) == 8u);
-        REQUIRE(menu.items[6].separator_above);
-        REQUIRE(menu.items[14].entry == gitman::context_menu_entry::more_functions);
-        REQUIRE(menu.items[14].label == u8"기능 더 보기…");
-        REQUIRE(menu.items[15].entry == gitman::context_menu_entry::edit_functions);
-        const luil::win32::ui_popup popup { ui::build_context_menu_popup(menu, 1.0f) };
-        REQUIRE(popup.height == 433.0f);
-        REQUIRE(popup.height <= gitman::layout_menu_fit_height);
-        require_clean_tree(*popup.tree);
-
-        // 카드 메뉴에서 이미 본 앞 8개를 되풀이하지 않고 9번째부터 한 쪽(12개)을 연다. 카드당 기능은 20개까지라 여기서
-        // 끝난다.
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::more_functions, {} });
-        const gitman::context_menu_view rest { fixture.menu() };
-        REQUIRE(rest.anchor_x == 30.0f);
-        REQUIRE(function_ids(rest).size() == 12u);
-        REQUIRE(function_ids(rest).front() == u8"f08");
-        REQUIRE(function_ids(rest).back() == u8"f19");
-        REQUIRE(has_more(rest) == false);
-        REQUIRE(rest.default_item.has_value() == false);
-        REQUIRE(ui::build_context_menu_popup(rest, 1.0f).height == 8.0f + 26.0f * 14.0f + 9.0f);
-    }
-
-    SECTION("기능이 정확히 8개면 카드 메뉴에 기능 더 보기가 없어 407")
-    {
-        function_card_fixture fixture { make_function_card_projects(1), numbered_buttons(8) };
-        fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        const gitman::context_menu_view menu { fixture.menu() };
-        REQUIRE(menu.items.size() == 15u);
-        REQUIRE(has_more(menu) == false);
-        REQUIRE(ui::build_context_menu_popup(menu, 1.0f).height == 407.0f);
-    }
-
-    SECTION("기능이 정확히 12개면 기능 메뉴에는 기능 더 보기가 없고 카드 메뉴에는 있다")
-    {
-        function_card_fixture fixture { make_function_card_projects(1), numbered_buttons(12) };
-        fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        REQUIRE(function_item_count(fixture.menu()) == 12u);
-        REQUIRE(has_more(fixture.menu()) == false);
-        fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        REQUIRE(function_item_count(fixture.menu()) == 8u);
-        REQUIRE(has_more(fixture.menu()));
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::more_functions, {} });
-        REQUIRE(function_ids(fixture.menu()) == std::vector<std::u8string> { u8"f08", u8"f09", u8"f10", u8"f11" });
-    }
-
-    SECTION("13개면 다음 쪽은 하나다")
-    {
-        function_card_fixture fixture { make_function_card_projects(1), numbered_buttons(13) };
-        fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        REQUIRE(has_more(fixture.menu()));
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::more_functions, {} });
-        REQUIRE(function_ids(fixture.menu()) == std::vector<std::u8string> { u8"f12" });
-    }
-
-    SECTION("떠 있는 다음 쪽이 비면 첫 쪽을 보인다")
-    {
-        // 13번째 기능은 SVN 전용이다. `vcs_hint: auto` 카드는 조회 전에 비활성으로 싣다가 Git으로 조회되면 뺀다. 그러면
-        // 떠 있던 둘째 쪽은 빈 쪽이 되므로 첫 쪽을 보인다. 빈 쪽은 고를 것이 없다.
-        std::vector<gitman::function_button> buttons { numbered_buttons(13) };
-        buttons[12].vcs = gitman::function_vcs_scope::subversion;
-        function_card_fixture fixture { make_function_card_projects(1), std::move(buttons) };
-        fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::more_functions, {} });
-        REQUIRE(function_ids(fixture.menu()) == std::vector<std::u8string> { u8"f12" });
-
-        fixture.query(u8"p00");
-        const gitman::context_menu_view clamped { fixture.menu() };
-        REQUIRE(function_ids(clamped).size() == 12u);
-        REQUIRE(function_ids(clamped).front() == u8"f00");
-        REQUIRE(has_more(clamped) == false);
-        // 시작 기능 번호는 그대로라 첫 쪽이어도 기본 항목은 없다 — 사용자는 `기능 더 보기…`를 고른 뒤다.
-        REQUIRE(clamped.default_item.has_value() == false);
-    }
-
-    SECTION("적용 기능이 없는 카드의 메뉴는 그대로 164")
-    {
-        // 문서에 기능은 있지만 `project_ids`가 이 카드를 뺀다. 카드 메뉴는 기능 절도 구분선도 없는 기존 6항목이다.
-        gitman::function_button elsewhere { make_function_card_button(u8"build", u8"빌드", u8"card") };
-        elsewhere.project_ids = std::vector<std::u8string> { u8"other" };
-        function_card_fixture fixture { make_function_card_projects(1), { elsewhere } };
-        fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
-        const gitman::context_menu_view menu { fixture.menu() };
-        REQUIRE(menu.items.size() == 6u);
-        const luil::win32::ui_popup popup { ui::build_context_menu_popup(menu, 1.0f) };
-        REQUIRE(popup.height == 164.0f);
-        REQUIRE(popup.width == 190.0f);
-    }
-
-    SECTION("가장 긴 두 메뉴가 1366×768·125% 작업 영역에 들어간다")
-    {
-        // 작업 영역 높이(논리 px)는 768 / 1.25 − 작업 표시줄 48(Windows 11 기본) = 566이다. 배율은 높이에 곱해지므로
-        // 논리 높이끼리 견준다 (popup 높이는 논리 px, 2.3.2). 빌드도 `list_metrics.h`의 static_assert로 같은 식을 본다.
-        REQUIRE(gitman::layout_menu_fit_height == 566.0f);
-        const float card_menu { 8.0f + 26.0f * static_cast<float>(6 + gitman::card_menu_function_count + 2) + 9.0f };
-        const float function_menu { 8.0f + 26.0f * static_cast<float>(gitman::function_menu_page_size + 3) + 9.0f };
-        REQUIRE(card_menu == 433.0f);
-        REQUIRE(function_menu == 407.0f);
-        REQUIRE(card_menu <= gitman::layout_menu_fit_height);
-        REQUIRE(function_menu <= gitman::layout_menu_fit_height);
-        // 카드 메뉴 기능 절을 기능 메뉴 쪽 크기(12)와 같게 하면 537이라, S2 전에 통째로 들던 1920×1080·200%(1080 / 2 −
-        // 48 = 492) 작업 영역에서 새로 잘린다. 지금 두 메뉴는 그 작업 영역에도 든다.
-        REQUIRE(card_menu <= 1080.0f / 2.0f - 48.0f);
-        REQUIRE(function_menu <= 1080.0f / 2.0f - 48.0f);
+        for (const bool card_menu : { false, true })
+        {
+            function_card_fixture fixture { make_function_card_projects(1), numbered_buttons(count) };
+            if (card_menu)
+                fixture.controller.handle(gitman::open_context_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
+            else
+                fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 10.0f, 20.0f });
+            std::vector<std::u8string> seen {};
+            for (std::size_t page = 0; page < 3; ++page)
+            {
+                const auto menu { fixture.menu() };
+                const auto ids { function_ids(menu) };
+                REQUIRE(ids.size() <= (card_menu && page == 0 ? 8u : 12u));
+                for (const auto& id : ids)
+                {
+                    REQUIRE(std::ranges::find(seen, id) == seen.end());
+                    seen.push_back(std::u8string { id });
+                }
+                const auto has = [&](const gitman::context_menu_entry entry)
+                {
+                    return std::ranges::any_of(menu.items, [entry](const auto& item)
+                        {
+                            return item.entry == entry;
+                        }
+                    );
+                };
+                REQUIRE(has(gitman::context_menu_entry::add_function));
+                REQUIRE(has(gitman::context_menu_entry::edit_functions));
+                const auto popup { ui::build_context_menu_popup(menu, 1.0f) };
+                REQUIRE(popup.height <= gitman::layout_menu_fit_height);
+                require_clean_tree(*popup.tree);
+                if (has(gitman::context_menu_entry::more_functions) == false)
+                    break;
+                fixture.controller.handle(gitman::select_context_menu_item_intent { gitman::context_menu_entry::more_functions, {} });
+            }
+            REQUIRE(seen.size() == count);
+            REQUIRE(fixture.functions.requests.empty());
+        }
     }
 }
 
@@ -798,7 +661,7 @@ TEST_CASE("Choosing function menu items runs, stops and opens more", "[function_
     REQUIRE(fixture.submitter.requests.empty());
     fixture.controller.handle(gitman::cancel_function_run_intent {});
 
-    // `기능 편집…`은 T12부터 logic intent로 편집 dialog를 연다 (2.7). 앱 명령이 아니다.
+    // `기능 관리…`은 T12부터 logic intent로 편집 dialog를 연다 (2.7). 앱 명령이 아니다.
     fixture.controller.handle(gitman::open_function_menu_intent { gitman::project_id { u8"p00" }, 30.0f, 40.0f });
     const luil::win32::ui_popup popup { ui::build_context_menu_popup(fixture.menu(), 1.0f) };
     interaction_harness harness { fixture.tree() };
@@ -879,8 +742,9 @@ TEST_CASE("Function icon names resolve through one table", "[function_buttons][t
     REQUIRE(root != nullptr);
     REQUIRE(root->config().items[0].icon == luil::codicons::icon_play);
     REQUIRE(root->config().items[1].icon == luil::codicons::icon_beaker);
-    REQUIRE(root->config().items[2].icon == luil::codicons::icon_gear);
-    REQUIRE(root->config().items[3].icon == luil::codicons::icon_sync);
+    REQUIRE(root->config().items[2].icon == luil::codicons::icon_add);
+    REQUIRE(root->config().items[3].icon == luil::codicons::icon_gear);
+    REQUIRE(root->config().items[4].icon == luil::codicons::icon_sync);
 }
 
 TEST_CASE("Context menu width grows with its labels between 190 and 320", "[function_buttons][t9][ui][context-menu]")

@@ -70,7 +70,7 @@ namespace gitman::ui {
         // 환경설정은 문서가 없으면 전역 설정을, 열려 있으면 문서 override를
         // 편집하므로 항상 활성이다 (global-settings-and-ui-fixes-design G3.2).
         auto settings { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_settings }, luil::button_config { .glyph = codicons::icon_settings_gear }) };
-        settings->set_tooltip(document_open ? std::u8string { u8"환경설정 (문서)" } : std::u8string { u8"환경설정 (전역)" });
+        settings->set_tooltip(u8"환경설정");
         settings->set_action(ui_trigger::left_click, make_logic_click(open_settings_intent {}));
         settings_ = settings.get();
         add_child(std::move(settings));
@@ -78,7 +78,7 @@ namespace gitman::ui {
         // 탐색 등록은 열린 문서에 추가하는 경로다 (REQ-004, 단계 8). 스캔 폴더는
         // UI thread의 폴더 선택이 고르며, 시작 자리는 문서가 있는 폴더다.
         auto discover { std::make_unique<luil::button_element>(ui_element_id { kind_toolbar_discover }, luil::button_config { .glyph = codicons::icon_search }) };
-        discover->set_tooltip(document_open ? std::u8string { u8"하위 폴더 저장소 탐색·등록" } : std::u8string { u8"하위 폴더 저장소 탐색·등록 (문서를 먼저 여세요)" });
+        discover->set_tooltip(document_open ? std::u8string { u8"저장소 추가…" } : std::u8string { u8"저장소 추가 (작업공간을 먼저 여세요)" });
         discover->set_enabled(document_open);
         discover->set_action(ui_trigger::left_click, make_app_command_click(app_command::show_discovery_folder_picker, std::move(discovery_start_folder)));
         discover_ = discover.get();

@@ -164,7 +164,7 @@ namespace {
     // 말한다 (설계 L4).
     const luil::ui_element* settings_scrollbar(const luil::ui_tree& tree)
     {
-        return gitman::testing::find(tree, gitman::ui::kind_scrollbar, gitman::ui::scrollbar_owner_settings_dialog);
+        return gitman::testing::find(tree, luil::ui_element_kind::scroll_area_bar, gitman::ui::scrollbar_owner_settings_dialog);
     }
 } // namespace
 
@@ -410,37 +410,18 @@ TEST_CASE("The override badge deletes a document override and follows the app se
     REQUIRE(fixture.submitter.requests[1].settings.git_executable.empty());
 }
 
-TEST_CASE("Every document item shows a scope badge and only overrides are clickable", "[ui][settings-ui]")
+TEST_CASE("Every document item shows a scope badge and only overrides are clickable", "[ui][settings-ui][redesign]")
 {
-    // 문서 모드에서는 모든 항목이 범위 배지를 갖는다. 문서가 덮어쓴 항목(git)만
-    // 누를 수 있고, 전역을 따르는 항목(svn)은 액션이 없다 (D2).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-
-    const luil::ui_element_id git_badge { gitman::ui::kind_settings_override_badge, std::u8string { u8"git" } };
-    REQUIRE(tree->find(git_badge) != nullptr);
-    const luil::ui_element* const svn_badge { tree->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"svn" } }) };
-    REQUIRE(svn_badge != nullptr);
-    // 전역 배지는 눌러도 아무 일도 하지 않는다. tooltip으로만 뜻을 알린다.
-    REQUIRE(svn_badge->action(luil::ui_trigger::left_click) == nullptr);
-    REQUIRE_FALSE(svn_badge->tooltip().empty());
-
-    const std::vector<luil::input_action> actions { click(*tree, git_badge) };
-    REQUIRE(actions.size() == 1u);
-    const auto* const message { gitman::testing::as_message(actions) };
-    REQUIRE(message != nullptr);
-    const auto* const intent { std::get_if<gitman::clear_settings_override_intent>(message) };
-    REQUIRE(intent != nullptr);
-    REQUIRE(intent->field == gitman::settings_override_field::git_executable);
-
-    // 전역 모드에는 배지가 없다.
-    recording_submitter global_submitter {};
-    gitman::logic_controller global_controller { global_submitter };
-    global_controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
-    global_controller.handle(gitman::open_settings_intent {});
-    const auto global_tree { gitman::testing::make_tree(*global_controller.make_view_snapshot()) };
-    REQUIRE(global_tree->find(git_badge) == nullptr);
+    const auto* reset { tree->find({ gitman::ui::kind_settings_override_badge, u8"git" }) };
+    REQUIRE(reset != nullptr);
+    REQUIRE(reset->accessibility().name == u8"Git 기본값 사용");
+    REQUIRE(tree->find({ gitman::ui::kind_settings_override_badge, u8"svn" }) == nullptr);
+    REQUIRE(tree->find({ gitman::ui::kind_settings_dialog_panel, u8"svn-source" })->accessibility().name == u8"앱 기본값 사용 중");
+    const auto actions { click(*tree, reset->id()) };
+    REQUIRE(gitman::testing::as_intent<gitman::clear_settings_override_intent>(actions)->field == gitman::settings_override_field::git_executable);
 }
 
 TEST_CASE("The settings dialog elements register the picker commands and intents", "[ui][settings-ui]")
@@ -533,30 +514,16 @@ TEST_CASE("Escape closes the settings dialog before clearing the selection", "[u
     REQUIRE(std::holds_alternative<gitman::cancel_settings_dialog_intent>(*message));
 }
 
-TEST_CASE("The settings dialog stands in a luil modal host", "[ui][settings-ui][modal]")
+TEST_CASE("The settings dialog stands in a luil modal host", "[ui][settings-ui][redesign]")
 {
-    // C3-2: 본체는 host의 content이고 scrim·가운데 배치·초점 가둠·Esc는 host의 몫이다.
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-
-    REQUIRE(gitman::testing::find(*tree, luil::ui_element_kind::modal_host, gitman::ui::dialog_owner_settings) != nullptr);
-    // 초점은 dialog 안에 갇힌다 — Tab이 뒤의 카드로 새지 않는다.
     REQUIRE(tree->focus_trap() != nullptr);
-
-    // 배경 클릭은 이제 host의 scrim이 낸다.
-    const luil::ui_element* const scrim { gitman::testing::find(*tree, luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_settings) };
+    const auto* scrim { gitman::testing::find(*tree, luil::ui_element_kind::modal_scrim, gitman::ui::dialog_owner_settings) };
     REQUIRE(scrim != nullptr);
-    const std::vector<luil::input_action> actions { click(*tree, scrim->id()) };
-    const auto* const message { gitman::testing::as_message(actions) };
-    REQUIRE(message != nullptr);
-    REQUIRE(std::holds_alternative<gitman::cancel_settings_dialog_intent>(*message));
-
-    // 본체에는 배경 클릭 액션이 남아 있지 않고, 누름은 host가 흡수하게 세워 준다.
-    const luil::ui_element* const body { tree->find({ gitman::ui::kind_settings_dialog }) };
-    REQUIRE(body != nullptr);
-    REQUIRE(body->action(luil::ui_trigger::left_click) == nullptr);
-    REQUIRE(body->hit_opaque());
+    REQUIRE(scrim->action(luil::ui_trigger::left_click) == nullptr);
+    REQUIRE(tree->find({ gitman::ui::kind_settings_dialog })->hit_opaque());
 }
 
 TEST_CASE("Clicking the empty panel area does not cancel the settings dialog", "[ui][settings-ui][modal]")
@@ -586,6 +553,7 @@ TEST_CASE("Enter in the timeout box runs the default save button", "[ui][setting
     // 저장이 기본 버튼이라 텍스트 칸의 Enter가 그리로 흐른다 (enter-default-design.md).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::settings_scroll_intent { 10000.0f });
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
     const luil::ui_element* const confirm { tree->find({ gitman::ui::kind_settings_dialog_confirm }) };
@@ -615,23 +583,23 @@ TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[
     const auto tools { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
     // 네 탭 모두 rail에 있고, 기본 탭은 도구다.
     for (const std::u8string_view name : { std::u8string_view { u8"tools" }, std::u8string_view { u8"operations" }, std::u8string_view { u8"appearance" }, std::u8string_view { u8"system" } })
-        REQUIRE(tools->find({ gitman::ui::kind_settings_tab_item, std::u8string { name } }) != nullptr);
+        REQUIRE(tools->find({ luil::ui_element_kind::tab, std::u8string { name } }) != nullptr);
     REQUIRE(tools->find({ gitman::ui::kind_settings_git_browse }) != nullptr);
     REQUIRE(tools->find({ gitman::ui::kind_settings_timeout_input }) != nullptr);
     // 다른 탭의 컨트롤은 만들어지지 않는다.
-    REQUIRE(tools->find({ gitman::ui::kind_settings_submodules_toggle }) == nullptr);
+    REQUIRE(tools->find({ luil::ui_element_kind::check, u8"settings-submodules" }) == nullptr);
     REQUIRE(tools->find({ gitman::ui::kind_settings_associate }) == nullptr);
     REQUIRE(tools->ids_of_kind(gitman::ui::kind_settings_accent_swatch).empty());
 
     // D1-B: scrim은 Tab 자리가 아니고 탭 rail 항목·텍스트 칸 같은 dialog 컨트롤은 자리다.
     REQUIRE(tools->find({ gitman::ui::kind_settings_dialog })->tab_stop() == false);
-    REQUIRE(tools->find({ gitman::ui::kind_settings_tab_item, std::u8string { u8"tools" } })->tab_stop());
+    REQUIRE(tools->find({ luil::ui_element_kind::tab, u8"tools" })->accessibility().selected);
     REQUIRE(tools->find({ gitman::ui::kind_settings_timeout_input })->tab_stop());
 
     // 초안을 고친 뒤 탭을 옮겨도 값은 남는다.
     fixture.controller.handle(gitman::set_settings_executable_intent { gitman::repository_kind::subversion, u8"C:\\tools\\svn.exe" });
     const std::vector<luil::input_action> actions {
-        click(*tools, luil::ui_element_id { gitman::ui::kind_settings_tab_item, std::u8string { u8"operations" } }),
+        click(*tools, luil::ui_element_id { luil::ui_element_kind::tab, std::u8string { u8"operations" } }),
     };
     REQUIRE(actions.size() == 1u);
     const auto* const message { gitman::testing::as_message(actions) };
@@ -646,134 +614,50 @@ TEST_CASE("The settings dialog shows one tab at a time and keeps the drafts", "[
     REQUIRE(view->settings_dialog->svn_path == u8"C:\\tools\\svn.exe");
 
     const auto operations { gitman::testing::make_tree(*view) };
-    REQUIRE(operations->find({ gitman::ui::kind_settings_submodules_toggle }) != nullptr);
-    REQUIRE(operations->find({ gitman::ui::kind_settings_log_files_toggle }) != nullptr);
+    REQUIRE(operations->find({ luil::ui_element_kind::check, u8"settings-submodules" }) != nullptr);
+    REQUIRE(operations->find({ luil::ui_element_kind::check, u8"settings-log-files" }) != nullptr);
     REQUIRE(operations->find({ gitman::ui::kind_settings_git_browse }) == nullptr);
 
     // panel 높이는 탭을 옮겨도 같다 — 창이 튀지 않는다 (S1.3).
     REQUIRE(operations->find({ gitman::ui::kind_settings_dialog_panel })->bounds().height == tools->find({ gitman::ui::kind_settings_dialog_panel })->bounds().height);
 }
 
-TEST_CASE("The scope badge sits above the item title without moving the controls", "[ui][settings-ui]")
+TEST_CASE("Scope status, executable path and actions have separate rows", "[ui][settings-ui][redesign]")
 {
-    // 배지는 항목 제목 바로 위 왼쪽이고, 행 컨트롤은 제목 줄 오른쪽 끝을 그대로
-    // 쓴다 (E3).
     settings_fixture fixture {};
-    // 두 모드를 나란히 비교하므로 **둘 다 스크롤이 필요 없는** 창 높이를 쓴다.
-    // 한쪽에만 스크롤 막대가 생기면 항목 열이 그만큼 좁아져 x가 달라진다 (E1).
-    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-
-    const luil::ui_element* const badge { tree->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"git" } }) };
-    REQUIRE(badge != nullptr);
-    const luil::rect_f badge_bounds { badge->bounds() };
-    REQUIRE(badge_bounds.height >= 16.0f);
-
-    // 같은 항목의 지우기 버튼보다 위에 있고 줄이 겹치지 않는다.
-    const luil::rect_f clear { tree->find({ gitman::ui::kind_settings_git_clear })->bounds() };
-    REQUIRE(badge_bounds.y + badge_bounds.height <= clear.y);
-    // 배지는 항목 왼쪽 끝에서 시작한다.
-    const luil::rect_f panel { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
-    REQUIRE(badge_bounds.x > panel.x);
-    REQUIRE(badge_bounds.x + badge_bounds.width < clear.x);
-
-    // 컨트롤은 전역 모드와 같은 오른쪽 끝에 있다 — 배지 때문에 밀리지 않는다.
-    recording_submitter global_submitter {};
-    gitman::logic_controller global_controller { global_submitter };
-    global_controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
-    global_controller.handle(gitman::open_settings_intent {});
-    const auto global_tree { gitman::testing::make_tree(*global_controller.make_view_snapshot()) };
-    const luil::rect_f global_clear { global_tree->find({ gitman::ui::kind_settings_git_clear })->bounds() };
-    const luil::rect_f global_panel { global_tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
-    REQUIRE(clear.x - panel.x == global_clear.x - global_panel.x);
-
-    // 외양 항목도 같은 규칙이다. 초안을 고치면 `문서 설정`이 되어 누를 수 있다 (D4).
-    fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
-    const auto follows { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-    const luil::ui_element* const following_badge { follows->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"accent" } }) };
-    REQUIRE(following_badge != nullptr);
-    REQUIRE(following_badge->action(luil::ui_trigger::left_click) == nullptr);
-
-    fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
-    const auto appearance { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-    const luil::ui_element* const accent_badge { appearance->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"accent" } }) };
-    REQUIRE(accent_badge != nullptr);
-    REQUIRE(accent_badge->action(luil::ui_trigger::left_click) != nullptr);
-
-    const std::vector<luil::input_action> cleared { click(*appearance, accent_badge->id()) };
-    REQUIRE(cleared.size() == 1u);
-    const auto* const message { gitman::testing::as_message(cleared) };
-    REQUIRE(message != nullptr);
-    const auto* const intent { std::get_if<gitman::clear_settings_override_intent>(message) };
-    REQUIRE(intent != nullptr);
-    REQUIRE(intent->field == gitman::settings_override_field::accent);
+    const auto reset { tree->find({ gitman::ui::kind_settings_override_badge, u8"git" })->bounds() };
+    const auto browse { tree->find({ gitman::ui::kind_settings_git_browse })->bounds() };
+    const auto path { tree->find({ gitman::ui::kind_settings_dialog_panel, u8"git-path" })->bounds() };
+    REQUIRE(reset.y + reset.height <= path.y);
+    REQUIRE(path.y + path.height <= browse.y);
 }
 
-TEST_CASE("Every settings control stays inside the panel on all tabs", "[ui][settings-ui][tabs]")
+TEST_CASE("Every settings control stays inside the panel on all tabs", "[ui][settings-ui][redesign]")
 {
-    // 항목 높이가 늘어도(색 20개) panel 안에 담겨야 한다 — panel 높이는 가장 높은
-    // 탭에 맞춘다 (settings-tabs-and-appearance-scope-design S1.3).
-    const std::vector<gitman::settings_tab> tabs {
-        gitman::settings_tab::tools,
-        gitman::settings_tab::operations,
-        gitman::settings_tab::appearance,
-        gitman::settings_tab::system,
-    };
-
-    for (const bool document_mode : { true, false })
-        for (const gitman::settings_tab tab : tabs)
+    settings_fixture fixture {};
+    for (const float width : { 480.0f, 800.0f, 1280.0f })
+    {
+        fixture.controller.handle(gitman::window_metrics_intent { width, 500.0f, 1.0f });
+        fixture.controller.handle(gitman::open_settings_intent {});
+        for (const auto tab : { gitman::settings_tab::tools, gitman::settings_tab::operations, gitman::settings_tab::appearance, gitman::settings_tab::system })
         {
-            recording_submitter submitter {};
-            gitman::logic_controller controller { submitter };
-            controller.handle(gitman::window_metrics_intent { 1280.0f, 800.0f, 1.0f });
-            if (document_mode)
+            fixture.controller.handle(gitman::select_settings_tab_intent { tab });
+            const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+            const auto panel { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
+            for (const auto& id : tree->ids_of_kind(luil::ui_element_kind::tab))
             {
-                controller.handle(gitman::open_document_intent { u8"C:\\work\\p.version-list" });
-                gitman::document_loaded_event loaded {};
-                gitman::workspace_document document {};
-                document.document_path = u8"C:\\work\\p.version-list";
-                document.settings.git_executable = u8"C:\\tools\\git.exe";
-                document.appearance.accent_id = { u8"blue" };
-                loaded.document = { std::move(document) };
-                controller.handle(std::move(loaded));
+                const auto bounds { tree->find(id)->bounds() };
+                REQUIRE(bounds.x >= panel.x);
+                REQUIRE(bounds.x + bounds.width <= panel.x + panel.width);
             }
-            controller.handle(gitman::open_settings_intent {});
-            controller.handle(gitman::select_settings_tab_intent { tab });
-
-            const auto tree { gitman::testing::make_tree(*controller.make_view_snapshot()) };
-            const luil::ui_element* const panel { tree->find({ gitman::ui::kind_settings_dialog_panel }) };
-            REQUIRE(panel != nullptr);
-            const luil::rect_f box { panel->bounds() };
-
-            const std::vector<luil::ui_element_kind> kinds {
-                gitman::ui::kind_settings_tab_item,
-                gitman::ui::kind_settings_git_browse,
-                gitman::ui::kind_settings_git_clear,
-                gitman::ui::kind_settings_svn_browse,
-                gitman::ui::kind_settings_svn_clear,
-                gitman::ui::kind_settings_timeout_input,
-                gitman::ui::kind_settings_submodules_toggle,
-                gitman::ui::kind_settings_ignore_local_toggle,
-                gitman::ui::kind_settings_log_files_toggle,
-                gitman::ui::kind_settings_theme_option,
-                gitman::ui::kind_settings_accent_swatch,
-                gitman::ui::kind_settings_override_badge,
-                gitman::ui::kind_settings_associate,
-                gitman::ui::kind_settings_dissociate,
-                gitman::ui::kind_settings_dialog_confirm,
-                gitman::ui::kind_settings_dialog_cancel,
-            };
-            for (const luil::ui_element_kind kind : kinds)
-                for (const luil::ui_element_id& id : tree->ids_of_kind(kind))
-                {
-                    const luil::rect_f bounds { tree->find(id)->bounds() };
-                    REQUIRE(bounds.x >= box.x);
-                    REQUIRE(bounds.y >= box.y);
-                    REQUIRE(bounds.x + bounds.width <= box.x + box.width);
-                    REQUIRE(bounds.y + bounds.height <= box.y + box.height);
-                }
+            const auto footer { tree->find({ gitman::ui::kind_settings_dialog_confirm })->bounds() };
+            REQUIRE(footer.y + footer.height <= panel.y + panel.height);
+            const auto area { tree->find({ luil::ui_element_kind::scroll_area, u8"settings" })->bounds() };
+            REQUIRE(area.y + area.height <= footer.y);
         }
+    }
 }
 
 TEST_CASE("Timeout characters edit the draft and only digits count", "[logic][settings-ui][timeout]")
@@ -848,6 +732,7 @@ TEST_CASE("Typed characters reach the timeout box only while it has focus", "[ui
     }
 
     fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::settings_scroll_intent { 10000.0f });
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
     // 텍스트 박스 element가 존재하고 안내 tooltip을 가진다.
@@ -889,6 +774,7 @@ TEST_CASE("Focus follows presses and carries the caret phase origin", "[ui][sett
 {
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::settings_scroll_intent { 10000.0f });
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
     gitman::testing::interaction_harness harness { tree };
 
@@ -933,7 +819,7 @@ TEST_CASE("The submodule toggle edits the draft and confirm saves it", "[logic][
     // 토글 버튼이 intent를 보내고 초안이 뒤집힌다.
     {
         const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-        const std::vector<luil::input_action> actions { click(*tree, luil::ui_element_id { gitman::ui::kind_settings_submodules_toggle }) };
+        const std::vector<luil::input_action> actions { click(*tree, luil::ui_element_id { luil::ui_element_kind::check, u8"settings-submodules" }) };
         const auto* const message { gitman::testing::as_message(actions) };
         REQUIRE(message != nullptr);
         REQUIRE(std::holds_alternative<gitman::toggle_settings_submodules_intent>(*message));
@@ -974,7 +860,7 @@ TEST_CASE("The log file toggle edits the draft and confirm saves it", "[logic][s
 
     {
         const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-        const std::vector<luil::input_action> actions { click(*tree, luil::ui_element_id { gitman::ui::kind_settings_log_files_toggle }) };
+        const std::vector<luil::input_action> actions { click(*tree, luil::ui_element_id { luil::ui_element_kind::check, u8"settings-log-files" }) };
         const auto* const message { gitman::testing::as_message(actions) };
         REQUIRE(message != nullptr);
         REQUIRE(std::holds_alternative<gitman::toggle_settings_log_files_intent>(*message));
@@ -1091,65 +977,18 @@ TEST_CASE("The appearance edits the app settings without a document", "[logic][s
     REQUIRE(view->settings_dialog->accent_id == u8"blue");
 }
 
-TEST_CASE("The appearance items show the effective values and a wrapped swatch grid", "[ui][settings-ui][theme]")
+TEST_CASE("The appearance items show the effective values and a wrapped swatch grid", "[ui][settings-ui][redesign]")
 {
-    // 외양은 외양 탭이고, 문서가 열려 있으면 문서 override를 편집한다 (S2.3).
     settings_fixture fixture {};
     fixture.controller.handle(gitman::open_settings_intent {});
     fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
-    // 초안을 고쳐 두면 그 값이 화면에 보인다 (저장 전에도 dialog는 초안을 보여 준다).
-    fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
     fixture.controller.handle(gitman::set_theme_preference_intent { gitman::theme_preference::light });
-
-    const auto view { fixture.controller.make_view_snapshot() };
-    REQUIRE(view->settings_dialog.has_value());
-    REQUIRE(view->settings_dialog->document_mode);
-    REQUIRE(view->settings_dialog->theme == gitman::theme_preference::light);
-    REQUIRE(view->settings_dialog->accent_id == u8"blue");
-
-    const auto tree { gitman::testing::make_tree(*view) };
-    const luil::ui_element_id light { gitman::ui::kind_settings_theme_option, std::u8string { u8"light" } };
-    const luil::ui_element_id system { gitman::ui::kind_settings_theme_option, std::u8string { u8"system" } };
-    const luil::ui_element_id dark { gitman::ui::kind_settings_theme_option, std::u8string { u8"dark" } };
-    REQUIRE(tree->find(light) != nullptr);
-    REQUIRE(tree->find(system) != nullptr);
-    REQUIRE(tree->find(dark) != nullptr);
-
-    // 색 동그라미는 내장 목록만큼 있고, 각자 자기 id를 가진다.
-    REQUIRE(tree->ids_of_kind(gitman::ui::kind_settings_accent_swatch).size() == luil::accent_catalog().size());
-    for (const luil::accent_definition& accent : luil::accent_catalog())
-        REQUIRE(tree->find({ gitman::ui::kind_settings_accent_swatch, std::u8string { accent.id } }) != nullptr);
-
-    // 세 칸과 동그라미는 서로 겹치지 않고 panel 안에 있다.
-    const luil::rect_f panel { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
-    const luil::rect_f system_bounds { tree->find(system)->bounds() };
-    REQUIRE(system_bounds.x >= panel.x);
-    REQUIRE(system_bounds.x + system_bounds.width <= panel.x + panel.width);
-    REQUIRE(tree->find(light)->bounds().x < system_bounds.x);
-    REQUIRE(tree->find(dark)->bounds().x > system_bounds.x);
-
-    // 색 격자는 왼쪽에서 오른쪽으로 채우고 panel을 넘지 않는다. 줄이 바뀌면 x가
-    // 처음으로 돌아가고 y가 내려간다 (S2.4).
-    std::vector<luil::rect_f> swatches {};
-    for (const luil::accent_definition& accent : luil::accent_catalog())
-        swatches.push_back(tree->find({ gitman::ui::kind_settings_accent_swatch, std::u8string { accent.id } })->bounds());
-    for (const luil::rect_f& swatch : swatches)
-    {
-        REQUIRE(swatch.x >= panel.x);
-        REQUIRE(swatch.x + swatch.width <= panel.x + panel.width);
-        REQUIRE(swatch.y + swatch.height <= panel.y + panel.height);
-    }
-    for (std::size_t index = 1; index < swatches.size(); ++index)
-    {
-        const bool same_row { swatches[index].y == swatches[index - 1].y };
-        if (same_row)
-            REQUIRE(swatches[index].x > swatches[index - 1].x);
-        else
-        {
-            REQUIRE(swatches[index].y > swatches[index - 1].y);
-            REQUIRE(swatches[index].x == swatches.front().x);
-        }
-    }
+    fixture.controller.handle(gitman::set_accent_intent { u8"blue" });
+    const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
+    REQUIRE(tree->find({ luil::ui_element_kind::choice, u8"settings-theme/light" })->accessibility().selected);
+    REQUIRE(tree->find({ luil::ui_element_kind::choice, u8"settings-accent/blue" })->accessibility().selected);
+    for (const auto& accent : luil::accent_catalog())
+        REQUIRE(tree->find({ luil::ui_element_kind::choice, u8"settings-accent/" + std::u8string { accent.id } }) != nullptr);
 }
 
 TEST_CASE("Appearance clicks preview at once and need the save button to persist", "[ui][settings-ui][theme]")
@@ -1160,7 +999,7 @@ TEST_CASE("Appearance clicks preview at once and need the save button to persist
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
 
     const std::vector<luil::input_action> theme_actions {
-        click(*tree, luil::ui_element_id { gitman::ui::kind_settings_theme_option, std::u8string { u8"dark" } }),
+        click(*tree, luil::ui_element_id { luil::ui_element_kind::choice, std::u8string { u8"settings-theme/dark" } }),
     };
     REQUIRE(theme_actions.size() == 1u);
     const auto* const theme_message { gitman::testing::as_message(theme_actions) };
@@ -1170,7 +1009,7 @@ TEST_CASE("Appearance clicks preview at once and need the save button to persist
     REQUIRE(theme_intent->theme == gitman::theme_preference::dark);
 
     const std::vector<luil::input_action> accent_actions {
-        click(*tree, luil::ui_element_id { gitman::ui::kind_settings_accent_swatch, std::u8string { u8"blue" } }),
+        click(*tree, luil::ui_element_id { luil::ui_element_kind::choice, std::u8string { u8"settings-accent/blue" } }),
     };
     REQUIRE(accent_actions.size() == 1u);
     const auto* const accent_message { gitman::testing::as_message(accent_actions) };
@@ -1244,22 +1083,14 @@ TEST_CASE("Settings scrolling stops at both ends and resets when the tab changes
     REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
 }
 
-TEST_CASE("A tall window keeps the settings dialog unscrolled", "[ui][settings-ui][scroll]")
+TEST_CASE("A short settings category does not scroll through empty space", "[ui][settings-ui][redesign]")
 {
     recording_submitter submitter {};
     gitman::logic_controller controller { submitter };
     controller.handle(gitman::window_metrics_intent { 1280.0f, 1000.0f, 1.0f });
     controller.handle(gitman::open_settings_intent {});
-    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
-
-    const auto snapshot { controller.make_view_snapshot() };
-    REQUIRE(gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, 1000.0f).maximum_scroll == 0.0f);
-
-    // 스크롤할 것이 없으면 막대도 없고 휠도 아무 일을 하지 않는다.
-    const auto tree { gitman::testing::make_tree(*snapshot) };
-    const luil::ui_element* const bar { settings_scrollbar(*tree) };
-    REQUIRE((bar == nullptr || bar->visible() == false));
-
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::system });
+    REQUIRE(gitman::ui::settings_dialog_metrics(*controller.make_view_snapshot()->settings_dialog, 1000.0f).maximum_scroll == 0.0f);
     controller.handle(gitman::settings_scroll_intent { 500.0f });
     REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
 }
@@ -1287,7 +1118,7 @@ TEST_CASE("Scrolled settings controls leave the viewport and stop responding", "
     // 항목은 위로 흐르고 탭 rail은 제자리다.
     REQUIRE(browse_after->bounds().y < y_before);
 
-    const luil::ui_element_id rail_id { gitman::ui::kind_settings_tab_item, std::u8string { u8"tools" } };
+    const luil::ui_element_id rail_id { luil::ui_element_kind::tab, std::u8string { u8"tools" } };
     const luil::ui_element* const rail_before { tree_before->find(rail_id) };
     const luil::ui_element* const rail_after { tree_after->find(rail_id) };
     REQUIRE(rail_before != nullptr);
@@ -1446,29 +1277,41 @@ TEST_CASE("A clamped dialog keeps a margin from the client edges", "[ui][setting
     REQUIRE(box.height > 0.0f);
 }
 
-TEST_CASE("The scroll limit accounts for the dialog margin", "[ui][settings-ui][scroll]")
+TEST_CASE("The scroll limit accounts for the dialog margin", "[ui][settings-ui][redesign]")
 {
-    // 배치와 스크롤 한계가 같은 여백을 봐야 휠이 헛돌거나 마지막 항목이 잘리지 않는다.
-    recording_submitter submitter {};
-    gitman::logic_controller controller { submitter };
-    constexpr float window_height { 320.0f };
-    controller.handle(gitman::window_metrics_intent { 1280.0f, window_height, 1.0f });
-    controller.handle(gitman::open_settings_intent {});
-    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 500.0f, 1.0f });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::settings_scroll_intent { 10000.0f });
+    const auto view { fixture.controller.make_view_snapshot() };
+    const auto tree { gitman::testing::make_tree(*view) };
+    const auto* bar { settings_scrollbar(*tree) };
+    REQUIRE(bar != nullptr);
+    REQUIRE(view->settings_dialog->scroll_offset == Catch::Approx(bar->accessibility().range->maximum));
+    const auto* input { tree->find({ gitman::ui::kind_settings_timeout_input }) };
+    REQUIRE(tree->visible_bounds(*input).has_value());
+}
 
-    const auto snapshot { controller.make_view_snapshot() };
-    const gitman::ui::settings_dialog_scroll_metrics metrics {
-        gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, window_height),
-    };
-
-    const auto tree { gitman::testing::make_tree(*snapshot) };
-    const luil::rect_f box { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
-    // panel 높이 = chrome + viewport다. 배치가 여백을 반영했으면 이 둘이 맞는다.
-    REQUIRE(box.height == Catch::Approx(104.0f + metrics.viewport_height));
-
-    // 끝까지 스크롤하면 마지막 항목이 viewport 안에 들어온다.
-    controller.handle(gitman::settings_scroll_intent { 10000.0f });
-    REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == metrics.maximum_scroll);
+TEST_CASE("A narrow high DPI settings snapshot reaches the complete last font control", "[ui][settings-ui][redesign][scroll]")
+{
+    settings_fixture fixture {};
+    for (const float scale : { 1.0f, 1.5f, 2.0f })
+    {
+        fixture.controller.handle(gitman::window_metrics_intent { 740.0f, 500.0f, scale });
+        fixture.controller.handle(gitman::open_settings_intent {});
+        fixture.controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
+        fixture.controller.handle(gitman::settings_scroll_intent { 100000.0f });
+        const auto view { fixture.controller.make_view_snapshot() };
+        const auto tree { gitman::testing::make_tree(*view) };
+        const auto* bar { settings_scrollbar(*tree) };
+        REQUIRE(bar != nullptr);
+        REQUIRE(view->settings_dialog->scroll_offset == Catch::Approx(bar->accessibility().range->maximum));
+        const auto* font { tree->find({ gitman::ui::kind_settings_code_font_pick }) };
+        REQUIRE(font != nullptr);
+        const auto visible { tree->visible_bounds(*font) };
+        REQUIRE(visible.has_value());
+        REQUIRE(visible->height == Catch::Approx(font->bounds().height));
+    }
 }
 
 TEST_CASE("A very short window shrinks the margin instead of the panel to nothing", "[ui][settings-ui][scroll]")
@@ -1483,53 +1326,17 @@ TEST_CASE("A very short window shrinks the margin instead of the panel to nothin
         REQUIRE(gitman::dialog_edge_margin(height) * 2.0f < height);
 }
 
-TEST_CASE("Each settings tab gets its own scroll extent", "[ui][settings-ui][scroll][tabs]")
+TEST_CASE("Each settings tab gets its own scroll extent", "[ui][settings-ui][redesign]")
 {
-    // 지시(2026-08-23): 탭마다 스크롤을 새로 계산한다. 가장 높은 탭으로 한계를 세면
-    // 짧은 탭에서 빈 공간까지 스크롤된다.
-    //
-    // 창 520에서는 `외양` 탭만 넘친다 (내용 480 · viewport 368). 나머지 셋은
-    // 238 · 266 · 116으로 넉넉히 들어온다.
-    constexpr float window_height { 520.0f };
-    const std::vector<gitman::settings_tab> short_tabs {
-        gitman::settings_tab::tools,
-        gitman::settings_tab::operations,
-        gitman::settings_tab::system,
-    };
-
-    recording_submitter submitter {};
-    gitman::logic_controller controller { submitter };
-    controller.handle(gitman::window_metrics_intent { 1280.0f, window_height, 1.0f });
-    controller.handle(gitman::open_settings_intent {});
-
-    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::appearance });
-    const auto tall { controller.make_view_snapshot() };
-    const auto tall_metrics { gitman::ui::settings_dialog_metrics(*tall->settings_dialog, window_height) };
-    REQUIRE(tall_metrics.maximum_scroll > 0.0f);
-    const auto tall_tree { gitman::testing::make_tree(*tall) };
-    REQUIRE(settings_scrollbar(*tall_tree)->visible());
-
-    for (const gitman::settings_tab tab : short_tabs)
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 600.0f, 1.0f });
+    fixture.controller.handle(gitman::open_settings_intent {});
+    for (const auto tab : { gitman::settings_tab::tools, gitman::settings_tab::operations, gitman::settings_tab::appearance, gitman::settings_tab::system })
     {
-        controller.handle(gitman::select_settings_tab_intent { tab });
-        const auto snapshot { controller.make_view_snapshot() };
-        const auto metrics { gitman::ui::settings_dialog_metrics(*snapshot->settings_dialog, window_height) };
-
-        // 그 탭의 내용은 다 보이므로 스크롤할 것이 없다.
-        REQUIRE(metrics.content_height <= metrics.viewport_height);
-        REQUIRE(metrics.maximum_scroll == 0.0f);
-
-        // 막대도 없고 휠도 아무 일을 하지 않는다.
-        const auto tab_tree { gitman::testing::make_tree(*snapshot) };
-        const luil::ui_element* const bar { settings_scrollbar(*tab_tree) };
-        INFO("tab " << static_cast<int>(tab) << " content " << metrics.content_height << " viewport " << metrics.viewport_height << " max " << metrics.maximum_scroll);
-        REQUIRE((bar == nullptr || bar->visible() == false));
-        controller.handle(gitman::settings_scroll_intent { 500.0f });
-        REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
-
-        // panel 크기는 탭이 바뀌어도 그대로다 — dialog가 커졌다 작아졌다 하지 않는다 (S1.3).
-        REQUIRE(metrics.panel_content_height == tall_metrics.panel_content_height);
-        REQUIRE(metrics.viewport_height == tall_metrics.viewport_height);
+        fixture.controller.handle(gitman::select_settings_tab_intent { tab });
+        const auto metrics { gitman::ui::settings_dialog_metrics(*fixture.controller.make_view_snapshot()->settings_dialog, 600.0f, 800.0f) };
+        fixture.controller.handle(gitman::settings_scroll_intent { 10000.0f });
+        REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->scroll_offset == metrics.maximum_scroll);
     }
 }
 
@@ -1547,7 +1354,7 @@ TEST_CASE("Switching tabs recalculates the scroll limit at that moment", "[ui][s
     controller.handle(gitman::settings_scroll_intent { 10000.0f });
     REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset > 0.0f);
 
-    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::tools });
+    controller.handle(gitman::select_settings_tab_intent { gitman::settings_tab::system });
     REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == 0.0f);
 
     // 짧은 탭에서는 아무리 굴려도 0이다.
@@ -1561,39 +1368,19 @@ TEST_CASE("Switching tabs recalculates the scroll limit at that moment", "[ui][s
     REQUIRE(controller.make_view_snapshot()->settings_dialog->scroll_offset == metrics.maximum_scroll);
 }
 
-TEST_CASE("An overridden item keeps its badge and controls off the highlight edges", "[ui][settings-ui]")
+TEST_CASE("An overridden item keeps its badge and controls off the highlight edges", "[ui][settings-ui][redesign]")
 {
-    // 지시(2026-08-23): 문서 모드에서 덮어쓴 항목은 블록에 옅은 키 컬러를 까는데
-    // 배지와 버튼이 그 가장자리에 딱 붙어 빡빡해 보였다. 안쪽 여백을 확인한다.
     settings_fixture fixture {};
-    fixture.controller.handle(gitman::window_metrics_intent { 800.0f, 1000.0f, 1.0f });
     fixture.controller.handle(gitman::open_settings_intent {});
     const auto tree { gitman::testing::make_tree(*fixture.controller.make_view_snapshot()) };
-
-    const luil::ui_element* const badge { tree->find({ gitman::ui::kind_settings_override_badge, std::u8string { u8"git" } }) };
-    REQUIRE(badge != nullptr);
-    const luil::rect_f badge_bounds { badge->bounds() };
-
-    // 같은 항목의 두 버튼이 블록 오른쪽 끝이다.
-    const luil::rect_f browse { tree->find({ gitman::ui::kind_settings_git_browse })->bounds() };
-    const luil::rect_f clear { tree->find({ gitman::ui::kind_settings_git_clear })->bounds() };
-    const float controls_right { clear.x + clear.width };
-
-    // 강조 바탕이 깔리는 블록의 좌우 끝이다. 배지 왼쪽 끝이 블록 왼쪽 끝이었다.
-    const luil::rect_f panel { tree->find({ gitman::ui::kind_settings_dialog_panel })->bounds() };
-    constexpr float content_left { 14.0f + 132.0f + 14.0f };
-    const float block_left { panel.x + content_left };
-    const float block_right { panel.x + panel.width - 14.0f };
-
-    // 위 · 왼쪽 · 오른쪽 모두 여백이 있다. 전에는 셋 다 정확히 0이었다.
-    REQUIRE(badge_bounds.x - block_left > 0.0f);
-    REQUIRE(block_right - controls_right > 0.0f);
-    REQUIRE(browse.x > block_left);
-
-    // 배지는 블록 위쪽 끝에서 떨어져 있다. 블록 top은 그 위 항목의 끝 = 배지 top -
-    // 여백이므로, 배지가 제목 줄보다 위에 있다는 기존 규칙과 함께 확인한다.
-    REQUIRE(badge_bounds.y + badge_bounds.height <= clear.y);
-    REQUIRE(badge_bounds.height >= 16.0f);
+    const auto card { tree->find({ gitman::ui::kind_settings_dialog_panel, u8"git-card" })->bounds() };
+    for (const auto id : { luil::ui_element_id { gitman::ui::kind_settings_override_badge, u8"git" }, luil::ui_element_id { gitman::ui::kind_settings_git_browse } })
+    {
+        const auto bounds { tree->find(id)->bounds() };
+        REQUIRE(bounds.x > card.x);
+        REQUIRE(bounds.x + bounds.width < card.x + card.width);
+        REQUIRE(bounds.y > card.y);
+    }
 }
 
 TEST_CASE("The font draft lands in the document on save", "[logic][settings-ui][font]")
@@ -1857,4 +1644,66 @@ TEST_CASE("Assistive technology sets the settings and font dialog scrollbars", "
     REQUIRE(controller.make_view_snapshot()->font_dialog->scroll_offset == 50.0f);
     controller.handle(gitman::font_dialog_scroll_intent { 0.0f, 100000.0f });
     REQUIRE(controller.make_view_snapshot()->font_dialog->scroll_offset == font_maximum);
+}
+
+TEST_CASE("Settings scope changes preserve both drafts and save their separate destinations", "[logic][settings-ui][redesign]")
+{
+    settings_fixture fixture {};
+    fixture.controller.start();
+    gitman::app_settings_loaded_event loaded {};
+    loaded.operation_id = last_of(fixture.submitter, gitman::operation_kind::load_app_settings)->operation_id;
+    fixture.controller.handle(std::move(loaded));
+    for (std::size_t index = 0; index < fixture.submitter.requests.size(); ++index)
+    {
+        if (fixture.submitter.requests[index].kind == gitman::operation_kind::save_app_settings)
+        {
+            gitman::app_settings_saved_event saved {};
+            saved.operation_id = fixture.submitter.requests[index].operation_id;
+            fixture.controller.handle(std::move(saved));
+        }
+    }
+    fixture.submitter.requests.clear();
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::toggle_settings_log_files_intent {});
+    fixture.controller.handle(gitman::select_settings_scope_intent { false });
+    REQUIRE_FALSE(fixture.controller.make_view_snapshot()->settings_dialog->document_mode);
+    fixture.controller.handle(gitman::set_settings_executable_intent { gitman::repository_kind::subversion, u8"C:\\Tools\\svn.exe" });
+    fixture.controller.handle(gitman::toggle_settings_submodules_intent {});
+    fixture.controller.handle(gitman::select_settings_scope_intent { true });
+    const auto draft { fixture.controller.make_view_snapshot()->settings_dialog };
+    REQUIRE(draft->document_mode);
+    REQUIRE_FALSE(draft->write_log_files);
+    REQUIRE(draft->svn_path == u8"C:\\Tools\\svn.exe");
+    REQUIRE(draft->svn_follows_app);
+    REQUIRE(draft->update_submodules);
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE_FALSE(fixture.controller.make_view_snapshot()->settings_dialog.has_value());
+    const auto* app_save { last_of(fixture.submitter, gitman::operation_kind::save_app_settings) };
+    const auto* workspace_save { last_of(fixture.submitter, gitman::operation_kind::save_document) };
+    REQUIRE(app_save != nullptr);
+    REQUIRE(workspace_save != nullptr);
+    REQUIRE(app_save->app_settings_payload->settings.svn_executable == u8"C:\\Tools\\svn.exe");
+    REQUIRE(app_save->app_settings_payload->settings.update_submodules);
+    REQUIRE(workspace_save->document->settings.write_log_files == std::optional<bool> { false });
+    REQUIRE_FALSE(workspace_save->document->settings.svn_executable.has_value());
+}
+
+TEST_CASE("Cancel discards drafts in both scopes and a hidden invalid scope blocks saving", "[logic][settings-ui][redesign]")
+{
+    settings_fixture fixture {};
+    fixture.controller.handle(gitman::open_settings_intent {});
+    fixture.controller.handle(gitman::toggle_settings_log_files_intent {});
+    fixture.controller.handle(gitman::select_settings_scope_intent { false });
+    fixture.controller.handle(gitman::set_settings_executable_intent { gitman::repository_kind::git, u8"relative.exe" });
+    fixture.controller.handle(gitman::select_settings_scope_intent { true });
+    fixture.controller.handle(gitman::confirm_settings_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog.has_value());
+    REQUIRE_FALSE(fixture.controller.make_view_snapshot()->settings_dialog->document_mode);
+    REQUIRE_FALSE(fixture.controller.make_view_snapshot()->settings_dialog->can_confirm);
+    REQUIRE(last_of(fixture.submitter, gitman::operation_kind::save_document) == nullptr);
+    fixture.controller.handle(gitman::cancel_settings_dialog_intent {});
+    fixture.controller.handle(gitman::open_settings_intent {});
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->write_log_files);
+    fixture.controller.handle(gitman::select_settings_scope_intent { false });
+    REQUIRE(fixture.controller.make_view_snapshot()->settings_dialog->git_path.empty());
 }

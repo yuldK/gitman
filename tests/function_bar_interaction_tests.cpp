@@ -319,8 +319,8 @@ TEST_CASE("The placement menu is 121 tall with radios on the visible placement",
         REQUIRE(menu.items[2].checked == false);
         // `c`를 카드에 두면 문서 순서로 두 번째 `card`라 `Alt+2`다.
         REQUIRE(menu.items[0].shortcut_text == u8"Alt+2");
-        // `기능 편집…`은 T12부터 그 기능을 고른 상태로 편집 dialog를 연다 (argument가 버튼 id).
-        REQUIRE(menu.items[3].label == u8"기능 편집…");
+        // `기능 관리…`은 T12부터 그 기능을 고른 상태로 편집 dialog를 연다 (argument가 버튼 id).
+        REQUIRE(menu.items[3].label == u8"기능 관리…");
         REQUIRE(menu.items[3].entry == gitman::context_menu_entry::edit_functions);
         REQUIRE(menu.items[3].argument == u8"c");
         REQUIRE(menu.items[3].separator_above);

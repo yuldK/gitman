@@ -626,7 +626,7 @@ namespace gitman::ui {
                     draw_text_line(context, dialog_.message, geometry.footer_text, solid_paint(context.palette.warning_accent), { .size = small_size });
                     return;
                 }
-                std::u8string hint { u8"적용하면 문서에 바로 씁니다" };
+                std::u8string hint { u8"적용하면 기능을 사용할 수 있습니다" };
                 // 접힌 dialog는 목록 머리 줄이 없으므로 여기에 개수를 보인다.
                 if (geometry.collapsed && dialog_.tab == function_editor_tab::functions)
                 {
@@ -1104,7 +1104,7 @@ namespace gitman::ui {
         const function_editor_size size { function_editor_dialog_size(window_width, window_height) };
         dialog_host_spec spec {};
         spec.owner = std::u8string { dialog_owner_function_editor };
-        spec.name = std::u8string { u8"기능 편집" };
+        spec.name = view.title;
         spec.content_width = size.width;
         spec.content_height = size.height;
         // 배경 클릭은 흡수만 한다. 고친 초안을 실수로 버리지 않게 한다. Esc는 취소다.

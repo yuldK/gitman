@@ -21,7 +21,7 @@ namespace gitman::ui {
         // 줄에서 둘을 가를 수 없어 재생 + 벌레 모양인 `debug-alt`로 그린다 (S2). 이름은 그대로 두어 이미 그 이름을 쓴
         // 문서가 그대로 읽히고 `play`로 떨어지지 않는다.
         constexpr std::size_t function_icon_count { 20 };
-        constexpr std::array<icon_name_glyph, 28> icons {
+        constexpr std::array<icon_name_glyph, 29> icons {
             icon_name_glyph { u8"tools", luil::codicons::icon_tools },
             icon_name_glyph { u8"play", luil::codicons::icon_play },
             icon_name_glyph { u8"debug-start", luil::codicons::icon_debug_alt },
@@ -53,6 +53,7 @@ namespace gitman::ui {
             icon_name_glyph { u8"ellipsis", luil::codicons::icon_ellipsis },
             // 배너 메뉴의 `문서 실행 파일 신뢰…`다 (function-buttons-design 3.10, S1).
             icon_name_glyph { u8"workspace-trusted", luil::codicons::icon_workspace_trusted },
+            icon_name_glyph { u8"add", luil::codicons::icon_add },
         };
 
         // 아이콘 목록이 쓰는 이름 표다. 위 표의 앞 20개와 같은 순서다.

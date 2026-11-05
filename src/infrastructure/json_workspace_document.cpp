@@ -417,7 +417,6 @@ namespace gitman {
             , const std::span<const project_definition> projects, workspace_document_parse_result& result, const std::u8string_view document_path
         )
         {
-            const std::vector<std::optional<function_placement>> visible { resolve_visible_placements(buttons) };
             for (std::size_t index = 0; index < buttons.size(); ++index)
             {
                 const function_button* const button { std::get_if<function_button>(&buttons[index]) };
@@ -428,8 +427,18 @@ namespace gitman {
                 std::u8string_view reason {};
                 if (declared.has_value() == false)
                     reason = u8"placement는 card·bar·menu 중 하나여야 합니다. 기능 줄(bar)에 둡니다.";
-                else if (*declared == function_placement::card && visible[index] != function_placement::card)
-                    reason = u8"card 배치는 문서 전체에서 3개까지입니다. 기능 줄(bar)에 둡니다.";
+                else if (*declared == function_placement::card)
+                {
+                    for (const project_definition& project : projects)
+                    {
+                        const auto placements { resolve_visible_placements(buttons, &project) };
+                        if (function_counts_toward_card(*button, project) && placements[index] != function_placement::card)
+                        {
+                            reason = u8"card 배치는 저장소마다 3개까지입니다. 초과한 저장소에서는 기능 줄(bar)에 둡니다.";
+                            break;
+                        }
+                    }
+                }
                 if (reason.empty())
                     continue;
                 add_function_diagnostic(result, diagnostic_code::function_button_warning, locations[index], reason
@@ -439,21 +448,29 @@ namespace gitman {
 
             // 카드 열은 아이콘만 보여 같은 아이콘의 고정 기능은 tooltip으로만 구별된다 (2.6). 보이는 배치가 card인 기능끼리
             // 아이콘(생략하면 기본 아이콘)이 같으면 뒤 기능에 경고 하나를 단다. 적용 범위는 보지 않는다.
-            std::vector<std::u8string_view> card_icons {};
             for (std::size_t index = 0; index < buttons.size(); ++index)
             {
-                const function_button* const button { std::get_if<function_button>(&buttons[index]) };
-                if (button == nullptr || visible[index] != function_placement::card)
+                const auto* const button { std::get_if<function_button>(&buttons[index]) };
+                if (button == nullptr)
                     continue;
-                if (std::ranges::find(card_icons, button->icon_name()) == card_icons.end())
+                bool repeated { false };
+                for (const project_definition& project : projects)
                 {
-                    card_icons.push_back(button->icon_name());
-                    continue;
+                    const auto placements { resolve_visible_placements(buttons, &project) };
+                    if (placements[index] != function_placement::card)
+                        continue;
+                    for (std::size_t previous = 0; previous < index; ++previous)
+                    {
+                        const auto* const earlier { std::get_if<function_button>(&buttons[previous]) };
+                        if (earlier != nullptr && placements[previous] == function_placement::card && earlier->icon_name() == button->icon_name())
+                            repeated = true;
+                    }
                 }
-                add_function_diagnostic(result, diagnostic_code::function_button_warning, locations[index]
-                    , u8"앞의 card 기능과 아이콘이 같아 카드에서 구별하기 어렵습니다. icon을 바꾸십시오."
-                    , document_path, append_pointer_token(append_pointer_index(u8"/function_buttons/buttons", index), "icon")
-                );
+                if (repeated)
+                    add_function_diagnostic(result, diagnostic_code::function_button_warning, locations[index]
+                        , u8"앞의 card 기능과 아이콘이 같아 카드에서 구별하기 어렵습니다. icon을 바꾸십시오."
+                        , document_path, append_pointer_token(append_pointer_index(u8"/function_buttons/buttons", index), "icon")
+                    );
             }
 
             for (const project_definition& project : projects)
@@ -493,14 +510,14 @@ namespace gitman {
             json digest { section };
             if (const auto buttons { digest.find("buttons") }; buttons != digest.end() && buttons->is_array())
             {
-                const std::vector<std::optional<function_placement>> visible { resolve_visible_placements(entries) };
                 for (std::size_t index = 0; index < buttons->size(); ++index)
                 {
                     json& item { (*buttons)[index] };
                     if (item.is_object() == false)
                         continue;
                     item.erase("placement");
-                    if (index < visible.size() && visible[index] == function_placement::card)
+                    const auto* const button { index < entries.size() ? std::get_if<function_button>(&entries[index]) : nullptr };
+                    if (button != nullptr && declared_function_placement(*button) == function_placement::card)
                         item["placement"] = "card";
                 }
             }

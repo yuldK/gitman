@@ -371,7 +371,7 @@ namespace gitman {
         return parse_function_placement(*button.placement);
     }
 
-    std::vector<std::optional<function_placement>> resolve_visible_placements(const std::span<const function_button_entry> buttons)
+    std::vector<std::optional<function_placement>> resolve_visible_placements(const std::span<const function_button_entry> buttons, const project_definition* const project)
     {
         std::vector<std::optional<function_placement>> result {};
         result.reserve(buttons.size());
@@ -379,7 +379,7 @@ namespace gitman {
         for (const function_button_entry& entry : buttons)
         {
             const function_button* const button { std::get_if<function_button>(&entry) };
-            if (button == nullptr)
+            if (button == nullptr || (project != nullptr && function_counts_toward_card(*button, *project) == false))
             {
                 result.push_back(std::nullopt);
                 continue;

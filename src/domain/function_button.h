@@ -143,7 +143,7 @@ namespace gitman {
     // `buttons`와 같은 순서로 각 항목의 보이는 배치를 돌려준다 (2.2.2 규칙 4).
     // 알 수 없는 값은 `bar`, 문서 순서로 4번째부터의 `card`도 `bar`다. 검증에 실패한
     // 항목은 화면에 나오지 않으므로 값이 없고 `card` 수에도 들지 않는다.
-    [[nodiscard]] std::vector<std::optional<function_placement>> resolve_visible_placements(std::span<const function_button_entry> buttons);
+    [[nodiscard]] std::vector<std::optional<function_placement>> resolve_visible_placements(std::span<const function_button_entry> buttons, const project_definition* project = nullptr);
 
     // 이름 규칙이다 (3.2, 3.4). 파서와 편집 dialog가 같은 판정을 쓴다.
     [[nodiscard]] bool is_function_button_id(std::u8string_view value) noexcept;

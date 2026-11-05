@@ -311,6 +311,11 @@ namespace gitman {
 
     // toolbar의 환경설정 버튼이 여는 환경설정 dialog다 (REQ-017, stage-8-plan
     // 5.1). 문서 `settings`의 Git/SVN 실행 파일 경로를 편집한다.
+    struct select_settings_scope_intent
+    {
+        bool document_mode { false };
+    };
+
     struct open_settings_intent
     {};
 
@@ -523,6 +528,7 @@ namespace gitman {
     {
         std::u8string button_id {};
         function_placement placement { function_placement::menu };
+        project_id project {};
     };
 
     // `Alt+1..3`이다 (2.3.4). `number`는 문서 전체의 보이는 `card` 배치 순서(1부터)이고, 버튼 id는 logic이
@@ -538,6 +544,8 @@ namespace gitman {
     struct open_function_editor_intent
     {
         std::u8string button_id {};
+        project_id project {};
+        bool create_new { false };
     };
 
     // 기능 / 변수 탭이다. 초안은 그대로다.
@@ -1035,7 +1043,7 @@ namespace gitman {
         switch_dialog_scroll_intent, edit_text_input_intent, set_text_composition_intent, submit_switch_query_intent, clear_switch_query_intent, refresh_switch_dialog_intent, open_font_dialog_intent, select_font_family_intent,
         confirm_font_dialog_intent, cancel_font_dialog_intent, font_dialog_scroll_intent, font_families_event, open_generate_document_intent, set_generate_scan_root_intent,
         set_generate_location_intent, toggle_generate_same_folder_intent, confirm_generate_document_intent, cancel_generate_document_intent, begin_discovery_intent, toggle_discovery_candidate_intent,
-        confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_tab_intent, set_settings_executable_intent,
+        confirm_discovery_intent, cancel_discovery_dialog_intent, discovery_dialog_scroll_intent, open_settings_intent, select_settings_scope_intent, select_settings_tab_intent, set_settings_executable_intent,
         clear_settings_executable_intent, clear_settings_override_intent, toggle_settings_submodules_intent, toggle_settings_ignore_local_intent, toggle_settings_log_files_intent,
         confirm_settings_intent, cancel_settings_dialog_intent, settings_scroll_intent, open_local_changes_intent, select_local_change_intent, cancel_local_changes_dialog_intent, local_changes_scroll_intent,
         local_changes_diff_scroll_intent, open_context_menu_intent, open_function_menu_intent, run_function_shortcut_intent, open_function_placement_menu_intent,

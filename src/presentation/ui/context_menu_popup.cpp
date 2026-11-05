@@ -54,6 +54,7 @@ namespace gitman::ui {
             case context_menu_entry::place_function_on_card:
             case context_menu_entry::place_function_on_bar:
             case context_menu_entry::place_function_in_menu:
+            case context_menu_entry::add_function:
             case context_menu_entry::edit_functions:
             case context_menu_entry::trust_document_executables:
                 break;
@@ -108,6 +109,8 @@ namespace gitman::ui {
             return u8"place_function_on_bar";
         case context_menu_entry::place_function_in_menu:
             return u8"place_function_in_menu";
+        case context_menu_entry::add_function:
+            return u8"add_function";
         case context_menu_entry::edit_functions:
             return u8"edit_functions";
         case context_menu_entry::trust_document_executables:
@@ -120,7 +123,7 @@ namespace gitman::ui {
     {
         // 표는 `context_menu_entry_key` 한 곳뿐이다 — 되돌리기는 그 표를 훑는다. 값을 더하고 이 배열을 늘리지
         // 않으면 아래 검사가 빌드를 멈춘다 (function-buttons-design T8 검토에서 넘어온 일).
-        constexpr std::array<context_menu_entry, 17> entries {
+        constexpr std::array<context_menu_entry, 18> entries {
             context_menu_entry::open_repository,
             context_menu_entry::open_in_vscode,
             context_menu_entry::show_local_changes,
@@ -136,6 +139,7 @@ namespace gitman::ui {
             context_menu_entry::place_function_on_card,
             context_menu_entry::place_function_on_bar,
             context_menu_entry::place_function_in_menu,
+            context_menu_entry::add_function,
             context_menu_entry::edit_functions,
             context_menu_entry::trust_document_executables,
         };

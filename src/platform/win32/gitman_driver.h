@@ -30,9 +30,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <vector>
 
 namespace gitman::win32 {
     // luil logic thread에 꽂는 gitman 구동기다 (설계 L3). 예전 `app_runtime::assembly`가
@@ -44,6 +46,8 @@ namespace gitman::win32 {
     {
     public:
         gitman_driver();
+        // 실행 경계를 바꾼 조립이다. executor는 driver보다 오래 살아야 하며 worker thread에서 호출된다.
+        explicit gitman_driver(operation_executor& executor);
         ~gitman_driver() override;
 
         // delegate의 `on_started` 첫 줄이다 (UI thread). 이 뒤부터 worker 결과가
@@ -65,10 +69,13 @@ namespace gitman::win32 {
         [[nodiscard]] std::shared_ptr<const view_snapshot> last_view() const;
 
     private:
+        void initialize(operation_executor& executor);
         // relay 큐를 비워 logic에 순서대로 넘긴다.
         void drain_relay();
         // 종료 규칙을 적용해 한 건을 controller에 넘긴다.
         void deliver(logic_message message);
+        void update_shutdown_storage();
+        void wait_for_shutdown_storage();
 
         // 선언 순서가 곧 파괴의 역순이다. controller가 scheduler·log_writer·registry를
         // 참조로 들기 때문에 마지막에 선다.
@@ -101,8 +108,14 @@ namespace gitman::win32 {
 
         // 종료가 시작됐다. UI thread의 `cancel()`이 세우고 logic thread가 읽는다.
         std::atomic<bool> shutting_down_ { false };
-        // close intent를 처리해 종료 저장까지 내보냈다.
+        // close와 마지막 저장 결과까지 처리했다 (luil의 종료 완료 조건).
         std::atomic<bool> shutdown_completed_ { false };
+        // close 접수와 저장 완료를 나눈다. worker 큐는 이어 낼 저장까지 logic이 처리한 뒤에 닫는다.
+        std::atomic<bool> close_received_ { false };
+        std::mutex shutdown_storage_mutex_ {};
+        std::condition_variable shutdown_storage_changed_ {};
+        // cancel 뒤 close보다 먼저 도착한 결과다. 종료 상태에 들어간 뒤 처리해 조회·기능을 다시 시작하지 않는다.
+        std::vector<logic_message> deferred_shutdown_storage_ {};
 
         // 마지막 frame·view다. `make_frame`(logic)과 `last_view`(임의 thread)가
         // 함께 보므로 mutex로 지킨다.

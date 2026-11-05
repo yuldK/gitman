@@ -24,11 +24,21 @@ namespace gitman::win32 {
 
     gitman_driver::gitman_driver()
     {
+        initialize(executor_);
+    }
+
+    gitman_driver::gitman_driver(operation_executor& executor)
+    {
+        initialize(executor);
+    }
+
+    void gitman_driver::initialize(operation_executor& executor)
+    {
         // 앱 단위 설정 파일은 실행 파일 옆에 둔다 (app-shell-design A1.1). 경로는
         // 조립 시 한 번 정해 executor가 들고 있고 logic은 알지 못한다.
         executor_.bind_app_settings(app_settings_store_, app_settings_file_path());
         // worker 결과는 relay 큐가 정본이다 (설계 L3). scheduler는 sink만 안다.
-        scheduler_ = std::make_unique<task_scheduler>(executor_, [this](logic_message message) { relay_.post(std::move(message)); }, default_worker_count());
+        scheduler_ = std::make_unique<task_scheduler>(executor, [this](logic_message message) { relay_.post(std::move(message)); }, default_worker_count());
         function_pool_ = std::make_unique<function_execution_pool>(function_executor_, [this](logic_message message) { relay_.post(std::move(message)); });
         controller_ = std::make_unique<logic_controller>(*scheduler_, log_writer_, registry_);
         // 기능 실행은 전용 풀로 간다 (function-buttons-design 4.4). `${env:}`는 클릭 시점의
@@ -147,10 +157,51 @@ namespace gitman::win32 {
 
     void gitman_driver::stop_workers()
     {
-        host_.store(nullptr, std::memory_order_release);
+        wait_for_shutdown_storage();
         scheduler_->shutdown();
         function_pool_->shutdown();
+        host_.store(nullptr, std::memory_order_release);
         relay_.unbind();
+    }
+
+    void gitman_driver::wait_for_shutdown_storage()
+    {
+        if (close_received_.load(std::memory_order_acquire) == false)
+            return;
+        while (shutdown_completed_.load(std::memory_order_acquire) == false)
+        {
+            luil::win32::app_host* const host { host_.load(std::memory_order_acquire) };
+            if (host == nullptr)
+                drain_relay();
+            else if (host->faulted())
+                return;
+            // 느린 파일 I/O는 기존 worker join도 기다렸다. 그동안 큐를 열어 두어 결과와 다음 저장을 왕복시킨다.
+            std::unique_lock<std::mutex> lock { shutdown_storage_mutex_ };
+            shutdown_storage_changed_.wait_for(lock, std::chrono::milliseconds { 25 }, [this]
+                {
+                    return shutdown_completed_.load(std::memory_order_acquire);
+                }
+            );
+        }
+    }
+
+    void gitman_driver::update_shutdown_storage()
+    {
+        if (controller_->shutdown_requested() == false)
+            return;
+        {
+            // 마지막 결과는 테스트와 진단에도 남긴다. 종료 중 UI tree는 다시 짓지 않는다.
+            const auto final_view { controller_->make_view_snapshot() };
+            const std::lock_guard<std::mutex> lock { frame_mutex_ };
+            last_view_ = final_view;
+        }
+        if (controller_->shutdown_storage_idle() == false)
+            return;
+        {
+            const std::lock_guard<std::mutex> lock { shutdown_storage_mutex_ };
+            shutdown_completed_.store(true, std::memory_order_release);
+        }
+        shutdown_storage_changed_.notify_all();
     }
 
     std::optional<std::chrono::steady_clock::time_point> gitman_driver::next_tick()
@@ -180,14 +231,35 @@ namespace gitman::win32 {
 
     void gitman_driver::deliver(logic_message message)
     {
-        // `cancel()`이 close 게시보다 먼저 불리므로 close가 도착할 때 이미 종료
-        // 중이다. 그래서 종료 중에도 close만은 통과시킨다.
         const bool close { std::holds_alternative<close_intent>(message) };
-        if (close == false && shutting_down_.load(std::memory_order_acquire))
-            return;
+        const bool storage { std::holds_alternative<document_saved_event>(message)
+            || std::holds_alternative<app_settings_loaded_event>(message)
+            || std::holds_alternative<app_settings_saved_event>(message)
+        };
+        if (shutting_down_.load(std::memory_order_acquire) && close == false)
+        {
+            if (storage)
+            {
+                if (close_received_.load(std::memory_order_acquire) == false)
+                {
+                    deferred_shutdown_storage_.push_back(std::move(message));
+                    return;
+                }
+            }
+            else if (std::holds_alternative<window_placement_intent>(message) == false
+                || close_received_.load(std::memory_order_acquire))
+                return;
+        }
 
         controller_->handle(std::move(message));
         if (close)
-            shutdown_completed_.store(true, std::memory_order_release);
+        {
+            for (logic_message& pending : deferred_shutdown_storage_)
+                controller_->handle(std::move(pending));
+            deferred_shutdown_storage_.clear();
+            close_received_.store(true, std::memory_order_release);
+        }
+        if (close || storage)
+            update_shutdown_storage();
     }
 } // namespace gitman::win32

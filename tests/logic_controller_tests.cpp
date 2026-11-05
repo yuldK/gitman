@@ -19,10 +19,11 @@ namespace {
         [[nodiscard]] bool submit(gitman::operation_request request) override
         {
             requests.push_back(std::move(request));
-            return true;
+            return accepts;
         }
 
         std::vector<gitman::operation_request> requests {};
+        bool accepts { true };
     };
 
     gitman::project_definition make_project(const std::u8string_view id, const bool enabled = true)
@@ -256,6 +257,18 @@ TEST_CASE("Shutdown cancels outstanding work and refuses new refreshes", "[logic
 
     controller.handle(gitman::refresh_all_intent {});
     REQUIRE(submitter.requests.empty());
+}
+
+TEST_CASE("A refused closing document request is reported without an endless wait", "[shutdown_storage][logic]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.handle(make_loaded_document({ make_project(u8"alpha", false) }));
+    controller.handle(gitman::window_placement_intent { { 20, 30, 1600, 900, false } });
+    submitter.accepts = false;
+    controller.handle(gitman::close_intent {});
+    REQUIRE(controller.shutdown_storage_idle());
+    REQUIRE(controller.make_view_snapshot()->notices.front().text == u8"문서 저장 요청을 전달하지 못했습니다.");
 }
 
 TEST_CASE("Requests carry the document settings and the cancellation token", "[logic][app][s1]")

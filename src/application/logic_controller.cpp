@@ -570,10 +570,16 @@ namespace gitman {
 
     void logic_controller::handle(logic_message message)
     {
+        const bool storage_result { std::holds_alternative<document_saved_event>(message)
+            || std::holds_alternative<app_settings_loaded_event>(message)
+            || std::holds_alternative<app_settings_saved_event>(message)
+        };
         // UI thread가 종료 명령을 받는 사이의 늦은 입력으로 새 변경을 만들지 않는다. 창 배치는 기존 종료 순서가 close보다
         // 먼저 보내므로 받아 두고, close는 종료 저장까지 처리한다.
         if (application_exit_requested_ && std::holds_alternative<close_intent>(message) == false
-            && std::holds_alternative<window_placement_intent>(message) == false)
+            && std::holds_alternative<window_placement_intent>(message) == false && storage_result == false)
+            return;
+        if (shutting_down_ && storage_result == false && std::holds_alternative<close_intent>(message) == false)
             return;
         std::visit(
             [this](auto&& value) {
@@ -902,6 +908,13 @@ namespace gitman {
     bool logic_controller::shutdown_requested() const noexcept
     {
         return shutting_down_;
+    }
+
+    bool logic_controller::shutdown_storage_idle() const noexcept
+    {
+        return shutting_down_ && save_in_progress() == false && pending_app_settings_load_id_ == 0
+            && pending_app_settings_save_id_ == 0 && app_settings_save_queued_ == false
+        ;
     }
 
     process_cancellation_token logic_controller::cancellation() const noexcept
@@ -1445,6 +1458,9 @@ namespace gitman {
             save_queued_ = false;
             request_save();
         }
+        // 종료 중에는 dialog·다시 읽기를 이어 가지 않는다. 저장 결과의 revision과 대기 저장만 끝까지 잇는다.
+        if (shutting_down_)
+            return;
         // 저장 결과를 기다리던 닫기·다른 문서 열기다 (S3, 4.10). 이어 낸 저장이 있으면 그 결과까지 기다린다. 실패했으면
         // 누를 때 묻지 않은 저장하지 못한 변경을 지금 묻는다. 그 사이 떠 있던 다른 기능 확인은 이 확인이 대신한다 — 사용자가
         // 먼저 고른 일이다. 성공했으면 그 일을 한다. 실행 중인 기능 확인을 거치지 않았는데 기다리는 사이 출력 수집 기능이
@@ -1510,7 +1526,7 @@ namespace gitman {
 
     void logic_controller::request_save()
     {
-        if (shutting_down_ || document_.has_value() == false)
+        if (document_.has_value() == false)
             return;
         // 문서를 쓰는 변경(편집 dialog Apply, 배치, 카드 순서, 경로 표시, 환경설정)은 모두 여기를 거친다. 저장이 성공할
         // 때까지 모델에만 있는 변경이다 (D28).
@@ -1526,8 +1542,14 @@ namespace gitman {
         operation_request request { make_request(operation_kind::save_document, nullptr, 0) };
         request.document = document_;
         request.revision = revision_;
+        if (shutting_down_)
+            request.token = {};
         pending_save_operation_id_ = request.operation_id;
-        static_cast<void>(submitter_->submit(std::move(request)));
+        if (submitter_->submit(std::move(request)) == false)
+        {
+            pending_save_operation_id_ = 0;
+            save_notice_ = u8"문서 저장 요청을 전달하지 못했습니다.";
+        }
     }
 
     void logic_controller::handle_request_update(const request_update_intent& intent)
@@ -3551,6 +3573,12 @@ namespace gitman {
             app_settings_save_queued_ = false;
             request_app_settings_save();
         }
+        // 시작 직후 종료여도 읽은 설정 위에 마지막 배치와 대기 변경을 합쳐 저장한다. 조회나 기능 실행은 재개하지 않는다.
+        if (shutting_down_ || application_exit_requested_)
+        {
+            run_waiting_for_app_settings_.reset();
+            return;
+        }
 
         // 읽기 전에 연 문서의 실행 파일은 신뢰 목록을 몰라 쓰지 않았다 (S1). 읽은 목록에서 신뢰했으면 문서의 실행 파일로
         // 다시 조회한다. 앱 설정의 다른 값이 바뀐 것만으로는 다시 조회하지 않는다(기존 동작).
@@ -3628,8 +3656,6 @@ namespace gitman {
 
     void logic_controller::request_app_settings_save()
     {
-        if (shutting_down_)
-            return;
         // 읽기가 끝나기 전에 저장하면 파일에 있던 항목을 지운다. 결과가 도착한 뒤
         // 합쳐서 한 번만 쓴다.
         if (app_settings_loaded_ == false || pending_app_settings_save_id_ != 0)
@@ -3641,9 +3667,19 @@ namespace gitman {
         operation_request request { make_request(operation_kind::save_app_settings, nullptr, 0) };
         request.app_settings_payload = app_settings_;
         request.app_settings_shadow = app_settings_shadow_;
+        if (shutting_down_)
+        {
+            request.token = {};
+            app_settings_window_dirty_ = false;
+        }
         const std::uint64_t operation_id { request.operation_id };
         if (submitter_->submit(std::move(request)) == false)
+        {
+            if (app_settings_save_notified_ == false)
+                notices_.push_back({ u8"앱 설정 저장 요청을 전달하지 못했습니다." });
+            app_settings_save_notified_ = true;
             return;
+        }
         pending_app_settings_save_id_ = operation_id;
     }
 
@@ -5621,40 +5657,25 @@ namespace gitman {
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
             discovery_dialog_->scan_cancellation->request_cancellation();
 
-        // 종료 저장은 취소 전파 뒤에도 한 번 나간다. runtime의 종료 순서가 이 요청이
-        // worker inbox에 들어간 뒤에 inbox를 닫으므로 join 안에서 끝까지 실행된다.
-        // 대기열의 저장(다시 읽기나 앞 저장의 결과를 기다리던 변경)도 같이 낸다. 종료 뒤에는 그 결과를 기다려 이어 낼 길이
-        // 없어 두면 버려진다 (S3). 앞 저장이 아직 진행 중이면 이 저장은 그보다 앞의 revision을 써서 충돌로 실패할 수 있다 —
-        // 종료 확인이 저장을 기다리므로 상한을 넘긴 종료와 세션 종료에서만 생긴다 (4.10).
-        const bool queued { save_queued_ };
-        save_queued_ = false;
+        // 다시 읽기는 종료 뒤 적용하지 않는다. 마지막 모델은 진행 중인 저장의 새 revision을 받은 뒤에 쓴다.
+        abandon_reload();
         change_after_save_.reset();
-        if ((window_placement_dirty_ || queued) && document_.has_value())
+        function_confirm_.reset();
+        exit_save_deadline_.reset();
+        if ((window_placement_dirty_ || save_queued_) && document_.has_value())
         {
             window_placement_dirty_ = false;
-            operation_request request { make_request(operation_kind::save_document, nullptr, 0) };
-            request.document = document_;
-            request.revision = revision_;
-            // 저장은 취소 token을 보지 않지만, 종료 저장이 취소 대상이 아니라는
-            // 의도를 요청에 남긴다.
-            request.token = {};
-            pending_save_operation_id_ = request.operation_id;
-            static_cast<void>(submitter_->submit(std::move(request)));
+            save_queued_ = false;
+            request_save();
         }
 
-        // 앱 설정의 마지막 창 배치도 같은 구간에서 한 번 저장한다 (G1). worker
-        // lane이 FIFO라 진행 중이던 일반 저장 뒤에 실행되어 마지막 상태가 남는다.
-        // 읽기가 끝나기 전이면 파일의 다른 항목을 지울 수 있어 포기한다 (시작
-        // 직후 종료의 드문 경로).
-        if (app_settings_window_dirty_ && app_settings_loaded_)
+        // 앱 설정도 앞선 읽기/저장의 shadow 결과 뒤에 합친다. 옛 shadow를 가진 종료 저장을 미리 줄 세우지 않는다.
+        if (app_settings_window_dirty_ || app_settings_save_queued_)
         {
-            app_settings_window_dirty_ = false;
-            operation_request request { make_request(operation_kind::save_app_settings, nullptr, 0) };
-            request.app_settings_payload = app_settings_;
-            request.app_settings_shadow = app_settings_shadow_;
-            request.token = {};
-            pending_app_settings_save_id_ = request.operation_id;
-            static_cast<void>(submitter_->submit(std::move(request)));
+            app_settings_save_queued_ = false;
+            // 읽기 요청조차 없는 미확인 상태에서는 기존 파일을 덮지 않는다. 읽는 중이면 마지막 배치도 결과까지 보존한다.
+            if (app_settings_loaded_ || pending_app_settings_load_id_ != 0)
+                request_app_settings_save();
         }
     }
 

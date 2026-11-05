@@ -15,6 +15,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkTypeface.h"
 
+#include <algorithm>
 #include <memory>
 #include <span>
 #include <string>
@@ -441,11 +442,17 @@ namespace gitman::ui {
         const std::span<const std::unique_ptr<ui_element>> children { this->children() };
         if (children.size() >= 3)
         {
-            const float button_width { action_button_width * scale };
+            // 상한 뒤 긴 종료 문구도 끝까지 보이게 글자와 시스템 텍스트 크기를 실측한다.
+            const auto measure { context.measure() };
+            const float available { width / scale };
+            const auto confirm_size { children[1]->preferred_size(measure, available) };
+            const auto cancel_size { children[2]->preferred_size(measure, available) };
+            const float confirm_width { std::max(action_button_width, confirm_size.has_value() ? confirm_size->width : 0.0f) * scale };
+            const float cancel_width { std::max(action_button_width, cancel_size.has_value() ? cancel_size->width : 0.0f) * scale };
             const float button_height { layout_function_confirm_button_height * scale };
             const float button_top { top + height - padding - button_height };
-            children[1]->arrange({ { left + width - padding - button_width * 2.0f - action_button_gap * scale, button_top, button_width, button_height }, scale });
-            children[2]->arrange({ { left + width - padding - button_width, button_top, button_width, button_height }, scale });
+            children[1]->arrange(context.for_child({ left + width - padding - cancel_width - action_button_gap * scale - confirm_width, button_top, confirm_width, button_height }));
+            children[2]->arrange(context.for_child({ left + width - padding - cancel_width, button_top, cancel_width, button_height }));
         }
     }
 

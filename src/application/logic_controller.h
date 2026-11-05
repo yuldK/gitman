@@ -71,6 +71,8 @@ namespace gitman {
         void start();
 
         [[nodiscard]] bool shutdown_requested() const noexcept;
+        // 종료 신호 뒤 문서·앱 설정의 읽기/저장 결과와 이어 낼 저장을 모두 처리했는가다.
+        [[nodiscard]] bool shutdown_storage_idle() const noexcept;
         // 종료 시 실행 중 작업에 전파되는 취소 token이다. 모든 요청에 실려 나간다.
         [[nodiscard]] process_cancellation_token cancellation() const noexcept;
 

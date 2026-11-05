@@ -29,6 +29,20 @@ namespace {
     using gitman::testing::make_function_card_projects;
     using gitman::testing::make_tree;
 
+    struct revision_probe : gitman::project_store
+    {
+        static gitman::workspace_revision_token first(const std::u8string& path)
+        {
+            return make_revision_token(revision_file_state::present, path, u8"first saved bytes", u8"{}", {});
+        }
+
+        static std::u8string_view bytes(const gitman::workspace_revision_token& token)
+        {
+            const auto value { inspect_revision(token) };
+            return value.has_value() ? value->expected_source_bytes : std::u8string_view {};
+        }
+    };
+
     // 저장하지 않았다는 것을 밝힌다 (D28, user-manual 18장).
     constexpr std::u8string_view conflict_notice { u8"문서가 밖에서 바뀌어 저장하지 않았습니다. 문서 다시 읽기로 불러오십시오." };
     constexpr std::u8string_view conflict_message { u8"load 이후 작업공간 문서가 변경되어 저장하지 않았습니다." };
@@ -1122,6 +1136,51 @@ TEST_CASE("Shutdown sends a save queued behind a reload", "[function_buttons][s3
     REQUIRE(save != nullptr);
     REQUIRE(save->document.has_value());
     REQUIRE(save->document->projects.front().id.value == u8"p01");
+}
+
+TEST_CASE("Shutdown waits for the current document revision before its final save", "[shutdown_storage][logic][function_buttons]")
+{
+    reload_fixture fixture {};
+    for (const auto& request : fixture.startup_requests)
+        if (request.kind == gitman::operation_kind::save_app_settings)
+            fixture.controller.handle(gitman::app_settings_saved_event { request.operation_id, true, u8"{}" });
+    fixture.controller.handle(gitman::reorder_card_intent { gitman::project_id { u8"p00" }, gitman::project_id { u8"p01" }, true });
+    const std::uint64_t first { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+    const gitman::window_placement placement { 20, 30, 1600, 900, false };
+    fixture.controller.handle(gitman::window_placement_intent { placement });
+    fixture.controller.handle(gitman::close_intent {});
+    REQUIRE(fixture.controller.shutdown_requested());
+    REQUIRE(fixture.controller.shutdown_storage_idle() == false);
+    REQUIRE(fixture.request_count(gitman::operation_kind::save_document) == 1u);
+
+    SECTION("새 revision으로 마지막 모델을 저장한다")
+    {
+        gitman::document_saved_event saved {};
+        saved.operation_id = first;
+        saved.revision = revision_probe::first(std::u8string { function_card_fixture::document_path });
+        fixture.controller.handle(std::move(saved));
+        const gitman::operation_request final { *fixture.last_request(gitman::operation_kind::save_document) };
+        REQUIRE(fixture.request_count(gitman::operation_kind::save_document) == 2u);
+        REQUIRE(final.operation_id != first);
+        REQUIRE(revision_probe::bytes(final.revision) == u8"first saved bytes");
+        REQUIRE(final.document->window == placement);
+        REQUIRE(final.document->projects.front().id.value == u8"p01");
+        REQUIRE(final.token.cancelled() == false);
+        REQUIRE(fixture.controller.shutdown_storage_idle() == false);
+        fixture.saved_ok(final.operation_id);
+        REQUIRE(fixture.controller.shutdown_storage_idle());
+        REQUIRE(fixture.snapshot()->notices.empty());
+    }
+
+    SECTION("실패 결과도 처리하고 종료 대기를 마친다")
+    {
+        fixture.saved(first, { make_error(gitman::diagnostic_code::document_write_failed, u8"첫 쓰기 실패") });
+        const std::uint64_t final { fixture.last_request(gitman::operation_kind::save_document)->operation_id };
+        REQUIRE(final != first);
+        fixture.saved(final, { make_error(gitman::diagnostic_code::document_write_failed, u8"마지막 쓰기 실패") });
+        REQUIRE(fixture.controller.shutdown_storage_idle());
+        REQUIRE(fixture.snapshot()->notices.front().text == u8"마지막 쓰기 실패");
+    }
 }
 
 TEST_CASE("Closing while a queued save waits for a reload sends the save and drops the reload", "[function_buttons][s3]")

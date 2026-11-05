@@ -93,6 +93,8 @@ namespace gitman::testing {
         function_card_run_submitter functions {};
         cancellation_registry registry {};
         logic_controller controller { submitter, registry };
+        // 종료 검사는 준비 단계에서 아직 결과를 받지 않은 저장도 명시적으로 마쳐야 한다.
+        std::vector<operation_request> startup_requests {};
 
         function_card_fixture(std::vector<project_definition> projects, std::vector<function_button> buttons, const float width = 1280.0f, const float height = 720.0f)
         {
@@ -123,7 +125,7 @@ namespace gitman::testing {
             document.function_buttons = std::move(definition);
             event.document = { std::move(document) };
             controller.handle(std::move(event));
-            submitter.requests.clear();
+            startup_requests.swap(submitter.requests);
         }
 
         // 로컬 조회 결과다. update·switch가 준비 상태가 된다.

@@ -109,7 +109,7 @@ namespace {
         [[nodiscard]] bool submit(gitman::operation_request request) override
         {
             requests.push_back(std::move(request));
-            return true;
+            return accepts;
         }
 
         [[nodiscard]] const gitman::operation_request* last_of(const gitman::operation_kind kind) const noexcept
@@ -130,6 +130,7 @@ namespace {
         }
 
         std::vector<gitman::operation_request> requests {};
+        bool accepts { true };
     };
 
     gitman::document_loaded_event make_loaded_document()
@@ -593,6 +594,71 @@ TEST_CASE("The closing window placement lands in the app settings save at shutdo
     REQUIRE(*save->app_settings_payload->window == placement);
 }
 
+TEST_CASE("Shutdown joins a late settings read with its closing window before saving", "[shutdown_storage][app-settings][logic]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.start();
+    const std::uint64_t load { submitter.requests.front().operation_id };
+    const gitman::window_placement placement { 20, 30, 1600, 900, false };
+    controller.handle(gitman::window_placement_intent { placement });
+    controller.handle(gitman::close_intent {});
+    REQUIRE(controller.shutdown_storage_idle() == false);
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == 0u);
+    auto loaded { make_loaded_settings(load) };
+    loaded.settings.recent_documents.push_back({ u8"C:\\keep.version-list", u8"keep", u8"2026-11-05T00:00:00Z", true });
+    loaded.shadow_source_json = u8"{\"future\":1}";
+    controller.handle(std::move(loaded));
+    const gitman::operation_request save { *submitter.last_of(gitman::operation_kind::save_app_settings) };
+    REQUIRE(save.app_settings_payload->window == placement);
+    REQUIRE(save.app_settings_payload->recent_documents.front().path == u8"C:\\keep.version-list");
+    REQUIRE(save.app_settings_shadow == u8"{\"future\":1}");
+    REQUIRE(save.token.cancelled() == false);
+    REQUIRE(controller.shutdown_storage_idle() == false);
+    controller.handle(gitman::app_settings_saved_event { save.operation_id, true, u8"{\"future\":1}" });
+    REQUIRE(controller.shutdown_storage_idle());
+}
+
+TEST_CASE("Shutdown submits coalesced app settings with the preceding save shadow", "[shutdown_storage][app-settings][logic]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.start();
+    auto loaded { make_loaded_settings(submitter.requests.front().operation_id) };
+    loaded.settings.recent_documents.push_back({ u8"C:\\keep.version-list", u8"keep", u8"2026-11-05T00:00:00Z", false });
+    controller.handle(std::move(loaded));
+    const gitman::window_placement first { 1, 2, 1000, 700, false };
+    controller.handle(gitman::window_placement_intent { first });
+    // 최근 문서 고정의 즉시 저장 하나가 먼저 진행 중인 상태를 만든다.
+    controller.handle(gitman::toggle_recent_document_pin_intent { u8"C:\\keep.version-list" });
+    const std::uint64_t initial { submitter.last_of(gitman::operation_kind::save_app_settings)->operation_id };
+    const gitman::window_placement last { 30, 40, 1600, 900, false };
+    controller.handle(gitman::window_placement_intent { last });
+    controller.handle(gitman::close_intent {});
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == 1u);
+    controller.handle(gitman::app_settings_saved_event { initial, true, u8"{\"new_shadow\":true}" });
+    const auto final { *submitter.last_of(gitman::operation_kind::save_app_settings) };
+    REQUIRE(final.operation_id != initial);
+    REQUIRE(final.app_settings_shadow == u8"{\"new_shadow\":true}");
+    REQUIRE(final.app_settings_payload->window == last);
+    controller.handle(gitman::app_settings_saved_event { final.operation_id, true, u8"{}" });
+    REQUIRE(submitter.count_of(gitman::operation_kind::save_app_settings) == 2u);
+    REQUIRE(controller.shutdown_storage_idle());
+}
+
+TEST_CASE("A refused closing settings request is reported without an endless wait", "[shutdown_storage][app-settings][logic]")
+{
+    recording_submitter submitter {};
+    gitman::logic_controller controller { submitter };
+    controller.start();
+    controller.handle(make_loaded_settings(submitter.requests.front().operation_id));
+    controller.handle(gitman::window_placement_intent { { 20, 30, 1600, 900, false } });
+    submitter.accepts = false;
+    controller.handle(gitman::close_intent {});
+    REQUIRE(controller.shutdown_storage_idle());
+    REQUIRE(controller.make_view_snapshot()->notices.front().text == u8"앱 설정 저장 요청을 전달하지 못했습니다.");
+}
+
 TEST_CASE("The app settings placement restores the window only when nothing was applied", "[logic][app-settings]")
 {
     gitman::window_placement stored {};
@@ -722,7 +788,10 @@ TEST_CASE("Closing the document returns the placement to the app settings", "[lo
     start_page.height = 700;
     controller.handle(gitman::logic_message { gitman::window_placement_intent { start_page } });
 
+    const std::uint64_t previous_save { submitter.last_of(gitman::operation_kind::save_app_settings)->operation_id };
     controller.handle(gitman::logic_message { gitman::close_intent {} });
+    // 앞선 최근 목록 저장의 결과 뒤에 마지막 배치를 합친다. 옛 shadow로 미리 줄 세우지 않는다.
+    controller.handle(gitman::app_settings_saved_event { previous_save, true, u8"{}" });
     const gitman::operation_request* const save { submitter.last_of(gitman::operation_kind::save_app_settings) };
     REQUIRE(save != nullptr);
     REQUIRE(save->app_settings_payload->window.has_value());

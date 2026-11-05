@@ -13,12 +13,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -109,6 +111,150 @@ namespace {
         return "{\"id\":\"" + id + "\",\"path\":\"" + json_path(path) + "\"}";
     }
 } // namespace
+
+namespace {
+    struct shutdown_revision : gitman::project_store
+    {
+        static gitman::workspace_revision_token saved(const std::u8string& path, const std::u8string& bytes)
+        {
+            return make_revision_token(revision_file_state::present, path, bytes, u8"{}", {});
+        }
+
+        static bool is_first(const gitman::workspace_revision_token& token)
+        {
+            const auto value { inspect_revision(token) };
+            return value.has_value() && value->expected_source_bytes == u8"first";
+        }
+    };
+
+    class held_shutdown_executor final : public gitman::operation_executor
+    {
+    public:
+        void execute(const gitman::operation_request& request, const std::function<void(gitman::logic_message)>& emit) noexcept override
+        {
+            if (request.kind != gitman::operation_kind::save_document)
+                return;
+            bool first {};
+            {
+                std::unique_lock<std::mutex> lock { mutex };
+                saves.push_back(request);
+                first = saves.size() == 1u;
+                changed.notify_all();
+                if (first)
+                    changed.wait_for(lock, std::chrono::seconds { 5 }, [this]
+                        {
+                            return released;
+                        }
+                    );
+            }
+            gitman::document_saved_event event {};
+            event.operation_id = request.operation_id;
+            if (first || fail_final == false)
+                event.revision = shutdown_revision::saved(request.document_path, first ? std::u8string { u8"first" } : std::u8string { u8"final" });
+            else
+                event.diagnostics.push_back({ gitman::diagnostic_code::document_write_failed, gitman::diagnostic_severity::error, u8"종료 저장 실패" });
+            emit(std::move(event));
+        }
+
+        bool wait_for_first()
+        {
+            std::unique_lock<std::mutex> lock { mutex };
+            return changed.wait_for(lock, std::chrono::seconds { 5 }, [this]
+                {
+                    return saves.empty() == false;
+                }
+            );
+        }
+
+        void release()
+        {
+            const std::lock_guard<std::mutex> lock { mutex };
+            released = true;
+            changed.notify_all();
+        }
+
+        std::mutex mutex {};
+        std::condition_variable changed {};
+        std::vector<gitman::operation_request> saves {};
+        bool released { false };
+        bool fail_final { false };
+    };
+}
+
+TEST_CASE("Host shutdown keeps worker queues open through the final storage result", "[driver][shutdown_storage]")
+{
+    held_shutdown_executor executor {};
+    SECTION("마지막 저장 성공")
+    {
+    }
+    SECTION("마지막 저장 실패도 처리함")
+    {
+        executor.fail_final = true;
+    }
+    gitman::win32::gitman_driver driver { executor };
+    gitman::ui::gitman_policy policy {};
+    luil::win32::app_host host { luil::win32::app_host::config {}, driver, &policy };
+    driver.bind_host(host);
+    const auto post = [&host](gitman::logic_message message)
+    {
+        host.post_app_message(luil::app_message { std::move(message) });
+    };
+    gitman::workspace_document document {};
+    document.document_path = u8"C:\\work\\shutdown.version-list";
+    for (const std::u8string_view id : { u8"alpha", u8"beta" })
+    {
+        gitman::project_definition project {};
+        project.id.value = id;
+        project.path.original = u8"C:\\work\\" + std::u8string { id };
+        project.path.normalized = project.path.original;
+        project.enabled = false;
+        document.projects.push_back(std::move(project));
+    }
+    gitman::document_loaded_event loaded {};
+    loaded.document = std::move(document);
+    post(std::move(loaded));
+    post(gitman::reorder_card_intent { gitman::project_id { u8"alpha" }, gitman::project_id { u8"beta" }, true });
+    REQUIRE(executor.wait_for_first());
+    const gitman::window_placement placement { 20, 30, 1600, 900, false };
+    post(gitman::window_placement_intent { placement });
+    // app inbox의 순서로 배치까지 처리됐음을 확인한다.
+    post(gitman::window_metrics_intent { 1600.0f, 900.0f, 1.0f });
+    const auto deadline { std::chrono::steady_clock::now() + std::chrono::seconds { 5 } };
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto view { driver.last_view() };
+        if (view != nullptr && view->window_width == 1600.0f)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds { 1 });
+    }
+    REQUIRE(driver.last_view()->window_width == 1600.0f);
+    std::jthread release_first { [&driver, &executor]
+        {
+            const auto limit { std::chrono::steady_clock::now() + std::chrono::seconds { 5 } };
+            while (std::chrono::steady_clock::now() < limit)
+            {
+                const auto view { driver.last_view() };
+                if (view != nullptr && view->shutting_down)
+                    break;
+                std::this_thread::sleep_for(std::chrono::milliseconds { 1 });
+            }
+            // luil의 close 처리 대기 예산(3초)을 지나도 worker 큐가 먼저 닫히지 않아야 한다.
+            std::this_thread::sleep_for(std::chrono::milliseconds { 3200 });
+            executor.release();
+        }
+    };
+    host.shutdown();
+    REQUIRE(host.faulted() == false);
+    REQUIRE(executor.saves.size() == 2u);
+    REQUIRE(shutdown_revision::is_first(executor.saves[1].revision));
+    REQUIRE(executor.saves[1].document->window == placement);
+    const auto final { driver.last_view() };
+    REQUIRE(final->shutting_down);
+    if (executor.fail_final)
+        REQUIRE(final->notices.front().text == u8"종료 저장 실패");
+    else
+        REQUIRE(final->notices.empty());
+}
 
 TEST_CASE("The assembled driver loads a real document and finishes the initial query", "[driver][integration]")
 {

@@ -4,7 +4,6 @@
 #include "application/project_registration_service.h"
 #include "application/version_list_generation_service.h"
 #include "domain/discovery.h"
-#include "infrastructure/cmd_target_inspection.h"
 #include "infrastructure/git_repository_provider.h"
 #include "infrastructure/operation_log_forwarder.h"
 #include "infrastructure/svn_repository_provider.h"
@@ -161,8 +160,13 @@ namespace gitman {
             {
                 cmd_target_inspected_event event {};
                 event.operation_id = request.operation_id;
-                if (request.cmd_target.has_value())
-                    event.facts = inspect_cmd_target(*probe_, *request.cmd_target);
+                event.outcome = request.token.cancelled() ? cmd_inspection_outcome::cancelled : cmd_inspection_outcome::failed;
+                if (request.cmd_target.has_value() && cmd_inspector_ != nullptr && request.token.cancelled() == false)
+                {
+                    cmd_inspection_result result { cmd_inspector_->inspect(*request.cmd_target, request.token) };
+                    event.facts = std::move(result.facts);
+                    event.outcome = result.outcome;
+                }
                 emit(std::move(event));
                 return;
             }
@@ -266,6 +270,7 @@ namespace gitman {
                     // 확인하지 못했으면 배치를 부를 수 있을 때 그렇다고 경고하는 답이다(없는 것으로 보면 경고 없이 실행된다,
                     // S3 검토). logic의 기다림은 이 답이나 상한으로 풀린다.
                     cmd_target_inspected_event failure {};
+                    failure.outcome = cmd_inspection_outcome::failed;
                     failure.operation_id = request.operation_id;
                     if (request.cmd_target.has_value())
                         failure.facts = cmd_target_unread_facts(*request.cmd_target);
@@ -309,6 +314,11 @@ namespace gitman {
             event.diagnostics = std::move(loaded.diagnostics);
         }
         emit(std::move(event));
+    }
+
+    void vcs_operation_executor::bind_cmd_target_inspector(cmd_target_inspector& inspector) noexcept
+    {
+        cmd_inspector_ = &inspector;
     }
 
     void vcs_operation_executor::execute_save_app_settings(const operation_request& request, const std::function<void(logic_message)>& emit)

@@ -54,7 +54,7 @@ namespace gitman {
         constexpr std::chrono::seconds exit_save_wait_limit { 5 };
         // cmd 기능이 부를 배치 파일을 worker가 확인하는 것을 기다리는 상한이다 (S3 검토). 로컬 파일 하나는 바로 읽힌다. 대화형
         // 조회 lane의 느린 조회 뒤에 섰거나 네트워크 경로가 매달리면 이만큼 뒤에 실행하지 않고 기다림을 푼다.
-        constexpr std::chrono::seconds cmd_target_wait_limit { 5 };
+        constexpr auto cmd_target_wait_limit { cmd_target_inspection_timeout };
 
         std::u8string decimal_text(const long long value)
         {
@@ -964,7 +964,7 @@ namespace gitman {
             composition_.reset();
         function_trust_after_save_ = false;
         run_waiting_for_app_settings_.reset();
-        run_waiting_for_cmd_target_.reset();
+        cancel_cmd_target_inspection();
         function_notice_after_save_ = false;
         unsaved_ = {};
         function_button_problems_.clear();
@@ -1163,7 +1163,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         run_waiting_for_app_settings_.reset();
-        run_waiting_for_cmd_target_.reset();
+        cancel_cmd_target_inspection();
         function_notice_after_save_ = false;
         unsaved_ = {};
         if (discovery_dialog_.has_value() && discovery_dialog_->scan_cancellation.has_value())
@@ -1901,10 +1901,26 @@ namespace gitman {
         if (run_waiting_for_cmd_target_.has_value() == false || run_waiting_for_cmd_target_->operation_id != event.operation_id)
             return;
         const run_function_intent intent { std::move(run_waiting_for_cmd_target_->intent) };
-        run_waiting_for_cmd_target_.reset();
+        const bool cancelled { run_waiting_for_cmd_target_->cancellation.cancellation_requested() };
+        cancel_cmd_target_inspection();
         if (shutting_down_ || function_confirm_.has_value())
             return;
+        if (cancelled || event.outcome != cmd_inspection_outcome::completed)
+        {
+            card_state* const card { find_card(intent.id) };
+            const function_button* const button { find_function_button(intent.button_id) };
+            if (card != nullptr && button != nullptr)
+                append_lifecycle_log(*card, diagnostic_severity::warning, function_log_text(button->label, u8"배치 파일을 확인하지 못해 실행하지 않습니다"));
+            return;
+        }
         run_function(intent, &event.facts);
+    }
+
+    void logic_controller::cancel_cmd_target_inspection()
+    {
+        if (run_waiting_for_cmd_target_.has_value())
+            run_waiting_for_cmd_target_->cancellation.request_cancellation();
+        run_waiting_for_cmd_target_.reset();
     }
 
     void logic_controller::run_function(const run_function_intent& intent, const cmd_target_facts* const cmd_facts)
@@ -1946,11 +1962,16 @@ namespace gitman {
             }
             operation_request request { make_request(operation_kind::inspect_cmd_target, card, card->generation) };
             request.cmd_target = prepared->cmd_target;
+            process_cancellation_source cancellation {};
+            registry_->add(cancellation);
+            request.token = cancellation.token();
             const std::uint64_t operation_id { request.operation_id };
             if (submitter_->submit(std::move(request)) == false)
                 return;
             // 답이 오지 않으면(닿지 않는 네트워크 경로, 앞선 느린 조회) 상한 뒤에 기다림을 풀어 다른 실행을 막지 않는다.
-            run_waiting_for_cmd_target_ = { cmd_target_wait { operation_id, intent, std::chrono::steady_clock::now() + cmd_target_wait_limit } };
+            run_waiting_for_cmd_target_.emplace(cmd_target_wait {
+                operation_id, intent, std::chrono::steady_clock::now() + cmd_target_wait_limit, std::move(cancellation)
+            });
             return;
         }
 
@@ -3030,7 +3051,7 @@ namespace gitman {
         function_editor_.reset();
         function_trust_after_save_ = false;
         run_waiting_for_app_settings_.reset();
-        run_waiting_for_cmd_target_.reset();
+        cancel_cmd_target_inspection();
         function_notice_after_save_ = false;
         unsaved_ = {};
         function_button_problems_.clear();
@@ -3316,7 +3337,7 @@ namespace gitman {
         if (run_waiting_for_cmd_target_.has_value() && now >= run_waiting_for_cmd_target_->deadline)
         {
             const run_function_intent intent { std::move(run_waiting_for_cmd_target_->intent) };
-            run_waiting_for_cmd_target_.reset();
+            cancel_cmd_target_inspection();
             card_state* const card { find_card(intent.id) };
             const function_button* const button { find_function_button(intent.button_id) };
             if (card != nullptr && button != nullptr)
@@ -5650,6 +5671,7 @@ namespace gitman {
         if (shutting_down_)
             return;
         shutting_down_ = true;
+        cancel_cmd_target_inspection();
         cancellation_source_.request_cancellation();
         // 변경 작업은 작업별 token을 쓰므로 전역 취소와 별도로 전파한다. 탐색도
         // 작업별 token이라 함께 취소한다.

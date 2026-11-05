@@ -151,6 +151,7 @@ gitman_add_source_filter(gitman_test_files "presentation/dialogs"
     switch_dialog_tests.cpp)
 
 gitman_add_source_filter(gitman_test_files "platform/host"
+    cmd_target_inspector_tests.cpp
     document_file_watch_tests.cpp
     function_shutdown_tests.cpp
     gitman_delegate_tests.cpp
@@ -158,7 +159,7 @@ gitman_add_source_filter(gitman_test_files "platform/host"
     operation_result_relay_tests.cpp)
 
 add_executable(gitman_tests ${gitman_test_files})
-add_dependencies(gitman_tests gitman_process_test_child)
+add_dependencies(gitman_tests gitman_process_test_child gitman)
 target_include_directories(gitman_tests
     PRIVATE
         "${GITMAN_SOURCE_DIRECTORY}"

@@ -18,6 +18,7 @@
 #include "infrastructure/vcs_operation_executor.h"
 #include "platform/win32/operation_result_relay.h"
 #include "platform/win32/project_file_system.h"
+#include "platform/win32/win32_cmd_target_inspector.h"
 #include "platform/win32/win32_directory_enumerator.h"
 #include "platform/win32/win32_log_file_system.h"
 #include "platform/win32/win32_process_launcher.h"
@@ -84,6 +85,7 @@ namespace gitman::win32 {
         std::unique_ptr<process_runner> runner_ { make_process_runner() };
         std::unique_ptr<process_launcher> launcher_ { make_process_launcher() };
         std::unique_ptr<vcs_file_probe> probe_ { make_vcs_file_probe() };
+        std::unique_ptr<cmd_target_inspector> cmd_inspector_ { make_cmd_target_inspector() };
         std::unique_ptr<directory_enumerator> enumerator_ { make_directory_enumerator() };
         json_project_store store_ { file_system_, *resolver_ };
         json_app_settings_store app_settings_store_ { file_system_ };

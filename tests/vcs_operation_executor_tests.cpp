@@ -1,15 +1,44 @@
 #include "infrastructure/vcs_operation_executor.h"
+#include "infrastructure/cmd_target_inspection.h"
 
 #include "helpers/vcs_test_doubles.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace {
+    class scripted_cmd_inspector final : public gitman::cmd_target_inspector
+    {
+    public:
+        gitman::cmd_inspection_result inspect(const gitman::cmd_target_query& query, const gitman::process_cancellation_token& token) override
+        {
+            ++calls;
+            observed_token = token;
+            if (throws)
+                throw std::runtime_error { "inspection failed" };
+            gitman::cmd_inspection_result result {};
+            result.outcome = outcome;
+            if (probe != nullptr)
+                result.facts = gitman::inspect_cmd_target(*probe, query);
+            else
+            {
+                result.facts.query = query;
+                result.facts.batch = gitman::cmd_batch_findings { true, false, false };
+            }
+            return result;
+        }
+        int calls { 0 };
+        bool throws { false };
+        gitman::cmd_inspection_outcome outcome { gitman::cmd_inspection_outcome::completed };
+        gitman::process_cancellation_token observed_token {};
+        const gitman::vcs_file_probe* probe { nullptr };
+    };
+
     // 스크립트된 문서를 돌려주는 store 대역이다.
     class scripted_project_store final : public gitman::project_store
     {
@@ -131,6 +160,56 @@ namespace {
     }
 } // namespace
 
+TEST_CASE("Cmd inspection uses its bound boundary and carries failure outcomes", "[cmd_inspection][executor]")
+{
+    executor_fixture fixture {};
+    scripted_cmd_inspector inspector {};
+    auto expected { gitman::cmd_inspection_outcome::completed };
+    SECTION("보조 조회 성공")
+    {
+    }
+    SECTION("보조 조회 취소")
+    {
+        inspector.outcome = gitman::cmd_inspection_outcome::cancelled;
+        expected = inspector.outcome;
+    }
+    SECTION("예외도 확인 완료로 오인하지 않음")
+    {
+        inspector.throws = true;
+        expected = gitman::cmd_inspection_outcome::failed;
+    }
+    fixture.executor.bind_cmd_target_inspector(inspector);
+    gitman::operation_request request {};
+    request.kind = gitman::operation_kind::inspect_cmd_target;
+    request.operation_id = 42;
+    request.cmd_target = gitman::cmd_target_query {};
+    request.cmd_target->working_directory = u8"\\\\host\\share";
+    gitman::process_cancellation_source cancellation {};
+    request.token = cancellation.token();
+    fixture.run(request);
+    REQUIRE(inspector.calls == 1);
+    REQUIRE(inspector.observed_token.cancellable());
+    const auto* const result { std::get_if<gitman::cmd_target_inspected_event>(&fixture.emitted.back()) };
+    REQUIRE(result != nullptr);
+    REQUIRE(result->operation_id == 42);
+    REQUIRE(result->outcome == expected);
+}
+
+TEST_CASE("An unbound or already cancelled cmd inspection does not fall back to direct file I/O", "[cmd_inspection][executor]")
+{
+    executor_fixture fixture {};
+    gitman::operation_request request {};
+    request.kind = gitman::operation_kind::inspect_cmd_target;
+    request.cmd_target = gitman::cmd_target_query {};
+    fixture.run(request);
+    REQUIRE(std::get<gitman::cmd_target_inspected_event>(fixture.emitted.back()).outcome == gitman::cmd_inspection_outcome::failed);
+    gitman::process_cancellation_source cancellation {};
+    cancellation.request_cancellation();
+    request.token = cancellation.token();
+    fixture.run(request);
+    REQUIRE(std::get<gitman::cmd_target_inspected_event>(fixture.emitted.back()).outcome == gitman::cmd_inspection_outcome::cancelled);
+}
+
 TEST_CASE("The executor loads documents through the store", "[executor][app]")
 {
     executor_fixture fixture {};
@@ -156,6 +235,9 @@ TEST_CASE("The executor checks a cmd target on the worker and answers with what 
     // 공백이 든 상대 경로가 작업 폴더에 있고, 그 배치가 call을 쓴다 (function-buttons-design 4.3, S3).
     executor_fixture fixture {};
     fixture.probe.add_file(u8"D:\\ws\\tools\\Build Tools\\run.bat", u8"@echo off\r\ncall other.bat %*\r\n");
+    scripted_cmd_inspector inspector {};
+    inspector.probe = &fixture.probe;
+    fixture.executor.bind_cmd_target_inspector(inspector);
     gitman::cmd_target_query query {};
     query.working_directory = u8"D:\\ws";
     query.argument = 1;

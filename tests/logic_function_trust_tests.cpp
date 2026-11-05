@@ -1426,9 +1426,12 @@ TEST_CASE("A cmd run waiting for its batch check is dropped when the document ch
     fixture.query(u8"alpha", u8"main");
     fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
     const std::uint64_t waiting { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id };
+    const auto cancellation { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->token };
+    REQUIRE(cancellation.cancellable());
 
     // 같은 문서를 다시 열었다. 앞 문서에서 누른 실행의 답이 와도 실행하지 않는다.
     fixture.open({ make_project(u8"alpha") }, make_definition({ cmd_batch() }));
+    REQUIRE(cancellation.cancelled());
     fixture.query(u8"alpha", u8"main");
     gitman::cmd_target_inspected_event late {};
     late.operation_id = waiting;
@@ -1486,6 +1489,7 @@ TEST_CASE("A cmd run whose batch check does not answer is dropped after a time l
     REQUIRE(fixture.controller.next_tick().has_value() == false);
     fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
     const std::uint64_t first { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id };
+    const auto first_token { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->token };
 
     // 답이 오지 않으면 driver가 깨울 시각이 있다. 그 전에는 그대로 기다린다.
     const std::optional<std::chrono::steady_clock::time_point> deadline { fixture.controller.next_tick() };
@@ -1496,6 +1500,8 @@ TEST_CASE("A cmd run whose batch check does not answer is dropped after a time l
 
     // 상한이 지나면 실행하지 않고 그렇다고 남긴 뒤 다른 실행을 받는다.
     fixture.controller.tick(*deadline);
+    REQUIRE(first_token.cancelled());
+    REQUIRE(fixture.controller.cancellation().cancelled() == false);
     REQUIRE(fixture.last_log(u8"alpha").text == u8"[배치] 배치 파일을 확인하지 못해 실행하지 않습니다");
     REQUIRE(fixture.controller.next_tick().has_value() == false);
     fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
@@ -1510,6 +1516,43 @@ TEST_CASE("A cmd run whose batch check does not answer is dropped after a time l
     REQUIRE(fixture.functions.requests.empty());
     REQUIRE(fixture.answer_cmd_inspection());
     REQUIRE(fixture.functions.requests.size() == 1u);
+}
+
+TEST_CASE("Closing a document cancels its pending cmd inspection token", "[cmd_inspection][logic][function_buttons]")
+{
+    trust_fixture fixture {};
+    open_trusted(fixture, { cmd_batch() });
+    fixture.query(u8"alpha", u8"main");
+    fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+    const auto token { fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->token };
+    REQUIRE(token.cancellable());
+    fixture.controller.handle(gitman::close_document_intent {});
+    REQUIRE(token.cancelled());
+    REQUIRE(fixture.functions.requests.empty());
+}
+
+TEST_CASE("An unsuccessful cmd inspection never continues into the user program", "[cmd_inspection][logic][function_buttons]")
+{
+    for (const auto outcome : { gitman::cmd_inspection_outcome::cancelled, gitman::cmd_inspection_outcome::timed_out, gitman::cmd_inspection_outcome::failed })
+    {
+        trust_fixture fixture {};
+        open_trusted(fixture, { cmd_batch() });
+        fixture.query(u8"alpha", u8"main");
+        fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+        const auto request { *fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target) };
+        gitman::cmd_target_inspected_event event {};
+        event.operation_id = request.operation_id;
+        event.facts.query = *request.cmd_target;
+        event.outcome = outcome;
+        fixture.controller.handle(std::move(event));
+        REQUIRE(request.token.cancelled());
+        REQUIRE(fixture.functions.requests.empty());
+        REQUIRE(fixture.dialog().has_value() == false);
+        REQUIRE(fixture.controller.next_tick().has_value() == false);
+        REQUIRE(fixture.last_log(u8"alpha").text == u8"[배치] 배치 파일을 확인하지 못해 실행하지 않습니다");
+        fixture.controller.handle(gitman::run_function_intent { gitman::project_id { u8"alpha" }, u8"batch" });
+        REQUIRE(fixture.submitter.last_of(gitman::operation_kind::inspect_cmd_target)->operation_id != request.operation_id);
+    }
 }
 
 TEST_CASE("Assistive technology sets the confirm dialog scrollbar", "[function_buttons][s4][ui]")

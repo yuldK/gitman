@@ -34,6 +34,7 @@ namespace gitman::win32 {
 
     void gitman_driver::initialize(operation_executor& executor)
     {
+        executor_.bind_cmd_target_inspector(*cmd_inspector_);
         // 앱 단위 설정 파일은 실행 파일 옆에 둔다 (app-shell-design A1.1). 경로는
         // 조립 시 한 번 정해 executor가 들고 있고 logic은 알지 못한다.
         executor_.bind_app_settings(app_settings_store_, app_settings_file_path());

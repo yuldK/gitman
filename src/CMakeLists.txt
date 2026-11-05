@@ -103,6 +103,7 @@ gitman_add_source_filter(gitman_lib_files "application/logic"
     application/logic_controller.h
     application/logic_function_editor.cpp
     application/operation_executor.h
+    application/cmd_target_inspector.h
     application/process_cancellation.cpp
     application/process_cancellation.h
     application/task_scheduler.cpp
@@ -331,6 +332,8 @@ gitman_add_source_filter(gitman_lib_files "platform/file_system"
     platform/win32/win32_log_file_system.h
     platform/win32/win32_vcs_file_probe.cpp
     platform/win32/win32_vcs_file_probe.h
+    platform/win32/win32_cmd_target_inspector.cpp
+    platform/win32/win32_cmd_target_inspector.h
     platform/win32/workspace_document_file_system.cpp
     platform/win32/workspace_document_file_system.h)
 

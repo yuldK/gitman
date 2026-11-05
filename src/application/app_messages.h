@@ -1,5 +1,7 @@
 #pragma once
 
+#include "application/cmd_target_inspector.h"
+
 #include "application/process_cancellation.h"
 #include "application/process_request.h"
 #include "application/project_store.h"
@@ -961,6 +963,7 @@ namespace gitman {
     {
         std::uint64_t operation_id { 0 };
         cmd_target_facts facts {};
+        cmd_inspection_outcome outcome { cmd_inspection_outcome::completed };
     };
 
     // 앱 설정 저장 결과다. 실패해도 앱 상태는 그대로 두고 진단만 알린다.

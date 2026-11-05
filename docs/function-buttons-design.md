@@ -1545,6 +1545,7 @@ Enter 반복을 Gitman fixture에서 검사한다. 아래 S 시점의 "luil 필�
 현재 자동 적용과 앱 연결 후속의 구분은 [요청 완료판 검증](verification/2026-11-05-luil-requests.md)
 2장이 덮는다. 일반 상태 낭독, 로그 Scroll 백분율, 저장 완료 후 종료 명령 연결도 같은 날 사용자
 진행 지시로 마쳤다. 현재 구현·검증은 [앱 연결 검증](verification/2026-11-05-luil-integration.md)에 있다.
+2026-11-06 후속: 배치 사전 조회는 [ADR-008](decisions/ADR-008-cancellable-cmd-target-inspection.md)의 별도 프로세스 경계로 취소된다. 기존 S3의 worker 잔류 한계와 현재 검증은 [배치 조회 취소 기록](verification/2026-11-06-cmd-inspection.md)이 덮는다.
 
 | 체크포인트 | 커밋 | 결과 |
 |---|---|---|

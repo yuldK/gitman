@@ -200,6 +200,7 @@ namespace gitman {
         void run_function(const run_function_intent& intent, const cmd_target_facts* cmd_facts);
         // worker의 cmd 명령 대상 확인 결과다 (S3). 기다리던 실행을 그 답으로 이어 한다.
         void handle_cmd_target_inspected(cmd_target_inspected_event event);
+        void cancel_cmd_target_inspection();
         // 활성 재판정과 클릭 시점 검사다. 걸리면 로그를 남기고(늦은 클릭은 아무것도 남기지 않고)
         // 값이 없다. `cmd_facts`가 지금 명령의 대상과 맞으면 그 답으로 cmd 명령줄을 짓고, 아니면 확인할 대상을
         // `cmd_target`에 싣는다.
@@ -948,6 +949,7 @@ namespace gitman {
             run_function_intent intent {};
             // 답을 기다리는 상한이다. 지나면 `tick`이 실행하지 않고 기다림을 푼다 (S3 검토).
             std::chrono::steady_clock::time_point deadline {};
+            process_cancellation_source cancellation {};
         };
 
         std::optional<cmd_target_wait> run_waiting_for_cmd_target_ {};

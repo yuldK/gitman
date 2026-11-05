@@ -1,6 +1,7 @@
 #include "application/application_options.h"
 #include "platform/win32/gitman_delegate.h"
 #include "platform/win32/gitman_driver.h"
+#include "platform/win32/win32_cmd_target_inspector.h"
 #include "platform/win32/resources/resource_ids.h"
 #include "platform/win32/utf8.h"
 #include "platform/win32/win32_file_association.h"
@@ -43,14 +44,15 @@ namespace {
 
 int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int)
 {
+    const std::optional<std::vector<std::u8string>> arguments { luil::win32::command_line_arguments() };
+    if (arguments.has_value() == false)
+        return 1;
+    if (const auto probe { gitman::win32::run_cmd_target_probe(*arguments) }; probe.has_value())
+        return *probe;
     // DPI 인지는 창을 만들기 전에 한 번 켠다.
     luil::win32::enable_per_monitor_dpi_awareness();
     // COM STA는 TSF(텍스트 입력)·파일 dialog·OS 파일 끌기·접근성이 요구한다.
     const luil::win32::com_sta_scope com {};
-
-    const std::optional<std::vector<std::u8string>> arguments { luil::win32::command_line_arguments() };
-    if (arguments.has_value() == false)
-        return 1;
 
     const gitman::application_options_result parsed_options {
         gitman::parse_application_options(*arguments),

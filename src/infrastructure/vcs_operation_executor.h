@@ -1,6 +1,7 @@
 #pragma once
 
 #include "application/app_settings_store.h"
+#include "application/cmd_target_inspector.h"
 #include "application/directory_enumerator.h"
 #include "application/operation_executor.h"
 #include "application/process_runner.h"
@@ -33,6 +34,8 @@ namespace gitman {
         // 실행 파일 위치라 platform 계층만 알고, 조립 시 한 번 붙인 뒤 바뀌지
         // 않는다. 붙이지 않은 조립(창 없는 test)은 관련 작업이 기본값으로 끝난다.
         void bind_app_settings(app_settings_store& store, std::u8string path);
+        // worker 시작 전에 묶고, inspector는 executor보다 오래 살아야 한다.
+        void bind_cmd_target_inspector(cmd_target_inspector& inspector) noexcept;
 
     private:
         [[nodiscard]] vcs_tool_set tools_for(const workspace_settings& settings, const process_cancellation_token& token);
@@ -58,6 +61,7 @@ namespace gitman {
         project_store* store_ { nullptr };
         process_runner* runner_ { nullptr };
         const vcs_file_probe* probe_ { nullptr };
+        cmd_target_inspector* cmd_inspector_ { nullptr };
         const directory_enumerator* enumerator_ { nullptr };
         project_path_resolver* resolver_ { nullptr };
         app_settings_store* app_settings_store_ { nullptr };
